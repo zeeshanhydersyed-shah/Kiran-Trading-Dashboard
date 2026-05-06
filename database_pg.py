@@ -9,9 +9,8 @@ import logging
 import os
 from contextlib import contextmanager
 
-import psycopg2
-import psycopg2.extras
-
+# psycopg2 imported lazily inside _connect() to avoid segfaults on startup
+# if the binary wheel is incompatible with the current Python version.
 logger = logging.getLogger(__name__)
 
 # Read lazily inside _connect() so hot-reloads and late env-var injection both work
@@ -65,6 +64,7 @@ def _parse_pg_url(url: str) -> dict:
 
 def _connect():
     """Connect to PostgreSQL using keyword args (handles special chars in password)."""
+    import psycopg2  # lazy import — keeps module-level import clean on Python 3.14+
     return psycopg2.connect(**_parse_pg_url(_get_url()))
 
 
@@ -82,19 +82,22 @@ def get_conn():
 
 
 def _exec(conn, sql: str, params=None):
-    """Execute a single statement, always using RealDictCursor for SELECTs."""
+    """Execute a single statement."""
+    import psycopg2.extras
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(sql, params or ())
         return cur
 
 
 def _fetchall(conn, sql: str, params=None) -> list[dict]:
+    import psycopg2.extras
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(sql, params or ())
         return [dict(r) for r in cur.fetchall()]
 
 
 def _fetchone(conn, sql: str, params=None):
+    import psycopg2.extras
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(sql, params or ())
         row = cur.fetchone()

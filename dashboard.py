@@ -5,10 +5,16 @@ import sys
 import logging
 from datetime import datetime
 
+print("KIRAN [1] stdlib imports OK", flush=True)
+
 import numpy as np
+print("KIRAN [2] numpy OK", flush=True)
 import joblib
+print("KIRAN [3] joblib OK", flush=True)
 import pandas as pd
+print("KIRAN [4] pandas OK", flush=True)
 import streamlit as st
+print("KIRAN [5] streamlit OK", flush=True)
 
 import os as _os
 sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
@@ -18,8 +24,11 @@ from database import (
     save_trade_setup, get_trade_setups, update_trade_setup, close_trade_setup,
     activate_trade_setup, delete_trade_setup, auto_save_setups, get_backtest_summary,
 )
+print("KIRAN [6] database OK", flush=True)
 from processor import run_analysis
+print("KIRAN [7] processor OK", flush=True)
 from main import cmd_update
+print("KIRAN [8] main OK", flush=True)
 
 logger = logging.getLogger(__name__)
 
