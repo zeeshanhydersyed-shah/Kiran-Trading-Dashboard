@@ -17,14 +17,53 @@ logger = logging.getLogger(__name__)
 _DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 
+def _parse_pg_url(url: str) -> dict:
+    """
+    Parse a postgresql:// URL into psycopg2.connect keyword args.
+
+    Standard urlparse breaks when the password contains special characters
+    like ?, #, $, + (common in auto-generated Supabase passwords).
+    We parse manually so those characters are passed through unchanged.
+    """
+    # Strip scheme
+    rest = url.split("://", 1)[-1]
+
+    # Split on the LAST @ so an @ inside the password still works
+    at = rest.rfind("@")
+    userinfo = rest[:at]
+    hostinfo = rest[at + 1:]
+
+    # user : password  (split on first colon only)
+    colon = userinfo.index(":")
+    user     = userinfo[:colon]
+    password = userinfo[colon + 1:]
+
+    # host:port / dbname
+    if "/" in hostinfo:
+        host_port, dbname = hostinfo.rsplit("/", 1)
+        dbname = dbname.split("?")[0]   # strip any ?sslmode=... suffix
+    else:
+        host_port = hostinfo
+        dbname = "postgres"
+
+    if ":" in host_port:
+        host, port_str = host_port.rsplit(":", 1)
+        port = int(port_str)
+    else:
+        host = host_port
+        port = 5432
+
+    return dict(
+        host=host, port=port,
+        dbname=dbname or "postgres",
+        user=user, password=password,
+        sslmode="require",
+    )
+
+
 def _connect():
-    """Connect to PostgreSQL, ensuring sslmode=require for Supabase."""
-    url = _DATABASE_URL or ""
-    # Supabase requires SSL; append sslmode=require if not already present
-    if "sslmode" not in url:
-        sep = "&" if "?" in url else "?"
-        url = f"{url}{sep}sslmode=require"
-    return psycopg2.connect(url)
+    """Connect to PostgreSQL using keyword args (handles special chars in password)."""
+    return psycopg2.connect(**_parse_pg_url(_DATABASE_URL or ""))
 
 
 @contextmanager

@@ -26,6 +26,29 @@ PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 BATCH = 5_000
 
 
+def _parse_pg_url(url: str) -> dict:
+    """Parse postgresql:// URL into psycopg2 kwargs, handling special chars in password."""
+    rest     = url.split("://", 1)[-1]
+    at       = rest.rfind("@")
+    userinfo = rest[:at]
+    hostinfo = rest[at + 1:]
+    colon    = userinfo.index(":")
+    user     = userinfo[:colon]
+    password = userinfo[colon + 1:]
+    if "/" in hostinfo:
+        host_port, dbname = hostinfo.rsplit("/", 1)
+        dbname = dbname.split("?")[0]
+    else:
+        host_port, dbname = hostinfo, "postgres"
+    if ":" in host_port:
+        host, port = host_port.rsplit(":", 1)
+        port = int(port)
+    else:
+        host, port = host_port, 5432
+    return dict(host=host, port=port, dbname=dbname or "postgres",
+                user=user, password=password, sslmode="require")
+
+
 def main():
     if not PG_URL:
         print("ERROR: Set DATABASE_URL or SUPABASE_DB_URL before running.")
@@ -37,12 +60,7 @@ def main():
 
     sqlite = sqlite3.connect(SQLITE_PATH)
     sqlite.row_factory = sqlite3.Row
-    # Ensure SSL for Supabase
-    pg_url = PG_URL
-    if "sslmode" not in pg_url:
-        sep = "&" if "?" in pg_url else "?"
-        pg_url = f"{pg_url}{sep}sslmode=require"
-    pg = psycopg2.connect(pg_url)
+    pg = psycopg2.connect(**_parse_pg_url(PG_URL))
 
     try:
         _ensure_schema(pg)
