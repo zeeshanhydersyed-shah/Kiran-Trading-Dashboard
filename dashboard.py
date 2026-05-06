@@ -306,7 +306,12 @@ if "page" not in st.session_state:
 
 
 # ── Ensure DB tables exist before any query (critical for fresh Supabase) ─────
-init_db()
+try:
+    init_db()
+except Exception as _db_err:
+    st.error(f"⚠️ Database connection failed: {_db_err}")
+    st.info("Check that DATABASE_URL is set correctly in Streamlit Cloud secrets.")
+    st.stop()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:

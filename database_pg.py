@@ -14,7 +14,9 @@ import psycopg2.extras
 
 logger = logging.getLogger(__name__)
 
-_DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+# Read lazily inside _connect() so hot-reloads and late env-var injection both work
+def _get_url() -> str:
+    return os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL") or ""
 
 
 def _parse_pg_url(url: str) -> dict:
@@ -63,7 +65,7 @@ def _parse_pg_url(url: str) -> dict:
 
 def _connect():
     """Connect to PostgreSQL using keyword args (handles special chars in password)."""
-    return psycopg2.connect(**_parse_pg_url(_DATABASE_URL or ""))
+    return psycopg2.connect(**_parse_pg_url(_get_url()))
 
 
 @contextmanager
