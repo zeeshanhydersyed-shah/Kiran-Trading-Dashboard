@@ -17,9 +17,19 @@ logger = logging.getLogger(__name__)
 _DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 
+def _connect():
+    """Connect to PostgreSQL, ensuring sslmode=require for Supabase."""
+    url = _DATABASE_URL or ""
+    # Supabase requires SSL; append sslmode=require if not already present
+    if "sslmode" not in url:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}sslmode=require"
+    return psycopg2.connect(url)
+
+
 @contextmanager
 def get_conn():
-    conn = psycopg2.connect(_DATABASE_URL)
+    conn = _connect()
     try:
         yield conn
         conn.commit()

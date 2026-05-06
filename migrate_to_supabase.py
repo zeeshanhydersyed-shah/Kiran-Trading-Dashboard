@@ -37,7 +37,12 @@ def main():
 
     sqlite = sqlite3.connect(SQLITE_PATH)
     sqlite.row_factory = sqlite3.Row
-    pg = psycopg2.connect(PG_URL)
+    # Ensure SSL for Supabase
+    pg_url = PG_URL
+    if "sslmode" not in pg_url:
+        sep = "&" if "?" in pg_url else "?"
+        pg_url = f"{pg_url}{sep}sslmode=require"
+    pg = psycopg2.connect(pg_url)
 
     try:
         _ensure_schema(pg)
