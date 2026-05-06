@@ -10,7 +10,8 @@ import joblib
 import pandas as pd
 import streamlit as st
 
-sys.path.insert(0, __file__.rsplit("\\", 1)[0])
+import os as _os
+sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 
 from database import (
     init_db, get_price_date_range, count_prices, count_sectors,
@@ -303,6 +304,9 @@ init_db()
 if "page" not in st.session_state:
     st.session_state.page = PAGES[0]
 
+
+# ── Ensure DB tables exist before any query (critical for fresh Supabase) ─────
+init_db()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:

@@ -38,14 +38,17 @@ from processor import run_analysis, print_sector_report
 # Logging setup
 # ---------------------------------------------------------------------------
 
+_handlers = [logging.StreamHandler(sys.stdout)]
+try:
+    _handlers.append(logging.FileHandler("psx_pipeline.log", encoding="utf-8"))
+except OSError:
+    pass  # read-only filesystem (e.g. Streamlit Cloud) — stdout only
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("psx_pipeline.log", encoding="utf-8"),
-    ],
+    handlers=_handlers,
 )
 logger = logging.getLogger(__name__)
 
