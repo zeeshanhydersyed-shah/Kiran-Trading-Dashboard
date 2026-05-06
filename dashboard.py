@@ -5,30 +5,32 @@ import sys
 import logging
 from datetime import datetime
 
-print("KIRAN [1] stdlib imports OK", flush=True)
-
-import numpy as np
-print("KIRAN [2] numpy OK", flush=True)
-import joblib
-print("KIRAN [3] joblib OK", flush=True)
-import pandas as pd
-print("KIRAN [4] pandas OK", flush=True)
-import streamlit as st
-print("KIRAN [5] streamlit OK", flush=True)
-
 import os as _os
 sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+
+import numpy as np
+import joblib
+import pandas as pd
+import streamlit as st
+
+# ── Bridge Streamlit secrets → os.environ BEFORE importing database ───────────
+# Streamlit Cloud sometimes injects secrets after Python's import phase starts.
+# Reading from st.secrets here guarantees DATABASE_URL is visible to database.py.
+try:
+    _secrets = st.secrets
+    for _k in ("DATABASE_URL", "SUPABASE_DB_URL"):
+        if _k not in _os.environ and _k in _secrets:
+            _os.environ[_k] = str(_secrets[_k])
+except Exception:
+    pass  # no secrets configured — falls back to SQLite
 
 from database import (
     init_db, get_price_date_range, count_prices, count_sectors,
     save_trade_setup, get_trade_setups, update_trade_setup, close_trade_setup,
     activate_trade_setup, delete_trade_setup, auto_save_setups, get_backtest_summary,
 )
-print("KIRAN [6] database OK", flush=True)
 from processor import run_analysis
-print("KIRAN [7] processor OK", flush=True)
 from main import cmd_update
-print("KIRAN [8] main OK", flush=True)
 
 logger = logging.getLogger(__name__)
 
@@ -306,21 +308,9 @@ def kpi(label, value, sub, color):
 BLUE = "#3b82f6"
 
 
-# ── Always run migrations regardless of cache state ──────────────────────────
-init_db()
-
 # ── Session state — active page ───────────────────────────────────────────────
 if "page" not in st.session_state:
     st.session_state.page = PAGES[0]
-
-
-# ── Ensure DB tables exist before any query (critical for fresh Supabase) ─────
-try:
-    init_db()
-except Exception as _db_err:
-    st.error(f"⚠️ Database connection failed: {_db_err}")
-    st.info("Check that DATABASE_URL is set correctly in Streamlit Cloud secrets.")
-    st.stop()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
