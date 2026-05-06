@@ -1,0 +1,11 @@
+feature,importance,importance_pct
+month,102,21.0
+risk_pct,65,13.4
+atr_pct,60,12.4
+sector_rank,50,10.3
+breadth_score,48,9.9
+stock_perf_30d,43,8.9
+dist_to_entry_pct,41,8.5
+momentum_ratio,36,7.4
+log_vol,27,5.6
+stock_perf_10d,13,2.7

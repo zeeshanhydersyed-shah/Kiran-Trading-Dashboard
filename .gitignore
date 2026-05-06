@@ -1,0 +1,39 @@
+# Database — never commit the live DB (40 MB, contains personal trade data)
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env
+secrets.toml
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Logs
+*.log
+streamlit.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+
+# Exports (generated files)
+exports/

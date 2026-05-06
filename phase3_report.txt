@@ -1,0 +1,179 @@
+
+============================================================
+  1. OVERVIEW
+============================================================
+Total setups         : 1,430
+Triggered (W+L)      : 998  (69.8% of all)
+  Win_T2             : 220
+  Win_T1             : 480
+  Loss               : 298
+  No_Trigger         : 371
+  Expired            : 61
+Win rate (triggered) : 70.1%
+Date range           : 2024-03-15 to 2026-05-01
+Unique symbols       : 150
+Unique sectors       : 23
+
+============================================================
+  2. WIN RATE BY QUARTER (is it all one period?)
+============================================================
+Quarter      Setups   Wins    Win%
+------------------------------------
+2024Q1           13     11   84.6% <-- HIGH
+2024Q2           93     65   69.9%
+2024Q3           80     43   53.8%
+2024Q4          183    146   79.8% <-- HIGH
+2025Q1           23     14   60.9%
+2025Q2           76     54   71.1%
+2025Q3          393    294   74.8%
+2025Q4           72     38   52.8%
+2026Q1           49     28   57.1%
+2026Q2           16      7   43.8% <-- LOW
+
+============================================================
+  3. WIN RATE BY SECTOR (is one sector carrying the results?)
+============================================================
+Sector                                  N  % of all    Win%
+------------------------------------------------------------
+COMMERCIAL BANKS                      223     22.3%   69.5% <-- DOMINANT
+FERTILIZER                            118     11.8%   83.9%
+CEMENT                                107     10.7%   60.7%
+TECHNOLOGY & COMMUNICATION             77      7.7%   62.3%
+ENGINEERING                            51      5.1%   60.8%
+REFINERY                               51      5.1%   84.3%
+TEXTILE COMPOSITE                      47      4.7%   66.0%
+CHEMICAL                               45      4.5%   62.2%
+PHARMACEUTICALS                        42      4.2%   90.5%
+AUTOMOBILE ASSEMBLER                   37      3.7%   54.1%
+FOOD & PERSONAL CARE PRODUCTS          35      3.5%   71.4%
+INSURANCE                              23      2.3%   95.7%
+OIL & GAS EXPLORATION COMPANIES        20      2.0%   35.0%
+POWER GENERATION & DISTRIBUTION        19      1.9%   63.2%
+PAPER & BOARD                          18      1.8%   83.3%
+CABLE & ELECTRICAL GOODS               18      1.8%   72.2%
+MISCELLANEOUS                          18      1.8%   83.3%
+OIL & GAS MARKETING COMPANIES          18      1.8%   83.3%
+PROPERTY                               17      1.7%   58.8%
+GLASS & CERAMICS                       12      1.2%   66.7%
+AUTOMOBILE PARTS & ACCESSORIES          1      0.1%    0.0%
+REAL ESTATE INVESTMENT TRUST            1      0.1%    0.0%
+
+============================================================
+  4. TOP 20 SYMBOLS BY SETUP COUNT (concentration check)
+============================================================
+Top 20 symbols account for 41.2% of all triggered setups
+
+Symbol         Count  % of total
+----------------------------------
+FFC               52        5.2%  WR=77%
+FATIMA            33        3.3%  WR=88%
+UBL               26        2.6%  WR=12%
+NBP               26        2.6%  WR=92%
+NRL               23        2.3%  WR=96%
+BOP               22        2.2%  WR=82%
+SNBL              19        1.9%  WR=74%
+GCIL              19        1.9%  WR=68%
+FABL              17        1.7%  WR=35%
+FCCL              17        1.7%  WR=35%
+HBL               17        1.7%  WR=76%
+MLCF              17        1.7%  WR=65%
+JSBL              17        1.7%  WR=53%
+AIRLINK           16        1.6%  WR=44%
+FFBL              16        1.6%  WR=100%
+AKBL              16        1.6%  WR=88%
+MEBL              15        1.5%  WR=93%
+DGKC              15        1.5%  WR=87%
+CPHL              14        1.4%  WR=100%
+CNERGY            14        1.4%  WR=71%
+
+============================================================
+  5. FEATURE SEPARATION (do features predict outcome?)
+============================================================
+Feature                 Wins mean   Losses mean     Diff   Signal?
+------------------------------------------------------------------
+quality_score                2.53          2.60    -2.7%      weak
+breadth_score               77.28         75.39     2.5%      weak
+sector_rank                  4.95          5.23    -5.5%      weak
+stock_perf_30d              29.86         29.17     2.3%      weak
+stock_perf_10d               5.45          6.86   -20.6%       YES
+risk_pct                     4.39          4.46    -1.7%      weak
+atr_pct                      2.31          2.38    -3.0%      weak
+range_width_pct              3.03          3.11    -2.6%      weak
+avg_vol_10d            7003900.69    7441329.22    -5.9%      weak
+outcome_days                 5.33         10.08   -47.2%       YES
+
+============================================================
+  6. WIN RATE BY QUALITY SCORE (are higher scores actually better?)
+============================================================
+ Quality  N triggered    Win%  Predictive?
+--------------------------------------------
+       2          544   71.9%           --
+       3          354   68.9%        WORSE
+       4          100   65.0%        WORSE
+
+============================================================
+  7. LABELING SANITY CHECKS
+============================================================
+Trigger date <= as_of_date (look-ahead error) : 0
+Outcome date < trigger date (impossible)       : 0
+Triggered on same day as setup (day 0)         : 0  (0.0%)
+  --> These are setups where price hit entry on the very next close.
+  --> Could be valid (gap up through entry) or indicate entry price
+      was already breached before market open.
+Win_T1 resolved same day as trigger            : 0  (0.0% of wins)
+
+============================================================
+  8. BULL MARKET BIAS — Market index during backtest period
+============================================================
+Avg market price start : 156.91
+Avg market price end   : 258.41
+Market return (period) : +64.7%
+  --> STRONG BULL MARKET. A long-biased system will look exceptional.
+  --> Win rates are inflated by market direction, not system alpha.
+
+Win rate by 6-month period:
+  2024-03      n=  13  WR=84.6%
+  2024-04      n=  27  WR=77.8%
+  2024-05      n=  51  WR=58.8%
+  2024-06      n=  15  WR=93.3%
+  2024-07      n=  40  WR=40.0%
+  2024-08      n=  10  WR=80.0%
+  2024-09      n=  30  WR=63.3%
+  2024-10      n=  19  WR=89.5%
+  2024-11      n=  99  WR=87.9%
+  2024-12      n=  65  WR=64.6%
+  2025-01      n=  16  WR=62.5%
+  2025-03      n=   7  WR=57.1%
+  2025-04      n=   1  WR=100.0%
+  2025-05      n=  26  WR=57.7%
+  2025-06      n=  49  WR=77.6%
+  2025-07      n= 184  WR=78.8%
+  2025-08      n= 103  WR=82.5%
+  2025-09      n= 106  WR=60.4%
+  2025-10      n=  39  WR=43.6%
+  2025-11      n=   2  WR=0.0%
+  2025-12      n=  31  WR=67.7%
+  2026-01      n=  48  WR=58.3%
+  2026-02      n=   1  WR=0.0%
+  2026-04      n=  16  WR=43.8%
+
+============================================================
+  9. ML READINESS ASSESSMENT
+============================================================
+Triggered sample size    : 998
+Class balance (W:L)      : 700:298  (43% balanced)
+Min recommended for ML   : 300 per class
+
+CAUTION: Moderately imbalanced. Use class_weight='balanced'.
+
+KEY FINDING — Why equity curve is unrealistic:
+  - +64.7% bull market gives every long-biased system artificial tailwind
+  - 0% of triggers fire on day 0 (same close as setup)
+  - Daily closes only: no intraday wicks, no gap risk, no partial fills
+  - Survivorship bias: only stocks alive today are in the dataset
+  - No slippage, no spread, no brokerage
+
+RECOMMENDATION:
+  Before ML, split Win_T1 from Win_T2 as separate classes OR
+  collapse to binary: Triggered+Win vs Triggered+Loss.
+  Train on 2024 only, validate on 2025, test on 2026.
