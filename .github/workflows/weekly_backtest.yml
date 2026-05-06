@@ -1,0 +1,36 @@
+name: Weekly Backtest
+
+# Run every Sunday at 08:00 UTC (13:00 PKT) — market closed, fresh week.
+on:
+  schedule:
+    - cron: "0 8 * * 0"     # Sunday 08:00 UTC
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run backtest
+        run: python backtest.py
+        # backtest.py reads from Supabase prices, writes results to backtest_setups table
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::Weekly backtest FAILED on $(date -u '+%Y-%m-%d %H:%M UTC')."

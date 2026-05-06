@@ -1,7 +1,18 @@
-"""SQLite storage layer for PSX sector/price data."""
+"""
+Storage layer for PSX sector/price data.
+
+Auto-selects backend at import time:
+  • DATABASE_URL or SUPABASE_DB_URL set in environment  →  PostgreSQL (Supabase)
+  • Otherwise                                            →  local SQLite
+
+All other modules (dashboard, processor, scraper, …) just do:
+    import database as db
+and never need to know which backend is active.
+"""
 
 import sqlite3
 import logging
+import os
 from contextlib import contextmanager
 from config import DB_PATH
 
@@ -96,7 +107,7 @@ def init_db():
         "ALTER TABLE trade_setups ADD COLUMN actual_rr       REAL",
         "ALTER TABLE trade_setups ADD COLUMN holding_days    INTEGER",
         "ALTER TABLE trade_setups ADD COLUMN exit_date       TEXT",
-        "ALTER TABLE trade_setups ADD COLUMN actual_entry    REAL",  # user's actual fill (may differ from entry_price)
+        "ALTER TABLE trade_setups ADD COLUMN actual_entry    REAL",  # user's actual fill
     ]
     with get_conn() as conn:
         for sql in migrations:
@@ -460,3 +471,38 @@ def auto_save_setups(setups: list[dict]) -> int:
     if saved:
         logger.info("Auto-saved %d new system setup(s).", saved)
     return saved
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL override — runs LAST so PG functions replace SQLite ones
+# when DATABASE_URL is available (Streamlit Cloud / GitHub Actions).
+# ---------------------------------------------------------------------------
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+
+if _PG_URL:
+    logger.info("DATABASE_URL detected — switching to PostgreSQL backend.")
+    from database_pg import (           # noqa: F401  re-exports overwrite SQLite defs above
+        get_conn,
+        init_db,
+        upsert_sectors,
+        upsert_prices,
+        upsert_index_prices,
+        get_index_prices,
+        get_all_symbols,
+        get_all_sectors_df,
+        get_prices_df,
+        get_latest_scraped_date,
+        get_price_date_range,
+        get_sector_price_data,
+        count_prices,
+        count_sectors,
+        save_trade_setup,
+        get_trade_setups,
+        update_trade_setup,
+        activate_trade_setup,
+        close_trade_setup,
+        delete_trade_setup,
+        setup_already_saved,
+        get_backtest_summary,
+        auto_save_setups,
+    )

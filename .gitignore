@@ -37,3 +37,9 @@ Thumbs.db
 
 # Exports (generated files)
 exports/
+
+# Trained ML models (large binaries — downloaded at runtime or from CI artifacts)
+*.pkl
+
+# Migration script output
+migrate_to_supabase.log

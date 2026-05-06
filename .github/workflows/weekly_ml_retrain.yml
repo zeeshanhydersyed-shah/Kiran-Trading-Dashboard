@@ -1,0 +1,43 @@
+name: Weekly ML Retrain
+
+# Run every Sunday at 10:00 UTC (15:00 PKT) — after backtest finishes.
+on:
+  schedule:
+    - cron: "0 10 * * 0"   # Sunday 10:00 UTC
+  workflow_dispatch:
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Train ML model
+        run: python phase4_train.py
+        # Reads backtest_setups from Supabase, trains model, saves .pkl file
+
+      - name: Upload trained model as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiran-ml-model
+          path: "*.pkl"
+          retention-days: 30
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::Weekly ML retrain FAILED on $(date -u '+%Y-%m-%d %H:%M UTC')."
