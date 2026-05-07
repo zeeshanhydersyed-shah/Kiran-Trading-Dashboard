@@ -860,12 +860,14 @@ elif cur == PAGES[3]:
             log_df["source"] = "System"
         log_df["source"] = log_df["source"].fillna("System")
 
-        flt1, flt2 = st.columns([2, 2])
-        sf  = flt1.selectbox("Status", ["All","Pending","Active","Hit Target","Hit SL","Cancelled"], key="log_sf")
-        src = flt2.selectbox("Source", ["All","System","Actual"], key="log_src")
+        flt1, flt2, flt3 = st.columns([2, 2, 2])
+        sf       = flt1.selectbox("Status", ["All","Pending","Active","Hit Target","Hit SL","Cancelled"], key="log_sf")
+        src      = flt2.selectbox("Source", ["All","System","Actual"], key="log_src")
+        sym_srch = flt3.text_input("Symbol search", placeholder="e.g. BAFL", key="log_sym").strip().upper()
 
-        if sf  != "All": log_df = log_df[log_df["status"] == sf]
-        if src != "All": log_df = log_df[log_df["source"]  == src]
+        if sf       != "All": log_df = log_df[log_df["status"] == sf]
+        if src      != "All": log_df = log_df[log_df["source"]  == src]
+        if sym_srch:          log_df = log_df[log_df["symbol"].str.upper().str.contains(sym_srch, na=False)]
 
         # Ensure exit_date column exists (older cached runs may not have it)
         if "exit_date" not in log_df.columns:
@@ -1204,22 +1206,25 @@ elif cur == PAGES[4]:
 elif cur == PAGES[5]:
     import plotly.graph_objects as go
 
-    # ── Pull closed actual trades ──────────────────────────────────────────────
+    # ── Pull all closed trades (System-taken + Actual) ────────────────────────
     all_trades = get_trade_setups()
     adf = pd.DataFrame(all_trades) if all_trades else pd.DataFrame()
 
     closed = pd.DataFrame()
     if not adf.empty:
+        if "source" not in adf.columns:
+            adf["source"] = "System"
+        adf["source"] = adf["source"].fillna("System")
+        # Include any trade (System or Actual) that has a resolved outcome
         closed = adf[
-            (adf["source"] == "Actual") &
-            (adf["outcome"].isin(["Win", "Loss", "Breakeven"]))
+            adf["outcome"].isin(["Win", "Loss", "Breakeven"])
         ].copy()
         for col in ["actual_pl_pkr", "actual_pl_pct", "actual_rr", "holding_days", "exit_date"]:
             if col not in closed.columns:
                 closed[col] = None
 
     if closed.empty:
-        st.info("No closed actual trades yet. Log trades in the Trade Log first.")
+        st.info("No closed trades yet. Close positions in the Trade Log first.")
         st.stop()
 
     # ── Core calculations ──────────────────────────────────────────────────────
@@ -1914,33 +1919,57 @@ elif cur == PAGES[7]:
     zcolor    = regime["zone_color"]
     fz_val    = regime["fast_z"]
     sl_val    = regime["signal_line"]
+    hist_val  = regime.get("z_histogram")
+    slope_val = regime.get("fast_z_slope")
+    score_val = regime.get("trend_score")
+    roc_val   = regime.get("breadth_roc")
+    direction = regime.get("direction", "Flat")
+    dir_arrow = regime.get("direction_arrow", "→")
     pct_val   = regime["pct_above_ma"]
     idx_abv   = regime["index_above_ma"]
     last_date = regime["last_date"]
 
     sig_colors = {
-        "BUY":   "#22c55e",
-        "SELL":  "#ef4444",
-        "SHORT": "#3b82f6",
-        "HOLD":  "#fbbf24",
+        "BUY":  "#22c55e",
+        "SELL": "#ef4444",
+        "HOLD": "#fbbf24",
     }
-    sig_icons = {"BUY": "▲", "SELL": "▼", "SHORT": "↓", "HOLD": "—"}
+    sig_icons = {"BUY": "▲", "SELL": "▼", "HOLD": "—"}
     sig_col   = sig_colors.get(sig_label, "#94a3b8")
     sig_icon  = sig_icons.get(sig_label, "")
+
+    # Trend score colour: green above +25, red below −25, amber in between
+    score_color = (
+        "#22c55e" if score_val is not None and score_val >= 25  else
+        "#ef4444" if score_val is not None and score_val <= -25 else
+        "#fbbf24"
+    )
+    dir_color = (
+        "#22c55e" if direction == "Rising"  else
+        "#ef4444" if direction == "Falling" else
+        "#94a3b8"
+    )
 
     st.markdown(
         f"""<div style="background:{sig_col}18; border-left:5px solid {sig_col};
             padding:10px 16px; border-radius:8px; margin-bottom:10px;
-            display:flex; align-items:center; gap:20px;">
+            display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
             <span style="font-size:1.6rem; font-weight:900; color:{sig_col}; white-space:nowrap;">
                 {sig_icon} {sig_label}
             </span>
             <div>
                 <span style="font-size:0.85rem; font-weight:700; color:{zcolor};">{zone}</span>
-                <span style="font-size:0.75rem; color:#64748b; margin-left:12px;">
-                    Fast Z: <b>{fz_val:.2f}</b> &nbsp;·&nbsp;
-                    Signal Line: <b>{sl_val:.2f}</b> &nbsp;·&nbsp;
-                    % Above 50MA: <b>{pct_val:.1f}%</b> &nbsp;·&nbsp;
+                <span style="font-size:0.85rem; font-weight:700; color:{dir_color}; margin-left:10px;">{dir_arrow} {direction}</span>
+                <span style="font-size:0.85rem; font-weight:700; color:{score_color}; margin-left:10px;">
+                    Trend Score: <b>{f"{score_val:+.0f}" if score_val is not None else "—"}</b>
+                </span>
+                <br>
+                <span style="font-size:0.72rem; color:#64748b;">
+                    Fast Z: <b>{f"{fz_val:.2f}" if fz_val is not None else "—"}</b> &nbsp;·&nbsp;
+                    Signal Line: <b>{f"{sl_val:.2f}" if sl_val is not None else "—"}</b> &nbsp;·&nbsp;
+                    Histogram: <b>{f"{hist_val:+.2f}" if hist_val is not None else "—"}</b> &nbsp;·&nbsp;
+                    % Above 50MA: <b>{f"{pct_val:.1f}%" if pct_val is not None else "—"}</b> &nbsp;·&nbsp;
+                    Breadth 5D ROC: <b>{f"{roc_val:+.1f}%" if roc_val is not None else "—"}</b> &nbsp;·&nbsp;
                     KSE-100 vs MA: <b>{"▲ Above" if idx_abv else "▼ Below"}</b> &nbsp;·&nbsp;
                     As of <b>{pd.Timestamp(last_date).strftime('%d %b %Y')}</b>
                 </span>
@@ -1949,97 +1978,225 @@ elif cur == PAGES[7]:
         unsafe_allow_html=True,
     )
 
-    # ── KPI row ────────────────────────────────────────────────────────────────
-    k1, k2, k3, k4, k5 = st.columns(5)
+    # ── KPI row (7 tiles) ──────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 
-    def _kpi_mini(label, val, fmt, color):
+    def _kpi_mini(label, val, fmt, color, subtitle=""):
+        sub = f'<div style="font-size:0.55rem; color:#94a3b8; margin-top:1px;">{subtitle}</div>' if subtitle else ""
         return (
             f'<div style="background:{color}12; border:1px solid {color}33; border-top:3px solid {color};'
             f'border-radius:7px; padding:9px 8px; text-align:center;">'
-            f'<div style="font-size:0.6rem; color:#64748b; text-transform:uppercase; letter-spacing:.06em;">'
+            f'<div style="font-size:0.58rem; color:#64748b; text-transform:uppercase; letter-spacing:.06em;">'
             f'{label}</div>'
-            f'<div style="font-size:1.05rem; font-weight:800; color:{color};">{fmt.format(val) if val is not None else "—"}</div>'
-            f'</div>'
+            f'<div style="font-size:1.02rem; font-weight:800; color:{color};">{fmt.format(val) if val is not None else "—"}</div>'
+            f'{sub}</div>'
         )
 
     buy_thr  = w_params["buy_threshold"]
     sell_thr = w_params["sell_threshold"]
-    fz_color = "#3b82f6" if (fz_val is not None and fz_val < buy_thr) else "#ef4444" if (fz_val is not None and fz_val > sell_thr) else "#22c55e"
+    fz_color = (
+        "#3b82f6" if (fz_val is not None and fz_val < buy_thr)  else
+        "#ef4444" if (fz_val is not None and fz_val > sell_thr) else
+        "#22c55e"
+    )
+    hist_color  = "#22c55e" if (hist_val is not None and hist_val >= 0) else "#ef4444"
+    slope_color = "#22c55e" if (slope_val is not None and slope_val >= 0) else "#ef4444"
 
-    k1.markdown(_kpi_mini("Fast Z-Score",    fz_val,  "{:.2f}", fz_color), unsafe_allow_html=True)
-    k2.markdown(_kpi_mini("Signal Line",     sl_val,  "{:.2f}", "#8b5cf6"), unsafe_allow_html=True)
-    k3.markdown(_kpi_mini("% Above 50MA",    pct_val, "{:.1f}%", "#06b6d4"), unsafe_allow_html=True)
-    k4.markdown(_kpi_mini("Buy Threshold",   buy_thr, "{:.1f}", "#22c55e"), unsafe_allow_html=True)
-    k5.markdown(_kpi_mini("Sell Threshold",  sell_thr,"{:.1f}", "#ef4444"), unsafe_allow_html=True)
+    k1.markdown(_kpi_mini("Trend Score",   score_val, "{:+.0f}",  score_color, "−100…+100"), unsafe_allow_html=True)
+    k2.markdown(_kpi_mini("Fast Z",        fz_val,    "{:.2f}",   fz_color,    f"{dir_arrow} {direction}"), unsafe_allow_html=True)
+    k3.markdown(_kpi_mini("Signal Line",   sl_val,    "{:.2f}",   "#8b5cf6"), unsafe_allow_html=True)
+    k4.markdown(_kpi_mini("Histogram",     hist_val,  "{:+.2f}",  hist_color,  "fast_z − sig"), unsafe_allow_html=True)
+    k5.markdown(_kpi_mini("% Above 50MA",  pct_val,   "{:.1f}%",  "#06b6d4"), unsafe_allow_html=True)
+    k6.markdown(_kpi_mini("Buy Threshold", buy_thr,   "{:.1f}",   "#22c55e"), unsafe_allow_html=True)
+    k7.markdown(_kpi_mini("Sell Thr.",     sell_thr,  "{:.1f}",   "#ef4444"), unsafe_allow_html=True)
 
     st.divider()
 
     # ── Z-Score chart (main chart) ─────────────────────────────────────────────
-    st.markdown("**Z-Score History**")
+    st.markdown("**Z-Score & Momentum Histogram**")
 
     tail = st.slider("Show last N days", 60, len(signals), min(504, len(signals)), step=21, key="wbs_tail")
     sig_plot = signals.tail(tail).copy()
 
-    fig_z = go.Figure()
+    # ── Z-Score + Histogram (stacked subplots) ─────────────────────────────────
+    from plotly.subplots import make_subplots
 
-    # Shaded zones
-    fig_z.add_hrect(y0=buy_thr, y1=-4,  fillcolor="rgba(59,130,246,0.10)", line_width=0, annotation_text="Oversold zone", annotation_position="top left")
-    fig_z.add_hrect(y0=sell_thr, y1=4,  fillcolor="rgba(239,68,68,0.10)", line_width=0, annotation_text="Overbought zone", annotation_position="bottom left")
-    fig_z.add_hline(y=0,        line_dash="dot",  line_color="#94a3b8", line_width=1)
-    fig_z.add_hline(y=buy_thr,  line_dash="dash", line_color="#3b82f6", line_width=1.2)
-    fig_z.add_hline(y=sell_thr, line_dash="dash", line_color="#ef4444", line_width=1.2)
+    fig_z = make_subplots(
+        rows=2, cols=1,
+        row_heights=[0.68, 0.32],
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+    )
 
-    # Fast Z line
+    # Shaded zones (row 1)
+    fig_z.add_hrect(y0=buy_thr, y1=-4,  fillcolor="rgba(59,130,246,0.10)", line_width=0,
+                    annotation_text="Oversold", annotation_position="top left", row=1, col=1)
+    fig_z.add_hrect(y0=sell_thr, y1=4,  fillcolor="rgba(239,68,68,0.10)", line_width=0,
+                    annotation_text="Overbought", annotation_position="bottom left", row=1, col=1)
+    fig_z.add_hline(y=0,        line_dash="dot",  line_color="#94a3b8", line_width=1, row=1, col=1)
+    fig_z.add_hline(y=buy_thr,  line_dash="dash", line_color="#3b82f6", line_width=1.2, row=1, col=1)
+    fig_z.add_hline(y=sell_thr, line_dash="dash", line_color="#ef4444", line_width=1.2, row=1, col=1)
+
+    # Fast Z line (row 1)
     fig_z.add_trace(go.Scatter(
         x=sig_plot.index, y=sig_plot["fast_z"].round(3),
-        mode="lines", name="Fast Z",
+        mode="lines", name="Fast Z (EMA)",
         line={"color": "#3b82f6", "width": 2},
         hovertemplate="<b>%{x|%d %b %Y}</b><br>Fast Z: %{y:.2f}<extra></extra>",
-    ))
+    ), row=1, col=1)
 
-    # Signal line
+    # Signal line (row 1)
     fig_z.add_trace(go.Scatter(
         x=sig_plot.index, y=sig_plot["signal_line"].round(3),
-        mode="lines", name="Signal Line",
+        mode="lines", name="Signal Line (EMA)",
         line={"color": "#f59e0b", "width": 1.5, "dash": "dot"},
         hovertemplate="<b>%{x|%d %b %Y}</b><br>Signal Line: %{y:.2f}<extra></extra>",
-    ))
+    ), row=1, col=1)
 
+    # BUY / SELL signal markers on fast_z line
+    buys  = sig_plot[sig_plot["signal"] == 1]
+    sells = sig_plot[sig_plot["signal"] == -1]
+    if not buys.empty:
+        fig_z.add_trace(go.Scatter(
+            x=buys.index, y=buys["fast_z"].round(3),
+            mode="markers", name="BUY signal",
+            marker={"symbol": "triangle-up", "size": 10, "color": "#22c55e", "line": {"width": 1, "color": "#fff"}},
+            hovertemplate="BUY · Fast Z: %{y:.2f}<extra></extra>",
+        ), row=1, col=1)
+    if not sells.empty:
+        fig_z.add_trace(go.Scatter(
+            x=sells.index, y=sells["fast_z"].round(3),
+            mode="markers", name="SELL signal",
+            marker={"symbol": "triangle-down", "size": 10, "color": "#ef4444", "line": {"width": 1, "color": "#fff"}},
+            hovertemplate="SELL · Fast Z: %{y:.2f}<extra></extra>",
+        ), row=1, col=1)
+
+    # Histogram bars — green when positive (breadth momentum up), red when negative (declining)
+    if "z_histogram" in sig_plot.columns:
+        hist_vals = sig_plot["z_histogram"].round(3)
+        bar_colors = ["#22c55e" if v >= 0 else "#ef4444" for v in hist_vals]
+        fig_z.add_trace(go.Bar(
+            x=sig_plot.index, y=hist_vals,
+            name="Histogram (Fast Z − Signal)",
+            marker_color=bar_colors,
+            opacity=0.75,
+            hovertemplate="<b>%{x|%d %b %Y}</b><br>Histogram: %{y:+.2f}<extra></extra>",
+        ), row=2, col=1)
+        fig_z.add_hline(y=0, line_dash="dot", line_color="#94a3b8", line_width=1, row=2, col=1)
 
     fig_z.update_layout(
-        height=340,
+        height=430,
         margin={"l": 4, "r": 4, "t": 8, "b": 8},
-        legend={"orientation": "h", "y": 1.05, "x": 0, "font": {"size": 11}},
+        legend={"orientation": "h", "y": 1.05, "x": 0, "font": {"size": 10}},
         hovermode="x unified",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis={"title": "Z-Score", "tickfont": {"size": 10}, "range": [-4, 4]},
-        xaxis={"tickfont": {"size": 10}},
+        bargap=0.1,
     )
+    fig_z.update_yaxes(title_text="Z-Score", tickfont={"size": 10}, range=[-4, 4], row=1, col=1)
+    fig_z.update_yaxes(title_text="Momentum", tickfont={"size": 10}, row=2, col=1)
+    fig_z.update_xaxes(tickfont={"size": 10})
     st.plotly_chart(fig_z, use_container_width=True)
 
-    # ── Breadth % chart ────────────────────────────────────────────────────────
+    # ── Breadth % chart with multi-MA structure ─────────────────────────────────
     st.markdown("**Breadth — % of PSX stocks above 50-day MA**")
 
-    breadth_plot = breadth.tail(tail)
+    breadth_plot  = breadth.tail(tail)
+    breadth_ma10  = breadth.rolling(10,  min_periods=1).mean().tail(tail)
+    breadth_ma21  = breadth.rolling(21,  min_periods=1).mean().tail(tail)
+    breadth_ma50  = breadth.rolling(50,  min_periods=1).mean().tail(tail)
+
+    # Colour the raw breadth line: green when above its own 21D MA, red when below
+    b_arr   = breadth_plot.values
+    ma21_arr = breadth_ma21.values
+    line_colors_b = ["#22c55e" if b_arr[i] >= ma21_arr[i] else "#ef4444" for i in range(len(b_arr))]
+
     fig_b = go.Figure()
-    fig_b.add_hline(y=50, line_dash="dot", line_color="#94a3b8", line_width=1)
+    fig_b.add_hline(y=70, line_dash="dot", line_color="#22c55e", line_width=1,
+                    annotation_text="Strong (70%)", annotation_position="top right")
+    fig_b.add_hline(y=50, line_dash="dot", line_color="#94a3b8", line_width=1,
+                    annotation_text="Neutral (50%)", annotation_position="top right")
+    fig_b.add_hline(y=30, line_dash="dot", line_color="#ef4444", line_width=1,
+                    annotation_text="Weak (30%)", annotation_position="bottom right")
+
+    # Raw breadth — fill green when above 21D MA, red when below
+    above_21 = breadth_plot.where(breadth_plot >= breadth_ma21)
+    below_21 = breadth_plot.where(breadth_plot <  breadth_ma21)
+
     fig_b.add_trace(go.Scatter(
-        x=breadth_plot.index, y=breadth_plot.round(1),
-        mode="lines", name="% Above 50MA",
-        line={"color": "#06b6d4", "width": 2},
-        fill="tozeroy", fillcolor="rgba(6,182,212,0.10)",
-        hovertemplate="<b>%{x|%d %b %Y}</b><br>%{y:.1f}% above 50MA<extra></extra>",
+        x=above_21.index, y=above_21.round(1),
+        mode="lines", name="Breadth (above 21D MA)",
+        line={"color": "#22c55e", "width": 1.8},
+        fill="tozeroy", fillcolor="rgba(34,197,94,0.08)",
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>%{y:.1f}%<extra></extra>",
+        connectgaps=False,
+    ))
+    fig_b.add_trace(go.Scatter(
+        x=below_21.index, y=below_21.round(1),
+        mode="lines", name="Breadth (below 21D MA)",
+        line={"color": "#ef4444", "width": 1.8},
+        fill="tozeroy", fillcolor="rgba(239,68,68,0.08)",
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>%{y:.1f}%<extra></extra>",
+        connectgaps=False,
+    ))
+    fig_b.add_trace(go.Scatter(
+        x=breadth_ma10.index, y=breadth_ma10.round(1),
+        mode="lines", name="10D MA",
+        line={"color": "#f59e0b", "width": 1.5},
+        hovertemplate="10D MA: %{y:.1f}%<extra></extra>",
+    ))
+    fig_b.add_trace(go.Scatter(
+        x=breadth_ma21.index, y=breadth_ma21.round(1),
+        mode="lines", name="21D MA",
+        line={"color": "#8b5cf6", "width": 1.5, "dash": "dash"},
+        hovertemplate="21D MA: %{y:.1f}%<extra></extra>",
+    ))
+    fig_b.add_trace(go.Scatter(
+        x=breadth_ma50.index, y=breadth_ma50.round(1),
+        mode="lines", name="50D MA",
+        line={"color": "#94a3b8", "width": 1.2, "dash": "dot"},
+        hovertemplate="50D MA: %{y:.1f}%<extra></extra>",
     ))
     fig_b.update_layout(
-        height=220,
+        height=260,
         margin={"l": 4, "r": 4, "t": 8, "b": 8},
         hovermode="x unified",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         yaxis={"title": "% Stocks", "tickfont": {"size": 10}, "range": [0, 100]},
         xaxis={"tickfont": {"size": 10}},
-        showlegend=False,
+        showlegend=True,
+        legend={"orientation": "h", "x": 0, "y": 1.18, "font": {"size": 10}},
     )
     st.plotly_chart(fig_b, use_container_width=True)
+
+    # ── Trend Score history ─────────────────────────────────────────────────────
+    if "trend_score" in signals.columns:
+        st.markdown("**Trend Score History** — composite incline / decline gauge (−100 … +100)")
+        ts_plot = signals["trend_score"].tail(tail)
+        ts_colors = ["#22c55e" if v >= 25 else "#ef4444" if v <= -25 else "#fbbf24" for v in ts_plot]
+        fig_ts = go.Figure()
+        fig_ts.add_hline(y=25,  line_dash="dash", line_color="#22c55e", line_width=1, annotation_text="Incline (+25)", annotation_position="top right")
+        fig_ts.add_hline(y=0,   line_dash="dot",  line_color="#94a3b8", line_width=1)
+        fig_ts.add_hline(y=-25, line_dash="dash", line_color="#ef4444", line_width=1, annotation_text="Decline (−25)", annotation_position="bottom right")
+        fig_ts.add_hrect(y0=25,  y1=100,  fillcolor="rgba(34,197,94,0.06)",  line_width=0)
+        fig_ts.add_hrect(y0=-100, y1=-25, fillcolor="rgba(239,68,68,0.06)", line_width=0)
+        fig_ts.add_trace(go.Bar(
+            x=ts_plot.index, y=ts_plot.round(1),
+            name="Trend Score",
+            marker_color=ts_colors,
+            opacity=0.8,
+            hovertemplate="<b>%{x|%d %b %Y}</b><br>Trend Score: %{y:+.0f}<extra></extra>",
+        ))
+        fig_ts.update_layout(
+            height=200,
+            margin={"l": 4, "r": 4, "t": 8, "b": 8},
+            hovermode="x unified",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            yaxis={"title": "Score", "tickfont": {"size": 10}, "range": [-100, 100]},
+            xaxis={"tickfont": {"size": 10}},
+            showlegend=False,
+            bargap=0.1,
+        )
+        st.plotly_chart(fig_ts, use_container_width=True)
 
     # ── Signal history table ───────────────────────────────────────────────────
     with st.expander("Signal history (all non-HOLD signals)"):
@@ -2051,18 +2208,21 @@ elif cur == PAGES[7]:
             sig_events.index.name = "Date"
             sig_events = sig_events.reset_index()
             sig_events["Date"]   = sig_events["Date"].dt.strftime("%d %b %Y")
-            sig_events["Signal"] = sig_events["signal"].map({1:"BUY", -1:"SELL", -2:"SHORT"})
+            sig_events["Signal"] = sig_events["signal"].map({1:"BUY", -1:"SELL"})
             sig_events["Fast Z"] = sig_events["fast_z"].round(2)
             sig_events["Sig Line"] = sig_events["signal_line"].round(2)
+            sig_events["Histogram"] = sig_events["z_histogram"].round(2) if "z_histogram" in sig_events.columns else "—"
             sig_events["% Above MA"] = sig_events["pct_above_ma"].round(1)
             sig_events["KSE-100"] = sig_events["index_close"].round(0)
 
             def _col_signal(s):
-                c = {"BUY": "#22c55e", "SELL": "#ef4444", "SHORT": "#3b82f6"}
+                c = {"BUY": "#22c55e", "SELL": "#ef4444"}
                 return [f"color:{c.get(v,'#94a3b8')}; font-weight:bold" for v in s]
 
+            display_cols = ["Date","Signal","Fast Z","Sig Line","Histogram","% Above MA","KSE-100"]
+            display_cols = [c for c in display_cols if c in sig_events.columns]
             st.dataframe(
-                sig_events[["Date","Signal","Fast Z","Sig Line","% Above MA","KSE-100"]]
+                sig_events[display_cols]
                 .style.apply(_col_signal, subset=["Signal"]),
                 use_container_width=True, hide_index=True,
             )
@@ -2167,41 +2327,61 @@ elif cur == PAGES[7]:
 **What it measures**
 
 Every trading day, Kiran counts how many PSX stocks close *above* their 50-day moving average.
-That number becomes the **breadth percentage** (e.g., 64% of stocks are above their MA today).
+That percentage becomes the **breadth series** — the pulse of the whole market.
 
 **Why Z-score it?**
 
-A raw percentage of 64% means nothing without context.
-The Z-score answers: *"Is 64% historically high or low for this market?"*
-If the past year's average was 55% with a standard deviation of 8, then 64% = Z ≈ +1.1 — moderately elevated.
+A raw 64% means nothing without history. The Z-score answers: *"Is today's breadth historically high or low?"*
+If the past year averaged 55% with σ = 8, then 64% → Z ≈ +1.1 — moderately elevated.
 
-**The two smoothed lines**
-- **Fast Z** (blue) — 5-day average of the raw Z-score. Reacts quickly.
-- **Signal Line** (orange dashed) — 10-day average of Fast Z. Slower, used for crossover confirmation.
+**MACD-style signal system (EMA-based)**
+
+The system works exactly like a MACD applied to breadth Z-scores:
+
+| Line | Calculation | Purpose |
+|---|---|---|
+| **Fast Z** (blue) | EMA-5 of raw z-score | Reacts quickly to breadth changes |
+| **Signal Line** (orange) | EMA-13 of Fast Z | Slower trend reference |
+| **Histogram** (green/red bars) | Fast Z − Signal Line | **The key momentum indicator** |
+
+- **Green histogram bars** → breadth momentum is rising (market inclining)
+- **Red histogram bars** → breadth momentum is falling (market declining)
+- Histogram crossing **zero from below** = BUY signal
+- Histogram crossing **zero from above** = SELL signal
 
 **Zone definitions**
 | Zone | Fast Z range | Meaning |
 |---|---|---|
-| Oversold | < -1.7 | Breadth historically depressed — watch for recovery |
-| Bearish | -1.7 to -0.5 | Below-average breadth |
-| Neutral | -0.5 to +0.5 | Normal conditions |
-| Bullish | +0.5 to +2.0 | Above-average breadth |
-| Overbought | > +2.0 | Breadth historically stretched — watch for reversal |
+| Oversold | < −1.5 | Breadth historically depressed — watch for BUY |
+| Bearish | −1.5 to −0.5 | Below-average breadth, market under pressure |
+| Neutral | −0.5 to +0.5 | Normal conditions, no edge |
+| Bullish | +0.5 to +1.8 | Above-average breadth, favour longs |
+| Overbought | > +1.8 | Breadth stretched — watch for SELL |
 
-**Signal logic (crossover-based)**
-| Signal | Trigger conditions |
+**Signal logic**
+| Signal | Trigger |
 |---|---|
-| **BUY** | Fast Z crosses *above* Signal Line **AND** KSE-100 is above its 50MA |
-| **SELL** | Fast Z crosses *below* Signal Line |
-| **HOLD** | No crossover in effect |
+| **BUY** | Histogram crosses zero upward **AND** KSE-100 is above its 50-day MA |
+| **SELL** | Histogram crosses zero downward |
 
-The overbought/oversold zones are shown as visual context only — they do not trigger signals.
-Watch for crossovers near the zone boundaries for highest-quality setups.
+**Trend Score (−100 to +100)**
 
-**PSX calibration used**
-- Known bottom: Jan 2024
-- Known tops: Jan 2025 (stall), Jan 2026
+Composite decline/incline score built from four components:
+- **Z level** (40 pts): where Fast Z sits in the −3 to +3 range
+- **Z slope** (30 pts): how fast Fast Z is rising or falling over 5 bars
+- **Index vs MA** (20 pts): KSE-100 above (+20) or below (−20) its 50-day MA
+- **Breadth ROC** (10 pts): 5-day % change in raw breadth
 
-Use the **Parameter Optimizer** to tune the smoothing periods for sharper crossover signals.
+Score > +25 = **Incline** (green) · Score < −25 = **Decline** (red) · In between = transitional
+
+**Breadth chart MAs**
+- **10D MA** (amber) — short-term breadth trend
+- **21D MA** (purple dashed) — medium-term; line colour (green/red) shows if breadth is above or below it
+- **50D MA** (grey dotted) — long-term breadth baseline; a sustained cross here signals regime change
+
+**PSX calibration**
+- Known bottom: Jan 2024 · Known tops: Jan 2025 (stall), Jan 2026
+
+Use the **Parameter Optimizer** to run a grid search and find the EMA spans that best captured these PSX turning points in your data.
         """)
 
