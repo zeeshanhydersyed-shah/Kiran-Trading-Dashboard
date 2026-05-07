@@ -163,27 +163,18 @@ class WeinsteinIndicator:
             px_cur  = px_list[i]
             pma_cur = pma_list[i]
 
-            if _nan(fz_prev):
+            sl_prev = sl_list[i - 1]
+
+            if _nan(fz_prev) or _nan(sl_prev):
                 continue
 
-            # BUY: z crosses up through buy_threshold + price above MA
-            if (
-                fz_prev <= self.buy_threshold
-                and fz_cur > self.buy_threshold
-                and fz_cur > sl_cur
-                and px_cur > pma_cur
-            ):
+            # BUY: Fast Z crosses ABOVE Signal Line + index above its MA
+            if fz_prev < sl_prev and fz_cur >= sl_cur and px_cur > pma_cur:
                 sig_list[i] = 1
 
-            # SELL: z crosses down from overbought OR rolls below signal line
-            elif (fz_prev >= self.sell_threshold and fz_cur < self.sell_threshold) or (
-                fz_prev >= self.sell_threshold and fz_cur < sl_cur
-            ):
+            # SELL: Fast Z crosses BELOW Signal Line
+            elif fz_prev > sl_prev and fz_cur <= sl_cur:
                 sig_list[i] = -1
-
-            # SHORT: deeply oversold + index below MA + signal line negative
-            elif fz_cur < self.buy_threshold and px_cur < pma_cur and sl_cur < 0:
-                sig_list[i] = -2
 
         df["signal"] = sig_list
         return df

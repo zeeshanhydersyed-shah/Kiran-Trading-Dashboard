@@ -2005,35 +2005,6 @@ elif cur == PAGES[7]:
         hovertemplate="<b>%{x|%d %b %Y}</b><br>Signal Line: %{y:.2f}<extra></extra>",
     ))
 
-    # BUY markers
-    buys = sig_plot[sig_plot["signal"] == 1]
-    if not buys.empty:
-        fig_z.add_trace(go.Scatter(
-            x=buys.index, y=buys["fast_z"],
-            mode="markers", name="BUY",
-            marker={"color": "#22c55e", "size": 12, "symbol": "triangle-up"},
-            hovertemplate="<b>BUY</b><br>%{x|%d %b %Y}<br>Z: %{y:.2f}<extra></extra>",
-        ))
-
-    # SELL markers
-    sells = sig_plot[sig_plot["signal"] == -1]
-    if not sells.empty:
-        fig_z.add_trace(go.Scatter(
-            x=sells.index, y=sells["fast_z"],
-            mode="markers", name="SELL",
-            marker={"color": "#ef4444", "size": 12, "symbol": "triangle-down"},
-            hovertemplate="<b>SELL</b><br>%{x|%d %b %Y}<br>Z: %{y:.2f}<extra></extra>",
-        ))
-
-    # SHORT markers
-    shorts = sig_plot[sig_plot["signal"] == -2]
-    if not shorts.empty:
-        fig_z.add_trace(go.Scatter(
-            x=shorts.index, y=shorts["fast_z"],
-            mode="markers", name="SHORT",
-            marker={"color": "#3b82f6", "size": 12, "symbol": "triangle-down"},
-            hovertemplate="<b>SHORT</b><br>%{x|%d %b %Y}<br>Z: %{y:.2f}<extra></extra>",
-        ))
 
     fig_z.update_layout(
         height=340,
@@ -2129,15 +2100,12 @@ elif cur == PAGES[7]:
         )
 
         st.markdown("**Grid search ranges** (comma-separated values)")
-        gc1, gc2, gc3 = st.columns(3)
+        gc1, gc2 = st.columns(2)
         with gc1:
-            lookback_str  = st.text_input("z_lookback",       "126, 189, 252",  key="opt_lb")
-            fast_str      = st.text_input("fast_smoothing",   "3, 5, 8",        key="opt_fs")
+            lookback_str = st.text_input("z_lookback",       "126, 189, 252", key="opt_lb")
+            fast_str     = st.text_input("fast_smoothing",   "3, 5, 8",       key="opt_fs")
         with gc2:
-            sig_str       = st.text_input("signal_smoothing", "8, 10, 13",      key="opt_ss")
-            buy_str       = st.text_input("buy_threshold",    "-2.0, -1.7, -1.5", key="opt_bt")
-        with gc3:
-            sell_str      = st.text_input("sell_threshold",   "1.8, 2.0, 2.2", key="opt_st")
+            sig_str      = st.text_input("signal_smoothing", "8, 10, 13",     key="opt_ss")
 
         if st.button("▶ Run Optimizer", type="primary", key="run_opt"):
             def _parse(s):
@@ -2153,8 +2121,6 @@ elif cur == PAGES[7]:
                 "z_lookback":       [int(x) for x in _parse(lookback_str)],
                 "fast_smoothing":   [int(x) for x in _parse(fast_str)],
                 "signal_smoothing": [int(x) for x in _parse(sig_str)],
-                "buy_threshold":    _parse(buy_str),
-                "sell_threshold":   _parse(sell_str),
             }
 
             n_combos = 1
@@ -2175,10 +2141,8 @@ elif cur == PAGES[7]:
                     st.success(
                         f"Best score: **{results_df.iloc[0]['score']:.2f}** &nbsp;·&nbsp; "
                         f"z_lookback={best_params['z_lookback']} &nbsp; "
-                        f"fast={best_params['fast_smoothing']} &nbsp; "
-                        f"signal={best_params['signal_smoothing']} &nbsp; "
-                        f"buy={best_params['buy_threshold']} &nbsp; "
-                        f"sell={best_params['sell_threshold']}",
+                        f"fast_smoothing={best_params['fast_smoothing']} &nbsp; "
+                        f"signal_smoothing={best_params['signal_smoothing']}",
                         icon="✅",
                     )
                 except Exception as exc:
@@ -2224,18 +2188,20 @@ If the past year's average was 55% with a standard deviation of 8, then 64% = Z 
 | Bullish | +0.5 to +2.0 | Above-average breadth |
 | Overbought | > +2.0 | Breadth historically stretched — watch for reversal |
 
-**Signal logic**
+**Signal logic (crossover-based)**
 | Signal | Trigger conditions |
 |---|---|
-| **BUY** | Fast Z crosses *up* through -1.7 **AND** Fast Z > Signal Line **AND** KSE-100 > 50MA |
-| **SELL** | Fast Z crosses *down* from above +2.0, or rolls under Signal Line while still overbought |
-| **SHORT** | Fast Z < -1.7 **AND** KSE-100 < 50MA **AND** Signal Line is negative |
-| **HOLD** | None of the above conditions met |
+| **BUY** | Fast Z crosses *above* Signal Line **AND** KSE-100 is above its 50MA |
+| **SELL** | Fast Z crosses *below* Signal Line |
+| **HOLD** | No crossover in effect |
+
+The overbought/oversold zones are shown as visual context only — they do not trigger signals.
+Watch for crossovers near the zone boundaries for highest-quality setups.
 
 **PSX calibration used**
 - Known bottom: Jan 2024
 - Known tops: Jan 2025 (stall), Jan 2026
 
-Use the **Parameter Optimizer** to refine thresholds as more PSX history accumulates.
+Use the **Parameter Optimizer** to tune the smoothing periods for sharper crossover signals.
         """)
 
