@@ -145,6 +145,7 @@ def load_weinstein_data() -> dict:
     Returns a dict with keys: breadth, signals, regime, error.
     Cached for 1 hour.
     """
+    import traceback as _tb
     try:
         from database import get_prices_for_breadth, get_index_prices
         from weinstein import compute_breadth_series, WeinsteinIndicator, PSX_DEFAULTS
@@ -153,25 +154,31 @@ def load_weinstein_data() -> dict:
         if not raw_prices:
             return {"error": "No price data available."}
 
-        prices_df = pd.DataFrame(raw_prices)
-        prices_df["date"]  = pd.to_datetime(prices_df["date"])
-        prices_df["close"] = pd.to_numeric(prices_df["close"], errors="coerce")
-        prices_df = prices_df.dropna(subset=["close"])
+        prices_df = (
+            pd.DataFrame(raw_prices)
+            .assign(
+                date  = lambda d: pd.to_datetime(d["date"]),
+                close = lambda d: pd.to_numeric(d["close"], errors="coerce"),
+            )
+            .dropna(subset=["close"])
+            .copy()
+        )
 
         # KSE-100 index
         idx_rows = get_index_prices("KSE-100")
         if idx_rows:
-            idx_df   = pd.DataFrame(idx_rows)
-            idx_df["date"]  = pd.to_datetime(idx_df["date"])
-            idx_df["close"] = pd.to_numeric(idx_df["close"], errors="coerce")
+            idx_df = (
+                pd.DataFrame(idx_rows)
+                .assign(
+                    date  = lambda d: pd.to_datetime(d["date"]),
+                    close = lambda d: pd.to_numeric(d["close"], errors="coerce"),
+                )
+                .dropna(subset=["close"])
+                .copy()
+            )
             index_close = idx_df.set_index("date")["close"].sort_index()
         else:
-            # Fallback: equal-weighted price index across all symbols
-            index_close = (
-                prices_df.groupby("date")["close"]
-                .mean()
-                .sort_index()
-            )
+            index_close = prices_df.groupby("date")["close"].mean().sort_index()
 
         # Breadth series (% stocks above 50-day MA)
         breadth = compute_breadth_series(prices_df, ma_period=PSX_DEFAULTS["ma_period"])
@@ -179,9 +186,7 @@ def load_weinstein_data() -> dict:
         if len(breadth) < 60:
             return {"error": f"Only {len(breadth)} breadth data points — need at least 60."}
 
-        # Signals with default (or session-state-stored) parameters
-        params  = st.session_state.get("weinstein_params", PSX_DEFAULTS)
-        ind     = WeinsteinIndicator(**params)
+        ind     = WeinsteinIndicator(**PSX_DEFAULTS)
         signals = ind.generate_signals(breadth, index_close)
         regime  = ind.current_regime(signals)
 
@@ -189,11 +194,11 @@ def load_weinstein_data() -> dict:
             "breadth":  breadth,
             "signals":  signals,
             "regime":   regime,
-            "params":   params,
+            "params":   PSX_DEFAULTS,
             "error":    None,
         }
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": _tb.format_exc()}
 
 
 # ── ML model loader ───────────────────────────────────────────────────────────
@@ -1894,7 +1899,8 @@ elif cur == PAGES[7]:
         wd = load_weinstein_data()
 
     if wd.get("error"):
-        st.error(f"Weinstein data error: {wd['error']}")
+        st.error("Weinstein data error — see traceback below")
+        st.code(wd["error"], language="python")
         st.stop()
 
     breadth  = wd["breadth"]
