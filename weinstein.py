@@ -128,56 +128,64 @@ class WeinsteinIndicator:
             index_close, index_ma, signal
         signal values: 0=Hold  1=Buy  -1=Sell  -2=Short
         """
-        # Align on common dates
-        df = pd.DataFrame({"pct_above_ma": breadth, "index_close": index_close}).dropna(
-            subset=["pct_above_ma"]
+        # Align on common dates — explicit copy so pandas CoW never gives a read-only view
+        df = (
+            pd.DataFrame({"pct_above_ma": breadth, "index_close": index_close})
+            .dropna(subset=["pct_above_ma"])
+            .copy()
         )
-        df["index_close"] = df["index_close"].ffill()  # forward-fill missing index days
+        df["index_close"] = df["index_close"].ffill()
 
         # Z-score pipeline
-        df["z_score"]    = self._rolling_zscore(df["pct_above_ma"], self.z_lookback)
-        df["fast_z"]     = self._sma(df["z_score"], self.fast_smoothing)
-        df["signal_line"] = self._sma(df["fast_z"], self.signal_smoothing)
+        df["z_score"]     = self._rolling_zscore(df["pct_above_ma"], self.z_lookback)
+        df["fast_z"]      = self._sma(df["z_score"],   self.fast_smoothing)
+        df["signal_line"] = self._sma(df["fast_z"],    self.signal_smoothing)
+        df["index_ma"]    = self._sma(df["index_close"], self.price_ma_period)
 
-        # Index price confirmation
-        df["index_ma"] = self._sma(df["index_close"], self.price_ma_period)
+        # Pull to plain Python floats — avoids any numpy read-only buffer issues
+        fz_list  = df["fast_z"].tolist()
+        sl_list  = df["signal_line"].tolist()
+        px_list  = df["index_close"].tolist()
+        pma_list = df["index_ma"].tolist()
 
-        # Signal generation
-        df["signal"] = 0
+        sig_list = [0] * len(df)
 
-        fz   = df["fast_z"].values.copy()
-        sl   = df["signal_line"].values.copy()
-        px   = df["index_close"].values.copy()
-        pma  = df["index_ma"].values.copy()
-        sig  = df["signal"].values.copy()
+        def _nan(v):
+            return v is None or (isinstance(v, float) and v != v)
 
         for i in range(1, len(df)):
-            if np.isnan(fz[i]) or np.isnan(sl[i]) or np.isnan(pma[i]):
+            if _nan(fz_list[i]) or _nan(sl_list[i]) or _nan(pma_list[i]):
                 continue
 
-            fz_prev = fz[i - 1]
+            fz_prev = fz_list[i - 1]
+            fz_cur  = fz_list[i]
+            sl_cur  = sl_list[i]
+            px_cur  = px_list[i]
+            pma_cur = pma_list[i]
+
+            if _nan(fz_prev):
+                continue
 
             # BUY: z crosses up through buy_threshold + price above MA
             if (
-                not np.isnan(fz_prev)
-                and fz_prev <= self.buy_threshold
-                and fz[i] > self.buy_threshold
-                and fz[i] > sl[i]
-                and px[i] > pma[i]
+                fz_prev <= self.buy_threshold
+                and fz_cur > self.buy_threshold
+                and fz_cur > sl_cur
+                and px_cur > pma_cur
             ):
-                sig[i] = 1
+                sig_list[i] = 1
 
             # SELL: z crosses down from overbought OR rolls below signal line
-            elif (fz_prev >= self.sell_threshold and fz[i] < self.sell_threshold) or (
-                fz_prev >= self.sell_threshold and fz[i] < sl[i]
+            elif (fz_prev >= self.sell_threshold and fz_cur < self.sell_threshold) or (
+                fz_prev >= self.sell_threshold and fz_cur < sl_cur
             ):
-                sig[i] = -1
+                sig_list[i] = -1
 
             # SHORT: deeply oversold + index below MA + signal line negative
-            elif fz[i] < self.buy_threshold and px[i] < pma[i] and sl[i] < 0:
-                sig[i] = -2
+            elif fz_cur < self.buy_threshold and px_cur < pma_cur and sl_cur < 0:
+                sig_list[i] = -2
 
-        df["signal"] = sig
+        df["signal"] = sig_list
         return df
 
     def current_regime(self, signals_df: pd.DataFrame) -> dict:
