@@ -1334,7 +1334,9 @@ elif cur == PAGES[5]:
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
     # ── Monthly P&L pivot table — rows: Year, cols: Jan–Dec ──────────────────
-    st.markdown("**Monthly P&L  (PKR)**")
+    # Uses actual_pl_pct (%) — saved correctly by close_trade_setup for every
+    # trade since the beginning, so no NULL gaps regardless of closing method.
+    st.markdown("**Monthly P&L  (% sum)**")
 
     ref_date = pd.to_datetime(
         closed["exit_date"].fillna(closed["created_date"]), errors="coerce"
@@ -1346,30 +1348,29 @@ elif cur == PAGES[5]:
                    "Jul","Aug","Sep","Oct","Nov","Dec"]
 
     pivot = (
-        closed.groupby(["_yr","_mo"])["actual_pl_pkr"]
+        closed.groupby(["_yr","_mo"])["actual_pl_pct"]
         .sum()
         .reset_index()
-        .pivot(index="_yr", columns="_mo", values="actual_pl_pkr")
+        .pivot(index="_yr", columns="_mo", values="actual_pl_pct")
     )
     pivot.columns = [MONTH_NAMES[m-1] for m in pivot.columns]
     pivot.index.name = "Year"
 
-    # Fill missing months with 0 for display, but track which are truly empty
     all_months = MONTH_NAMES
     for m in all_months:
         if m not in pivot.columns:
             pivot[m] = float("nan")
-    pivot = pivot[all_months]                       # enforce Jan→Dec order
-    pivot["Total"] = pivot.sum(axis=1, skipna=True) # year total
+    pivot = pivot[all_months]
+    pivot["Total"] = pivot.sum(axis=1, skipna=True, min_count=1)
 
     # ── Colour-coded HTML table ───────────────────────────────────────────────
     def cell(v, bold=False):
-        if pd.isna(v) or v == 0:
+        if pd.isna(v):
             return '<td style="text-align:right;padding:4px 8px;color:#94a3b8;font-size:0.72rem;">—</td>'
-        color  = "#22c55e" if v > 0 else "#ef4444"
+        color  = "#22c55e" if v > 0 else ("#ef4444" if v < 0 else "#94a3b8")
         weight = "800" if bold else "600"
         return (f'<td style="text-align:right;padding:4px 8px;font-size:0.72rem;'
-                f'color:{color};font-weight:{weight};">{v:+,.0f}</td>')
+                f'color:{color};font-weight:{weight};">{v:+.2f}%</td>')
 
     hdr_cells = "".join(
         f'<th style="text-align:right;padding:4px 8px;font-size:0.70rem;'
@@ -1389,11 +1390,11 @@ elif cur == PAGES[5]:
         total_cell  = cell(pivot.loc[yr, "Total"], bold=True)
         body_rows.append(f"<tr>{yr_cell}{month_cells}{total_cell}</tr>")
 
-    # Grand total row
+    # Grand total row — min_count=1 keeps NaN when a whole column is empty
     grand_cells = "".join(
-        cell(pivot[m].sum(skipna=True)) for m in all_months
+        cell(pivot[m].sum(skipna=True, min_count=1)) for m in all_months
     )
-    grand_total = cell(pivot["Total"].sum(skipna=True), bold=True)
+    grand_total = cell(pivot["Total"].sum(skipna=True, min_count=1), bold=True)
     grand_row = (
         f'<tr style="border-top:1px solid #e2e8f0;">'
         f'<td style="text-align:left;padding:4px 8px;font-size:0.72rem;font-weight:700;'
