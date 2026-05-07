@@ -998,22 +998,26 @@ elif cur == PAGES[3]:
             )
             chosen_trade = active_opts[chosen_label]
 
-            cl1, cl2, cl3, cl4, cl5 = st.columns([1.5, 1.5, 2, 2, 1])
+            cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 1.5, 2, 2, 1])
             cl1.caption("Exit Price")
             cl2.caption("Exit Date")
-            cl3.caption("Result")
-            cl4.caption("Notes")
+            cl3.caption("P&L (PKR)")
+            cl4.caption("Result")
+            cl5.caption("Notes")
 
-            exit_px   = cl1.number_input("Exit Price",  min_value=0.0, step=0.01,
+            exit_px   = cl1.number_input("Exit Price", min_value=0.0, step=0.01,
                                           format="%.2f", key="cl_px", label_visibility="collapsed")
             exit_dt   = cl2.date_input("Exit Date", value=datetime.now().date(),
                                        key="cl_dt", label_visibility="collapsed")
-            cl_result = cl3.selectbox("Result", ["Hit Target", "Hit SL", "Breakeven", "Cancelled"],
+            cl_pkr    = cl3.number_input("P&L PKR", step=100.0, format="%.0f",
+                                          key="cl_pkr", label_visibility="collapsed",
+                                          help="Your actual profit/loss in PKR (e.g. −15000). Leave 0 to auto-calculate.")
+            cl_result = cl4.selectbox("Result", ["Hit Target", "Hit SL", "Breakeven", "Cancelled"],
                                       key="cl_result", label_visibility="collapsed")
-            cl_notes  = cl4.text_input("Notes", placeholder="e.g. trailed stop", key="cl_notes",
+            cl_notes  = cl5.text_input("Notes", placeholder="e.g. trailed stop", key="cl_notes",
                                        label_visibility="collapsed")
 
-            with cl5:
+            with cl6:
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
                 if st.button("✅ Close", key="btn_close", type="primary"):
                     if exit_px <= 0:
@@ -1021,20 +1025,22 @@ elif cur == PAGES[3]:
                     else:
                         outcome_map = {"Hit Target": "Win", "Hit SL": "Loss",
                                        "Breakeven": "Breakeven", "Cancelled": "Breakeven"}
+                        pkr_override = float(cl_pkr) if cl_pkr != 0 else None
                         close_trade_setup(
-                            setup_id   = int(chosen_trade["id"]),
-                            exit_price = float(exit_px),
-                            exit_date  = exit_dt.isoformat(),
-                            status     = cl_result,
-                            outcome    = outcome_map[cl_result],
-                            notes      = cl_notes.strip() or None,
+                            setup_id               = int(chosen_trade["id"]),
+                            exit_price             = float(exit_px),
+                            exit_date              = exit_dt.isoformat(),
+                            status                 = cl_result,
+                            outcome                = outcome_map[cl_result],
+                            notes                  = cl_notes.strip() or None,
+                            actual_pl_pkr_override = pkr_override,
                         )
-                        # Quick preview of P&L
                         entry = float(chosen_trade["entry_price"])
                         dirn  = chosen_trade["direction"]
                         if entry > 0:
                             pl = (exit_px - entry) / entry * 100 if dirn == "LONG" else (entry - exit_px) / entry * 100
-                            st.success(f"#{chosen_trade['id']} closed  ·  P&L {pl:+.2f}%")
+                            pkr_str = f"  ·  PKR {float(cl_pkr):+,.0f}" if cl_pkr != 0 else ""
+                            st.success(f"#{chosen_trade['id']} closed  ·  P&L {pl:+.2f}%{pkr_str}")
                         else:
                             st.success(f"#{chosen_trade['id']} closed.")
                         st.rerun()
@@ -1334,9 +1340,7 @@ elif cur == PAGES[5]:
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
     # ── Monthly P&L pivot table — rows: Year, cols: Jan–Dec ──────────────────
-    # Uses actual_pl_pct (%) — saved correctly by close_trade_setup for every
-    # trade since the beginning, so no NULL gaps regardless of closing method.
-    st.markdown("**Monthly P&L  (% sum)**")
+    st.markdown("**Monthly P&L  (PKR)**")
 
     ref_date = pd.to_datetime(
         closed["exit_date"].fillna(closed["created_date"]), errors="coerce"
@@ -1348,10 +1352,10 @@ elif cur == PAGES[5]:
                    "Jul","Aug","Sep","Oct","Nov","Dec"]
 
     pivot = (
-        closed.groupby(["_yr","_mo"])["actual_pl_pct"]
+        closed.groupby(["_yr","_mo"])["actual_pl_pkr"]
         .sum()
         .reset_index()
-        .pivot(index="_yr", columns="_mo", values="actual_pl_pct")
+        .pivot(index="_yr", columns="_mo", values="actual_pl_pkr")
     )
     pivot.columns = [MONTH_NAMES[m-1] for m in pivot.columns]
     pivot.index.name = "Year"
@@ -1370,7 +1374,7 @@ elif cur == PAGES[5]:
         color  = "#22c55e" if v > 0 else ("#ef4444" if v < 0 else "#94a3b8")
         weight = "800" if bold else "600"
         return (f'<td style="text-align:right;padding:4px 8px;font-size:0.72rem;'
-                f'color:{color};font-weight:{weight};">{v:+.2f}%</td>')
+                f'color:{color};font-weight:{weight};">{v:+,.0f}</td>')
 
     hdr_cells = "".join(
         f'<th style="text-align:right;padding:4px 8px;font-size:0.70rem;'

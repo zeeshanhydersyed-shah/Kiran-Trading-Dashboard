@@ -377,10 +377,13 @@ def close_trade_setup(
     status: str,
     outcome: str,
     notes: str | None = None,
+    actual_pl_pkr_override: float | None = None,
 ):
     """
     Close an open position — fills exit_price, exit_date, calculates P&L%
     and holding_days, then updates status/outcome.
+    Pass actual_pl_pkr_override with the real PKR amount (e.g. -15000) to
+    record actual money made/lost; otherwise falls back to per-share difference.
     """
     with get_conn() as conn:
         row = conn.execute(
@@ -390,7 +393,6 @@ def close_trade_setup(
         if row is None:
             return
 
-        # Use actual_entry (user's real fill) if available, fall back to system entry_price
         entry     = float(row["actual_entry"] or row["entry_price"])
         direction = row["direction"]
         open_date = row["created_date"]
@@ -405,6 +407,9 @@ def close_trade_setup(
         else:
             pl_pct = 0.0
             pl_pkr = 0.0
+
+        if actual_pl_pkr_override is not None:
+            pl_pkr = actual_pl_pkr_override
 
         # holding days
         try:

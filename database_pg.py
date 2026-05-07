@@ -433,6 +433,7 @@ def close_trade_setup(
     status: str,
     outcome: str,
     notes: str | None = None,
+    actual_pl_pkr_override: float | None = None,
 ):
     with get_conn() as conn:
         row = _fetchone(
@@ -457,6 +458,9 @@ def close_trade_setup(
         else:
             pl_pct = 0.0
             pl_pkr = 0.0
+
+        if actual_pl_pkr_override is not None:
+            pl_pkr = actual_pl_pkr_override
 
         try:
             from datetime import date as _date
