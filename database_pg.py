@@ -332,6 +332,12 @@ def get_sector_price_data() -> list[dict]:
         return _fetchall(conn, sql)
 
 
+def get_prices_for_breadth() -> list[dict]:
+    """Return all symbol/date/close rows for Weinstein breadth computation."""
+    with get_conn() as conn:
+        return _fetchall(conn, "SELECT symbol, date, close FROM prices ORDER BY symbol, date")
+
+
 def count_prices() -> int:
     with get_conn() as conn:
         row = _fetchone(conn, "SELECT COUNT(*) AS n FROM prices")

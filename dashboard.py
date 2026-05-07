@@ -136,6 +136,66 @@ def load_sector_history(symbols: tuple) -> pd.DataFrame:
     )
 
 
+# ── Weinstein breadth loader ──────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_weinstein_data() -> dict:
+    """
+    Pull all prices + KSE-100 index, compute breadth series and signals.
+    Returns a dict with keys: breadth, signals, regime, error.
+    Cached for 1 hour.
+    """
+    try:
+        from database import get_prices_for_breadth, get_index_prices
+        from weinstein import compute_breadth_series, WeinsteinIndicator, PSX_DEFAULTS
+
+        raw_prices = get_prices_for_breadth()
+        if not raw_prices:
+            return {"error": "No price data available."}
+
+        prices_df = pd.DataFrame(raw_prices)
+        prices_df["date"]  = pd.to_datetime(prices_df["date"])
+        prices_df["close"] = pd.to_numeric(prices_df["close"], errors="coerce")
+        prices_df = prices_df.dropna(subset=["close"])
+
+        # KSE-100 index
+        idx_rows = get_index_prices("KSE-100")
+        if idx_rows:
+            idx_df   = pd.DataFrame(idx_rows)
+            idx_df["date"]  = pd.to_datetime(idx_df["date"])
+            idx_df["close"] = pd.to_numeric(idx_df["close"], errors="coerce")
+            index_close = idx_df.set_index("date")["close"].sort_index()
+        else:
+            # Fallback: equal-weighted price index across all symbols
+            index_close = (
+                prices_df.groupby("date")["close"]
+                .mean()
+                .sort_index()
+            )
+
+        # Breadth series (% stocks above 50-day MA)
+        breadth = compute_breadth_series(prices_df, ma_period=PSX_DEFAULTS["ma_period"])
+
+        if len(breadth) < 60:
+            return {"error": f"Only {len(breadth)} breadth data points — need at least 60."}
+
+        # Signals with default (or session-state-stored) parameters
+        params  = st.session_state.get("weinstein_params", PSX_DEFAULTS)
+        ind     = WeinsteinIndicator(**params)
+        signals = ind.generate_signals(breadth, index_close)
+        regime  = ind.current_regime(signals)
+
+        return {
+            "breadth":  breadth,
+            "signals":  signals,
+            "regime":   regime,
+            "params":   params,
+            "error":    None,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ── ML model loader ───────────────────────────────────────────────────────────
 
 _MODEL_DIR = __file__.rsplit("\\", 1)[0]
@@ -259,7 +319,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest"]
+PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime"]
 
 
 def fmt_date(d) -> str:
@@ -1800,3 +1860,376 @@ elif cur == PAGES[6]:
         .format(fmt_bt, na_rep="—"),
         use_container_width=True, hide_index=True, height=380,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 8 — MARKET REGIME  (Weinstein Breadth Z-Score)
+# ═══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[7]:
+    try:
+        import plotly.graph_objects as go
+        import plotly.express as px
+    except ImportError:
+        st.error("pip install plotly")
+        st.stop()
+
+    from weinstein import (
+        WeinsteinIndicator, run_optimizer,
+        PSX_DEFAULTS, PSX_KNOWN_BOTTOMS, PSX_KNOWN_TOPS,
+    )
+
+    st.markdown(
+        "**Market Regime — Weinstein Breadth Z-Score**  \n"
+        "<span style='font-size:0.75rem; color:#64748b;'>"
+        "Measures the statistical extreme of market breadth (% of PSX stocks above 50-day MA) "
+        "relative to the past year. Signals fire when breadth crosses out of oversold/overbought "
+        "territory, confirmed by KSE-100 price action."
+        "</span>",
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
+    # ── Load data ──────────────────────────────────────────────────────────────
+    with st.spinner("Computing breadth series…"):
+        wd = load_weinstein_data()
+
+    if wd.get("error"):
+        st.error(f"Weinstein data error: {wd['error']}")
+        st.stop()
+
+    breadth  = wd["breadth"]
+    signals  = wd["signals"]
+    regime   = wd["regime"]
+    w_params = wd["params"]
+
+    # ── Signal banner ──────────────────────────────────────────────────────────
+    sig_label = regime["signal"]
+    zone      = regime["zone"]
+    zcolor    = regime["zone_color"]
+    fz_val    = regime["fast_z"]
+    sl_val    = regime["signal_line"]
+    pct_val   = regime["pct_above_ma"]
+    idx_abv   = regime["index_above_ma"]
+    last_date = regime["last_date"]
+
+    sig_colors = {
+        "BUY":   "#22c55e",
+        "SELL":  "#ef4444",
+        "SHORT": "#3b82f6",
+        "HOLD":  "#fbbf24",
+    }
+    sig_icons = {"BUY": "▲", "SELL": "▼", "SHORT": "↓", "HOLD": "—"}
+    sig_col   = sig_colors.get(sig_label, "#94a3b8")
+    sig_icon  = sig_icons.get(sig_label, "")
+
+    st.markdown(
+        f"""<div style="background:{sig_col}18; border-left:5px solid {sig_col};
+            padding:10px 16px; border-radius:8px; margin-bottom:10px;
+            display:flex; align-items:center; gap:20px;">
+            <span style="font-size:1.6rem; font-weight:900; color:{sig_col}; white-space:nowrap;">
+                {sig_icon} {sig_label}
+            </span>
+            <div>
+                <span style="font-size:0.85rem; font-weight:700; color:{zcolor};">{zone}</span>
+                <span style="font-size:0.75rem; color:#64748b; margin-left:12px;">
+                    Fast Z: <b>{fz_val:.2f}</b> &nbsp;·&nbsp;
+                    Signal Line: <b>{sl_val:.2f}</b> &nbsp;·&nbsp;
+                    % Above 50MA: <b>{pct_val:.1f}%</b> &nbsp;·&nbsp;
+                    KSE-100 vs MA: <b>{"▲ Above" if idx_abv else "▼ Below"}</b> &nbsp;·&nbsp;
+                    As of <b>{pd.Timestamp(last_date).strftime('%d %b %Y')}</b>
+                </span>
+            </div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    # ── KPI row ────────────────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
+
+    def _kpi_mini(label, val, fmt, color):
+        return (
+            f'<div style="background:{color}12; border:1px solid {color}33; border-top:3px solid {color};'
+            f'border-radius:7px; padding:9px 8px; text-align:center;">'
+            f'<div style="font-size:0.6rem; color:#64748b; text-transform:uppercase; letter-spacing:.06em;">'
+            f'{label}</div>'
+            f'<div style="font-size:1.05rem; font-weight:800; color:{color};">{fmt.format(val) if val is not None else "—"}</div>'
+            f'</div>'
+        )
+
+    buy_thr  = w_params["buy_threshold"]
+    sell_thr = w_params["sell_threshold"]
+    fz_color = "#3b82f6" if (fz_val is not None and fz_val < buy_thr) else "#ef4444" if (fz_val is not None and fz_val > sell_thr) else "#22c55e"
+
+    k1.markdown(_kpi_mini("Fast Z-Score",    fz_val,  "{:.2f}", fz_color), unsafe_allow_html=True)
+    k2.markdown(_kpi_mini("Signal Line",     sl_val,  "{:.2f}", "#8b5cf6"), unsafe_allow_html=True)
+    k3.markdown(_kpi_mini("% Above 50MA",    pct_val, "{:.1f}%", "#06b6d4"), unsafe_allow_html=True)
+    k4.markdown(_kpi_mini("Buy Threshold",   buy_thr, "{:.1f}", "#22c55e"), unsafe_allow_html=True)
+    k5.markdown(_kpi_mini("Sell Threshold",  sell_thr,"{:.1f}", "#ef4444"), unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Z-Score chart (main chart) ─────────────────────────────────────────────
+    st.markdown("**Z-Score History**")
+
+    tail = st.slider("Show last N days", 60, len(signals), min(504, len(signals)), step=21, key="wbs_tail")
+    sig_plot = signals.tail(tail).copy()
+
+    fig_z = go.Figure()
+
+    # Shaded zones
+    fig_z.add_hrect(y0=buy_thr, y1=-4,  fillcolor="#3b82f620", line_width=0, annotation_text="Oversold zone", annotation_position="top left")
+    fig_z.add_hrect(y0=sell_thr, y1=4,  fillcolor="#ef444420", line_width=0, annotation_text="Overbought zone", annotation_position="bottom left")
+    fig_z.add_hline(y=0,        line_dash="dot",  line_color="#94a3b8", line_width=1)
+    fig_z.add_hline(y=buy_thr,  line_dash="dash", line_color="#3b82f6", line_width=1.2)
+    fig_z.add_hline(y=sell_thr, line_dash="dash", line_color="#ef4444", line_width=1.2)
+
+    # Fast Z line
+    fig_z.add_trace(go.Scatter(
+        x=sig_plot.index, y=sig_plot["fast_z"].round(3),
+        mode="lines", name="Fast Z",
+        line={"color": "#3b82f6", "width": 2},
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>Fast Z: %{y:.2f}<extra></extra>",
+    ))
+
+    # Signal line
+    fig_z.add_trace(go.Scatter(
+        x=sig_plot.index, y=sig_plot["signal_line"].round(3),
+        mode="lines", name="Signal Line",
+        line={"color": "#f59e0b", "width": 1.5, "dash": "dot"},
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>Signal Line: %{y:.2f}<extra></extra>",
+    ))
+
+    # BUY markers
+    buys = sig_plot[sig_plot["signal"] == 1]
+    if not buys.empty:
+        fig_z.add_trace(go.Scatter(
+            x=buys.index, y=buys["fast_z"],
+            mode="markers", name="BUY",
+            marker={"color": "#22c55e", "size": 12, "symbol": "triangle-up"},
+            hovertemplate="<b>BUY</b><br>%{x|%d %b %Y}<br>Z: %{y:.2f}<extra></extra>",
+        ))
+
+    # SELL markers
+    sells = sig_plot[sig_plot["signal"] == -1]
+    if not sells.empty:
+        fig_z.add_trace(go.Scatter(
+            x=sells.index, y=sells["fast_z"],
+            mode="markers", name="SELL",
+            marker={"color": "#ef4444", "size": 12, "symbol": "triangle-down"},
+            hovertemplate="<b>SELL</b><br>%{x|%d %b %Y}<br>Z: %{y:.2f}<extra></extra>",
+        ))
+
+    # SHORT markers
+    shorts = sig_plot[sig_plot["signal"] == -2]
+    if not shorts.empty:
+        fig_z.add_trace(go.Scatter(
+            x=shorts.index, y=shorts["fast_z"],
+            mode="markers", name="SHORT",
+            marker={"color": "#3b82f6", "size": 12, "symbol": "triangle-down"},
+            hovertemplate="<b>SHORT</b><br>%{x|%d %b %Y}<br>Z: %{y:.2f}<extra></extra>",
+        ))
+
+    fig_z.update_layout(
+        height=340,
+        margin={"l": 4, "r": 4, "t": 8, "b": 8},
+        legend={"orientation": "h", "y": 1.05, "x": 0, "font": {"size": 11}},
+        hovermode="x unified",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis={"title": "Z-Score", "tickfont": {"size": 10}, "range": [-4, 4]},
+        xaxis={"tickfont": {"size": 10}},
+    )
+    st.plotly_chart(fig_z, use_container_width=True)
+
+    # ── Breadth % chart ────────────────────────────────────────────────────────
+    st.markdown("**Breadth — % of PSX stocks above 50-day MA**")
+
+    breadth_plot = breadth.tail(tail)
+    fig_b = go.Figure()
+    fig_b.add_hline(y=50, line_dash="dot", line_color="#94a3b8", line_width=1)
+    fig_b.add_trace(go.Scatter(
+        x=breadth_plot.index, y=breadth_plot.round(1),
+        mode="lines", name="% Above 50MA",
+        line={"color": "#06b6d4", "width": 2},
+        fill="tozeroy", fillcolor="#06b6d420",
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>%{y:.1f}% above 50MA<extra></extra>",
+    ))
+    fig_b.update_layout(
+        height=220,
+        margin={"l": 4, "r": 4, "t": 8, "b": 8},
+        hovermode="x unified",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis={"title": "% Stocks", "tickfont": {"size": 10}, "range": [0, 100]},
+        xaxis={"tickfont": {"size": 10}},
+        showlegend=False,
+    )
+    st.plotly_chart(fig_b, use_container_width=True)
+
+    # ── Signal history table ───────────────────────────────────────────────────
+    with st.expander("Signal history (all non-HOLD signals)"):
+        sig_events = signals[signals["signal"] != 0].copy()
+        if sig_events.empty:
+            st.info("No signals generated yet.")
+        else:
+            sig_events = sig_events.tail(50).copy()
+            sig_events.index.name = "Date"
+            sig_events = sig_events.reset_index()
+            sig_events["Date"]   = sig_events["Date"].dt.strftime("%d %b %Y")
+            sig_events["Signal"] = sig_events["signal"].map({1:"BUY", -1:"SELL", -2:"SHORT"})
+            sig_events["Fast Z"] = sig_events["fast_z"].round(2)
+            sig_events["Sig Line"] = sig_events["signal_line"].round(2)
+            sig_events["% Above MA"] = sig_events["pct_above_ma"].round(1)
+            sig_events["KSE-100"] = sig_events["index_close"].round(0)
+
+            def _col_signal(s):
+                c = {"BUY": "#22c55e", "SELL": "#ef4444", "SHORT": "#3b82f6"}
+                return [f"color:{c.get(v,'#94a3b8')}; font-weight:bold" for v in s]
+
+            st.dataframe(
+                sig_events[["Date","Signal","Fast Z","Sig Line","% Above MA","KSE-100"]]
+                .style.apply(_col_signal, subset=["Signal"]),
+                use_container_width=True, hide_index=True,
+            )
+
+    st.divider()
+
+    # ── Parameter Optimizer ────────────────────────────────────────────────────
+    with st.expander("⚙️ Parameter Optimizer — find best thresholds for PSX history"):
+        st.caption(
+            "Searches over lookback, smoothing, and threshold combinations. "
+            "Scores each set by how well it captures the PSX turning points defined below."
+        )
+
+        col_ev1, col_ev2 = st.columns(2)
+        with col_ev1:
+            st.markdown("**Known market bottoms** (BUY events)")
+            bottoms_raw = st.text_area(
+                "One date per line (YYYY-MM-DD)",
+                value="\n".join(PSX_KNOWN_BOTTOMS),
+                height=100,
+                key="opt_bottoms",
+            )
+        with col_ev2:
+            st.markdown("**Known market tops** (SELL events)")
+            tops_raw = st.text_area(
+                "One date per line (YYYY-MM-DD)",
+                value="\n".join(PSX_KNOWN_TOPS),
+                height=100,
+                key="opt_tops",
+            )
+
+        opt_window = st.slider(
+            "Event window ± days (signal counts if it fires within this window of the event)",
+            15, 90, 45, key="opt_window",
+        )
+
+        st.markdown("**Grid search ranges** (comma-separated values)")
+        gc1, gc2, gc3 = st.columns(3)
+        with gc1:
+            lookback_str  = st.text_input("z_lookback",       "126, 189, 252",  key="opt_lb")
+            fast_str      = st.text_input("fast_smoothing",   "3, 5, 8",        key="opt_fs")
+        with gc2:
+            sig_str       = st.text_input("signal_smoothing", "8, 10, 13",      key="opt_ss")
+            buy_str       = st.text_input("buy_threshold",    "-2.0, -1.7, -1.5", key="opt_bt")
+        with gc3:
+            sell_str      = st.text_input("sell_threshold",   "1.8, 2.0, 2.2", key="opt_st")
+
+        if st.button("▶ Run Optimizer", type="primary", key="run_opt"):
+            def _parse(s):
+                return [float(x.strip()) for x in s.split(",") if x.strip()]
+            def _parse_dates(s):
+                return [d.strip() for d in s.strip().splitlines() if d.strip()]
+
+            bottom_dates = _parse_dates(bottoms_raw)
+            top_dates    = _parse_dates(tops_raw)
+
+            grid = {
+                "ma_period":        [50],
+                "z_lookback":       [int(x) for x in _parse(lookback_str)],
+                "fast_smoothing":   [int(x) for x in _parse(fast_str)],
+                "signal_smoothing": [int(x) for x in _parse(sig_str)],
+                "buy_threshold":    _parse(buy_str),
+                "sell_threshold":   _parse(sell_str),
+            }
+
+            n_combos = 1
+            for v in grid.values():
+                n_combos *= len(v)
+
+            with st.spinner(f"Testing {n_combos} parameter combinations…"):
+                try:
+                    best_params, results_df = run_optimizer(
+                        breadth, signals["index_close"],
+                        bottom_dates=bottom_dates,
+                        top_dates=top_dates,
+                        param_grid=grid,
+                        window_days=opt_window,
+                    )
+                    st.session_state["weinstein_opt_results"] = results_df
+                    st.session_state["weinstein_best_params"] = best_params
+                    st.success(
+                        f"Best score: **{results_df.iloc[0]['score']:.2f}** &nbsp;·&nbsp; "
+                        f"z_lookback={best_params['z_lookback']} &nbsp; "
+                        f"fast={best_params['fast_smoothing']} &nbsp; "
+                        f"signal={best_params['signal_smoothing']} &nbsp; "
+                        f"buy={best_params['buy_threshold']} &nbsp; "
+                        f"sell={best_params['sell_threshold']}",
+                        icon="✅",
+                    )
+                except Exception as exc:
+                    st.error(f"Optimizer error: {exc}")
+
+        # Show results if available
+        if "weinstein_opt_results" in st.session_state:
+            st.markdown("**Top 10 parameter combinations**")
+            res = st.session_state["weinstein_opt_results"].head(10)
+            st.dataframe(res, use_container_width=True, hide_index=True)
+
+            best_p = st.session_state.get("weinstein_best_params", {})
+            if best_p and st.button("Apply best parameters & refresh signals", key="apply_best"):
+                full_params = {**PSX_DEFAULTS, **best_p}
+                st.session_state["weinstein_params"] = full_params
+                st.cache_data.clear()
+                st.rerun()
+
+    # ── How to read this ───────────────────────────────────────────────────────
+    with st.expander("📖 How to read the Weinstein Regime indicator"):
+        st.markdown("""
+**What it measures**
+
+Every trading day, Kiran counts how many PSX stocks close *above* their 50-day moving average.
+That number becomes the **breadth percentage** (e.g., 64% of stocks are above their MA today).
+
+**Why Z-score it?**
+
+A raw percentage of 64% means nothing without context.
+The Z-score answers: *"Is 64% historically high or low for this market?"*
+If the past year's average was 55% with a standard deviation of 8, then 64% = Z ≈ +1.1 — moderately elevated.
+
+**The two smoothed lines**
+- **Fast Z** (blue) — 5-day average of the raw Z-score. Reacts quickly.
+- **Signal Line** (orange dashed) — 10-day average of Fast Z. Slower, used for crossover confirmation.
+
+**Zone definitions**
+| Zone | Fast Z range | Meaning |
+|---|---|---|
+| Oversold | < -1.7 | Breadth historically depressed — watch for recovery |
+| Bearish | -1.7 to -0.5 | Below-average breadth |
+| Neutral | -0.5 to +0.5 | Normal conditions |
+| Bullish | +0.5 to +2.0 | Above-average breadth |
+| Overbought | > +2.0 | Breadth historically stretched — watch for reversal |
+
+**Signal logic**
+| Signal | Trigger conditions |
+|---|---|
+| **BUY** | Fast Z crosses *up* through -1.7 **AND** Fast Z > Signal Line **AND** KSE-100 > 50MA |
+| **SELL** | Fast Z crosses *down* from above +2.0, or rolls under Signal Line while still overbought |
+| **SHORT** | Fast Z < -1.7 **AND** KSE-100 < 50MA **AND** Signal Line is negative |
+| **HOLD** | None of the above conditions met |
+
+**PSX calibration used**
+- Known bottom: Jan 2024
+- Known tops: Jan 2025 (stall), Jan 2026
+
+Use the **Parameter Optimizer** to refine thresholds as more PSX history accumulates.
+        """)
+

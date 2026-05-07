@@ -257,6 +257,15 @@ def get_sector_price_data() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_prices_for_breadth() -> list[dict]:
+    """Return all symbol/date/close rows for Weinstein breadth computation."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT symbol, date, close FROM prices ORDER BY symbol, date"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def count_prices() -> int:
     with get_conn() as conn:
         return conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
