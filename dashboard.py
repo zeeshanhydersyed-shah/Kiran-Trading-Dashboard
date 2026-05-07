@@ -1983,8 +1983,8 @@ elif cur == PAGES[7]:
     fig_z = go.Figure()
 
     # Shaded zones
-    fig_z.add_hrect(y0=buy_thr, y1=-4,  fillcolor="#3b82f620", line_width=0, annotation_text="Oversold zone", annotation_position="top left")
-    fig_z.add_hrect(y0=sell_thr, y1=4,  fillcolor="#ef444420", line_width=0, annotation_text="Overbought zone", annotation_position="bottom left")
+    fig_z.add_hrect(y0=buy_thr, y1=-4,  fillcolor="rgba(59,130,246,0.10)", line_width=0, annotation_text="Oversold zone", annotation_position="top left")
+    fig_z.add_hrect(y0=sell_thr, y1=4,  fillcolor="rgba(239,68,68,0.10)", line_width=0, annotation_text="Overbought zone", annotation_position="bottom left")
     fig_z.add_hline(y=0,        line_dash="dot",  line_color="#94a3b8", line_width=1)
     fig_z.add_hline(y=buy_thr,  line_dash="dash", line_color="#3b82f6", line_width=1.2)
     fig_z.add_hline(y=sell_thr, line_dash="dash", line_color="#ef4444", line_width=1.2)
@@ -2056,7 +2056,7 @@ elif cur == PAGES[7]:
         x=breadth_plot.index, y=breadth_plot.round(1),
         mode="lines", name="% Above 50MA",
         line={"color": "#06b6d4", "width": 2},
-        fill="tozeroy", fillcolor="#06b6d420",
+        fill="tozeroy", fillcolor="rgba(6,182,212,0.10)",
         hovertemplate="<b>%{x|%d %b %Y}</b><br>%{y:.1f}% above 50MA<extra></extra>",
     ))
     fig_b.update_layout(
