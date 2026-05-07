@@ -145,11 +145,11 @@ class WeinsteinIndicator:
         # Signal generation
         df["signal"] = 0
 
-        fz   = df["fast_z"].values
-        sl   = df["signal_line"].values
-        px   = df["index_close"].values
-        pma  = df["index_ma"].values
-        sig  = df["signal"].values
+        fz   = df["fast_z"].values.copy()
+        sl   = df["signal_line"].values.copy()
+        px   = df["index_close"].values.copy()
+        pma  = df["index_ma"].values.copy()
+        sig  = df["signal"].values.copy()
 
         for i in range(1, len(df)):
             if np.isnan(fz[i]) or np.isnan(sl[i]) or np.isnan(pma[i]):
