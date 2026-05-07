@@ -1223,6 +1223,19 @@ elif cur == PAGES[5]:
             if col not in closed.columns:
                 closed[col] = None
 
+        # Backfill actual_pl_pkr for trades closed before the fix (where it is NULL).
+        # PKR P&L per share = pl_pct/100 * effective_entry (same formula used in close_trade_setup).
+        missing_pkr = closed["actual_pl_pkr"].isna() & closed["actual_pl_pct"].notna()
+        if missing_pkr.any():
+            ref_entry = closed["actual_entry"].where(
+                closed["actual_entry"].notna() & (closed["actual_entry"] > 0),
+                closed["entry_price"]
+            )
+            closed.loc[missing_pkr, "actual_pl_pkr"] = (
+                closed.loc[missing_pkr, "actual_pl_pct"] / 100
+                * ref_entry[missing_pkr]
+            ).round(2)
+
     if closed.empty:
         st.info("No closed trades yet. Close positions in the Trade Log first.")
         st.stop()

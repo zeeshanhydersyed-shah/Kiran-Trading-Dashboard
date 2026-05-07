@@ -450,10 +450,13 @@ def close_trade_setup(
         if entry > 0:
             if direction == "LONG":
                 pl_pct = (exit_price - entry) / entry * 100
+                pl_pkr = exit_price - entry
             else:
                 pl_pct = (entry - exit_price) / entry * 100
+                pl_pkr = entry - exit_price
         else:
             pl_pct = 0.0
+            pl_pkr = 0.0
 
         try:
             from datetime import date as _date
@@ -468,12 +471,13 @@ def close_trade_setup(
             SET actual_exit   = %s,
                 exit_date     = %s,
                 actual_pl_pct = %s,
+                actual_pl_pkr = %s,
                 holding_days  = %s,
                 status        = %s,
                 outcome       = %s,
                 notes         = COALESCE(%s, notes)
             WHERE id = %s
-        """, (exit_price, exit_date, round(pl_pct, 2), hold,
+        """, (exit_price, exit_date, round(pl_pct, 2), round(pl_pkr, 2), hold,
               status, outcome, notes, setup_id))
 
 
