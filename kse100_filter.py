@@ -108,11 +108,20 @@ class KSE100Filter:
                     "above_ma50": None, "pct_vs_ma50": None}
 
         pct = (close - ma50) / ma50 * 100
+
+        # 30-trading-day performance
+        perf_30d = None
+        if len(past) > 30:
+            base_close = past.iloc[-31]["close"]
+            if base_close and base_close > 0:
+                perf_30d = round((close - base_close) / base_close * 100, 1)
+
         return {
-            "available":  True,
-            "date":       past.index[-1].date().isoformat(),
-            "close":      round(close, 0),
-            "ma50":       round(ma50, 0),
-            "above_ma50": close >= ma50,
+            "available":   True,
+            "date":        past.index[-1].date().isoformat(),
+            "close":       round(close, 0),
+            "ma50":        round(ma50, 0),
+            "above_ma50":  close >= ma50,
             "pct_vs_ma50": round(pct, 1),
+            "perf_30d":    perf_30d,
         }

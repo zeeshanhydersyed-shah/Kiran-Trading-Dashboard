@@ -324,7 +324,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime"]
+PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime", "🎯 Setup Perf"]
 
 
 def fmt_date(d) -> str:
@@ -454,10 +454,15 @@ if breadth:
         kse_pct = kse100.get("pct_vs_ma50", 0)
         kse_col = "#22c55e" if above else "#ef4444"
         kse_lbl = "▲ ABOVE" if above else "▼ BELOW"
+        kse_p30   = kse100.get("perf_30d")
+        p30_col   = "#22c55e" if (kse_p30 is not None and kse_p30 >= 0) else "#ef4444"
+        p30_txt   = (f"&nbsp;·&nbsp; 30d <span style='color:{p30_col};font-weight:700;'>"
+                     f"{kse_p30:+.1f}%</span>"
+                     if kse_p30 is not None else "")
         kse_txt = (f"KSE-100 <b>{kse_c:,.0f}</b> &nbsp;·&nbsp; "
                    f"50-MA <b>{kse_m:,.0f}</b> &nbsp;·&nbsp; "
                    f"<span style='color:{kse_col};font-weight:700;'>{kse_lbl} 50MA "
-                   f"({kse_pct:+.1f}%)</span>")
+                   f"({kse_pct:+.1f}%)</span>{p30_txt}")
         kse_note = ("&nbsp;·&nbsp; <b>LONGs active</b>" if above
                     else "&nbsp;·&nbsp; <b>LONGs suppressed — index below 50MA</b>")
     else:
@@ -1932,72 +1937,75 @@ elif cur == PAGES[7]:
     w_params = wd["params"]
 
     # ── Signal banner ──────────────────────────────────────────────────────────
-    sig_label = regime["signal"]
-    zone      = regime["zone"]
-    zcolor    = regime["zone_color"]
-    fz_val    = regime["fast_z"]
-    sl_val    = regime["signal_line"]
-    hist_val  = regime.get("z_histogram")
-    slope_val = regime.get("fast_z_slope")
-    score_val = regime.get("trend_score")
-    roc_val   = regime.get("breadth_roc")
-    direction = regime.get("direction", "Flat")
-    dir_arrow = regime.get("direction_arrow", "→")
-    pct_val   = regime["pct_above_ma"]
-    idx_abv   = regime["index_above_ma"]
-    last_date = regime["last_date"]
+    zone            = regime["zone"]
+    zcolor          = regime["zone_color"]
+    fz_val          = regime["fast_z"]
+    sl_val          = regime["signal_line"]
+    hist_val        = regime.get("z_histogram")
+    slope_val       = regime.get("fast_z_slope")
+    score_val       = regime.get("trend_score")
+    roc_val         = regime.get("breadth_roc")
+    direction       = regime.get("direction", "Flat")
+    dir_arrow       = regime.get("direction_arrow", "→")
+    pct_val         = regime["pct_above_ma"]
+    idx_abv         = regime["index_above_ma"]
+    last_date       = regime["last_date"]
+    regime_state    = regime.get("regime_state", "Out of Market")
+    regime_color    = regime.get("regime_color", "#ef4444")
+    last_cross_sig  = regime.get("last_cross_sig")
+    last_cross_date = regime.get("last_cross_date")
 
-    sig_colors = {
-        "BUY":  "#22c55e",
-        "SELL": "#ef4444",
-        "HOLD": "#fbbf24",
-    }
-    sig_icons = {"BUY": "▲", "SELL": "▼", "HOLD": "—"}
-    sig_col   = sig_colors.get(sig_label, "#94a3b8")
-    sig_icon  = sig_icons.get(sig_label, "")
-
-    # Trend score colour: green above +25, red below −25, amber in between
-    score_color = (
-        "#22c55e" if score_val is not None and score_val >= 25  else
-        "#ef4444" if score_val is not None and score_val <= -25 else
-        "#fbbf24"
-    )
     dir_color = (
         "#22c55e" if direction == "Rising"  else
         "#ef4444" if direction == "Falling" else
         "#94a3b8"
     )
+    cross_colors = {"BUY": "#22c55e", "SELL": "#ef4444"}
+    cross_icon   = {"BUY": "▲", "SELL": "▼"}
+
+    if last_cross_sig and last_cross_date is not None:
+        cross_col  = cross_colors.get(last_cross_sig, "#94a3b8")
+        cross_html = (
+            f'Last signal: <b style="color:{cross_col};">'
+            f'{cross_icon.get(last_cross_sig,"")} {last_cross_sig}</b>'
+            f' on <b>{pd.Timestamp(last_cross_date).strftime("%d %b %Y")}</b>'
+            f' &nbsp;·&nbsp;'
+        )
+    else:
+        cross_html = ""
+
+    rs_icon  = "●" if regime_state == "In Market" else "○"
+    kse_str  = "▲ KSE above MA" if idx_abv else "▼ KSE below MA"
+    date_str = pd.Timestamp(last_date).strftime("%d %b %Y")
+
+    parts = [
+        f'<span style="color:{zcolor}; font-weight:700;">{zone}</span>',
+        f'<span style="color:{dir_color}; font-weight:700;">{dir_arrow} {direction}</span>',
+    ]
+    if last_cross_sig and last_cross_date is not None:
+        cc = cross_colors.get(last_cross_sig, "#94a3b8")
+        ci = cross_icon.get(last_cross_sig, "")
+        parts.append(f'Last signal: <span style="color:{cc}; font-weight:700;">{ci} {last_cross_sig} {pd.Timestamp(last_cross_date).strftime("%d %b %Y")}</span>')
+    parts.append(kse_str)
+    parts.append(date_str)
+
+    subtitle = ' <span style="color:#94a3b8;">·</span> '.join(parts)
 
     st.markdown(
-        f"""<div style="background:{sig_col}18; border-left:5px solid {sig_col};
-            padding:10px 16px; border-radius:8px; margin-bottom:10px;
-            display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
-            <span style="font-size:1.6rem; font-weight:900; color:{sig_col}; white-space:nowrap;">
-                {sig_icon} {sig_label}
-            </span>
-            <div>
-                <span style="font-size:0.85rem; font-weight:700; color:{zcolor};">{zone}</span>
-                <span style="font-size:0.85rem; font-weight:700; color:{dir_color}; margin-left:10px;">{dir_arrow} {direction}</span>
-                <span style="font-size:0.85rem; font-weight:700; color:{score_color}; margin-left:10px;">
-                    Trend Score: <b>{f"{score_val:+.0f}" if score_val is not None else "—"}</b>
-                </span>
-                <br>
-                <span style="font-size:0.72rem; color:#64748b;">
-                    Fast Z: <b>{f"{fz_val:.2f}" if fz_val is not None else "—"}</b> &nbsp;·&nbsp;
-                    Signal Line: <b>{f"{sl_val:.2f}" if sl_val is not None else "—"}</b> &nbsp;·&nbsp;
-                    Histogram: <b>{f"{hist_val:+.2f}" if hist_val is not None else "—"}</b> &nbsp;·&nbsp;
-                    % Above 50MA: <b>{f"{pct_val:.1f}%" if pct_val is not None else "—"}</b> &nbsp;·&nbsp;
-                    Breadth 5D ROC: <b>{f"{roc_val:+.1f}%" if roc_val is not None else "—"}</b> &nbsp;·&nbsp;
-                    KSE-100 vs MA: <b>{"▲ Above" if idx_abv else "▼ Below"}</b> &nbsp;·&nbsp;
-                    As of <b>{pd.Timestamp(last_date).strftime('%d %b %Y')}</b>
-                </span>
+        f"""<div style="background:{regime_color}18; border-left:5px solid {regime_color};
+            padding:12px 16px; border-radius:8px; margin-bottom:10px;">
+            <div style="font-size:1.5rem; font-weight:900; color:{regime_color}; margin-bottom:4px;">
+                {rs_icon} {regime_state}
+            </div>
+            <div style="font-size:0.78rem; color:#64748b; line-height:1.6;">
+                {subtitle}
             </div>
         </div>""",
         unsafe_allow_html=True,
     )
 
-    # ── KPI row (7 tiles) ──────────────────────────────────────────────────────
-    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+    # ── KPI row (5 tiles) ──────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
 
     def _kpi_mini(label, val, fmt, color, subtitle=""):
         sub = f'<div style="font-size:0.55rem; color:#94a3b8; margin-top:1px;">{subtitle}</div>' if subtitle else ""
@@ -2012,209 +2020,183 @@ elif cur == PAGES[7]:
 
     buy_thr  = w_params["buy_threshold"]
     sell_thr = w_params["sell_threshold"]
-    fz_color = (
-        "#3b82f6" if (fz_val is not None and fz_val < buy_thr)  else
-        "#ef4444" if (fz_val is not None and fz_val > sell_thr) else
-        "#22c55e"
-    )
     hist_color  = "#22c55e" if (hist_val is not None and hist_val >= 0) else "#ef4444"
-    slope_color = "#22c55e" if (slope_val is not None and slope_val >= 0) else "#ef4444"
 
-    k1.markdown(_kpi_mini("Trend Score",   score_val, "{:+.0f}",  score_color, "−100…+100"), unsafe_allow_html=True)
-    k2.markdown(_kpi_mini("Fast Z",        fz_val,    "{:.2f}",   fz_color,    f"{dir_arrow} {direction}"), unsafe_allow_html=True)
-    k3.markdown(_kpi_mini("Signal Line",   sl_val,    "{:.2f}",   "#8b5cf6"), unsafe_allow_html=True)
-    k4.markdown(_kpi_mini("Histogram",     hist_val,  "{:+.2f}",  hist_color,  "fast_z − sig"), unsafe_allow_html=True)
-    k5.markdown(_kpi_mini("% Above 50MA",  pct_val,   "{:.1f}%",  "#06b6d4"), unsafe_allow_html=True)
-    k6.markdown(_kpi_mini("Buy Threshold", buy_thr,   "{:.1f}",   "#22c55e"), unsafe_allow_html=True)
-    k7.markdown(_kpi_mini("Sell Thr.",     sell_thr,  "{:.1f}",   "#ef4444"), unsafe_allow_html=True)
+    k1.markdown(_kpi_mini("Signal Line",   sl_val,   "{:.2f}",   "#8b5cf6"), unsafe_allow_html=True)
+    k2.markdown(_kpi_mini("Histogram",     hist_val,  "{:+.2f}", hist_color, "fast_z − sig"), unsafe_allow_html=True)
+    k3.markdown(_kpi_mini("% Above 50MA",  pct_val,   "{:.1f}%", "#06b6d4"), unsafe_allow_html=True)
+    k4.markdown(_kpi_mini("Buy Threshold", buy_thr,   "{:.1f}",  "#22c55e"), unsafe_allow_html=True)
+    k5.markdown(_kpi_mini("Sell Thr.",     sell_thr,  "{:.1f}",  "#ef4444"), unsafe_allow_html=True)
 
     st.divider()
 
-    # ── Z-Score chart (main chart) ─────────────────────────────────────────────
-    st.markdown("**Z-Score & Momentum Histogram**")
+    # ── Combined chart: Z-Score / Histogram / Breadth % / Trend Score ────────────
+    # Single make_subplots with shared_xaxes so crosshair syncs across all panels.
 
     tail = st.slider("Show last N days", 60, len(signals), min(504, len(signals)), step=21, key="wbs_tail")
     sig_plot = signals.tail(tail).copy()
 
-    # ── Z-Score + Histogram (stacked subplots) ─────────────────────────────────
+    breadth_plot = breadth.tail(tail)
+    breadth_ma10 = breadth.rolling(10, min_periods=1).mean().tail(tail)
+    breadth_ma21 = breadth.rolling(21, min_periods=1).mean().tail(tail)
+    breadth_ma50 = breadth.rolling(50, min_periods=1).mean().tail(tail)
+
+    has_ts = "trend_score" in sig_plot.columns
+
     from plotly.subplots import make_subplots
 
-    fig_z = make_subplots(
-        rows=2, cols=1,
-        row_heights=[0.68, 0.32],
+    n_rows      = 4 if has_ts else 3
+    row_heights = [0.35, 0.15, 0.30, 0.20] if has_ts else [0.42, 0.20, 0.38]
+
+    fig = make_subplots(
+        rows=n_rows, cols=1,
         shared_xaxes=True,
+        row_heights=row_heights,
         vertical_spacing=0.03,
+        subplot_titles=["Z-Score", "Momentum", "Breadth %", "Trend Score"][:n_rows],
     )
 
-    # Shaded zones (row 1)
-    fig_z.add_hrect(y0=buy_thr, y1=-4,  fillcolor="rgba(59,130,246,0.10)", line_width=0,
-                    annotation_text="Oversold", annotation_position="top left", row=1, col=1)
-    fig_z.add_hrect(y0=sell_thr, y1=4,  fillcolor="rgba(239,68,68,0.10)", line_width=0,
-                    annotation_text="Overbought", annotation_position="bottom left", row=1, col=1)
-    fig_z.add_hline(y=0,        line_dash="dot",  line_color="#94a3b8", line_width=1, row=1, col=1)
-    fig_z.add_hline(y=buy_thr,  line_dash="dash", line_color="#3b82f6", line_width=1.2, row=1, col=1)
-    fig_z.add_hline(y=sell_thr, line_dash="dash", line_color="#ef4444", line_width=1.2, row=1, col=1)
+    # ── Row 1: Z-Score ──────────────────────────────────────────────────────────
+    fig.add_hrect(y0=buy_thr, y1=-4, fillcolor="rgba(59,130,246,0.10)", line_width=0,
+                  annotation_text="Oversold", annotation_position="top left", row=1, col=1)
+    fig.add_hrect(y0=sell_thr, y1=4, fillcolor="rgba(239,68,68,0.10)",  line_width=0,
+                  annotation_text="Overbought", annotation_position="bottom left", row=1, col=1)
+    fig.add_hline(y=0,        line_dash="dot",  line_color="#94a3b8", line_width=1,   row=1, col=1)
+    fig.add_hline(y=buy_thr,  line_dash="dash", line_color="#3b82f6", line_width=1.2, row=1, col=1)
+    fig.add_hline(y=sell_thr, line_dash="dash", line_color="#ef4444", line_width=1.2, row=1, col=1)
 
-    # Fast Z line (row 1)
-    fig_z.add_trace(go.Scatter(
+    fig.add_trace(go.Scatter(
         x=sig_plot.index, y=sig_plot["fast_z"].round(3),
-        mode="lines", name="Fast Z (EMA)",
+        mode="lines", name="Fast Z",
         line={"color": "#3b82f6", "width": 2},
-        hovertemplate="<b>%{x|%d %b %Y}</b><br>Fast Z: %{y:.2f}<extra></extra>",
+        hovertemplate="Fast Z: %{y:.2f}<extra></extra>",
     ), row=1, col=1)
-
-    # Signal line (row 1)
-    fig_z.add_trace(go.Scatter(
+    fig.add_trace(go.Scatter(
         x=sig_plot.index, y=sig_plot["signal_line"].round(3),
-        mode="lines", name="Signal Line (EMA)",
+        mode="lines", name="Signal Line",
         line={"color": "#f59e0b", "width": 1.5, "dash": "dot"},
-        hovertemplate="<b>%{x|%d %b %Y}</b><br>Signal Line: %{y:.2f}<extra></extra>",
+        hovertemplate="Sig Line: %{y:.2f}<extra></extra>",
     ), row=1, col=1)
 
-    # BUY / SELL signal markers on fast_z line
     buys  = sig_plot[sig_plot["signal"] == 1]
     sells = sig_plot[sig_plot["signal"] == -1]
     if not buys.empty:
-        fig_z.add_trace(go.Scatter(
+        fig.add_trace(go.Scatter(
             x=buys.index, y=buys["fast_z"].round(3),
-            mode="markers", name="BUY signal",
+            mode="markers", name="BUY",
             marker={"symbol": "triangle-up", "size": 10, "color": "#22c55e", "line": {"width": 1, "color": "#fff"}},
             hovertemplate="BUY · Fast Z: %{y:.2f}<extra></extra>",
         ), row=1, col=1)
     if not sells.empty:
-        fig_z.add_trace(go.Scatter(
+        fig.add_trace(go.Scatter(
             x=sells.index, y=sells["fast_z"].round(3),
-            mode="markers", name="SELL signal",
+            mode="markers", name="SELL",
             marker={"symbol": "triangle-down", "size": 10, "color": "#ef4444", "line": {"width": 1, "color": "#fff"}},
             hovertemplate="SELL · Fast Z: %{y:.2f}<extra></extra>",
         ), row=1, col=1)
 
-    # Histogram bars — green when positive (breadth momentum up), red when negative (declining)
+    # ── Row 2: Momentum Histogram ────────────────────────────────────────────────
     if "z_histogram" in sig_plot.columns:
-        hist_vals = sig_plot["z_histogram"].round(3)
+        hist_vals  = sig_plot["z_histogram"].round(3)
         bar_colors = ["#22c55e" if v >= 0 else "#ef4444" for v in hist_vals]
-        fig_z.add_trace(go.Bar(
+        fig.add_trace(go.Bar(
             x=sig_plot.index, y=hist_vals,
-            name="Histogram (Fast Z − Signal)",
+            name="Histogram",
             marker_color=bar_colors,
             opacity=0.75,
-            hovertemplate="<b>%{x|%d %b %Y}</b><br>Histogram: %{y:+.2f}<extra></extra>",
+            hovertemplate="Histogram: %{y:+.2f}<extra></extra>",
         ), row=2, col=1)
-        fig_z.add_hline(y=0, line_dash="dot", line_color="#94a3b8", line_width=1, row=2, col=1)
+        fig.add_hline(y=0, line_dash="dot", line_color="#94a3b8", line_width=1, row=2, col=1)
 
-    fig_z.update_layout(
-        height=430,
-        margin={"l": 4, "r": 4, "t": 8, "b": 8},
-        legend={"orientation": "h", "y": 1.05, "x": 0, "font": {"size": 10}},
-        hovermode="x unified",
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        bargap=0.1,
-    )
-    fig_z.update_yaxes(title_text="Z-Score", tickfont={"size": 10}, range=[-4, 4], row=1, col=1)
-    fig_z.update_yaxes(title_text="Momentum", tickfont={"size": 10}, row=2, col=1)
-    fig_z.update_xaxes(tickfont={"size": 10})
-    st.plotly_chart(fig_z, use_container_width=True)
+    # ── Row 3: Breadth % ────────────────────────────────────────────────────────
+    fig.add_hline(y=70, line_dash="dot", line_color="#22c55e", line_width=1, row=3, col=1,
+                  annotation_text="Strong 70%", annotation_position="top right")
+    fig.add_hline(y=50, line_dash="dot", line_color="#94a3b8", line_width=1, row=3, col=1)
+    fig.add_hline(y=30, line_dash="dot", line_color="#ef4444", line_width=1, row=3, col=1,
+                  annotation_text="Weak 30%", annotation_position="bottom right")
 
-    # ── Breadth % chart with multi-MA structure ─────────────────────────────────
-    st.markdown("**Breadth — % of PSX stocks above 50-day MA**")
-
-    breadth_plot  = breadth.tail(tail)
-    breadth_ma10  = breadth.rolling(10,  min_periods=1).mean().tail(tail)
-    breadth_ma21  = breadth.rolling(21,  min_periods=1).mean().tail(tail)
-    breadth_ma50  = breadth.rolling(50,  min_periods=1).mean().tail(tail)
-
-    # Colour the raw breadth line: green when above its own 21D MA, red when below
-    b_arr   = breadth_plot.values
-    ma21_arr = breadth_ma21.values
-    line_colors_b = ["#22c55e" if b_arr[i] >= ma21_arr[i] else "#ef4444" for i in range(len(b_arr))]
-
-    fig_b = go.Figure()
-    fig_b.add_hline(y=70, line_dash="dot", line_color="#22c55e", line_width=1,
-                    annotation_text="Strong (70%)", annotation_position="top right")
-    fig_b.add_hline(y=50, line_dash="dot", line_color="#94a3b8", line_width=1,
-                    annotation_text="Neutral (50%)", annotation_position="top right")
-    fig_b.add_hline(y=30, line_dash="dot", line_color="#ef4444", line_width=1,
-                    annotation_text="Weak (30%)", annotation_position="bottom right")
-
-    # Raw breadth — fill green when above 21D MA, red when below
     above_21 = breadth_plot.where(breadth_plot >= breadth_ma21)
     below_21 = breadth_plot.where(breadth_plot <  breadth_ma21)
-
-    fig_b.add_trace(go.Scatter(
+    fig.add_trace(go.Scatter(
         x=above_21.index, y=above_21.round(1),
-        mode="lines", name="Breadth (above 21D MA)",
+        mode="lines", name="Breadth (▲ 21D)",
         line={"color": "#22c55e", "width": 1.8},
         fill="tozeroy", fillcolor="rgba(34,197,94,0.08)",
-        hovertemplate="<b>%{x|%d %b %Y}</b><br>%{y:.1f}%<extra></extra>",
+        hovertemplate="Breadth: %{y:.1f}%<extra></extra>",
         connectgaps=False,
-    ))
-    fig_b.add_trace(go.Scatter(
+    ), row=3, col=1)
+    fig.add_trace(go.Scatter(
         x=below_21.index, y=below_21.round(1),
-        mode="lines", name="Breadth (below 21D MA)",
+        mode="lines", name="Breadth (▼ 21D)",
         line={"color": "#ef4444", "width": 1.8},
         fill="tozeroy", fillcolor="rgba(239,68,68,0.08)",
-        hovertemplate="<b>%{x|%d %b %Y}</b><br>%{y:.1f}%<extra></extra>",
+        hovertemplate="Breadth: %{y:.1f}%<extra></extra>",
         connectgaps=False,
-    ))
-    fig_b.add_trace(go.Scatter(
+    ), row=3, col=1)
+    fig.add_trace(go.Scatter(
         x=breadth_ma10.index, y=breadth_ma10.round(1),
         mode="lines", name="10D MA",
-        line={"color": "#f59e0b", "width": 1.5},
+        line={"color": "#f59e0b", "width": 1.4},
         hovertemplate="10D MA: %{y:.1f}%<extra></extra>",
-    ))
-    fig_b.add_trace(go.Scatter(
+    ), row=3, col=1)
+    fig.add_trace(go.Scatter(
         x=breadth_ma21.index, y=breadth_ma21.round(1),
         mode="lines", name="21D MA",
-        line={"color": "#8b5cf6", "width": 1.5, "dash": "dash"},
+        line={"color": "#8b5cf6", "width": 1.4, "dash": "dash"},
         hovertemplate="21D MA: %{y:.1f}%<extra></extra>",
-    ))
-    fig_b.add_trace(go.Scatter(
+    ), row=3, col=1)
+    fig.add_trace(go.Scatter(
         x=breadth_ma50.index, y=breadth_ma50.round(1),
         mode="lines", name="50D MA",
         line={"color": "#94a3b8", "width": 1.2, "dash": "dot"},
         hovertemplate="50D MA: %{y:.1f}%<extra></extra>",
-    ))
-    fig_b.update_layout(
-        height=260,
-        margin={"l": 4, "r": 4, "t": 8, "b": 8},
-        hovermode="x unified",
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis={"title": "% Stocks", "tickfont": {"size": 10}, "range": [0, 100]},
-        xaxis={"tickfont": {"size": 10}},
-        showlegend=True,
-        legend={"orientation": "h", "x": 0, "y": 1.18, "font": {"size": 10}},
-    )
-    st.plotly_chart(fig_b, use_container_width=True)
+    ), row=3, col=1)
 
-    # ── Trend Score history ─────────────────────────────────────────────────────
-    if "trend_score" in signals.columns:
-        st.markdown("**Trend Score History** — composite incline / decline gauge (−100 … +100)")
-        ts_plot = signals["trend_score"].tail(tail)
+    # ── Row 4: Trend Score ───────────────────────────────────────────────────────
+    if has_ts:
+        ts_plot   = sig_plot["trend_score"]
         ts_colors = ["#22c55e" if v >= 25 else "#ef4444" if v <= -25 else "#fbbf24" for v in ts_plot]
-        fig_ts = go.Figure()
-        fig_ts.add_hline(y=25,  line_dash="dash", line_color="#22c55e", line_width=1, annotation_text="Incline (+25)", annotation_position="top right")
-        fig_ts.add_hline(y=0,   line_dash="dot",  line_color="#94a3b8", line_width=1)
-        fig_ts.add_hline(y=-25, line_dash="dash", line_color="#ef4444", line_width=1, annotation_text="Decline (−25)", annotation_position="bottom right")
-        fig_ts.add_hrect(y0=25,  y1=100,  fillcolor="rgba(34,197,94,0.06)",  line_width=0)
-        fig_ts.add_hrect(y0=-100, y1=-25, fillcolor="rgba(239,68,68,0.06)", line_width=0)
-        fig_ts.add_trace(go.Bar(
+        fig.add_hrect(y0=25,   y1=100,  fillcolor="rgba(34,197,94,0.06)",  line_width=0, row=4, col=1)
+        fig.add_hrect(y0=-100, y1=-25,  fillcolor="rgba(239,68,68,0.06)", line_width=0, row=4, col=1)
+        fig.add_hline(y=25,  line_dash="dash", line_color="#22c55e", line_width=1, row=4, col=1)
+        fig.add_hline(y=0,   line_dash="dot",  line_color="#94a3b8", line_width=1, row=4, col=1)
+        fig.add_hline(y=-25, line_dash="dash", line_color="#ef4444", line_width=1, row=4, col=1)
+        fig.add_trace(go.Bar(
             x=ts_plot.index, y=ts_plot.round(1),
             name="Trend Score",
             marker_color=ts_colors,
             opacity=0.8,
-            hovertemplate="<b>%{x|%d %b %Y}</b><br>Trend Score: %{y:+.0f}<extra></extra>",
-        ))
-        fig_ts.update_layout(
-            height=200,
-            margin={"l": 4, "r": 4, "t": 8, "b": 8},
-            hovermode="x unified",
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            yaxis={"title": "Score", "tickfont": {"size": 10}, "range": [-100, 100]},
-            xaxis={"tickfont": {"size": 10}},
-            showlegend=False,
-            bargap=0.1,
-        )
-        st.plotly_chart(fig_ts, use_container_width=True)
+            hovertemplate="Trend Score: %{y:+.0f}<extra></extra>",
+        ), row=4, col=1)
+
+    # ── Shared layout ────────────────────────────────────────────────────────────
+    fig.update_layout(
+        height=860 if has_ts else 680,
+        margin={"l": 4, "r": 4, "t": 24, "b": 8},
+        hovermode="x",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        bargap=0.1,
+        legend={"orientation": "h", "y": 1.03, "x": 0, "font": {"size": 10}},
+    )
+    fig.update_yaxes(tickfont={"size": 10}, range=[-4, 4],    row=1, col=1)
+    fig.update_yaxes(tickfont={"size": 10},                    row=2, col=1)
+    fig.update_yaxes(tickfont={"size": 10}, range=[0, 100],   row=3, col=1)
+    if has_ts:
+        fig.update_yaxes(tickfont={"size": 10}, range=[-100, 100], row=4, col=1)
+    # Spike lines — this is what draws the crosshair across all shared-x panels
+    fig.update_xaxes(
+        tickfont={"size": 10},
+        showspikes=True,
+        spikemode="across",
+        spikesnap="cursor",
+        spikecolor="#94a3b8",
+        spikethickness=1,
+        spikedash="dot",
+        showticklabels=False,
+    )
+    # Show date labels only on the bottom panel
+    fig.update_xaxes(showticklabels=True, row=n_rows, col=1)
+    st.plotly_chart(fig, use_container_width=True)
 
     # ── Signal history table ───────────────────────────────────────────────────
     with st.expander("Signal history (all non-HOLD signals)"):
@@ -2403,3 +2385,320 @@ Score > +25 = **Incline** (green) · Score < −25 = **Decline** (red) · In bet
 Use the **Parameter Optimizer** to run a grid search and find the EMA spans that best captured these PSX turning points in your data.
         """)
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 9 — SETUP PERFORMANCE
+# ═══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[8]:
+    import plotly.graph_objects as go
+    import plotly.express as px
+
+    st.markdown("**Setup Performance** — lifecycle and P&L of every system-generated setup")
+
+    all_setups_raw = get_trade_setups()
+    if not all_setups_raw:
+        st.info("No setups recorded yet. Run a data update to generate setups.")
+        st.stop()
+
+    sp = pd.DataFrame(all_setups_raw)
+
+    # Normalise columns that may be missing in older rows
+    for col in ["actual_pl_pct", "actual_pl_pkr", "actual_rr", "holding_days",
+                "exit_date", "actual_entry", "quality_score", "breadth_score",
+                "sector_rank", "range_window", "source"]:
+        if col not in sp.columns:
+            sp[col] = None
+    sp["source"] = sp["source"].fillna("System")
+    sp["quality_score"] = pd.to_numeric(sp["quality_score"], errors="coerce").fillna(0).astype(int)
+
+    # System setups only for this page
+    sys_sp = sp[sp["source"] == "System"].copy()
+
+    if sys_sp.empty:
+        st.info("No system-generated setups found.")
+        st.stop()
+
+    sys_sp["created_date"] = pd.to_datetime(sys_sp["created_date"])
+
+    # ── Build current-price map from latest stock_30d data ────────────────────
+    cur_price: dict[str, float] = {}
+    if not stock_30d.empty and "latest_close" in stock_30d.columns:
+        cur_price = dict(zip(stock_30d["symbol"], stock_30d["latest_close"]))
+
+    # ── Status buckets ────────────────────────────────────────────────────────
+    pending = sys_sp[sys_sp["status"] == "Pending"]
+    active  = sys_sp[sys_sp["status"] == "Active"]
+    closed  = sys_sp[sys_sp["status"].isin(["Closed", "Expired", "Win", "Loss",
+                                             "Breakeven"])].copy()
+    # Also capture rows where outcome is set (some workflows set outcome directly)
+    also_closed = sys_sp[
+        sys_sp["outcome"].isin(["Win", "Loss", "Breakeven"]) &
+        ~sys_sp["status"].isin(["Pending", "Active"])
+    ].copy()
+    closed = pd.concat([closed, also_closed]).drop_duplicates(subset="id")
+
+    wins   = closed[closed["outcome"] == "Win"]
+    losses = closed[closed["outcome"] == "Loss"]
+
+    n_total   = len(sys_sp)
+    n_pending = len(pending)
+    n_active  = len(active)
+    n_closed  = len(closed)
+    n_wins    = len(wins)
+    n_losses  = len(losses)
+    win_rate  = n_wins / max(n_wins + n_losses, 1) * 100
+
+    avg_win_pct  = wins["actual_pl_pct"].dropna().mean()   if n_wins   else 0.0
+    avg_loss_pct = losses["actual_pl_pct"].dropna().mean() if n_losses else 0.0
+    avg_rr = (abs(avg_win_pct / avg_loss_pct)
+              if avg_loss_pct and avg_loss_pct != 0 else 0.0)
+
+    # ── KPI row ───────────────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+    k1.metric("Total Generated", n_total)
+    k2.metric("Pending", n_pending)
+    k3.metric("Active", n_active)
+    k4.metric("Closed", n_closed)
+    k5.metric("Win Rate", f"{win_rate:.0f}%" if n_closed else "—",
+              delta=f"{n_wins}W / {n_losses}L")
+    k6.metric("Avg Win", f"{avg_win_pct:+.1f}%" if n_wins else "—")
+    k7.metric("Avg R:R", f"{avg_rr:.2f}x" if avg_rr else "—")
+
+    st.divider()
+
+    # ── Active positions: unrealised P&L ─────────────────────────────────────
+    st.markdown("##### Active Positions — Unrealised P&L")
+
+    if active.empty:
+        st.caption("No active positions right now.")
+    else:
+        act_rows = []
+        for _, r in active.iterrows():
+            sym      = r["symbol"]
+            entry    = float(r.get("actual_entry") or r["entry_price"])
+            t1       = float(r["target_1r"])
+            t2       = float(r["target_2r"])
+            sl       = float(r["stop_loss"])
+            cur_p    = cur_price.get(sym, None)
+            direction = r["direction"]
+
+            if cur_p and entry > 0:
+                if direction == "LONG":
+                    unreal_pct = (cur_p - entry) / entry * 100
+                else:
+                    unreal_pct = (entry - cur_p) / entry * 100
+                dist_t1 = (t1 - cur_p) / cur_p * 100 if direction == "LONG" else (cur_p - t1) / cur_p * 100
+                dist_t2 = (t2 - cur_p) / cur_p * 100 if direction == "LONG" else (cur_p - t2) / cur_p * 100
+                dist_sl = (cur_p - sl) / cur_p * 100 if direction == "LONG" else (sl - cur_p) / cur_p * 100
+            else:
+                unreal_pct = dist_t1 = dist_t2 = dist_sl = None
+
+            act_rows.append({
+                "Symbol":      sym,
+                "Dir":         direction,
+                "Sector":      r["sector"],
+                "Entry":       round(entry, 2),
+                "Current":     round(cur_p, 2) if cur_p else "—",
+                "Unreal %":    round(unreal_pct, 1) if unreal_pct is not None else "—",
+                "→T1 %":       f"{dist_t1:+.1f}%" if dist_t1 is not None else "—",
+                "→T2 %":       f"{dist_t2:+.1f}%" if dist_t2 is not None else "—",
+                "SL gap %":    f"{dist_sl:+.1f}%" if dist_sl is not None else "—",
+                "Quality":     int(r["quality_score"]),
+                "Opened":      r["created_date"].strftime("%d %b"),
+            })
+
+        act_df = pd.DataFrame(act_rows)
+
+        def _colour_unreal(val):
+            if isinstance(val, (int, float)):
+                c = "#22c55e" if val >= 0 else "#ef4444"
+                return f"color:{c}; font-weight:700"
+            return ""
+
+        st.dataframe(
+            act_df.style.applymap(_colour_unreal, subset=["Unreal %"]),
+            use_container_width=True, hide_index=True,
+        )
+
+    st.divider()
+
+    # ── Two-column block: closed journal + outcome donut ─────────────────────
+    col_tbl, col_chart = st.columns([2, 1])
+
+    with col_tbl:
+        st.markdown("##### Closed Setups Journal")
+        if closed.empty:
+            st.caption("No closed setups yet.")
+        else:
+            disp = closed[["created_date", "symbol", "direction", "sector",
+                           "outcome", "actual_pl_pct", "actual_rr",
+                           "holding_days", "quality_score"]].copy()
+            disp["created_date"] = disp["created_date"].dt.strftime("%d %b %Y")
+            disp.columns = ["Date", "Symbol", "Dir", "Sector",
+                            "Outcome", "P&L %", "R:R",
+                            "Days", "Quality"]
+            disp["P&L %"] = pd.to_numeric(disp["P&L %"], errors="coerce").round(1)
+            disp["R:R"]   = pd.to_numeric(disp["R:R"],   errors="coerce").round(2)
+
+            def _outcome_colour(val):
+                c = {"Win": "#22c55e", "Loss": "#ef4444", "Breakeven": "#f59e0b"}
+                return f"color:{c.get(val,'#94a3b8')}; font-weight:700"
+
+            st.dataframe(
+                disp.style
+                    .applymap(_outcome_colour, subset=["Outcome"])
+                    .applymap(lambda v: f"color:{'#22c55e' if isinstance(v,(int,float)) and v>=0 else '#ef4444'}" if isinstance(v,(int,float)) else "", subset=["P&L %"]),
+                use_container_width=True, hide_index=True,
+            )
+
+    with col_chart:
+        st.markdown("##### Outcome Breakdown")
+        if n_closed == 0:
+            st.caption("No closed setups yet.")
+        else:
+            outcome_counts = closed["outcome"].value_counts()
+            colours = {"Win": "#22c55e", "Loss": "#ef4444",
+                       "Breakeven": "#f59e0b", "Expired": "#94a3b8"}
+            fig_d = go.Figure(go.Pie(
+                labels=outcome_counts.index.tolist(),
+                values=outcome_counts.values.tolist(),
+                hole=0.55,
+                marker_colors=[colours.get(o, "#94a3b8") for o in outcome_counts.index],
+                textinfo="label+percent",
+                textfont_size=11,
+            ))
+            fig_d.update_layout(
+                height=220,
+                margin={"l": 0, "r": 0, "t": 8, "b": 8},
+                showlegend=False,
+                paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_d, use_container_width=True)
+
+            if n_wins > 0 and n_losses > 0:
+                st.markdown(
+                    f"<div style='text-align:center;font-size:0.8rem;color:#64748b;'>"
+                    f"Avg win <b style='color:#22c55e'>{avg_win_pct:+.1f}%</b> &nbsp;·&nbsp; "
+                    f"Avg loss <b style='color:#ef4444'>{avg_loss_pct:+.1f}%</b><br>"
+                    f"Expectancy R:R <b>{avg_rr:.2f}x</b></div>",
+                    unsafe_allow_html=True,
+                )
+
+    st.divider()
+
+    # ── Sector performance heatmap ────────────────────────────────────────────
+    col_sec, col_qs = st.columns(2)
+
+    with col_sec:
+        st.markdown("##### Win Rate by Sector")
+        if closed.empty or "sector" not in closed.columns:
+            st.caption("No data yet.")
+        else:
+            sec_grp = closed.groupby("sector").agg(
+                Setups=("id", "count"),
+                Wins=("outcome", lambda x: (x == "Win").sum()),
+            ).reset_index()
+            sec_grp["Win Rate %"] = (sec_grp["Wins"] / sec_grp["Setups"] * 100).round(1)
+            sec_grp = sec_grp[sec_grp["Setups"] >= 1].sort_values("Win Rate %", ascending=True)
+
+            if sec_grp.empty:
+                st.caption("No data yet.")
+            else:
+                fig_s = go.Figure(go.Bar(
+                    x=sec_grp["Win Rate %"],
+                    y=sec_grp["sector"],
+                    orientation="h",
+                    marker_color=[
+                        "#22c55e" if v >= 55 else "#fbbf24" if v >= 40 else "#ef4444"
+                        for v in sec_grp["Win Rate %"]
+                    ],
+                    text=sec_grp.apply(
+                        lambda r: f"{r['Win Rate %']:.0f}% ({r['Wins']}/{r['Setups']})", axis=1
+                    ),
+                    textposition="outside",
+                    textfont={"size": 9},
+                ))
+                fig_s.update_layout(
+                    height=max(180, len(sec_grp) * 28),
+                    margin={"l": 4, "r": 60, "t": 8, "b": 8},
+                    xaxis={"ticksuffix": "%", "range": [0, 115]},
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_s, use_container_width=True)
+
+    with col_qs:
+        st.markdown("##### Quality Score vs Win Rate")
+        if closed.empty:
+            st.caption("No data yet.")
+        else:
+            qs_grp = closed.groupby("quality_score").agg(
+                Setups=("id", "count"),
+                Wins=("outcome", lambda x: (x == "Win").sum()),
+            ).reset_index()
+            qs_grp["Win Rate %"] = (qs_grp["Wins"] / qs_grp["Setups"] * 100).round(1)
+            qs_grp["quality_score"] = qs_grp["quality_score"].astype(str)
+
+            if qs_grp.empty:
+                st.caption("No data yet.")
+            else:
+                fig_q = go.Figure(go.Bar(
+                    x=qs_grp["quality_score"],
+                    y=qs_grp["Win Rate %"],
+                    marker_color=[
+                        "#22c55e" if v >= 55 else "#fbbf24" if v >= 40 else "#ef4444"
+                        for v in qs_grp["Win Rate %"]
+                    ],
+                    text=[f"{v:.0f}%<br>({n} setups)" for v, n in
+                          zip(qs_grp["Win Rate %"], qs_grp["Setups"])],
+                    textposition="outside",
+                    textfont={"size": 9},
+                ))
+                fig_q.update_layout(
+                    height=280,
+                    margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                    xaxis={"title": "Quality Score (0–4)"},
+                    yaxis={"ticksuffix": "%", "range": [0, 115]},
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_q, use_container_width=True)
+                st.caption("Higher quality score should trend toward higher win rate as data accumulates.")
+
+    st.divider()
+
+    # ── Monthly generation volume ──────────────────────────────────────────────
+    st.markdown("##### Setup Generation Volume (by month & direction)")
+    if sys_sp.empty:
+        st.caption("No data.")
+    else:
+        sys_sp["month"] = sys_sp["created_date"].dt.to_period("M").astype(str)
+        monthly = sys_sp.groupby(["month", "direction"]).size().reset_index(name="count")
+        if not monthly.empty:
+            fig_m = px.bar(
+                monthly, x="month", y="count", color="direction",
+                color_discrete_map={"LONG": "#22c55e", "SHORT": "#ef4444"},
+                text="count",
+                labels={"month": "", "count": "Setups", "direction": ""},
+            )
+            fig_m.update_traces(textposition="outside", textfont_size=9)
+            fig_m.update_layout(
+                height=240,
+                margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                legend={"orientation": "h", "y": 1.1},
+                barmode="stack",
+            )
+            st.plotly_chart(fig_m, use_container_width=True)
+
+    # ── Pending setups summary ────────────────────────────────────────────────
+    if not pending.empty:
+        with st.expander(f"🕐 Pending Setups ({len(pending)}) — waiting for entry trigger"):
+            pend_disp = pending[["created_date", "symbol", "direction", "sector",
+                                 "entry_price", "stop_loss", "target_1r",
+                                 "risk_pct", "quality_score"]].copy()
+            pend_disp["created_date"] = pend_disp["created_date"].dt.strftime("%d %b %Y")
+            pend_disp.columns = ["Date", "Symbol", "Dir", "Sector",
+                                  "Entry", "SL", "T1", "Risk %", "Quality"]
+            st.dataframe(pend_disp, use_container_width=True, hide_index=True)
