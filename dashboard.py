@@ -2516,7 +2516,7 @@ elif cur == PAGES[8]:
             return ""
 
         st.dataframe(
-            act_df.style.applymap(_colour_unreal, subset=["Unreal %"]),
+            act_df.style.map(_colour_unreal, subset=["Unreal %"]),
             use_container_width=True, hide_index=True,
         )
 
@@ -2546,8 +2546,8 @@ elif cur == PAGES[8]:
 
             st.dataframe(
                 disp.style
-                    .applymap(_outcome_colour, subset=["Outcome"])
-                    .applymap(lambda v: f"color:{'#22c55e' if isinstance(v,(int,float)) and v>=0 else '#ef4444'}" if isinstance(v,(int,float)) else "", subset=["P&L %"]),
+                    .map(_outcome_colour, subset=["Outcome"])
+                    .map(lambda v: f"color:{'#22c55e' if isinstance(v,(int,float)) and v>=0 else '#ef4444'}" if isinstance(v,(int,float)) else "", subset=["P&L %"]),
                 use_container_width=True, hide_index=True,
             )
 
