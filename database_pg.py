@@ -317,6 +317,83 @@ def get_price_date_range() -> tuple[str | None, str | None]:
     return (row["mn"], row["mx"]) if row else (None, None)
 
 
+def get_latest_prices() -> list[tuple]:
+    """Return (symbol, date, high, low, close) rows for the most recent stored date."""
+    with get_conn() as conn:
+        row = _fetchone(conn, "SELECT MAX(date) AS d FROM prices")
+        if not row or not row["d"]:
+            return []
+        rows = _fetchall(
+            conn,
+            "SELECT symbol, date, high, low, close FROM prices WHERE date = %s",
+            (row["d"],),
+        )
+    return [(r["symbol"], r["date"], r["high"], r["low"], r["close"]) for r in rows]
+
+
+def cleanup_ghost_dates():
+    """
+    Delete market-wide holiday ghosts: dates where PSX returned the previous
+    or next session's data for almost all symbols instead of real trading data.
+    Two passes:
+      - Backward ghost: THIS date matches its LAG  (holiday stored prev session)
+      - Forward ghost:  THIS date matches its LEAD (closed day stored next session)
+    """
+    backward_sql = """
+        DELETE FROM prices
+        WHERE date IN (
+            SELECT date FROM (
+                SELECT date,
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN high = ph AND low = pl AND close = pc THEN 1 ELSE 0 END) AS matches
+                FROM (
+                    SELECT symbol, date, high, low, close,
+                           LAG(high)  OVER (PARTITION BY symbol ORDER BY date) AS ph,
+                           LAG(low)   OVER (PARTITION BY symbol ORDER BY date) AS pl,
+                           LAG(close) OVER (PARTITION BY symbol ORDER BY date) AS pc
+                    FROM prices
+                ) sub
+                WHERE ph IS NOT NULL
+                GROUP BY date
+            ) counts
+            WHERE total >= 50 AND matches::float / total >= 0.90
+        )
+    """
+    forward_sql = """
+        DELETE FROM prices
+        WHERE date IN (
+            SELECT date FROM (
+                SELECT date,
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN high = nh AND low = nl AND close = nc THEN 1 ELSE 0 END) AS matches
+                FROM (
+                    SELECT symbol, date, high, low, close,
+                           LEAD(high)  OVER (PARTITION BY symbol ORDER BY date) AS nh,
+                           LEAD(low)   OVER (PARTITION BY symbol ORDER BY date) AS nl,
+                           LEAD(close) OVER (PARTITION BY symbol ORDER BY date) AS nc
+                    FROM prices
+                ) sub
+                WHERE nh IS NOT NULL
+                GROUP BY date
+            ) counts
+            WHERE total >= 50 AND matches::float / total >= 0.90
+        )
+    """
+    total_deleted = 0
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Forward pass first: removes ghost dates that stored the NEXT session's data.
+            # Must run before backward pass so that the real data following a forward ghost
+            # is not mistakenly flagged as a backward ghost (they share identical H/L/C).
+            cur.execute(forward_sql)
+            total_deleted += cur.rowcount or 0
+            cur.execute(backward_sql)
+            total_deleted += cur.rowcount or 0
+    if total_deleted:
+        logger.info("cleanup_ghost_dates: removed %d rows for market-closed dates", total_deleted)
+    return total_deleted
+
+
 def get_sector_price_data() -> list[dict]:
     sql = """
         SELECT s.symbol, s.sector, p.date,
@@ -379,7 +456,7 @@ def save_trade_setup(s: dict) -> int:
                 s["entry_price"], s["stop_loss"],
                 s.get("target_1r", 0.0), s.get("target_2r", 0.0),
                 s.get("risk_pct", 0.0), s.get("atr_pct", 0.0),
-                "Pending", s.get("notes", ""),
+                s.get("status", "Pending"), s.get("notes", ""),
                 s.get("quality_score", 0),
                 json.dumps(s.get("quality_checks", {})),
                 s.get("range_width_pct"), s.get("range_window"),
@@ -521,4 +598,26 @@ def auto_save_setups(setups: list[dict]) -> int:
             saved += 1
     if saved:
         logger.info("Auto-saved %d new system setup(s).", saved)
+    return saved
+
+
+def stm_pick_already_saved(symbol: str, date: str) -> bool:
+    with get_conn() as conn:
+        row = _fetchone(
+            conn,
+            "SELECT 1 FROM trade_setups WHERE symbol=%s AND created_date=%s AND source='STM' LIMIT 1",
+            (symbol, date),
+        )
+    return row is not None
+
+
+def auto_save_stm_picks(picks: list[dict]) -> int:
+    saved = 0
+    for p in picks:
+        date_str = str(p["created_date"])[:10]
+        if not stm_pick_already_saved(p["symbol"], date_str):
+            save_trade_setup(p)
+            saved += 1
+    if saved:
+        logger.info("Auto-saved %d new STM pick(s).", saved)
     return saved

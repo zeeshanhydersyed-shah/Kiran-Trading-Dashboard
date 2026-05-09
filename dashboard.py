@@ -28,6 +28,7 @@ from database import (
     init_db, get_price_date_range, count_prices, count_sectors,
     save_trade_setup, get_trade_setups, update_trade_setup, close_trade_setup,
     activate_trade_setup, delete_trade_setup, auto_save_setups, get_backtest_summary,
+    auto_save_stm_picks,
 )
 from processor import run_analysis
 from main import cmd_update
@@ -201,6 +202,191 @@ def load_weinstein_data() -> dict:
         return {"error": _tb.format_exc()}
 
 
+# ── STM screener data loader ──────────────────────────────────────────────────
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_stm_prices() -> pd.DataFrame:
+    from database import get_sector_price_data
+    raw = get_sector_price_data()
+    if not raw:
+        return pd.DataFrame()
+    df = pd.DataFrame(raw)
+    df["date"]   = pd.to_datetime(df["date"])
+    df["close"]  = pd.to_numeric(df["close"],  errors="coerce")
+    df["high"]   = pd.to_numeric(df["high"],   errors="coerce")
+    df["low"]    = pd.to_numeric(df["low"],    errors="coerce")
+    df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0)
+    return df.sort_values(["symbol", "date"])
+
+
+def _compute_stm_signals(prices_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Per-symbol compute: latest_close, 21MA, 50MA, 5-day range %, avg 10-day volume.
+    Requires at least 50 rows per symbol.
+    """
+    df = prices_df.copy()
+
+    # Keep last 60 rows per symbol — enough for 50 MA with headroom
+    df = df.groupby("symbol", group_keys=False).tail(60)
+
+    # Drop symbols that still don't have 50 bars
+    counts = df.groupby("symbol").size()
+    df = df[df["symbol"].isin(counts[counts >= 50].index)].copy()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    # Rolling MAs aligned to the last row per symbol
+    df = df.sort_values(["symbol", "date"])
+    g_close = df.groupby("symbol")["close"]
+    df["ma21"] = g_close.transform(lambda s: s.rolling(21, min_periods=21).mean())
+    df["ma50"] = g_close.transform(lambda s: s.rolling(50, min_periods=50).mean())
+
+    # ATR-14 (true range)
+    df["prev_close"] = df.groupby("symbol")["close"].shift(1)
+    hl  = (df["high"] - df["low"]).abs()
+    hpc = (df["high"] - df["prev_close"]).abs()
+    lpc = (df["low"]  - df["prev_close"]).abs()
+    df["tr"]     = pd.concat([hl, hpc, lpc], axis=1).max(axis=1)
+    df["atr_14"] = df.groupby("symbol")["tr"].transform(
+        lambda s: s.rolling(14, min_periods=14).mean()
+    )
+
+    # Latest row per symbol carries the final MA values
+    # Use idxmax on date so we always get the true last trading day, not last non-null per column
+    latest_idx = df.groupby("symbol")["date"].idxmax()
+    latest = df.loc[latest_idx].reset_index(drop=True)
+
+    # 5-day high/low for range
+    last5 = df.groupby("symbol", group_keys=False).tail(5)
+    range5 = (
+        last5.groupby("symbol")
+        .agg(high5=("high", "max"), low5=("low", "min"))
+        .reset_index()
+    )
+
+    # 10-day average volume
+    last10  = df.groupby("symbol", group_keys=False).tail(10)
+    vol10   = last10.groupby("symbol")["volume"].mean().reset_index(name="avg_vol_10d")
+
+    result = (
+        latest[["symbol", "sector", "date", "close", "low", "ma21", "ma50", "atr_14"]]
+        .rename(columns={"close": "latest_close", "date": "as_of_date", "low": "day_low"})
+        .merge(range5, on="symbol", how="left")
+        .merge(vol10,  on="symbol", how="left")
+    )
+
+    result["range_5d_pct"] = (
+        (result["high5"] - result["low5"]) / result["low5"] * 100
+    ).round(2)
+
+    for c in ("latest_close", "ma21", "ma50"):
+        result[c] = result[c].round(2)
+
+    result["atr_pct"] = (result["atr_14"] / result["latest_close"] * 100).round(2)
+
+    return result.drop(columns=["high5", "low5", "atr_14"]).dropna(subset=["ma21", "ma50"])
+
+
+def _run_stm_screener(data: dict, w_data: dict) -> dict:
+    """
+    Run all STM filter layers. Returns:
+        all_pass: bool
+        gates: list of (label, passed, detail)
+        qual_sectors: set[str]
+        kse_30d: float
+        result: DataFrame (empty if gates fail or nothing passes)
+    """
+    kse100_d  = data.get("kse100", {})
+    breadth_d = data.get("breadth", {})
+    regime_d  = w_data.get("regime", {}) if not w_data.get("error") else {}
+
+    gate_kse   = bool(kse100_d.get("above_ma50", False))
+    z_hist_val = regime_d.get("z_histogram")
+    gate_reg   = bool(z_hist_val is not None and z_hist_val > 0)
+    bs         = float(breadth_d.get("breadth_score") or 0)
+    gate_br    = bool(bs >= 70)
+
+    kse_close = kse100_d.get("close", 0) or 0
+    kse_ma50  = kse100_d.get("ma50")
+    gates = [
+        ("KSE-100 > 50 MA",        gate_kse, f"{kse_close:,.0f} vs MA {kse_ma50:,.0f}" if kse_ma50 else "unavailable"),
+        ("Regime: Fast Z > Signal", gate_reg, f"Histogram {z_hist_val:+.3f}" if z_hist_val is not None else "unavailable"),
+        ("Breadth: Bullish (≥ 70)", gate_br,  f"Score {bs:.0f}/100"),
+    ]
+    all_pass = gate_kse and gate_reg and gate_br
+
+    # Sector filter (always compute for display)
+    sector_df_s = data.get("sector_df", pd.DataFrame())
+    n_sec    = len(sector_df_s)
+    cutoff   = max(1, round(n_sec * 0.35))
+    qual_sec = set(sector_df_s[sector_df_s["rank"] <= cutoff]["sector"].tolist()) if not sector_df_s.empty else set()
+    kse_30d  = float(kse100_d.get("perf_30d") or 0.0)
+
+    if not all_pass:
+        return dict(all_pass=False, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d, result=pd.DataFrame())
+
+    prices_raw = load_stm_prices()
+    if prices_raw.empty:
+        return dict(all_pass=True, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d, result=pd.DataFrame())
+
+    signals_df = _compute_stm_signals(prices_raw)
+    if signals_df.empty:
+        return dict(all_pass=True, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d, result=pd.DataFrame())
+
+    stock_30d_df = (
+        data["stock_30d"][["symbol", "perf_pct"]]
+        .rename(columns={"perf_pct": "perf_30d"})
+    )
+    stock_10d_raw = data.get("stock_10d", pd.DataFrame())
+    stock_10d_df  = (
+        stock_10d_raw[["symbol", "perf_pct"]].rename(columns={"perf_pct": "perf_10d"})
+        if not stock_10d_raw.empty and "perf_pct" in stock_10d_raw.columns
+        else pd.DataFrame(columns=["symbol", "perf_10d"])
+    )
+
+    # Sector rank lookup (for ML badge)
+    sec_rank_df = (
+        sector_df_s[["sector", "rank"]].rename(columns={"rank": "sector_rank"})
+        if not sector_df_s.empty else pd.DataFrame(columns=["sector", "sector_rank"])
+    )
+
+    df_s = (
+        signals_df
+        .merge(stock_30d_df, on="symbol", how="inner")
+        .merge(stock_10d_df, on="symbol", how="left")
+        .merge(sec_rank_df,  on="sector",  how="left")
+    )
+    df_s["perf_10d"]    = df_s["perf_10d"].fillna(0.0)
+    df_s["sector_rank"] = df_s["sector_rank"].fillna(99).astype(int)
+
+    mask = (
+        df_s["sector"].isin(qual_sec)
+        & (df_s["range_5d_pct"] <= 10.0)
+        & (df_s["avg_vol_10d"]  >= 500_000)
+        & (df_s["latest_close"] >  10.0)
+        & (df_s["perf_30d"]     >  kse_30d)
+        & (df_s["latest_close"] >  df_s["ma21"])
+        & (df_s["ma21"]         >  df_s["ma50"])
+    )
+    result = df_s[mask].copy()
+    result["rs"]            = (result["perf_30d"] - kse_30d).round(2)
+    result["dist_21ma_pct"] = ((result["latest_close"] - result["ma21"]) / result["ma21"] * 100).round(2)
+
+    # Trade parameters: SL = 1% below day low, target = 2R
+    result["stop_loss"]  = (result["day_low"] * 0.99).round(2)
+    result["risk_pct"]   = ((result["latest_close"] - result["stop_loss"]) / result["latest_close"] * 100).round(2)
+    result["target_1r"]  = (result["latest_close"] + (result["latest_close"] - result["stop_loss"])).round(2)
+    result["target_2r"]  = (result["latest_close"] + 2 * (result["latest_close"] - result["stop_loss"])).round(2)
+    result["tradeable"]  = result["risk_pct"] <= 6.0
+    result["breadth_score"] = bs
+
+    result = result.sort_values("rs", ascending=False).reset_index(drop=True)
+    result.index = result.index + 1
+
+    return dict(all_pass=True, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d, result=result)
+
+
 # ── ML model loader ───────────────────────────────────────────────────────────
 
 _MODEL_DIR = __file__.rsplit("\\", 1)[0]
@@ -324,7 +510,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime", "🎯 Setup Perf"]
+PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime", "🎯 Setup Perf", "🔎 STM"]
 
 
 def fmt_date(d) -> str:
@@ -848,9 +1034,9 @@ elif cur == PAGES[2]:
 elif cur == PAGES[3]:
     st.markdown("**Trade Log**")
     st.caption(
-        "**System** = KIRAN's recommendation. "
-        "Mark it Active from the Setups page when you take it — one record, no duplicates. "
-        "**Actual** = a trade you took that KIRAN never suggested (log it below)."
+        "**System** = KIRAN's recommendation (taken or not). "
+        "**STM** = Short-Term Momentum screener pick, auto-saved daily for tracking. "
+        "**Actual** = a trade you took that neither screener suggested (log it below)."
     )
 
     all_saved = get_trade_setups()
@@ -867,7 +1053,7 @@ elif cur == PAGES[3]:
 
         flt1, flt2, flt3 = st.columns([2, 2, 2])
         sf       = flt1.selectbox("Status", ["All","Pending","Active","Hit Target","Hit SL","Cancelled"], key="log_sf")
-        src      = flt2.selectbox("Source", ["All","System","Actual"], key="log_src")
+        src      = flt2.selectbox("Source", ["All","System","STM","Actual"], key="log_src")
         sym_srch = flt3.text_input("Symbol search", placeholder="e.g. BAFL", key="log_sym").strip().upper()
 
         if sf       != "All": log_df = log_df[log_df["status"] == sf]
@@ -905,8 +1091,9 @@ elif cur == PAGES[3]:
 
         def style_source(series):
             return [
-                "color:#3b82f6; font-weight:bold" if v == "System"
-                else "color:#f59e0b; font-weight:bold"
+                "color:#3b82f6;font-weight:bold" if v == "System"
+                else "color:#0ea5e9;font-weight:bold" if v == "STM"
+                else "color:#f59e0b;font-weight:bold"
                 for v in series
             ]
 
@@ -2702,3 +2889,313 @@ elif cur == PAGES[8]:
             pend_disp.columns = ["Date", "Symbol", "Dir", "Sector",
                                   "Entry", "SL", "T1", "Risk %", "Quality"]
             st.dataframe(pend_disp, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STM SCREENER — KIRAN SETUP CROSS-REFERENCE
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("##### 🔎 STM Screener — Kiran Setup Cross-Reference")
+    st.caption(
+        "STM results with a column showing whether Kiran independently has an open setup. "
+        "Both screeners work on their own logic — this is purely informational."
+    )
+
+    with st.spinner("Running STM screener…"):
+        _w = load_weinstein_data()
+        _stm = _run_stm_screener(data, _w)
+
+    # ── STM gate status (compact pills) ──────────────────────────────────────
+    def _mini_pill(label, passed):
+        col  = "#22c55e" if passed else "#ef4444"
+        icon = "✔" if passed else "✖"
+        return (
+            f'<span style="background:{"#f0fdf4" if passed else "#fff5f5"};'
+            f'border:1px solid {col}55;border-radius:20px;padding:3px 10px;'
+            f'font-size:0.7rem;color:{col};font-weight:700;margin-right:6px;">'
+            f'{icon} {label}</span>'
+        )
+
+    pills_html = "".join(_mini_pill(lbl, ok) for lbl, ok, _ in _stm["gates"])
+    st.markdown(
+        f'<div style="margin-bottom:10px;">STM gates: {pills_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if not _stm["all_pass"]:
+        st.info("STM market gates are not all active — cross-reference will show when conditions are met.")
+    else:
+        stm_result = _stm["result"]
+
+        if stm_result.empty:
+            st.info("STM screener returned no stocks under current conditions.")
+        else:
+            # Build Kiran open LONG symbol set
+            kiran_open = pd.concat([pending, active], ignore_index=True) \
+                if (not pending.empty or not active.empty) else pd.DataFrame()
+            kiran_long = kiran_open[kiran_open["direction"] == "LONG"] \
+                if not kiran_open.empty else pd.DataFrame()
+            kiran_syms = set(kiran_long["symbol"].tolist()) if not kiran_long.empty else set()
+
+            # STM result with Kiran flag
+            xref = stm_result.reset_index()[[
+                "symbol", "sector", "as_of_date", "latest_close",
+                "rs", "perf_30d", "range_5d_pct", "dist_21ma_pct", "avg_vol_10d",
+            ]].copy()
+            xref["kiran_setup"] = xref["symbol"].apply(
+                lambda s: "✔ Has setup" if s in kiran_syms else "— No setup"
+            )
+            xref["avg_vol_10d"] = (xref["avg_vol_10d"] / 1_000).round(0).astype(int)
+            xref["as_of_date"]  = pd.to_datetime(xref["as_of_date"]).dt.strftime("%d %b %Y")
+            xref = xref.sort_values("rs", ascending=False).reset_index(drop=True)
+            xref.index = xref.index + 1
+
+            n_with    = (xref["kiran_setup"] == "✔ Has setup").sum()
+            n_without = (xref["kiran_setup"] == "— No setup").sum()
+
+            xm1, xm2, xm3 = st.columns(3)
+            xm1.metric("STM stocks",          len(xref))
+            xm2.metric("Kiran also has setup", n_with)
+            xm3.metric("No Kiran setup",       n_without)
+
+            xref.columns = [
+                "Symbol", "Sector", "As Of", "Close",
+                "RS %", "30d %", "5d Range %", "Dist 21MA %", "Vol 10d (K)",
+                "Kiran Setup",
+            ]
+
+            def _kiran_col(s):
+                return [
+                    "color:#22c55e;font-weight:700" if v == "✔ Has setup"
+                    else "color:#94a3b8"
+                    for v in s
+                ]
+
+            st.dataframe(
+                xref.style
+                    .apply(_kiran_col, subset=["Kiran Setup"])
+                    .apply(lambda s: ["color:#22c55e;font-weight:bold" if v > 0
+                                      else "color:#ef4444;font-weight:bold" for v in s],
+                           subset=["RS %", "30d %"])
+                    .format({
+                        "Close": "{:.2f}", "RS %": "{:+.2f}", "30d %": "{:+.2f}",
+                        "5d Range %": "{:.2f}", "Dist 21MA %": "{:+.2f}",
+                    }),
+                use_container_width=True, hide_index=False,
+                height=min(600, 60 + len(xref) * 36),
+            )
+            st.caption(
+                "Kiran Setup column shows whether Kiran independently generated an open LONG setup "
+                "for that stock. '— No setup' simply means Kiran hasn't flagged it — "
+                "both screeners operate on their own criteria."
+            )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 10 — STM  (Short-Term Momentum Screener)
+# ═══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[9]:
+
+    st.markdown("### 🔎 STM — Short-Term Momentum Screener")
+    st.caption(
+        "Three-layer filter: market regime → top sectors → individual stock conditions. "
+        "Ranked by Relative Strength vs KSE-100."
+    )
+
+    w_data_stm = load_weinstein_data()
+
+    with st.spinner("Running STM screener…"):
+        stm = _run_stm_screener(data, w_data_stm)
+
+    # ── Market filter status cards ────────────────────────────────────────────
+    st.markdown("**Market Filters**")
+
+    def _gate_card(label, passed, detail=""):
+        col  = "#22c55e" if passed else "#ef4444"
+        bg   = "#f0fdf4" if passed else "#fff5f5"
+        icon = "✔ PASS"  if passed else "✖ FAIL"
+        det  = (f'<div style="font-size:0.62rem;color:#64748b;margin-top:2px;">{detail}</div>'
+                if detail else "")
+        return (
+            f'<div style="background:{bg};border:1px solid {col}33;border-top:3px solid {col};'
+            f'border-radius:8px;padding:10px 14px;text-align:center;">'
+            f'<div style="font-size:0.68rem;color:#64748b;text-transform:uppercase;'
+            f'letter-spacing:.06em;margin-bottom:3px;">{label}</div>'
+            f'<div style="font-size:1.05rem;font-weight:800;color:{col};">{icon}</div>'
+            f'{det}</div>'
+        )
+
+    fc1, fc2, fc3 = st.columns(3)
+    for col_w, (label, passed, detail) in zip([fc1, fc2, fc3], stm["gates"]):
+        col_w.markdown(_gate_card(label, passed, detail), unsafe_allow_html=True)
+
+    if not stm["all_pass"]:
+        st.divider()
+        for label, passed, detail in stm["gates"]:
+            if not passed:
+                st.warning(f"Blocked — {label}: {detail}")
+        st.info("All 3 market conditions must be satisfied before the stock scan runs.")
+        st.stop()
+
+    st.divider()
+
+    # ── Sector filter ─────────────────────────────────────────────────────────
+    sector_df_s2 = data["sector_df"]
+    n_sec2       = len(sector_df_s2)
+    cutoff2      = max(1, round(n_sec2 * 0.35))
+
+    top_rows2 = (
+        sector_df_s2[sector_df_s2["rank"] <= cutoff2]
+        .sort_values("rank")[["rank", "sector", "avg_perf_pct", "momentum"]]
+        .copy()
+    )
+    st.markdown(f"**Sector Filter** — top {cutoff2} of {n_sec2} sectors (top 35%)")
+    sec_disp2 = top_rows2.copy()
+    sec_disp2.columns = ["#", "Sector", "30d %", "Momentum"]
+    st.dataframe(
+        sec_disp2.style
+            .apply(style_pct_cols, subset=["30d %"])
+            .apply(style_momentum, subset=["Momentum"])
+            .format({"30d %": "{:+.2f}"}),
+        use_container_width=True,
+        hide_index=True,
+        height=min(380, 46 + cutoff2 * 35),
+    )
+
+    st.divider()
+
+    result    = stm["result"]
+    kse_30d   = stm["kse_30d"]
+    n_passed  = len(result)
+
+    # ── Auto-save today's STM picks (idempotent, once per data load) ──────────
+    _stm_key = f"stm_saved_{id(result)}"
+    if not st.session_state.get(_stm_key) and not result.empty:
+        picks = []
+        for _, row in result.iterrows():
+            date_str = str(row["as_of_date"])[:10]
+            pick = {
+                "created_date":    date_str,
+                "direction":       "LONG",
+                "symbol":          row["symbol"],
+                "sector":          row["sector"],
+                "sector_momentum": "—",
+                "stock_perf_30d":  float(row["perf_30d"]),
+                "stock_perf_10d":  float(row.get("perf_10d", 0.0)),
+                "latest_close":    float(row["latest_close"]),
+                "entry_price":     float(row["latest_close"]),
+                "stop_loss":       float(row["stop_loss"]),
+                "target_1r":       float(row["target_1r"]),
+                "target_2r":       float(row["target_2r"]),
+                "risk_pct":        float(row["risk_pct"]),
+                "atr_pct":         float(row.get("atr_pct", 0.0)),
+                "sector_rank":     int(row.get("sector_rank", 99)),
+                "breadth_score":   float(row.get("breadth_score", 0.0)),
+                "source":          "STM",
+                "status":          "Pending" if row["tradeable"] else "Cancelled",
+                "notes":           "" if row["tradeable"] else f"Skipped: risk {row['risk_pct']:.1f}% > 6% threshold",
+            }
+            picks.append(pick)
+        auto_save_stm_picks(picks)
+        st.session_state[_stm_key] = True
+
+    sm1, sm2, sm3, sm4 = st.columns(4)
+    sm1.metric("KSE-100 30d",        f"{kse_30d:+.1f}%")
+    sm2.metric("Passed All Filters",  f"{n_passed}")
+    sm3.metric("Best RS",             f"{result['rs'].iloc[0]:+.1f}%" if n_passed else "—")
+    sm4.metric("Avg RS",              f"{result['rs'].mean():+.1f}%"  if n_passed else "—")
+
+    st.divider()
+
+    if result.empty:
+        st.info("No stocks passed all filters under current market conditions.")
+        st.stop()
+
+    n_tradeable = int(result["tradeable"].sum())
+    st.markdown(
+        f"**{n_passed} stocks passed** — {n_tradeable} tradeable (risk ≤ 6%) · "
+        f"ranked by Relative Strength (30d% vs KSE-100 {kse_30d:+.1f}%)"
+    )
+
+    # ── Compute ML badge per row ───────────────────────────────────────────────
+    ml_scores = []
+    for _, row in result.iterrows():
+        ml_row = {
+            "avg_vol_10d":    row.get("avg_vol_10d", 0),
+            "atr_pct":        row.get("atr_pct", 0.0),
+            "stock_perf_30d": row.get("perf_30d", 0.0),
+            "risk_pct":       row.get("risk_pct", 0.0),
+            "stock_perf_10d": row.get("perf_10d", 0.0),
+            "sector_rank":    row.get("sector_rank", 99),
+            "breadth_score":  row.get("breadth_score", 0.0),
+            "as_of_date":     str(row.get("as_of_date", "")),
+            "entry_price":    row.get("latest_close", 0.0),
+            "latest_close":   row.get("latest_close", 0.0),
+        }
+        prob = get_ml_confidence(ml_row)
+        ml_scores.append(int(round(prob * 100)) if prob is not None else None)
+
+    # ── Display table ─────────────────────────────────────────────────────────
+    disp = result[[
+        "symbol", "sector", "as_of_date", "latest_close",
+        "rs", "perf_30d", "range_5d_pct",
+        "avg_vol_10d", "ma21", "ma50", "dist_21ma_pct",
+        "stop_loss", "risk_pct", "target_2r", "tradeable",
+    ]].copy()
+    disp["avg_vol_10d"] = (disp["avg_vol_10d"] / 1_000).round(0).astype(int)
+    disp["as_of_date"]  = pd.to_datetime(disp["as_of_date"]).dt.strftime("%d %b %Y")
+    disp["ML %"]        = ml_scores
+    disp["tradeable"]   = disp["tradeable"].map({True: "✔ Valid", False: "✖ Skip"})
+    disp.columns = [
+        "Symbol", "Sector", "As Of", "Close (PKR)",
+        "RS %", "30d %", "5d Range %",
+        "Vol 10d (K)", "21 MA", "50 MA", "Dist 21MA %",
+        "SL", "Risk %", "T2R", "Trade",
+        "ML %",
+    ]
+
+    def _style_rs(s):
+        return ["color:#22c55e;font-weight:bold" if v > 0 else "color:#ef4444;font-weight:bold" for v in s]
+    def _style_range(s):
+        return ["color:#22c55e" if v <= 5 else "color:#fbbf24" if v <= 8 else "color:#94a3b8" for v in s]
+    def _style_dist(s):
+        return ["color:#22c55e;font-weight:bold" if 0 < v <= 5 else "color:#fbbf24" if 0 < v <= 10 else "color:#94a3b8" for v in s]
+    def _style_trade(s):
+        return ["color:#22c55e;font-weight:700" if v == "✔ Valid" else "color:#ef4444" for v in s]
+    def _style_risk(s):
+        return ["color:#22c55e" if v <= 3 else "color:#fbbf24" if v <= 6 else "color:#ef4444" for v in s]
+    def _style_ml(s):
+        return [
+            "color:#16a34a;font-weight:700" if (v is not None and v >= 65)
+            else "color:#b45309;font-weight:700" if (v is not None and v >= 50)
+            else "color:#dc2626" if v is not None
+            else "color:#94a3b8"
+            for v in s
+        ]
+
+    fmt_map = {
+        "Close (PKR)": "{:.2f}", "RS %": "{:+.2f}", "30d %": "{:+.2f}",
+        "5d Range %": "{:.2f}", "21 MA": "{:.2f}", "50 MA": "{:.2f}",
+        "Dist 21MA %": "{:+.2f}", "SL": "{:.2f}", "Risk %": "{:.2f}", "T2R": "{:.2f}",
+    }
+
+    st.dataframe(
+        disp.style
+            .apply(_style_rs,    subset=["RS %", "30d %"])
+            .apply(_style_range, subset=["5d Range %"])
+            .apply(_style_dist,  subset=["Dist 21MA %"])
+            .apply(_style_trade, subset=["Trade"])
+            .apply(_style_risk,  subset=["Risk %"])
+            .apply(_style_ml,    subset=["ML %"])
+            .format(fmt_map, na_rep="—"),
+        use_container_width=True, hide_index=False,
+        height=min(640, 60 + n_passed * 36),
+    )
+    st.caption(
+        "**RS %** = stock 30d% − KSE-100 30d%  ·  "
+        "**5d Range %** = (5-day High − Low) / 5-day Low  ·  "
+        "**Dist 21MA %** = how far close is above 21 MA  ·  "
+        "**SL** = 1% below day low  ·  **T2R** = 2R target  ·  "
+        "**Trade** = ✔ Valid if Risk % ≤ 6%  ·  **ML %** = win probability (RandomForest)  ·  "
+        "Index = rank by RS  ·  Picks auto-saved to Trade Log as source STM"
+    )
