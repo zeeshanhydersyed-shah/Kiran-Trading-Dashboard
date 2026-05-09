@@ -510,7 +510,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime", "🎯 Setup Perf", "🔎 STM"]
+PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime", "🎯 Setup Perf", "🔎 STM", "🏥 Model Health"]
 
 
 def fmt_date(d) -> str:
@@ -562,6 +562,29 @@ BLUE = "#3b82f6"
 # ── Session state — active page ───────────────────────────────────────────────
 if "page" not in st.session_state:
     st.session_state.page = PAGES[0]
+
+# ── Auto-log today's predictions once per calendar day ───────────────────────
+import datetime as _dt, os as _auto_os, subprocess as _auto_sp, sys as _auto_sys
+_today_key = f"predictions_logged_{_dt.date.today()}"
+if _today_key not in st.session_state:
+    st.session_state[_today_key] = False
+
+if not st.session_state[_today_key]:
+    try:
+        _log_script = _auto_os.path.join(_MODEL_DIR, "part7_prediction_log.py")
+        if _auto_os.path.exists(_log_script):
+            _auto_sp.run(
+                [_auto_sys.executable, _log_script, "log-today"],
+                capture_output=True, text=True, timeout=30,
+            )
+            _auto_sp.run(
+                [_auto_sys.executable, _log_script, "update-outcomes"],
+                capture_output=True, text=True, timeout=30,
+            )
+    except Exception:
+        pass
+    finally:
+        st.session_state[_today_key] = True
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -3161,8 +3184,9 @@ elif cur == PAGES[9]:
         f"ranked by Relative Strength (30d% vs KSE-100 {kse_30d:+.1f}%)"
     )
 
-    # ── Compute ML badge per row ───────────────────────────────────────────────
-    ml_scores = []
+    # ── Compute ML badge and quality score per row ────────────────────────────
+    ml_scores    = []
+    qual_scores  = []
     for _, row in result.iterrows():
         ml_row = {
             "avg_vol_10d":    row.get("avg_vol_10d", 0),
@@ -3179,6 +3203,19 @@ elif cur == PAGES[9]:
         prob = get_ml_confidence(ml_row)
         ml_scores.append(int(round(prob * 100)) if prob is not None else None)
 
+        # STM quality score (0-4): each check adds 1 point
+        #   1. RS > 5%     — strong relative strength vs KSE-100
+        #   2. 5d range ≤ 5%  — tight consolidation, low volatility
+        #   3. dist_21ma ≤ 5% — close to 21 MA, not overextended
+        #   4. risk ≤ 3%   — tight stop, good entry timing
+        qs = int(
+            (row.get("rs",            0.0) > 5.0)
+          + (row.get("range_5d_pct",  99.) <= 5.0)
+          + (0 < row.get("dist_21ma_pct", 99.) <= 5.0)
+          + (row.get("risk_pct",      99.) <= 3.0)
+        )
+        qual_scores.append(qs)
+
     # ── Display table ─────────────────────────────────────────────────────────
     disp = result[[
         "symbol", "sector", "as_of_date", "latest_close",
@@ -3188,6 +3225,7 @@ elif cur == PAGES[9]:
     ]].copy()
     disp["avg_vol_10d"] = (disp["avg_vol_10d"] / 1_000).round(0).astype(int)
     disp["as_of_date"]  = pd.to_datetime(disp["as_of_date"]).dt.strftime("%d %b %Y")
+    disp["Score"]       = qual_scores
     disp["ML %"]        = ml_scores
     disp["tradeable"]   = disp["tradeable"].map({True: "✔ Valid", False: "✖ Skip"})
     disp.columns = [
@@ -3195,7 +3233,7 @@ elif cur == PAGES[9]:
         "RS %", "30d %", "5d Range %",
         "Vol 10d (K)", "21 MA", "50 MA", "Dist 21MA %",
         "SL", "Risk %", "T2R", "Trade",
-        "ML %",
+        "Score", "ML %",
     ]
 
     def _style_rs(s):
@@ -3208,6 +3246,13 @@ elif cur == PAGES[9]:
         return ["color:#22c55e;font-weight:700" if v == "✔ Valid" else "color:#ef4444" for v in s]
     def _style_risk(s):
         return ["color:#22c55e" if v <= 3 else "color:#fbbf24" if v <= 6 else "color:#ef4444" for v in s]
+    def _style_score(s):
+        return [
+            "color:#16a34a;font-weight:700" if v >= 3
+            else "color:#b45309;font-weight:700" if v == 2
+            else "color:#94a3b8"
+            for v in s
+        ]
     def _style_ml(s):
         return [
             "color:#16a34a;font-weight:700" if (v is not None and v >= 65)
@@ -3223,6 +3268,11 @@ elif cur == PAGES[9]:
         "Dist 21MA %": "{:+.2f}", "SL": "{:.2f}", "Risk %": "{:.2f}", "T2R": "{:.2f}",
     }
 
+    st.caption(
+        "**Score (0–4)** — checklist of 4 setup quality rules: "
+        "🟢 3–4 = best &nbsp;·&nbsp; 🟡 2 = borderline &nbsp;·&nbsp; ⚪ 0–1 = weak"
+    )
+
     st.dataframe(
         disp.style
             .apply(_style_rs,    subset=["RS %", "30d %"])
@@ -3230,6 +3280,7 @@ elif cur == PAGES[9]:
             .apply(_style_dist,  subset=["Dist 21MA %"])
             .apply(_style_trade, subset=["Trade"])
             .apply(_style_risk,  subset=["Risk %"])
+            .apply(_style_score, subset=["Score"])
             .apply(_style_ml,    subset=["ML %"])
             .format(fmt_map, na_rep="—"),
         use_container_width=True, hide_index=False,
@@ -3240,6 +3291,69 @@ elif cur == PAGES[9]:
         "**5d Range %** = (5-day High − Low) / 5-day Low  ·  "
         "**Dist 21MA %** = how far close is above 21 MA  ·  "
         "**SL** = 1% below day low  ·  **T2R** = 2R target  ·  "
-        "**Trade** = ✔ Valid if Risk % ≤ 6%  ·  **ML %** = win probability (RandomForest)  ·  "
+        "**Trade** = ✔ Valid if Risk % ≤ 6%  ·  **ML %** = win probability (LightGBM model)  ·  "
         "Index = rank by RS  ·  Picks auto-saved to Trade Log as source STM"
     )
+
+# ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
+elif cur == PAGES[10]:
+    import os as _os
+    import subprocess as _sp
+    import traceback as _tb
+
+    st.markdown("### 🏥 Model Health Dashboard")
+    st.caption("Live accuracy tracking for both ML models. Refresh daily after logging predictions.")
+
+    from part5_model_health import generate_health_report
+    try:
+        report = generate_health_report()
+        st.code(report, language=None)
+    except Exception as _e:
+        st.error(f"Could not generate report: {_e}")
+        st.code(_tb.format_exc())
+
+    st.divider()
+
+    # ── Prediction log summary ────────────────────────────────────────────────
+    _pred_log_path = _os.path.join(_MODEL_DIR, "prediction_log.csv")
+    if _os.path.exists(_pred_log_path):
+        log_df    = pd.read_csv(_pred_log_path)
+        evaluated = log_df.dropna(subset=["was_correct"])
+
+        st.markdown("#### Prediction Log")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total logged", len(log_df))
+        col2.metric("Evaluated",    len(evaluated))
+        if len(evaluated) > 0:
+            col3.metric("Overall accuracy", f"{evaluated['was_correct'].mean():.1%}")
+
+        if len(evaluated) >= 5:
+            st.markdown("**Recent predictions**")
+            show_cols = [c for c in ["log_date", "symbol", "prediction", "ml_probability", "was_correct", "actual_return"] if c in log_df.columns]
+            recent = log_df[show_cols].tail(30).sort_index(ascending=False).copy()
+            if "ml_probability" in recent.columns:
+                recent["ml_probability"] = pd.to_numeric(recent["ml_probability"], errors="coerce").map(lambda x: f"{x:.0%}" if pd.notna(x) else "—")
+            if "actual_return" in recent.columns:
+                recent["actual_return"]  = pd.to_numeric(recent["actual_return"],  errors="coerce").map(lambda x: f"{x:+.2%}" if pd.notna(x) else "—")
+            if "was_correct" in recent.columns:
+                recent["was_correct"]    = recent["was_correct"].map(lambda x: "✔" if x == 1 else ("✖" if x == 0 else "—"))
+            st.dataframe(recent, use_container_width=True, hide_index=True)
+    else:
+        st.info("No prediction log yet. Use the buttons below to start logging predictions.")
+
+    st.divider()
+    st.markdown("**Quick actions**")
+    c1, c2, c3 = st.columns(3)
+    _py = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "python.exe") if False else __import__("sys").executable
+    if c1.button("Log today's predictions"):
+        r = _sp.run([_py, _os.path.join(_MODEL_DIR, "part7_prediction_log.py"), "log-today"],
+                    capture_output=True, text=True)
+        st.code(r.stdout or r.stderr)
+    if c2.button("Update outcomes"):
+        r = _sp.run([_py, _os.path.join(_MODEL_DIR, "part7_prediction_log.py"), "update-outcomes"],
+                    capture_output=True, text=True)
+        st.code(r.stdout or r.stderr)
+    if c3.button("Force retrain now"):
+        r = _sp.run([_py, _os.path.join(_MODEL_DIR, "part4_monthly_retrain.py"), "--force"],
+                    capture_output=True, text=True, timeout=300)
+        st.code(r.stdout or r.stderr)
