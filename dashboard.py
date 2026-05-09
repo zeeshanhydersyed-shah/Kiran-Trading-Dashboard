@@ -1112,13 +1112,57 @@ elif cur == PAGES[3]:
             use_container_width=True, hide_index=True, height=340,
         )
 
+    # ── Activate a pending trade ──────────────────────────────────────────────
+    if all_saved:
+        pending_trades = [
+            t for t in all_saved
+            if t.get("status") == "Pending"
+            and t.get("source") in ("System", "STM")
+        ]
+        if pending_trades:
+            st.divider()
+            st.markdown("**✏️ I took this trade**")
+            st.caption(
+                "Select a Pending setup (System or STM) you actually entered. "
+                "Records your fill and marks it Active — no duplicate created."
+            )
+            act_opts = {
+                f"#{t['id']} · {t['symbol']} {t['direction']} "
+                f"@ {t['entry_price']:.2f}  [{t.get('source','?')} · {fmt_date(t['created_date'])}]": t
+                for t in pending_trades
+            }
+            with st.form("activate_trade_form", clear_on_submit=True):
+                act_chosen_label = st.selectbox(
+                    "Pending setup", list(act_opts.keys()),
+                    label_visibility="collapsed", key="act_sel",
+                )
+                act_chosen = act_opts[act_chosen_label]
+
+                af1, af2 = st.columns([1, 3])
+                act_fill  = af1.number_input(
+                    "My fill price", min_value=0.0,
+                    value=float(act_chosen["entry_price"]),
+                    step=0.01, format="%.2f",
+                )
+                act_note = af2.text_input("Notes (optional)", placeholder="e.g. filled at open, partial")
+
+                if st.form_submit_button("✏️ Mark as Active", type="primary"):
+                    fill = act_fill if act_fill > 0 else None
+                    activate_trade_setup(act_chosen["id"], fill, act_note.strip() or None)
+                    st.success(
+                        f"{act_chosen['symbol']} {act_chosen['direction']} "
+                        f"marked Active — fill {fill:.2f}" if fill else
+                        f"{act_chosen['symbol']} {act_chosen['direction']} marked Active."
+                    )
+                    st.rerun()
+
     # ── Log a non-KIRAN trade ─────────────────────────────────────────────────
     st.divider()
     st.markdown("**Log a non-KIRAN trade**")
     st.caption(
-        "Use this **only** for trades KIRAN did not suggest. "
-        "For KIRAN setups, use the **✏️ I took this trade** button on the Setups page — "
-        "that updates the existing system record instead of creating a duplicate."
+        "Use this **only** for trades no screener suggested. "
+        "For System or STM setups, use **✏️ I took this trade** above — "
+        "that updates the existing record instead of creating a duplicate."
     )
 
     with st.form("actual_trade_form", clear_on_submit=True):
