@@ -61,18 +61,16 @@ def trading_dates_to_scrape(calendar_days: int = CALENDAR_DAYS_BACK) -> list[dat
 
 
 def dates_since(last_date: date) -> list[date]:
-    """Return weekday dates from the day after `last_date` up to but NOT including today.
+    """Return weekday dates from the day after `last_date` up to and including today.
 
-    The scraper runs every morning before PSX closes (~15:30 PKT). Requesting
-    today's date from PSX returns the previous session's data (the market hasn't
-    closed yet), which would be stored under the wrong date. Excluding today
-    ensures every stored row carries the correct session date. Today's session
-    is picked up automatically the following morning.
+    The scraper runs at 16:35 PKT, after PSX closes at 15:30 PKT and after
+    ksestocks.com publishes final data (~16:15–16:30 PKT), so today's date is
+    safe to request.
     """
     today = date.today()
     result = []
     d = last_date + timedelta(days=1)
-    while d < today:
+    while d <= today:
         if _is_weekday(d):
             result.append(d)
         d += timedelta(days=1)
