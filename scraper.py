@@ -20,6 +20,7 @@ from config import (
     MAX_RETRIES,
     INDEX_SYMBOLS,
     CALENDAR_DAYS_BACK,
+    SECTOR_OVERRIDES,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,17 +61,18 @@ def trading_dates_to_scrape(calendar_days: int = CALENDAR_DAYS_BACK) -> list[dat
 
 
 def dates_since(last_date: date) -> list[date]:
-    """Return weekday dates from the day after `last_date` up to and including today.
+    """Return weekday dates from the day after `last_date` up to but NOT including today.
 
-    PSX closes at ~15:30 PKT.  We always include today so that a post-close
-    --update pull fetches the current session's data.  If the market hasn't
-    closed yet the scrape will simply return no rows for today (the source
-    won't have posted data) and nothing will be inserted.
+    The scraper runs every morning before PSX closes (~15:30 PKT). Requesting
+    today's date from PSX returns the previous session's data (the market hasn't
+    closed yet), which would be stored under the wrong date. Excluding today
+    ensures every stored row carries the correct session date. Today's session
+    is picked up automatically the following morning.
     """
     today = date.today()
     result = []
     d = last_date + timedelta(days=1)
-    while d <= today:
+    while d < today:
         if _is_weekday(d):
             result.append(d)
         d += timedelta(days=1)
@@ -231,13 +233,33 @@ def scrape_date(target_date: date, session: requests.Session) -> tuple[list, lis
     return sector_rows, price_rows, index_rows
 
 
+def _price_fingerprint(p_rows: list) -> dict:
+    """Build {symbol: (high, low, close)} for stale-data comparison."""
+    return {r[0]: (r[2], r[3], r[4]) for r in p_rows if len(r) >= 5}
+
+
+def _is_stale(curr: dict, prev: dict, threshold: float = 0.90) -> bool:
+    """Return True if >=threshold of common symbols have identical H/L/C — market was closed."""
+    if not curr or not prev:
+        return False
+    common = set(curr) & set(prev)
+    if len(common) < 20:
+        return False
+    matches = sum(1 for sym in common if curr[sym] == prev[sym])
+    return (matches / len(common)) >= threshold
+
+
 def scrape_date_range(
     dates: list[date],
     session: requests.Session | None = None,
-) -> tuple[list, list]:
+    prev_prices: list | None = None,
+) -> tuple[list, list, list]:
     """
     Scrape multiple dates sequentially.
-    Returns merged (sector_rows, price_rows).
+    Returns merged (sector_rows, price_rows, index_rows).
+
+    prev_prices: price rows from the DB's last stored date, used to detect
+                 the first date in the batch being a holiday ghost.
     """
     if session is None:
         session = build_session()
@@ -246,14 +268,28 @@ def scrape_date_range(
     all_prices:  list = []
     all_indices: list = []
 
+    prev_fp = _price_fingerprint(prev_prices) if prev_prices else None
+
     total = len(dates)
     for idx, d in enumerate(dates, 1):
         logger.info("Scraping %s (%d/%d)…", d, idx, total)
         s_rows, p_rows, i_rows = scrape_date(d, session)
 
+        if p_rows:
+            curr_fp = _price_fingerprint(p_rows)
+            if prev_fp is not None and _is_stale(curr_fp, prev_fp):
+                logger.warning(
+                    "Skipping %s — PSX returned identical data to previous session "
+                    "(market closed / public holiday). No rows stored.", d
+                )
+                if idx < total:
+                    time.sleep(REQUEST_DELAY)
+                continue
+            prev_fp = curr_fp
+
         # Later sector assignments win (keep the most recent sector mapping)
         for sym, sec in s_rows:
-            all_sectors[sym] = sec
+            all_sectors[sym] = SECTOR_OVERRIDES.get(sym, sec)
 
         all_prices.extend(p_rows)
         all_indices.extend(i_rows)

@@ -64,6 +64,15 @@ DFC_SYMBOLS = {
 
 # Sectors excluded from performance rankings.
 # Includes derivatives, financials-of-financials, and sectors with thin/noisy data.
+# Symbols whose sector is wrong on ksestocks.com and must be overridden.
+# GAL (Ghandhara Automobiles) lands in the site's "Unknown Sector" bucket
+# even though PSX officially classifies it as an Automobile Assembler.
+SECTOR_OVERRIDES = {
+    "GAL": "AUTOMOBILE ASSEMBLER",
+}
+
+# Sectors excluded from performance rankings.
+# Includes derivatives, financials-of-financials, and sectors with thin/noisy data.
 EXCLUDED_SECTORS = {
     "CLOSE - END MUTUAL FUND",
     "INV. BANKS / INV. COS. / SECURITIES COS.",

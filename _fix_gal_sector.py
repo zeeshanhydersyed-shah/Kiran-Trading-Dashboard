@@ -1,11 +1,11 @@
 """
-One-off: move GAL from its current sector to AUTOMOBILE ASSEMBLERS.
+One-off: move GAL to AUTOMOBILE ASSEMBLER (correct PSX sector).
 Works against whichever backend is active (SQLite locally, PostgreSQL if DATABASE_URL is set).
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 
-TARGET_SECTOR = "AUTOMOBILE ASSEMBLERS"
+TARGET_SECTOR = "AUTOMOBILE ASSEMBLER"
 
 use_pg = bool(os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL"))
 
@@ -64,7 +64,6 @@ with get_conn() as conn:
     n = execute(conn, f"UPDATE sectors SET sector = {PLACEHOLDER} WHERE symbol = {PLACEHOLDER}", (TARGET_SECTOR, "GAL"))
     print(f"sectors update         : {n} row(s) affected")
 
-    # Also fix any trade_setups rows that still carry the old sector label
     n2 = execute(
         conn,
         f"UPDATE trade_setups SET sector = {PLACEHOLDER} WHERE symbol = {PLACEHOLDER} AND sector = {PLACEHOLDER}",
