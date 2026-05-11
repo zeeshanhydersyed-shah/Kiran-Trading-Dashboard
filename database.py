@@ -570,8 +570,8 @@ def auto_save_setups(setups: list[dict]) -> int:
 def stm_pick_already_saved(symbol: str, date: str) -> bool:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT 1 FROM trade_setups WHERE symbol=? AND created_date=? AND source='STM' LIMIT 1",
-            (symbol, date),
+            "SELECT 1 FROM trade_setups WHERE symbol=? AND source='STM' AND status IN ('Pending','Active') LIMIT 1",
+            (symbol,),
         ).fetchone()
     return row is not None
 

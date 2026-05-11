@@ -605,8 +605,8 @@ def stm_pick_already_saved(symbol: str, date: str) -> bool:
     with get_conn() as conn:
         row = _fetchone(
             conn,
-            "SELECT 1 FROM trade_setups WHERE symbol=%s AND created_date=%s AND source='STM' LIMIT 1",
-            (symbol, date),
+            "SELECT 1 FROM trade_setups WHERE symbol=%s AND source='STM' AND status IN ('Pending','Active') LIMIT 1",
+            (symbol,),
         )
     return row is not None
 
