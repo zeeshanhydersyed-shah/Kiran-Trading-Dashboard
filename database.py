@@ -521,15 +521,15 @@ def delete_trade_setup(setup_id: int):
 
 
 def setup_already_saved(symbol: str, direction: str, created_date: str) -> bool:
-    """Prevent saving the same setup twice on the same day."""
+    """Prevent saving a setup when the same symbol+direction already has an open one."""
     with get_conn() as conn:
         row = conn.execute(
             """
             SELECT 1 FROM trade_setups
-            WHERE symbol=? AND direction=? AND created_date=?
+            WHERE symbol=? AND direction=? AND source='System' AND status IN ('Pending','Active')
             LIMIT 1
             """,
-            (symbol, direction, created_date),
+            (symbol, direction),
         ).fetchone()
     return row is not None
 

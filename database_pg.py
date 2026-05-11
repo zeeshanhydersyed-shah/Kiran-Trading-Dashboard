@@ -571,8 +571,8 @@ def setup_already_saved(symbol: str, direction: str, created_date: str) -> bool:
     with get_conn() as conn:
         row = _fetchone(
             conn,
-            "SELECT 1 FROM trade_setups WHERE symbol=%s AND direction=%s AND created_date=%s LIMIT 1",
-            (symbol, direction, created_date),
+            "SELECT 1 FROM trade_setups WHERE symbol=%s AND direction=%s AND source='System' AND status IN ('Pending','Active') LIMIT 1",
+            (symbol, direction),
         )
     return row is not None
 
