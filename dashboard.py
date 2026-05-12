@@ -3312,23 +3312,6 @@ elif cur == PAGES[9]:
             st.info("LONG gates not active — screener will show candidates when all 3 conditions are met.")
         else:
             st.divider()
-            sector_df_s2 = data["sector_df"]
-            n_sec2  = len(sector_df_s2)
-            cutoff2 = max(1, round(n_sec2 * 0.35))
-            top_rows2 = (
-                sector_df_s2[sector_df_s2["rank"] <= cutoff2]
-                .sort_values("rank")[["rank", "sector", "avg_perf_pct", "momentum"]].copy()
-            )
-            st.markdown(f"**Sector Filter** — top {cutoff2} of {n_sec2} sectors (strongest 35%)")
-            sec_disp2 = top_rows2.copy(); sec_disp2.columns = ["#", "Sector", "30d %", "Momentum"]
-            st.dataframe(
-                sec_disp2.style.apply(style_pct_cols, subset=["30d %"])
-                    .apply(style_momentum, subset=["Momentum"]).format({"30d %": "{:+.2f}"}),
-                use_container_width=True, hide_index=True,
-                height=min(380, 46 + cutoff2 * 35),
-            )
-            st.divider()
-
             result  = stm["result"]
             kse_30d = stm["kse_30d"]
             n_passed = len(result)
@@ -3444,23 +3427,7 @@ elif cur == PAGES[9]:
             st.info("SHORT gates not active — screener will show candidates when all 3 bearish conditions are met.")
         else:
             st.divider()
-            sector_df_sh = data["sector_df"]
-            n_sec_sh  = len(sector_df_sh)
-            cutoff_sh = max(1, round(n_sec_sh * 0.35))
-            bot_rows = (
-                sector_df_sh[sector_df_sh["rank"] > (n_sec_sh - cutoff_sh)]
-                .sort_values("rank", ascending=False)[["rank", "sector", "avg_perf_pct", "momentum"]].copy()
-            )
-            st.markdown(f"**Sector Filter** — bottom {cutoff_sh} of {n_sec_sh} sectors (weakest 35%)")
-            bot_disp = bot_rows.copy(); bot_disp.columns = ["#", "Sector", "30d %", "Momentum"]
-            st.dataframe(
-                bot_disp.style.apply(style_pct_cols, subset=["30d %"])
-                    .apply(style_momentum, subset=["Momentum"]).format({"30d %": "{:+.2f}"}),
-                use_container_width=True, hide_index=True,
-                height=min(380, 46 + cutoff_sh * 35),
-            )
             st.divider()
-
             short_result = stm["short_result"]
             kse_30d_sh   = stm["kse_30d"]
             n_short      = len(short_result)
