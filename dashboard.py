@@ -290,25 +290,31 @@ def _compute_stm_signals(prices_df: pd.DataFrame) -> pd.DataFrame:
 
 def _run_stm_screener(data: dict, w_data: dict) -> dict:
     """
-    Run all STM filter layers. Returns:
-        all_pass: bool
-        gates: list of (label, passed, detail)
-        qual_sectors: set[str]
-        kse_30d: float
-        result: DataFrame (empty if gates fail or nothing passes)
+    Run all STM filter layers for both LONG and SHORT directions.
+
+    LONG  — KSE above 50MA, Z-histogram > 0, breadth >= 70,
+            top 35% sectors, close > 21MA > 50MA, outperforming index.
+    SHORT — exact opposite: KSE below 50MA, Z-histogram < 0, breadth <= 30,
+            bottom 35% sectors, close < 21MA < 50MA, underperforming index.
+
+    Returns dict with keys:
+        all_pass, gates, qual_sectors, kse_30d, result          (LONG)
+        short_all_pass, short_gates, short_qual_sectors, short_result  (SHORT)
     """
     kse100_d  = data.get("kse100", {})
     breadth_d = data.get("breadth", {})
     regime_d  = w_data.get("regime", {}) if not w_data.get("error") else {}
 
-    gate_kse   = bool(kse100_d.get("above_ma50", False))
+    kse_close  = kse100_d.get("close", 0) or 0
+    kse_ma50   = kse100_d.get("ma50")
     z_hist_val = regime_d.get("z_histogram")
-    gate_reg   = bool(z_hist_val is not None and z_hist_val > 0)
     bs         = float(breadth_d.get("breadth_score") or 0)
-    gate_br    = bool(bs >= 70)
+    kse_30d    = float(kse100_d.get("perf_30d") or 0.0)
 
-    kse_close = kse100_d.get("close", 0) or 0
-    kse_ma50  = kse100_d.get("ma50")
+    # ── LONG gates ────────────────────────────────────────────────────────────
+    gate_kse = bool(kse100_d.get("above_ma50", False))
+    gate_reg = bool(z_hist_val is not None and z_hist_val > 0)
+    gate_br  = bool(bs >= 70)
     gates = [
         ("KSE-100 > 50 MA",        gate_kse, f"{kse_close:,.0f} vs MA {kse_ma50:,.0f}" if kse_ma50 else "unavailable"),
         ("Regime: Fast Z > Signal", gate_reg, f"Histogram {z_hist_val:+.3f}" if z_hist_val is not None else "unavailable"),
@@ -316,36 +322,63 @@ def _run_stm_screener(data: dict, w_data: dict) -> dict:
     ]
     all_pass = gate_kse and gate_reg and gate_br
 
-    # Sector filter (always compute for display)
-    sector_df_s = data.get("sector_df", pd.DataFrame())
-    n_sec    = len(sector_df_s)
-    cutoff   = max(1, round(n_sec * 0.35))
-    qual_sec = set(sector_df_s[sector_df_s["rank"] <= cutoff]["sector"].tolist()) if not sector_df_s.empty else set()
-    kse_30d  = float(kse100_d.get("perf_30d") or 0.0)
+    # ── SHORT gates (exact opposite) ─────────────────────────────────────────
+    short_gate_kse = not gate_kse
+    short_gate_reg = bool(z_hist_val is not None and z_hist_val < 0)
+    short_gate_br  = bool(bs <= 30)
+    short_gates = [
+        ("KSE-100 < 50 MA",         short_gate_kse, f"{kse_close:,.0f} vs MA {kse_ma50:,.0f}" if kse_ma50 else "unavailable"),
+        ("Regime: Fast Z < Signal",  short_gate_reg, f"Histogram {z_hist_val:+.3f}" if z_hist_val is not None else "unavailable"),
+        ("Breadth: Bearish (≤ 30)",  short_gate_br,  f"Score {bs:.0f}/100"),
+    ]
+    short_all_pass = short_gate_kse and short_gate_reg and short_gate_br
 
-    if not all_pass:
-        return dict(all_pass=False, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d, result=pd.DataFrame())
+    # ── Sector sets ───────────────────────────────────────────────────────────
+    sector_df_s = data.get("sector_df", pd.DataFrame())
+    n_sec   = len(sector_df_s)
+    cutoff  = max(1, round(n_sec * 0.35))
+
+    qual_sec = set()
+    weak_sec = set()
+    if not sector_df_s.empty:
+        qual_sec = set(sector_df_s[sector_df_s["rank"] <= cutoff]["sector"].tolist())
+        weak_sec = set(sector_df_s[sector_df_s["rank"] > (n_sec - cutoff)]["sector"].tolist())
+
+    # Early return if neither side needs stock scan
+    if not all_pass and not short_all_pass:
+        return dict(
+            all_pass=False, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d,
+            result=pd.DataFrame(),
+            short_all_pass=False, short_gates=short_gates,
+            short_qual_sectors=weak_sec, short_result=pd.DataFrame(),
+        )
 
     prices_raw = load_stm_prices()
     if prices_raw.empty:
-        return dict(all_pass=True, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d, result=pd.DataFrame())
+        return dict(
+            all_pass=all_pass, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d,
+            result=pd.DataFrame(),
+            short_all_pass=short_all_pass, short_gates=short_gates,
+            short_qual_sectors=weak_sec, short_result=pd.DataFrame(),
+        )
 
     signals_df = _compute_stm_signals(prices_raw)
     if signals_df.empty:
-        return dict(all_pass=True, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d, result=pd.DataFrame())
+        return dict(
+            all_pass=all_pass, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d,
+            result=pd.DataFrame(),
+            short_all_pass=short_all_pass, short_gates=short_gates,
+            short_qual_sectors=weak_sec, short_result=pd.DataFrame(),
+        )
 
-    stock_30d_df = (
-        data["stock_30d"][["symbol", "perf_pct"]]
-        .rename(columns={"perf_pct": "perf_30d"})
-    )
+    # Merge performance data
+    stock_30d_df = data["stock_30d"][["symbol", "perf_pct"]].rename(columns={"perf_pct": "perf_30d"})
     stock_10d_raw = data.get("stock_10d", pd.DataFrame())
     stock_10d_df  = (
         stock_10d_raw[["symbol", "perf_pct"]].rename(columns={"perf_pct": "perf_10d"})
         if not stock_10d_raw.empty and "perf_pct" in stock_10d_raw.columns
         else pd.DataFrame(columns=["symbol", "perf_10d"])
     )
-
-    # Sector rank lookup (for ML badge)
     sec_rank_df = (
         sector_df_s[["sector", "rank"]].rename(columns={"rank": "sector_rank"})
         if not sector_df_s.empty else pd.DataFrame(columns=["sector", "sector_rank"])
@@ -360,31 +393,64 @@ def _run_stm_screener(data: dict, w_data: dict) -> dict:
     df_s["perf_10d"]    = df_s["perf_10d"].fillna(0.0)
     df_s["sector_rank"] = df_s["sector_rank"].fillna(99).astype(int)
 
-    mask = (
-        df_s["sector"].isin(qual_sec)
-        & (df_s["range_5d_pct"] <= 10.0)
-        & (df_s["avg_vol_10d"]  >= 500_000)
-        & (df_s["latest_close"] >  10.0)
-        & (df_s["perf_30d"]     >  kse_30d)
-        & (df_s["latest_close"] >  df_s["ma21"])
-        & (df_s["ma21"]         >  df_s["ma50"])
+    # ── LONG candidates ───────────────────────────────────────────────────────
+    result = pd.DataFrame()
+    if all_pass:
+        long_mask = (
+            df_s["sector"].isin(qual_sec)
+            & (df_s["range_5d_pct"] <= 10.0)
+            & (df_s["avg_vol_10d"]  >= 500_000)
+            & (df_s["latest_close"] >  10.0)
+            & (df_s["perf_30d"]     >  kse_30d)
+            & (df_s["latest_close"] >  df_s["ma21"])
+            & (df_s["ma21"]         >  df_s["ma50"])
+        )
+        result = df_s[long_mask].copy()
+        result["rs"]            = (result["perf_30d"] - kse_30d).round(2)
+        result["dist_21ma_pct"] = ((result["latest_close"] - result["ma21"]) / result["ma21"] * 100).round(2)
+        result["stop_loss"]     = (result["day_low"] * 0.99).round(2)
+        result["risk_pct"]      = ((result["latest_close"] - result["stop_loss"]) / result["latest_close"] * 100).round(2)
+        result["target_1r"]     = (result["latest_close"] + (result["latest_close"] - result["stop_loss"])).round(2)
+        result["target_2r"]     = (result["latest_close"] + 2 * (result["latest_close"] - result["stop_loss"])).round(2)
+        result["tradeable"]     = result["risk_pct"] <= 6.0
+        result["breadth_score"] = bs
+        result = result.sort_values("rs", ascending=False).reset_index(drop=True)
+        result.index = result.index + 1
+
+    # ── SHORT candidates (exact mirror) ──────────────────────────────────────
+    short_result = pd.DataFrame()
+    if short_all_pass:
+        # Need day_high for short SL — compute from prices_raw
+        last1 = prices_raw.groupby("symbol", group_keys=False).tail(1)[["symbol", "high"]].copy()
+        df_short = df_s.merge(last1.rename(columns={"high": "day_high"}), on="symbol", how="left")
+
+        short_mask = (
+            df_short["sector"].isin(weak_sec)
+            & (df_short["range_5d_pct"] <= 10.0)
+            & (df_short["avg_vol_10d"]  >= 500_000)
+            & (df_short["latest_close"] >  10.0)
+            & (df_short["perf_30d"]     <  kse_30d)
+            & (df_short["latest_close"] <  df_short["ma21"])
+            & (df_short["ma21"]         <  df_short["ma50"])
+        )
+        short_result = df_short[short_mask].copy()
+        short_result["rs_short"]       = (kse_30d - short_result["perf_30d"]).round(2)   # positive = more underperforming
+        short_result["dist_21ma_pct"]  = ((short_result["latest_close"] - short_result["ma21"]) / short_result["ma21"] * 100).round(2)
+        short_result["stop_loss"]      = (short_result["day_high"] * 1.01).round(2)
+        short_result["risk_pct"]       = ((short_result["stop_loss"] - short_result["latest_close"]) / short_result["latest_close"] * 100).round(2)
+        short_result["target_1r"]      = (short_result["latest_close"] - (short_result["stop_loss"] - short_result["latest_close"])).round(2)
+        short_result["target_2r"]      = (short_result["latest_close"] - 2 * (short_result["stop_loss"] - short_result["latest_close"])).round(2)
+        short_result["tradeable"]      = short_result["risk_pct"] <= 6.0
+        short_result["breadth_score"]  = bs
+        short_result = short_result.sort_values("rs_short", ascending=False).reset_index(drop=True)
+        short_result.index = short_result.index + 1
+
+    return dict(
+        all_pass=all_pass, gates=gates, qual_sectors=qual_sec,
+        kse_30d=kse_30d, result=result,
+        short_all_pass=short_all_pass, short_gates=short_gates,
+        short_qual_sectors=weak_sec, short_result=short_result,
     )
-    result = df_s[mask].copy()
-    result["rs"]            = (result["perf_30d"] - kse_30d).round(2)
-    result["dist_21ma_pct"] = ((result["latest_close"] - result["ma21"]) / result["ma21"] * 100).round(2)
-
-    # Trade parameters: SL = 1% below day low, target = 2R
-    result["stop_loss"]  = (result["day_low"] * 0.99).round(2)
-    result["risk_pct"]   = ((result["latest_close"] - result["stop_loss"]) / result["latest_close"] * 100).round(2)
-    result["target_1r"]  = (result["latest_close"] + (result["latest_close"] - result["stop_loss"])).round(2)
-    result["target_2r"]  = (result["latest_close"] + 2 * (result["latest_close"] - result["stop_loss"])).round(2)
-    result["tradeable"]  = result["risk_pct"] <= 6.0
-    result["breadth_score"] = bs
-
-    result = result.sort_values("rs", ascending=False).reset_index(drop=True)
-    result.index = result.index + 1
-
-    return dict(all_pass=True, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d, result=result)
 
 
 # ── ML model loader ───────────────────────────────────────────────────────────
@@ -3214,13 +3280,10 @@ elif cur == PAGES[9]:
     with st.spinner("Running STM screener…"):
         stm = _run_stm_screener(data, w_data_stm)
 
-    # ── Market filter status cards ────────────────────────────────────────────
-    st.markdown("**Market Filters**")
-
     def _gate_card(label, passed, detail=""):
         col  = "#22c55e" if passed else "#ef4444"
         bg   = "#f0fdf4" if passed else "#fff5f5"
-        icon = "✔ PASS"  if passed else "✖ FAIL"
+        icon = "PASS" if passed else "FAIL"
         det  = (f'<div style="font-size:0.62rem;color:#64748b;margin-top:2px;">{detail}</div>'
                 if detail else "")
         return (
@@ -3232,208 +3295,268 @@ elif cur == PAGES[9]:
             f'{det}</div>'
         )
 
-    fc1, fc2, fc3 = st.columns(3)
-    for col_w, (label, passed, detail) in zip([fc1, fc2, fc3], stm["gates"]):
-        col_w.markdown(_gate_card(label, passed, detail), unsafe_allow_html=True)
+    # ── Direction tabs ────────────────────────────────────────────────────────
+    _long_label  = f"{'[ACTIVE] ' if stm['all_pass'] else ''}LONG"
+    _short_label = f"{'[ACTIVE] ' if stm['short_all_pass'] else ''}SHORT"
+    _tab_long, _tab_short = st.tabs([f"📈 {_long_label}", f"📉 {_short_label}"])
 
-    if not stm["all_pass"]:
-        st.divider()
-        for label, passed, detail in stm["gates"]:
-            if not passed:
-                st.warning(f"Blocked — {label}: {detail}")
-        st.info("All 3 market conditions must be satisfied before the stock scan runs.")
-        st.stop()
+    # ════════════════ LONG TAB ════════════════════════════════════════════════
+    with _tab_long:
+        st.markdown("**Market Filters — LONG**")
+        fc1, fc2, fc3 = st.columns(3)
+        for col_w, (label, passed, detail) in zip([fc1, fc2, fc3], stm["gates"]):
+            col_w.markdown(_gate_card(label, passed, detail), unsafe_allow_html=True)
 
-    st.divider()
+        if not stm["all_pass"]:
+            st.divider()
+            st.info("LONG gates not active — screener will show candidates when all 3 conditions are met.")
+        else:
+            st.divider()
+            sector_df_s2 = data["sector_df"]
+            n_sec2  = len(sector_df_s2)
+            cutoff2 = max(1, round(n_sec2 * 0.35))
+            top_rows2 = (
+                sector_df_s2[sector_df_s2["rank"] <= cutoff2]
+                .sort_values("rank")[["rank", "sector", "avg_perf_pct", "momentum"]].copy()
+            )
+            st.markdown(f"**Sector Filter** — top {cutoff2} of {n_sec2} sectors (strongest 35%)")
+            sec_disp2 = top_rows2.copy(); sec_disp2.columns = ["#", "Sector", "30d %", "Momentum"]
+            st.dataframe(
+                sec_disp2.style.apply(style_pct_cols, subset=["30d %"])
+                    .apply(style_momentum, subset=["Momentum"]).format({"30d %": "{:+.2f}"}),
+                use_container_width=True, hide_index=True,
+                height=min(380, 46 + cutoff2 * 35),
+            )
+            st.divider()
 
-    # ── Sector filter ─────────────────────────────────────────────────────────
-    sector_df_s2 = data["sector_df"]
-    n_sec2       = len(sector_df_s2)
-    cutoff2      = max(1, round(n_sec2 * 0.35))
+            result  = stm["result"]
+            kse_30d = stm["kse_30d"]
+            n_passed = len(result)
 
-    top_rows2 = (
-        sector_df_s2[sector_df_s2["rank"] <= cutoff2]
-        .sort_values("rank")[["rank", "sector", "avg_perf_pct", "momentum"]]
-        .copy()
-    )
-    st.markdown(f"**Sector Filter** — top {cutoff2} of {n_sec2} sectors (top 35%)")
-    sec_disp2 = top_rows2.copy()
-    sec_disp2.columns = ["#", "Sector", "30d %", "Momentum"]
-    st.dataframe(
-        sec_disp2.style
-            .apply(style_pct_cols, subset=["30d %"])
-            .apply(style_momentum, subset=["Momentum"])
-            .format({"30d %": "{:+.2f}"}),
-        use_container_width=True,
-        hide_index=True,
-        height=min(380, 46 + cutoff2 * 35),
-    )
+            # Auto-save LONG picks
+            _stm_key = f"stm_saved_{id(result)}"
+            if not st.session_state.get(_stm_key) and not result.empty:
+                picks = []
+                for _, row in result.iterrows():
+                    date_str = str(row["as_of_date"])[:10]
+                    pick = {
+                        "created_date": date_str, "direction": "LONG",
+                        "symbol": row["symbol"], "sector": row["sector"],
+                        "sector_momentum": "—",
+                        "stock_perf_30d": float(row["perf_30d"]),
+                        "stock_perf_10d": float(row.get("perf_10d", 0.0)),
+                        "latest_close":   float(row["latest_close"]),
+                        "entry_price":    float(row["latest_close"]),
+                        "stop_loss":      float(row["stop_loss"]),
+                        "target_1r":      float(row["target_1r"]),
+                        "target_2r":      float(row["target_2r"]),
+                        "risk_pct":       float(row["risk_pct"]),
+                        "atr_pct":        float(row.get("atr_pct", 0.0)),
+                        "sector_rank":    int(row.get("sector_rank", 99)),
+                        "breadth_score":  float(row.get("breadth_score", 0.0)),
+                        "source": "STM",
+                        "status": "Pending" if row["tradeable"] else "Cancelled",
+                        "notes": "" if row["tradeable"] else f"Skipped: risk {row['risk_pct']:.1f}% > 6%",
+                    }
+                    picks.append(pick)
+                auto_save_stm_picks(picks)
+                st.session_state[_stm_key] = True
 
-    st.divider()
+            sm1, sm2, sm3, sm4 = st.columns(4)
+            sm1.metric("KSE-100 30d",       f"{kse_30d:+.1f}%")
+            sm2.metric("Passed Filters",     f"{n_passed}")
+            sm3.metric("Best RS",            f"{result['rs'].iloc[0]:+.1f}%" if n_passed else "—")
+            sm4.metric("Avg RS",             f"{result['rs'].mean():+.1f}%"  if n_passed else "—")
+            st.divider()
 
-    result    = stm["result"]
-    kse_30d   = stm["kse_30d"]
-    n_passed  = len(result)
+            if result.empty:
+                st.info("No stocks passed all LONG filters under current conditions.")
+            else:
+                n_tradeable = int(result["tradeable"].sum())
+                st.markdown(
+                    f"**{n_passed} stocks passed** — {n_tradeable} tradeable (risk ≤ 6%) · "
+                    f"ranked by RS vs KSE-100"
+                )
+                ml_scores = []; qual_scores = []
+                for _, row in result.iterrows():
+                    ml_row = {
+                        "avg_vol_10d": row.get("avg_vol_10d", 0), "atr_pct": row.get("atr_pct", 0.0),
+                        "stock_perf_30d": row.get("perf_30d", 0.0), "risk_pct": row.get("risk_pct", 0.0),
+                        "stock_perf_10d": row.get("perf_10d", 0.0), "sector_rank": row.get("sector_rank", 99),
+                        "breadth_score": row.get("breadth_score", 0.0), "as_of_date": str(row.get("as_of_date", "")),
+                        "entry_price": row.get("latest_close", 0.0), "latest_close": row.get("latest_close", 0.0),
+                    }
+                    prob = get_ml_confidence(ml_row)
+                    ml_scores.append(int(round(prob * 100)) if prob is not None else None)
+                    qs = int(
+                        (row.get("rs", 0.0) > 5.0)
+                      + (row.get("range_5d_pct", 99.) <= 5.0)
+                      + (0 < row.get("dist_21ma_pct", 99.) <= 5.0)
+                      + (row.get("risk_pct", 99.) <= 3.0)
+                    )
+                    qual_scores.append(qs)
 
-    # ── Auto-save today's STM picks (idempotent, once per data load) ──────────
-    _stm_key = f"stm_saved_{id(result)}"
-    if not st.session_state.get(_stm_key) and not result.empty:
-        picks = []
-        for _, row in result.iterrows():
-            date_str = str(row["as_of_date"])[:10]
-            pick = {
-                "created_date":    date_str,
-                "direction":       "LONG",
-                "symbol":          row["symbol"],
-                "sector":          row["sector"],
-                "sector_momentum": "—",
-                "stock_perf_30d":  float(row["perf_30d"]),
-                "stock_perf_10d":  float(row.get("perf_10d", 0.0)),
-                "latest_close":    float(row["latest_close"]),
-                "entry_price":     float(row["latest_close"]),
-                "stop_loss":       float(row["stop_loss"]),
-                "target_1r":       float(row["target_1r"]),
-                "target_2r":       float(row["target_2r"]),
-                "risk_pct":        float(row["risk_pct"]),
-                "atr_pct":         float(row.get("atr_pct", 0.0)),
-                "sector_rank":     int(row.get("sector_rank", 99)),
-                "breadth_score":   float(row.get("breadth_score", 0.0)),
-                "source":          "STM",
-                "status":          "Pending" if row["tradeable"] else "Cancelled",
-                "notes":           "" if row["tradeable"] else f"Skipped: risk {row['risk_pct']:.1f}% > 6% threshold",
-            }
-            picks.append(pick)
-        auto_save_stm_picks(picks)
-        st.session_state[_stm_key] = True
+                disp = result[[
+                    "symbol", "sector", "as_of_date", "latest_close",
+                    "rs", "perf_30d", "range_5d_pct", "avg_vol_10d",
+                    "ma21", "ma50", "dist_21ma_pct",
+                    "stop_loss", "risk_pct", "target_2r", "tradeable",
+                ]].copy()
+                disp["avg_vol_10d"] = (disp["avg_vol_10d"] / 1_000).round(0).astype(int)
+                disp["as_of_date"]  = pd.to_datetime(disp["as_of_date"]).dt.strftime("%d %b %Y")
+                disp["Score"] = qual_scores; disp["ML %"] = ml_scores
+                disp["tradeable"] = disp["tradeable"].map({True: "Valid", False: "Skip"})
+                disp.columns = ["Symbol","Sector","As Of","Close","RS %","30d %","5d Rng %",
+                                "Vol(K)","21MA","50MA","Dist21MA%","SL","Risk%","T2R","Trade","Score","ML%"]
 
-    sm1, sm2, sm3, sm4 = st.columns(4)
-    sm1.metric("KSE-100 30d",        f"{kse_30d:+.1f}%")
-    sm2.metric("Passed All Filters",  f"{n_passed}")
-    sm3.metric("Best RS",             f"{result['rs'].iloc[0]:+.1f}%" if n_passed else "—")
-    sm4.metric("Avg RS",              f"{result['rs'].mean():+.1f}%"  if n_passed else "—")
+                def _srs(s):  return ["color:#22c55e;font-weight:bold" if v>0 else "color:#ef4444;font-weight:bold" for v in s]
+                def _srng(s): return ["color:#22c55e" if v<=5 else "color:#fbbf24" if v<=8 else "color:#94a3b8" for v in s]
+                def _sdist(s):return ["color:#22c55e;font-weight:bold" if 0<v<=5 else "color:#fbbf24" if 0<v<=10 else "color:#94a3b8" for v in s]
+                def _strd(s): return ["color:#22c55e;font-weight:700" if v=="Valid" else "color:#ef4444" for v in s]
+                def _srsk(s): return ["color:#22c55e" if v<=3 else "color:#fbbf24" if v<=6 else "color:#ef4444" for v in s]
+                def _sscr(s): return ["color:#16a34a;font-weight:700" if v>=3 else "color:#b45309;font-weight:700" if v==2 else "color:#94a3b8" for v in s]
+                def _sml(s):  return ["color:#16a34a;font-weight:700" if (v is not None and v>=65) else "color:#b45309;font-weight:700" if (v is not None and v>=50) else "color:#dc2626" if v is not None else "color:#94a3b8" for v in s]
 
-    st.divider()
+                st.caption("**Score 0-4:** 3-4 best · 2 borderline · 0-1 weak")
+                st.dataframe(
+                    disp.style
+                        .apply(_srs,  subset=["RS %","30d %"]).apply(_srng, subset=["5d Rng %"])
+                        .apply(_sdist,subset=["Dist21MA%"]).apply(_strd, subset=["Trade"])
+                        .apply(_srsk, subset=["Risk%"]).apply(_sscr, subset=["Score"])
+                        .apply(_sml,  subset=["ML%"])
+                        .format({"Close":"{:.2f}","RS %":"{:+.2f}","30d %":"{:+.2f}",
+                                 "5d Rng %":"{:.2f}","21MA":"{:.2f}","50MA":"{:.2f}",
+                                 "Dist21MA%":"{:+.2f}","SL":"{:.2f}","Risk%":"{:.2f}","T2R":"{:.2f}"}, na_rep="—"),
+                    use_container_width=True, hide_index=False,
+                    height=min(640, 60 + n_passed * 36),
+                )
+                st.caption("SL = 1% below day low · T2R = 2R target · ML% = LightGBM win probability · Picks auto-saved to Trade Log")
 
-    if result.empty:
-        st.info("No stocks passed all filters under current market conditions.")
-        st.stop()
+    # ════════════════ SHORT TAB ═══════════════════════════════════════════════
+    with _tab_short:
+        st.markdown("**Market Filters — SHORT**")
+        sc1, sc2, sc3 = st.columns(3)
+        for col_w, (label, passed, detail) in zip([sc1, sc2, sc3], stm["short_gates"]):
+            col_w.markdown(_gate_card(label, passed, detail), unsafe_allow_html=True)
 
-    n_tradeable = int(result["tradeable"].sum())
-    st.markdown(
-        f"**{n_passed} stocks passed** — {n_tradeable} tradeable (risk ≤ 6%) · "
-        f"ranked by Relative Strength (30d% vs KSE-100 {kse_30d:+.1f}%)"
-    )
+        if not stm["short_all_pass"]:
+            st.divider()
+            st.info("SHORT gates not active — screener will show candidates when all 3 bearish conditions are met.")
+        else:
+            st.divider()
+            sector_df_sh = data["sector_df"]
+            n_sec_sh  = len(sector_df_sh)
+            cutoff_sh = max(1, round(n_sec_sh * 0.35))
+            bot_rows = (
+                sector_df_sh[sector_df_sh["rank"] > (n_sec_sh - cutoff_sh)]
+                .sort_values("rank", ascending=False)[["rank", "sector", "avg_perf_pct", "momentum"]].copy()
+            )
+            st.markdown(f"**Sector Filter** — bottom {cutoff_sh} of {n_sec_sh} sectors (weakest 35%)")
+            bot_disp = bot_rows.copy(); bot_disp.columns = ["#", "Sector", "30d %", "Momentum"]
+            st.dataframe(
+                bot_disp.style.apply(style_pct_cols, subset=["30d %"])
+                    .apply(style_momentum, subset=["Momentum"]).format({"30d %": "{:+.2f}"}),
+                use_container_width=True, hide_index=True,
+                height=min(380, 46 + cutoff_sh * 35),
+            )
+            st.divider()
 
-    # ── Compute ML badge and quality score per row ────────────────────────────
-    ml_scores    = []
-    qual_scores  = []
-    for _, row in result.iterrows():
-        ml_row = {
-            "avg_vol_10d":    row.get("avg_vol_10d", 0),
-            "atr_pct":        row.get("atr_pct", 0.0),
-            "stock_perf_30d": row.get("perf_30d", 0.0),
-            "risk_pct":       row.get("risk_pct", 0.0),
-            "stock_perf_10d": row.get("perf_10d", 0.0),
-            "sector_rank":    row.get("sector_rank", 99),
-            "breadth_score":  row.get("breadth_score", 0.0),
-            "as_of_date":     str(row.get("as_of_date", "")),
-            "entry_price":    row.get("latest_close", 0.0),
-            "latest_close":   row.get("latest_close", 0.0),
-        }
-        prob = get_ml_confidence(ml_row)
-        ml_scores.append(int(round(prob * 100)) if prob is not None else None)
+            short_result = stm["short_result"]
+            kse_30d_sh   = stm["kse_30d"]
+            n_short      = len(short_result)
 
-        # STM quality score (0-4): each check adds 1 point
-        #   1. RS > 5%     — strong relative strength vs KSE-100
-        #   2. 5d range ≤ 5%  — tight consolidation, low volatility
-        #   3. dist_21ma ≤ 5% — close to 21 MA, not overextended
-        #   4. risk ≤ 3%   — tight stop, good entry timing
-        qs = int(
-            (row.get("rs",            0.0) > 5.0)
-          + (row.get("range_5d_pct",  99.) <= 5.0)
-          + (0 < row.get("dist_21ma_pct", 99.) <= 5.0)
-          + (row.get("risk_pct",      99.) <= 3.0)
-        )
-        qual_scores.append(qs)
+            # Auto-save SHORT picks
+            _short_key = f"stm_short_saved_{id(short_result)}"
+            if not st.session_state.get(_short_key) and not short_result.empty:
+                short_picks = []
+                for _, row in short_result.iterrows():
+                    date_str = str(row["as_of_date"])[:10]
+                    pick = {
+                        "created_date": date_str, "direction": "SHORT",
+                        "symbol": row["symbol"], "sector": row["sector"],
+                        "sector_momentum": "—",
+                        "stock_perf_30d": float(row["perf_30d"]),
+                        "stock_perf_10d": float(row.get("perf_10d", 0.0)),
+                        "latest_close":   float(row["latest_close"]),
+                        "entry_price":    float(row["latest_close"]),
+                        "stop_loss":      float(row["stop_loss"]),
+                        "target_1r":      float(row["target_1r"]),
+                        "target_2r":      float(row["target_2r"]),
+                        "risk_pct":       float(row["risk_pct"]),
+                        "atr_pct":        float(row.get("atr_pct", 0.0)),
+                        "sector_rank":    int(row.get("sector_rank", 99)),
+                        "breadth_score":  float(row.get("breadth_score", 0.0)),
+                        "source": "STM",
+                        "status": "Pending" if row["tradeable"] else "Cancelled",
+                        "notes": "" if row["tradeable"] else f"Skipped: risk {row['risk_pct']:.1f}% > 6%",
+                    }
+                    short_picks.append(pick)
+                auto_save_stm_picks(short_picks)
+                st.session_state[_short_key] = True
 
-    # ── Display table ─────────────────────────────────────────────────────────
-    disp = result[[
-        "symbol", "sector", "as_of_date", "latest_close",
-        "rs", "perf_30d", "range_5d_pct",
-        "avg_vol_10d", "ma21", "ma50", "dist_21ma_pct",
-        "stop_loss", "risk_pct", "target_2r", "tradeable",
-    ]].copy()
-    disp["avg_vol_10d"] = (disp["avg_vol_10d"] / 1_000).round(0).astype(int)
-    disp["as_of_date"]  = pd.to_datetime(disp["as_of_date"]).dt.strftime("%d %b %Y")
-    disp["Score"]       = qual_scores
-    disp["ML %"]        = ml_scores
-    disp["tradeable"]   = disp["tradeable"].map({True: "✔ Valid", False: "✖ Skip"})
-    disp.columns = [
-        "Symbol", "Sector", "As Of", "Close (PKR)",
-        "RS %", "30d %", "5d Range %",
-        "Vol 10d (K)", "21 MA", "50 MA", "Dist 21MA %",
-        "SL", "Risk %", "T2R", "Trade",
-        "Score", "ML %",
-    ]
+            sh1, sh2, sh3, sh4 = st.columns(4)
+            sh1.metric("KSE-100 30d",     f"{kse_30d_sh:+.1f}%")
+            sh2.metric("Passed Filters",  f"{n_short}")
+            sh3.metric("Worst RS",        f"{short_result['rs_short'].iloc[0]:+.1f}%" if n_short else "—")
+            sh4.metric("Avg RS Under",    f"{short_result['rs_short'].mean():+.1f}%"  if n_short else "—")
+            st.divider()
 
-    def _style_rs(s):
-        return ["color:#22c55e;font-weight:bold" if v > 0 else "color:#ef4444;font-weight:bold" for v in s]
-    def _style_range(s):
-        return ["color:#22c55e" if v <= 5 else "color:#fbbf24" if v <= 8 else "color:#94a3b8" for v in s]
-    def _style_dist(s):
-        return ["color:#22c55e;font-weight:bold" if 0 < v <= 5 else "color:#fbbf24" if 0 < v <= 10 else "color:#94a3b8" for v in s]
-    def _style_trade(s):
-        return ["color:#22c55e;font-weight:700" if v == "✔ Valid" else "color:#ef4444" for v in s]
-    def _style_risk(s):
-        return ["color:#22c55e" if v <= 3 else "color:#fbbf24" if v <= 6 else "color:#ef4444" for v in s]
-    def _style_score(s):
-        return [
-            "color:#16a34a;font-weight:700" if v >= 3
-            else "color:#b45309;font-weight:700" if v == 2
-            else "color:#94a3b8"
-            for v in s
-        ]
-    def _style_ml(s):
-        return [
-            "color:#16a34a;font-weight:700" if (v is not None and v >= 65)
-            else "color:#b45309;font-weight:700" if (v is not None and v >= 50)
-            else "color:#dc2626" if v is not None
-            else "color:#94a3b8"
-            for v in s
-        ]
+            if short_result.empty:
+                st.info("No stocks passed all SHORT filters under current conditions.")
+            else:
+                n_sh_trade = int(short_result["tradeable"].sum())
+                st.markdown(
+                    f"**{n_short} stocks passed** — {n_sh_trade} tradeable (risk ≤ 6%) · "
+                    f"ranked by underperformance vs KSE-100 (worst first)"
+                )
 
-    fmt_map = {
-        "Close (PKR)": "{:.2f}", "RS %": "{:+.2f}", "30d %": "{:+.2f}",
-        "5d Range %": "{:.2f}", "21 MA": "{:.2f}", "50 MA": "{:.2f}",
-        "Dist 21MA %": "{:+.2f}", "SL": "{:.2f}", "Risk %": "{:.2f}", "T2R": "{:.2f}",
-    }
+                sh_disp = short_result[[
+                    "symbol", "sector", "as_of_date", "latest_close",
+                    "rs_short", "perf_30d", "range_5d_pct", "avg_vol_10d",
+                    "ma21", "ma50", "dist_21ma_pct",
+                    "stop_loss", "risk_pct", "target_2r", "tradeable",
+                ]].copy()
+                sh_disp["avg_vol_10d"] = (sh_disp["avg_vol_10d"] / 1_000).round(0).astype(int)
+                sh_disp["as_of_date"]  = pd.to_datetime(sh_disp["as_of_date"]).dt.strftime("%d %b %Y")
+                sh_disp["tradeable"]   = sh_disp["tradeable"].map({True: "Valid", False: "Skip"})
 
-    st.caption(
-        "**Score (0–4)** — checklist of 4 setup quality rules: "
-        "🟢 3–4 = best &nbsp;·&nbsp; 🟡 2 = borderline &nbsp;·&nbsp; ⚪ 0–1 = weak"
-    )
+                # Short quality score (mirror of LONG)
+                sh_qual = []
+                for _, row in short_result.iterrows():
+                    qs = int(
+                        (row.get("rs_short", 0.0) > 5.0)           # underperforming by >5%
+                      + (row.get("range_5d_pct", 99.) <= 5.0)      # tight consolidation
+                      + (-5.0 <= row.get("dist_21ma_pct", 0.) < 0) # close below 21MA (not too extended)
+                      + (row.get("risk_pct", 99.) <= 3.0)           # tight SL
+                    )
+                    sh_qual.append(qs)
+                sh_disp["Score"] = sh_qual
 
-    st.dataframe(
-        disp.style
-            .apply(_style_rs,    subset=["RS %", "30d %"])
-            .apply(_style_range, subset=["5d Range %"])
-            .apply(_style_dist,  subset=["Dist 21MA %"])
-            .apply(_style_trade, subset=["Trade"])
-            .apply(_style_risk,  subset=["Risk %"])
-            .apply(_style_score, subset=["Score"])
-            .apply(_style_ml,    subset=["ML %"])
-            .format(fmt_map, na_rep="—"),
-        use_container_width=True, hide_index=False,
-        height=min(640, 60 + n_passed * 36),
-    )
-    st.caption(
-        "**RS %** = stock 30d% − KSE-100 30d%  ·  "
-        "**5d Range %** = (5-day High − Low) / 5-day Low  ·  "
-        "**Dist 21MA %** = how far close is above 21 MA  ·  "
-        "**SL** = 1% below day low  ·  **T2R** = 2R target  ·  "
-        "**Trade** = ✔ Valid if Risk % ≤ 6%  ·  **ML %** = win probability (LightGBM model)  ·  "
-        "Index = rank by RS  ·  Picks auto-saved to Trade Log as source STM"
-    )
+                sh_disp.columns = ["Symbol","Sector","As Of","Close","Under-RS%","30d %","5d Rng %",
+                                   "Vol(K)","21MA","50MA","Dist21MA%","SL","Risk%","T2R","Trade","Score"]
+
+                def _srs_sh(s): return ["color:#ef4444;font-weight:bold" if v>0 else "color:#94a3b8" for v in s]
+                def _s30_sh(s): return ["color:#ef4444;font-weight:bold" if v<0 else "color:#94a3b8" for v in s]
+                def _sdist_sh(s): return ["color:#ef4444;font-weight:bold" if -5<=v<0 else "color:#fbbf24" if -10<=v<0 else "color:#94a3b8" for v in s]
+
+                st.dataframe(
+                    sh_disp.style
+                        .apply(_srs_sh, subset=["Under-RS%"])
+                        .apply(_s30_sh, subset=["30d %"])
+                        .apply(_sdist_sh, subset=["Dist21MA%"])
+                        .apply(lambda s: ["color:#22c55e;font-weight:700" if v=="Valid" else "color:#ef4444" for v in s], subset=["Trade"])
+                        .apply(lambda s: ["color:#16a34a;font-weight:700" if v>=3 else "color:#b45309;font-weight:700" if v==2 else "color:#94a3b8" for v in s], subset=["Score"])
+                        .format({"Close":"{:.2f}","Under-RS%":"{:+.2f}","30d %":"{:+.2f}",
+                                 "5d Rng %":"{:.2f}","21MA":"{:.2f}","50MA":"{:.2f}",
+                                 "Dist21MA%":"{:+.2f}","SL":"{:.2f}","Risk%":"{:.2f}","T2R":"{:.2f}"}, na_rep="—"),
+                    use_container_width=True, hide_index=False,
+                    height=min(640, 60 + n_short * 36),
+                )
+                st.caption(
+                    "**Under-RS%** = how much stock underperforms KSE-100 (higher = weaker) · "
+                    "**SL** = 1% above day high · **T2R** = 2R target (downside) · "
+                    "**Dist21MA%** = negative = below 21MA · Picks auto-saved to Trade Log as SHORT"
+                )
 
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
 elif cur == PAGES[10]:
