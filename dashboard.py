@@ -510,7 +510,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime", "🎯 Setup Perf", "🔎 STM", "🏥 Model Health"]
+PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime", "🎯 Setup Perf", "🔎 STM", "🏥 Model Health", "🗂️ Portfolio"]
 
 
 def fmt_date(d) -> str:
@@ -3497,3 +3497,198 @@ elif cur == PAGES[10]:
         r = _sp.run([_py, _os.path.join(_MODEL_DIR, "part4_monthly_retrain.py"), "--force"],
                     capture_output=True, text=True, timeout=300)
         st.code(r.stdout or r.stderr)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 11 — 🗂️ Portfolio  (Weinstein Stage 2 Portfolio Screener)
+# ══════════════════════════════════════════════════════════════════════════════
+elif st.session_state.page == PAGES[11]:
+    st.markdown("### 🗂️ Stage 2 Portfolio")
+    st.caption(
+        "Stocks in Weinstein Stage 2 (price above rising 30-week MA) ranked by "
+        "Relative Strength vs KSE-100, sector strength, and stage clarity. "
+        "Hold until weekly close breaks below the 30-week MA."
+    )
+
+    from portfolio import compute_portfolio_candidates
+
+    @st.cache_data(ttl=1800, show_spinner=False)
+    def _load_portfolio():
+        return compute_portfolio_candidates(sector_df=sector_df)
+
+    with st.spinner("Computing stage analysis…"):
+        port_df = _load_portfolio()
+
+    if port_df.empty:
+        st.warning("Insufficient price history to compute stage analysis. Need at least 170 trading days per symbol.")
+        st.stop()
+
+    # ── Summary KPIs ─────────────────────────────────────────────────────────
+    n_stage2 = len(port_df[port_df["stage"] == 2])
+    n_stage1 = len(port_df[port_df["stage"] == 1])
+    n_stage3 = len(port_df[port_df["stage"] == 3])
+    n_stage4 = len(port_df[port_df["stage"] == 4])
+    n_total  = len(port_df)
+    pct_stage2 = n_stage2 / n_total * 100 if n_total else 0
+
+    _kc1, _kc2, _kc3, _kc4, _kc5 = st.columns(5)
+    _kc1.markdown(kpi("Total Stocks", str(n_total), "with sufficient history", BLUE), unsafe_allow_html=True)
+    _kc2.markdown(kpi("Stage 2 (Advancing)", str(n_stage2), f"{pct_stage2:.0f}% of universe", "#22c55e"), unsafe_allow_html=True)
+    _kc3.markdown(kpi("Stage 1 (Basing)", str(n_stage1), "potential early entries", "#f59e0b"), unsafe_allow_html=True)
+    _kc4.markdown(kpi("Stage 3 (Topping)", str(n_stage3), "consider exiting", "#f97316"), unsafe_allow_html=True)
+    _kc5.markdown(kpi("Stage 4 (Declining)", str(n_stage4), "avoid", "#ef4444"), unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Stage filter tabs ─────────────────────────────────────────────────────
+    _tab2, _tab1, _tab3, _tab_all = st.tabs([
+        f"🟢 Stage 2 Portfolio ({n_stage2})",
+        f"👀 Stage 1 Watchlist ({n_stage1})",
+        f"⚠️ Stage 3 Exit Alerts ({n_stage3})",
+        f"📋 All Stocks ({n_total})",
+    ])
+
+    def _render_table(df_view: pd.DataFrame, show_cols: list, col_labels: dict = None):
+        if df_view.empty:
+            st.info("No stocks in this category.")
+            return
+        display = df_view[show_cols].copy()
+        if col_labels:
+            display = display.rename(columns=col_labels)
+
+        # Colour-code numeric columns
+        def _style(styler):
+            for c in ["RS 30d", "RS 10d", "Dist from 30w%"]:
+                if c in styler.columns:
+                    styler = styler.map(
+                        lambda v: "color:#22c55e;font-weight:bold" if isinstance(v, (int, float)) and v > 0
+                        else ("color:#ef4444;font-weight:bold" if isinstance(v, (int, float)) and v < 0 else ""),
+                        subset=[c],
+                    )
+            return styler
+
+        st.dataframe(
+            display.style.apply(lambda _: [""] * len(display), axis=0).pipe(_style),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # Stage 2 tab — the portfolio
+    with _tab2:
+        s2 = port_df[port_df["stage"] == 2].copy()
+
+        st.markdown(
+            "**Portfolio candidates** — Stage 2 stocks ranked by composite score. "
+            "Top 8–12 (with 1% risk sizing) form the core portfolio. "
+            "**Hold until weekly close < 30-week MA.**"
+        )
+
+        # Top 12 highlighted
+        top12 = s2.head(12)
+        if not top12.empty:
+            st.markdown("##### 🏆 Top 12 Portfolio Candidates")
+            cols_s2 = ["rank", "symbol", "sector", "latest_close", "ma30w",
+                       "dist_from_30w_pct", "rs_30d", "rs_10d", "rs_trend",
+                       "sector_rank", "sector_momentum", "composite_score", "recommendation"]
+            labels  = {
+                "rank": "#", "latest_close": "Price", "ma30w": "30w MA",
+                "dist_from_30w_pct": "Dist 30w%", "rs_30d": "RS 30d",
+                "rs_10d": "RS 10d", "rs_trend": "RS Trend",
+                "sector_rank": "Sec Rank", "sector_momentum": "Sec Momentum",
+                "composite_score": "Score", "recommendation": "Action",
+            }
+            _render_table(top12, cols_s2, labels)
+
+        if len(s2) > 12:
+            with st.expander(f"Show remaining {len(s2) - 12} Stage 2 stocks"):
+                _render_table(s2.iloc[12:], cols_s2, labels)
+
+        st.divider()
+
+        # RS distribution of Stage 2 stocks
+        st.markdown("##### RS Distribution — Stage 2 Universe")
+        import plotly.graph_objects as go
+
+        fig_rs = go.Figure()
+        fig_rs.add_trace(go.Histogram(
+            x=s2["rs_30d"],
+            nbinsx=30,
+            marker_color="#3b82f6",
+            opacity=0.8,
+            name="RS vs KSE-100 (30d)",
+        ))
+        fig_rs.add_vline(x=0, line_dash="dash", line_color="#ef4444", annotation_text="Index baseline")
+        fig_rs.update_layout(
+            height=280,
+            margin=dict(l=10, r=10, t=20, b=10),
+            xaxis_title="RS vs KSE-100 (30d %)",
+            yaxis_title="# Stocks",
+            showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_rs, use_container_width=True)
+
+    # Stage 1 watchlist
+    with _tab1:
+        s1 = port_df[port_df["stage"] == 1].copy()
+        st.markdown(
+            "**Basing stocks** — price consolidating near the 30-week MA. "
+            "These become portfolio candidates if/when the 30w MA turns up and price breaks above it."
+        )
+        cols_s1 = ["rank", "symbol", "sector", "latest_close", "ma30w",
+                   "dist_from_30w_pct", "rs_30d", "rs_10d",
+                   "sector_rank", "sector_momentum", "composite_score", "recommendation"]
+        _render_table(s1, cols_s1, {
+            "rank": "#", "latest_close": "Price", "ma30w": "30w MA",
+            "dist_from_30w_pct": "Dist 30w%", "rs_30d": "RS 30d", "rs_10d": "RS 10d",
+            "sector_rank": "Sec Rank", "sector_momentum": "Sec Momentum",
+            "composite_score": "Score", "recommendation": "Action",
+        })
+
+    # Stage 3 exit alerts
+    with _tab3:
+        s3 = port_df[port_df["stage"] == 3].copy()
+        st.markdown(
+            "**Topping / rolling over** — price still above 30w MA but MA is flattening or turning down. "
+            "If any of these are in your portfolio, monitor for a weekly close below the 30w MA as the exit trigger."
+        )
+        cols_s3 = ["rank", "symbol", "sector", "latest_close", "ma30w",
+                   "dist_from_30w_pct", "rs_30d", "stage_label",
+                   "sector_rank", "recommendation"]
+        _render_table(s3, cols_s3, {
+            "rank": "#", "latest_close": "Price", "ma30w": "30w MA",
+            "dist_from_30w_pct": "Dist 30w%", "rs_30d": "RS 30d",
+            "stage_label": "Stage Detail", "sector_rank": "Sec Rank",
+            "recommendation": "Action",
+        })
+
+    # All stocks tab
+    with _tab_all:
+        all_cols = ["rank", "symbol", "sector", "latest_close", "ma30w",
+                    "dist_from_30w_pct", "stage", "stage_label",
+                    "rs_30d", "rs_10d", "sector_rank", "composite_score", "recommendation"]
+
+        # Stage filter
+        stage_filter = st.selectbox(
+            "Filter by stage",
+            ["All", "Stage 2", "Stage 1", "Stage 3", "Stage 4"],
+            key="port_stage_filter",
+        )
+        fmap = {"All": [1,2,3,4], "Stage 2": [2], "Stage 1": [1], "Stage 3": [3], "Stage 4": [4]}
+        view = port_df[port_df["stage"].isin(fmap[stage_filter])]
+
+        _render_table(view, all_cols, {
+            "rank": "#", "latest_close": "Price", "ma30w": "30w MA",
+            "dist_from_30w_pct": "Dist 30w%", "stage_label": "Stage Detail",
+            "rs_30d": "RS 30d", "rs_10d": "RS 10d",
+            "sector_rank": "Sec Rank", "composite_score": "Score",
+            "recommendation": "Action",
+        })
+
+    st.divider()
+    st.caption(
+        "**How to use:** Open a position in a Stage 2 stock using the 1% risk rule "
+        "(SL = 30-week MA or recent support). Hold with no action until a weekly close "
+        "below the 30-week MA. Review weekly only. "
+        "Page auto-refreshes every 30 minutes with the latest prices."
+    )
