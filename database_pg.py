@@ -621,3 +621,15 @@ def auto_save_stm_picks(picks: list[dict]) -> int:
     if saved:
         logger.info("Auto-saved %d new STM pick(s).", saved)
     return saved
+
+
+def get_sim_portfolio_data() -> list[dict]:
+    """Return all rows from sim_portfolio_trades, or [] if table absent."""
+    try:
+        with get_conn() as conn:
+            return _fetchall(
+                conn,
+                "SELECT * FROM sim_portfolio_trades ORDER BY setup_date, symbol",
+            )
+    except Exception:
+        return []

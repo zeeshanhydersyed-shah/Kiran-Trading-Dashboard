@@ -589,6 +589,22 @@ def auto_save_stm_picks(picks: list[dict]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Kiran Simulation (kiran_sim.py) — portfolio backtest with new entry rules
+# ---------------------------------------------------------------------------
+
+def get_sim_portfolio_data() -> list[dict]:
+    """Return all rows from sim_portfolio_trades, or [] if table absent."""
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM sim_portfolio_trades ORDER BY setup_date, symbol"
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
 # PostgreSQL override — runs LAST so PG functions replace SQLite ones
 # when DATABASE_URL is available (Streamlit Cloud / GitHub Actions).
 # ---------------------------------------------------------------------------
@@ -622,4 +638,5 @@ if _PG_URL:
         auto_save_setups,
         stm_pick_already_saved,
         auto_save_stm_picks,
+        get_sim_portfolio_data,
     )

@@ -28,7 +28,7 @@ from database import (
     init_db, get_price_date_range, count_prices, count_sectors,
     save_trade_setup, get_trade_setups, update_trade_setup, close_trade_setup,
     activate_trade_setup, delete_trade_setup, auto_save_setups, get_backtest_summary,
-    auto_save_stm_picks,
+    auto_save_stm_picks, get_sim_portfolio_data,
 )
 from processor import run_analysis
 from main import cmd_update
@@ -2147,6 +2147,146 @@ elif cur == PAGES[6]:
         .format(fmt_bt, na_rep="—"),
         use_container_width=True, hide_index=True, height=380,
     )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # KIRAN SETUP SIMULATION — buy-on-strength, 1% risk, 6% max SL
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+    st.divider()
+    st.markdown("### Kiran Setup Simulation")
+    st.caption(
+        "Same screener signals as above — different execution: entry 1 PKR above signal-day HIGH, "
+        "max 6% SL, 1% portfolio risk per trade, 99% capital cap, no margin. "
+        "Initial capital PKR 1,000,000. Run `python kiran_sim.py` to (re)generate."
+    )
+
+    raw_sim = get_sim_portfolio_data()
+
+    if not raw_sim:
+        st.info("Simulation not yet run. Execute: `python kiran_sim.py`")
+    else:
+        sim = pd.DataFrame(raw_sim)
+        sim["setup_date"] = pd.to_datetime(sim["setup_date"])
+
+        SIM_WIN  = ["Win_Trail"]
+        SIM_LOSS = ["Loss"]
+        sim_trig = sim[sim["trigger_date"].notna() & ~sim["outcome"].isin(["Skipped"])]
+        sim_wins = sim[sim["outcome"] == "Win_Trail"]
+        sim_loss = sim[sim["outcome"] == "Loss"]
+        sim_skip = sim[sim["outcome"] == "Skipped"]
+        sim_stal = sim[sim["outcome"].isin(["Stale", "Expired"])]
+
+        n_sim_total   = len(sim)
+        n_sim_trig    = len(sim_trig)
+        n_sim_wins    = len(sim_wins)
+        n_sim_loss    = len(sim_loss)
+        n_sim_skip    = len(sim_skip)
+
+        sim_trigger_r = n_sim_trig  / n_sim_total * 100 if n_sim_total else 0
+        sim_win_r     = n_sim_wins  / n_sim_trig  * 100 if n_sim_trig  else 0
+        sim_loss_r    = n_sim_loss  / n_sim_trig  * 100 if n_sim_trig  else 0
+
+        sd_min = sim["setup_date"].min().strftime("%b %Y")
+        sd_max = sim["setup_date"].max().strftime("%b %Y")
+
+        st.caption(f"{n_sim_total:,} signals  ·  {sd_min} – {sd_max}")
+
+        sr1 = st.columns(4)
+        sr1[0].markdown(kpi("Total Signals",   f"{n_sim_total:,}",
+                            f"{n_sim_skip:,} skipped (risk > 6%)", "#3b82f6"), unsafe_allow_html=True)
+        sr1[1].markdown(kpi("Trigger Rate",    f"{sim_trigger_r:.1f}%",
+                            f"{n_sim_trig:,} entries fired", "#f59e0b"), unsafe_allow_html=True)
+        sr1[2].markdown(kpi("Win Rate",        f"{sim_win_r:.1f}%",
+                            f"{n_sim_wins:,} Win_Trail", gc(sim_win_r / 100 - 0.5)), unsafe_allow_html=True)
+        sr1[3].markdown(kpi("Loss Rate",       f"{sim_loss_r:.1f}%",
+                            f"{n_sim_loss:,} losses", gc(0.5 - sim_loss_r / 100)), unsafe_allow_html=True)
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        # ── Equity curve from simulation ──────────────────────────────────────
+        sim_closed = (
+            sim[sim["portfolio_after"].notna() & sim["exit_date"].notna()]
+            .copy()
+            .sort_values("exit_date")
+        )
+
+        if not sim_closed.empty:
+            sim_closed["trade_n"] = range(1, len(sim_closed) + 1)
+            final_port  = sim_closed["portfolio_after"].iloc[-1]
+            peak_port   = sim_closed["portfolio_after"].max()
+            total_pl    = sim[sim["pl_pkr"].notna()]["pl_pkr"].sum()
+            drawdowns   = (sim_closed["portfolio_after"].expanding().max()
+                           - sim_closed["portfolio_after"])
+            max_dd      = drawdowns.max()
+            max_dd_pct  = max_dd / peak_port * 100 if peak_port else 0
+            total_r     = sim[sim["realized_r"].notna()]["realized_r"].sum()
+
+            eq1, eq2, eq3, eq4 = st.columns(4)
+            eq1.markdown(kpi("Final Portfolio",  f"PKR {final_port:,.0f}",
+                             f"from PKR 1,000,000", gc(final_port - 1_000_000)), unsafe_allow_html=True)
+            eq2.markdown(kpi("Total P&L",        f"PKR {total_pl:+,.0f}",
+                             "1% risk compounding", gc(total_pl)), unsafe_allow_html=True)
+            eq3.markdown(kpi("Total R Earned",   f"{total_r:+.1f} R",
+                             f"across {n_sim_trig:,} triggered", gc(total_r)), unsafe_allow_html=True)
+            eq4.markdown(kpi("Max Drawdown",      f"{max_dd_pct:.1f}%",
+                             f"PKR {max_dd:,.0f} from peak", "#ef4444"), unsafe_allow_html=True)
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            fig_sim = go.Figure()
+            fig_sim.add_trace(go.Scatter(
+                x=sim_closed["trade_n"], y=sim_closed["portfolio_after"],
+                mode="lines", name="Portfolio",
+                line={"color": "#22c55e", "width": 2.5},
+                hovertemplate="Trade #%{x}<br>PKR %{y:,.0f}<extra></extra>",
+            ))
+            fig_sim.add_hline(y=1_000_000, line_dash="dot", line_color="#94a3b8",
+                              annotation_text="1M start", annotation_position="right")
+            fig_sim.update_layout(
+                height=300, margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                xaxis={"title": "Trade #", "tickfont": {"size": 9}},
+                yaxis={"title": "PKR", "tickfont": {"size": 9}, "tickformat": ",.0f"},
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_sim, use_container_width=True)
+        else:
+            st.info("No closed trades yet in simulation.")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STM SCREENER PERFORMANCE — numbers only, no chart
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+    st.divider()
+    st.markdown("### STM Screener Performance")
+    st.caption("Based on STM picks saved to the Trade Log. Outcomes reflect manually logged results.")
+
+    _all_setups = get_trade_setups()
+    _stm_all    = [r for r in _all_setups if r.get("source") == "STM"]
+    _stm_closed = [r for r in _stm_all  if r.get("status")  == "Closed"]
+    _stm_active = [r for r in _stm_all  if r.get("status")  in ("Active", "Pending")]
+
+    _stm_total   = len(_stm_all)
+    _stm_wins    = sum(1 for r in _stm_closed if r.get("outcome") == "Win")
+    _stm_losses  = sum(1 for r in _stm_closed if r.get("outcome") == "Loss")
+    _stm_closed_n= len(_stm_closed)
+
+    _stm_trig_r  = _stm_closed_n / _stm_total       * 100 if _stm_total       else 0
+    _stm_win_r   = _stm_wins     / _stm_closed_n    * 100 if _stm_closed_n    else 0
+    _stm_loss_r  = _stm_losses   / _stm_closed_n    * 100 if _stm_closed_n    else 0
+
+    stm_c = st.columns(4)
+    stm_c[0].markdown(kpi("Total STM Setups",  f"{_stm_total:,}",
+                          f"{len(_stm_active):,} active / pending", "#3b82f6"), unsafe_allow_html=True)
+    stm_c[1].markdown(kpi("Closed Rate",       f"{_stm_trig_r:.1f}%",
+                          f"{_stm_closed_n:,} logged & closed", "#f59e0b"), unsafe_allow_html=True)
+    stm_c[2].markdown(kpi("Win Rate",          f"{_stm_win_r:.1f}%"  if _stm_closed_n else "—",
+                          f"{_stm_wins:,} wins of {_stm_closed_n} closed",
+                          gc(_stm_win_r / 100 - 0.5) if _stm_closed_n else "#94a3b8"),
+                      unsafe_allow_html=True)
+    stm_c[3].markdown(kpi("Loss Rate",         f"{_stm_loss_r:.1f}%" if _stm_closed_n else "—",
+                          f"{_stm_losses:,} losses of {_stm_closed_n} closed",
+                          gc(0.5 - _stm_loss_r / 100) if _stm_closed_n else "#94a3b8"),
+                      unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
