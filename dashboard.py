@@ -235,54 +235,39 @@ def load_kse100_performance() -> pd.DataFrame:
     return idx_df
 
 
-def calculate_irr(cash_flows: list[tuple], dates: list) -> float:
+def calculate_irr(cash_flows: list, dates: list) -> float:
     """
-    Calculate Internal Rate of Return (Money-Weighted Return).
-
-    Args:
-        cash_flows: List of cash flows (negative = investment/deposit, positive = withdrawal/final value)
-        dates: List of dates corresponding to cash flows
-
-    Returns:
-        IRR as decimal (e.g., 0.15 = 15%)
+    Calculate Internal Rate of Return (Money-Weighted Return) using numpy.
     """
     try:
-        from scipy.optimize import newton
-        from datetime import datetime
+        import numpy_financial as npf
 
-        if len(cash_flows) < 2:
-            return 0.0
+        # Convert dates to datetime
+        dates = [pd.to_datetime(d) if isinstance(d, str) else d for d in dates]
 
-        # Convert dates to datetime if strings
-        if isinstance(dates[0], str):
-            dates = [pd.to_datetime(d) for d in dates]
-
-        # Use first date as reference (t=0)
-        ref_date = dates[0]
-
-        # Calculate days from reference date
-        days = [(d - ref_date).days for d in dates]
-        years = [d / 365.25 for d in days]
-
-        # NPV function: sum of all discounted cash flows
-        def npv(rate):
-            return sum(cf / ((1 + rate) ** t) for cf, t in zip(cash_flows, years))
-
-        # Try Newton's method with initial guess of 10%
+        # Use numpy_financial's irr function
+        irr = npf.irr(cash_flows)
+        return float(irr) if not np.isnan(irr) else 0.0
+    except ImportError:
+        # Fallback: simple iterative IRR calculation
         try:
-            irr = newton(npv, 0.1, maxiter=100)
-            return float(irr)
+            from scipy.optimize import newton
+
+            if len(cash_flows) < 2:
+                return 0.0
+
+            dates = [pd.to_datetime(d) if isinstance(d, str) else d for d in dates]
+            ref_date = dates[0]
+            years = [float((d - ref_date).days) / 365.25 for d in dates]
+
+            def npv(rate):
+                return sum(cf / ((1 + rate) ** t) for cf, t in zip(cash_flows, years))
+
+            irr = newton(npv, 0.1, maxiter=1000)
+            return float(irr) if abs(irr) < 10 else 0.0  # Sanity check
         except:
-            # Fallback: try different starting points
-            for guess in [0.0, 0.05, 0.15, 0.25]:
-                try:
-                    irr = newton(npv, guess, maxiter=100)
-                    return float(irr)
-                except:
-                    continue
             return 0.0
     except Exception as e:
-        st.warning(f"Could not calculate IRR: {e}")
         return 0.0
 
 
@@ -2036,36 +2021,30 @@ elif cur == PAGES[5]:
     try:
         pf_df = load_portfolio_pnl()
         if not pf_df.empty:
-            pf_df = pf_df.sort_values("date")
+            pf_df = pf_df.sort_values("date").reset_index(drop=True)
 
             fig_pf = go.Figure()
 
-            # Portfolio value line
+            # Simple portfolio value line
             fig_pf.add_trace(go.Scatter(
-                x=pf_df["date"], y=pf_df["portfolio_value"],
-                mode="lines+markers", name="Portfolio Value",
+                x=pf_df["date"],
+                y=pf_df["portfolio_value"],
+                mode="lines+markers",
+                name="Portfolio Value",
                 line={"color": "#3b82f6", "width": 2.5},
-                marker={"size": 6},
+                marker={"size": 5},
                 fill="tozeroy",
                 fillcolor="rgba(59, 130, 246, 0.1)",
-                hovertemplate="<b>Portfolio Value</b><br>%{x|%d %b %Y}<br>PKR %{y:,.0f}<extra></extra>",
-            ))
-
-            # Cumulative invested capital reference line
-            pf_df["total_invested"] = pf_df["initial_investment"] + pf_df["cumulative"]
-            fig_pf.add_trace(go.Scatter(
-                x=pf_df["date"], y=pf_df["total_invested"],
-                mode="lines", name="Capital Deployed",
-                line={"color": "#94a3b8", "width": 1.5, "dash": "dash"},
-                hovertemplate="<b>Capital Deployed</b><br>%{x|%d %b %Y}<br>PKR %{y:,.0f}<extra></extra>",
+                hovertemplate="<b>%{x|%d %b %Y}</b><br>PKR %{y:,.0f}<extra></extra>",
             ))
 
             fig_pf.update_layout(
-                height=320, margin={"l": 4, "r": 4, "t": 8, "b": 8},
-                xaxis={"title": "Date", "tickfont": {"size": 9}},
-                yaxis={"title": "Value (PKR)", "tickfont": {"size": 9}, "tickformat": ",.0f"},
-                legend={"font": {"size": 10}, "x": 0.01, "y": 0.99},
+                height=280,
+                margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                xaxis={"tickfont": {"size": 9}},
+                yaxis={"tickfont": {"size": 9}, "tickformat": ",.0f"},
                 hovermode="x unified",
+                showlegend=False,
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
             )
