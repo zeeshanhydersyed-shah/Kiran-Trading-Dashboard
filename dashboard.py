@@ -3946,10 +3946,12 @@ elif cur == PAGES[11]:  # Model Health
     st.markdown("### 🏥 Model Health Dashboard")
     st.caption("Live accuracy tracking for both ML models. Refresh daily after logging predictions.")
 
-    from part5_model_health import generate_health_report
     try:
+        from part5_model_health import generate_health_report
         report = generate_health_report()
         st.code(report, language=None)
+    except ImportError:
+        st.info("📌 Model Health Report: Available on local development only (part5_model_health module)")
     except Exception as _e:
         st.error(f"Could not generate report: {_e}")
         st.code(_tb.format_exc())
