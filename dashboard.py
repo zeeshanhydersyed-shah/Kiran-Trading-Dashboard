@@ -195,6 +195,7 @@ def load_portfolio_pnl() -> pd.DataFrame:
     pv_df = pd.DataFrame(all_vals)
     pv_df["date"] = pd.to_datetime(pv_df["date"])
     pv_df = pv_df.sort_values("date").drop_duplicates(subset=["date"], keep="last")
+    pv_df.rename(columns={"value": "portfolio_value"}, inplace=True)
 
     tx_df = pd.DataFrame(all_tx)
     tx_df["date"] = pd.to_datetime(tx_df["date"])
