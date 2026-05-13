@@ -1661,6 +1661,9 @@ elif cur == PAGES[4]:
 elif cur == PAGES[5]:
     import plotly.graph_objects as go
 
+    # Ensure portfolio tables exist
+    init_db()
+
     # ── Pull all closed trades (System-taken + Actual) ────────────────────────
     all_trades = get_trade_setups()
     adf = pd.DataFrame(all_trades) if all_trades else pd.DataFrame()
