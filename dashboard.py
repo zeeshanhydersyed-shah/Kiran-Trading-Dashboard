@@ -1929,52 +1929,63 @@ elif cur == PAGES[5]:
         kse_df = load_kse100_performance()
 
         if not pf_df.empty and not kse_df.empty:
-            # Calculate KSE-100 simple return
-            kse_start = kse_df.iloc[0]["kse100"]
-            kse_end = kse_df.iloc[-1]["kse100"]
-            kse_return = ((kse_end - kse_start) / kse_start) * 100 if kse_start > 0 else 0
-
-            # Calculate portfolio MWR (IRR accounting for deposits/withdrawals)
             pf_df = pf_df.sort_values("date")
+            kse_df = kse_df.sort_values("date")
 
-            # Build cash flows for IRR:
-            # Negative = money invested (deposits), Positive = money withdrawn or final value
+            # Use actual portfolio start/end dates
+            pf_start_date = pf_df.iloc[0]["date"]
+            pf_end_date = pf_df.iloc[-1]["date"]
+            final_pf_value = pf_df.iloc[-1]["portfolio_value"]
+
+            # Find KSE-100 values on portfolio dates
+            kse_on_start = kse_df[kse_df["date"] <= pf_start_date].iloc[-1]["kse100"] if any(kse_df["date"] <= pf_start_date) else kse_df.iloc[0]["kse100"]
+            kse_on_end = kse_df[kse_df["date"] <= pf_end_date].iloc[-1]["kse100"] if any(kse_df["date"] <= pf_end_date) else kse_df.iloc[-1]["kse100"]
+
+            # Calculate KSE-100 simple return
+            kse_return = ((kse_on_end - kse_on_start) / kse_on_start) * 100 if kse_on_start > 0 else 0
+
+            # Build cash flows for IRR from portfolio data
             cash_flows = []
             dates_cf = []
 
-            # Initial investment (negative = outflow)
-            cash_flows.append(-498767)
-            dates_cf.append(pd.to_datetime("2024-10-01"))
+            # Collect all transactions from database
+            try:
+                all_txs = get_portfolio_transactions()
+            except:
+                all_txs = []
 
-            # Other deposits (negative = outflows)
-            cash_flows.append(-450000)
-            dates_cf.append(pd.to_datetime("2024-12-13"))
+            # Historical deposits/withdrawals
+            historical_txs = [
+                {"date": "2024-10-01", "amount": -498767, "type": "initial"},
+                {"date": "2024-12-13", "amount": -450000, "type": "deposit"},
+                {"date": "2025-04-08", "amount": 25226, "type": "dividend"},
+                {"date": "2025-04-09", "amount": 10200, "type": "dividend"},
+                {"date": "2025-06-11", "amount": 10000, "type": "withdrawal"},
+                {"date": "2025-07-29", "amount": 55000, "type": "withdrawal"},
+                {"date": "2025-11-13", "amount": 200000, "type": "withdrawal"},
+                {"date": "2026-03-31", "amount": -1000000, "type": "deposit"},
+            ]
 
-            cash_flows.append(-1000000)
-            dates_cf.append(pd.to_datetime("2026-03-31"))
+            # Combine historical + database transactions, sorted by date
+            all_txs_combined = historical_txs + [
+                {"date": tx["date"], "amount": tx["amount"], "type": tx["type"]}
+                for tx in all_txs
+            ]
+            all_txs_combined = sorted(all_txs_combined, key=lambda x: x["date"])
 
-            # Withdrawals (positive = inflows)
-            cash_flows.append(10000)
-            dates_cf.append(pd.to_datetime("2025-06-11"))
+            # Build cash flows (deposits as negative, withdrawals/dividends as positive)
+            for tx in all_txs_combined:
+                if tx["type"] == "deposit" or tx["type"] == "initial":
+                    cash_flows.append(-tx["amount"])  # Negative = cash outflow
+                elif tx["type"] == "withdrawal":
+                    cash_flows.append(tx["amount"])  # Positive = cash inflow
+                elif tx["type"] == "dividend":
+                    cash_flows.append(tx["amount"])  # Positive = cash inflow
+                dates_cf.append(pd.to_datetime(tx["date"]))
 
-            cash_flows.append(55000)
-            dates_cf.append(pd.to_datetime("2025-07-29"))
-
-            cash_flows.append(200000)
-            dates_cf.append(pd.to_datetime("2025-11-13"))
-
-            # Dividends received (positive = inflows)
-            cash_flows.append(25226)
-            dates_cf.append(pd.to_datetime("2025-04-08"))
-
-            cash_flows.append(10200)
-            dates_cf.append(pd.to_datetime("2025-04-09"))
-
-            # Final portfolio value (positive = return of capital + gains)
-            final_pf_value = pf_df.iloc[-1]["portfolio_value"]
-            final_date = pf_df.iloc[-1]["date"]
+            # Add final portfolio value as final cash inflow
             cash_flows.append(final_pf_value)
-            dates_cf.append(final_date)
+            dates_cf.append(pf_end_date)
 
             # Calculate IRR
             portfolio_mwr = calculate_irr(cash_flows, dates_cf) * 100
@@ -1986,7 +1997,7 @@ elif cur == PAGES[5]:
                 st.metric(
                     "Portfolio MWR",
                     f"{portfolio_mwr:+.2f}%",
-                    delta=f"Period: Oct 2024 - {final_date.strftime('%b %Y')}",
+                    delta=f"{pf_start_date.strftime('%d %b %Y')} → {pf_end_date.strftime('%d %b %Y')}",
                     delta_color="off"
                 )
 
@@ -1994,24 +2005,22 @@ elif cur == PAGES[5]:
                 st.metric(
                     "KSE-100 Return",
                     f"{kse_return:+.2f}%",
-                    delta=f"Period: Oct 2024 - {final_date.strftime('%b %Y')}",
+                    delta=f"{pf_start_date.strftime('%d %b %Y')} → {pf_end_date.strftime('%d %b %Y')}",
                     delta_color="off"
                 )
 
             with col3:
                 outperformance = portfolio_mwr - kse_return
-                color = "green" if outperformance > 0 else "red"
                 st.metric(
                     "Outperformance",
                     f"{outperformance:+.2f}%",
-                    delta=f"MWR vs Index",
+                    delta="MWR vs Index",
                     delta_color="off"
                 )
 
             st.caption(
-                "📊 **MWR (Money-Weighted Return)** accounts for the timing and size of all deposits, "
-                "withdrawals, and dividends. **KSE-100 return** is simple index performance. "
-                "Both measured from Oct 2024 to current month-end."
+                "📊 **MWR** = Internal Rate of Return accounting for all deposits, withdrawals & dividends. "
+                "**KSE-100** = Simple index return. Both measured over same period from your portfolio start date."
             )
 
         else:
