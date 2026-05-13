@@ -2030,75 +2030,50 @@ elif cur == PAGES[5]:
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
-    # ── Monthly P&L and Cumulative P&L Line Chart ──────────────────────────────
-    st.markdown("**Monthly P&L vs Cumulative P&L  (PKR)**")
+    # ── Portfolio Value Growth Chart ───────────────────────────────────────────
+    st.markdown("**Portfolio Growth  (PKR)**")
 
     try:
-        # Group closed trades by month for monthly P&L
-        closed_monthly = closed.copy()
-        ref_date = pd.to_datetime(
-            closed_monthly["exit_date"].fillna(closed_monthly["created_date"]), errors="coerce"
-        )
-        closed_monthly["month"] = ref_date.dt.to_period("M")
+        pf_df = load_portfolio_pnl()
+        if not pf_df.empty:
+            pf_df = pf_df.sort_values("date")
 
-        monthly_pnl = closed_monthly.groupby("month").agg(
-            monthly_pl=("actual_pl_pkr", "sum"),
-            num_trades=("id", "count")
-        ).reset_index()
-        monthly_pnl["month"] = monthly_pnl["month"].astype(str)
-        monthly_pnl["month"] = pd.to_datetime(monthly_pnl["month"])
-        monthly_pnl = monthly_pnl.sort_values("month")
+            fig_pf = go.Figure()
 
-        if not monthly_pnl.empty:
-            # Calculate cumulative P&L
-            monthly_pnl["cumulative_pl"] = monthly_pnl["monthly_pl"].cumsum()
-
-            fig_monthly = go.Figure()
-
-            # Monthly P&L bars
-            fig_monthly.add_trace(go.Bar(
-                x=monthly_pnl["month"], y=monthly_pnl["monthly_pl"],
-                name="Monthly P&L",
-                marker_color=["#22c55e" if v > 0 else "#ef4444" for v in monthly_pnl["monthly_pl"]],
-                opacity=0.7,
-                hovertemplate="<b>Monthly P&L</b><br>%{x|%b %Y}<br>PKR %{y:+,.0f}<extra></extra>",
-                yaxis="y",
-            ))
-
-            # Cumulative P&L line
-            fig_monthly.add_trace(go.Scatter(
-                x=monthly_pnl["month"], y=monthly_pnl["cumulative_pl"],
-                mode="lines+markers", name="Cumulative P&L",
+            # Portfolio value line
+            fig_pf.add_trace(go.Scatter(
+                x=pf_df["date"], y=pf_df["portfolio_value"],
+                mode="lines+markers", name="Portfolio Value",
                 line={"color": "#3b82f6", "width": 2.5},
                 marker={"size": 6},
-                hovertemplate="<b>Cumulative P&L</b><br>%{x|%b %Y}<br>PKR %{y:+,.0f}<extra></extra>",
-                yaxis="y2",
+                fill="tozeroy",
+                fillcolor="rgba(59, 130, 246, 0.1)",
+                hovertemplate="<b>Portfolio Value</b><br>%{x|%d %b %Y}<br>PKR %{y:,.0f}<extra></extra>",
             ))
 
-            # Add zero line for reference
-            fig_monthly.add_hline(y=0, line_color="#94a3b8", line_width=1)
+            # Cumulative invested capital reference line
+            pf_df["total_invested"] = pf_df["initial_investment"] + pf_df["cumulative"]
+            fig_pf.add_trace(go.Scatter(
+                x=pf_df["date"], y=pf_df["total_invested"],
+                mode="lines", name="Capital Deployed",
+                line={"color": "#94a3b8", "width": 1.5, "dash": "dash"},
+                hovertemplate="<b>Capital Deployed</b><br>%{x|%d %b %Y}<br>PKR %{y:,.0f}<extra></extra>",
+            ))
 
-            fig_monthly.update_layout(
-                height=300, margin={"l": 4, "r": 4, "t": 8, "b": 8},
-                xaxis={"title": "Month", "tickfont": {"size": 9}},
-                yaxis={"title": "Monthly P&L (PKR)", "tickfont": {"size": 9}, "tickformat": ",.0f"},
-                yaxis2={
-                    "title": "Cumulative P&L (PKR)",
-                    "tickfont": {"size": 9},
-                    "tickformat": ",.0f",
-                    "overlaying": "y",
-                    "side": "right"
-                },
+            fig_pf.update_layout(
+                height=320, margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                xaxis={"title": "Date", "tickfont": {"size": 9}},
+                yaxis={"title": "Value (PKR)", "tickfont": {"size": 9}, "tickformat": ",.0f"},
                 legend={"font": {"size": 10}, "x": 0.01, "y": 0.99},
                 hovermode="x unified",
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig_monthly, use_container_width=True)
+            st.plotly_chart(fig_pf, use_container_width=True)
         else:
-            st.info("No monthly P&L data available yet.")
+            st.info("Portfolio data not available yet.")
     except Exception as e:
-        st.warning(f"Could not generate monthly P&L chart: {e}")
+        st.warning(f"Could not generate portfolio growth chart: {e}")
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
