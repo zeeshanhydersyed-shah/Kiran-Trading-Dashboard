@@ -740,7 +740,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["📊 Market", "📈 History", "💡 Setups", "📋 Trade Log", "🔍 Explorer", "📉 Analytics", "🤖 Backtest", "🧭 Regime", "🎯 Setup Perf", "🔎 STM", "🏥 Model Health", "🗂️ Portfolio"]
+PAGES = ["🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health"]
 
 
 def fmt_date(d) -> str:
@@ -947,7 +947,7 @@ cur = st.session_state.page
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 1 — MARKET
 # ═══════════════════════════════════════════════════════════════════════════════
-if cur == PAGES[0]:
+if cur == PAGES[1]:  # Market
 
     # Bar chart
     try:
@@ -1039,7 +1039,7 @@ if cur == PAGES[0]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 2 — HISTORY
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[1]:
+elif cur == PAGES[3]:  # History
     st.markdown("**Sector Performance History** — equal-weighted index per sector (base = 100)")
 
     try:
@@ -1094,7 +1094,7 @@ elif cur == PAGES[1]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 3 — SETUPS
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[2]:
+elif cur == PAGES[6]:  # Setups
     st.markdown(
         "**Trade Setups** — entry above/below latest close · "
         "SL at recent swing low · max risk 12% · shorts DFC-eligible only"
@@ -1284,7 +1284,7 @@ elif cur == PAGES[2]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 4 — TRADE LOG
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[3]:
+elif cur == PAGES[4]:  # Trade Log
     st.markdown("**Trade Log**")
     st.caption(
         "**System** = KIRAN's recommendation (taken or not). "
@@ -1596,7 +1596,7 @@ elif cur == PAGES[3]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 5 — EXPLORER
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[4]:
+elif cur == PAGES[2]:  # Explorer
     ex_left, ex_right = st.columns([1, 2])
 
     with ex_left:
@@ -2232,7 +2232,7 @@ elif cur == PAGES[5]:
 # ===============================================================================
 # PAGE 7 -- BACKTEST
 # ===============================================================================
-elif cur == PAGES[6]:
+elif cur == PAGES[9]:  # Backtest
     import plotly.graph_objects as go
 
     st.markdown("**Backtest Results** -- KIRAN rules replayed on historical data (Jan 2024 - present)")
@@ -2770,7 +2770,7 @@ elif cur == PAGES[6]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 8 — MARKET REGIME  (Weinstein Breadth Z-Score)
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[7]:
+elif cur == PAGES[0]:  # Regime
     try:
         import plotly.graph_objects as go
         import plotly.express as px
@@ -3679,7 +3679,7 @@ elif cur == PAGES[8]:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 10 — STM  (Short-Term Momentum Screener)
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[9]:
+elif cur == PAGES[7]:  # STM
 
     st.markdown("### 🔎 STM — Short-Term Momentum Screener")
     st.caption(
@@ -3938,7 +3938,7 @@ elif cur == PAGES[9]:
                 )
 
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
-elif cur == PAGES[10]:
+elif cur == PAGES[11]:  # Model Health
     import os as _os
     import subprocess as _sp
     import traceback as _tb
