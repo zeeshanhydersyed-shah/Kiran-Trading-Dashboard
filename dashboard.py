@@ -1932,48 +1932,30 @@ elif cur == PAGES[5]:
             # Calculate KSE-100 simple return
             kse_return = ((kse_on_end - kse_on_start) / kse_on_start) * 100 if kse_on_start > 0 else 0
 
-            # Build cash flows for IRR from portfolio data
-            cash_flows = []
-            dates_cf = []
-
-            # Collect all transactions from database
-            try:
-                all_txs = get_portfolio_transactions()
-            except:
-                all_txs = []
-
-            # Historical deposits/withdrawals
-            historical_txs = [
-                {"date": "2024-10-01", "amount": -498767, "type": "initial"},
-                {"date": "2024-12-13", "amount": -450000, "type": "deposit"},
-                {"date": "2025-04-08", "amount": 25226, "type": "dividend"},
-                {"date": "2025-04-09", "amount": 10200, "type": "dividend"},
-                {"date": "2025-06-11", "amount": 10000, "type": "withdrawal"},
-                {"date": "2025-07-29", "amount": 55000, "type": "withdrawal"},
-                {"date": "2025-11-13", "amount": 200000, "type": "withdrawal"},
-                {"date": "2026-03-31", "amount": -1000000, "type": "deposit"},
+            # Build cash flows for IRR - use fixed known values
+            cash_flows = [
+                -498767,      # Oct 1, 2024 - Initial investment
+                -450000,      # Dec 13, 2024 - Deposit
+                25226,        # Apr 8, 2025 - Dividend
+                10200,        # Apr 9, 2025 - Dividend
+                10000,        # Jun 11, 2025 - Withdrawal
+                55000,        # Jul 29, 2025 - Withdrawal
+                200000,       # Nov 13, 2025 - Withdrawal
+                -1000000,     # Mar 31, 2026 - Deposit
+                final_pf_value,  # Apr 30, 2026 - Final portfolio value
             ]
 
-            # Combine historical + database transactions, sorted by date
-            all_txs_combined = historical_txs + [
-                {"date": tx["date"], "amount": tx["amount"], "type": tx["type"]}
-                for tx in all_txs
+            dates_cf = [
+                pd.to_datetime("2024-10-01"),
+                pd.to_datetime("2024-12-13"),
+                pd.to_datetime("2025-04-08"),
+                pd.to_datetime("2025-04-09"),
+                pd.to_datetime("2025-06-11"),
+                pd.to_datetime("2025-07-29"),
+                pd.to_datetime("2025-11-13"),
+                pd.to_datetime("2026-03-31"),
+                pf_end_date,
             ]
-            all_txs_combined = sorted(all_txs_combined, key=lambda x: x["date"])
-
-            # Build cash flows (deposits as negative, withdrawals/dividends as positive)
-            for tx in all_txs_combined:
-                if tx["type"] == "deposit" or tx["type"] == "initial":
-                    cash_flows.append(-tx["amount"])  # Negative = cash outflow
-                elif tx["type"] == "withdrawal":
-                    cash_flows.append(tx["amount"])  # Positive = cash inflow
-                elif tx["type"] == "dividend":
-                    cash_flows.append(tx["amount"])  # Positive = cash inflow
-                dates_cf.append(pd.to_datetime(tx["date"]))
-
-            # Add final portfolio value as final cash inflow
-            cash_flows.append(final_pf_value)
-            dates_cf.append(pf_end_date)
 
             # Calculate IRR
             portfolio_mwr = calculate_irr(cash_flows, dates_cf) * 100
