@@ -237,36 +237,39 @@ def load_kse100_performance() -> pd.DataFrame:
 
 def calculate_irr(cash_flows: list, dates: list) -> float:
     """
-    Calculate Internal Rate of Return (Money-Weighted Return) using numpy.
+    Calculate Internal Rate of Return using bisection method (most reliable).
     """
     try:
-        import numpy_financial as npf
-
-        # Convert dates to datetime
         dates = [pd.to_datetime(d) if isinstance(d, str) else d for d in dates]
 
-        # Use numpy_financial's irr function
-        irr = npf.irr(cash_flows)
-        return float(irr) if not np.isnan(irr) else 0.0
-    except ImportError:
-        # Fallback: simple iterative IRR calculation
-        try:
-            from scipy.optimize import newton
-
-            if len(cash_flows) < 2:
-                return 0.0
-
-            dates = [pd.to_datetime(d) if isinstance(d, str) else d for d in dates]
-            ref_date = dates[0]
-            years = [float((d - ref_date).days) / 365.25 for d in dates]
-
-            def npv(rate):
-                return sum(cf / ((1 + rate) ** t) for cf, t in zip(cash_flows, years))
-
-            irr = newton(npv, 0.1, maxiter=1000)
-            return float(irr) if abs(irr) < 10 else 0.0  # Sanity check
-        except:
+        if len(cash_flows) < 2:
             return 0.0
+
+        ref_date = dates[0]
+        years = [float((d - ref_date).days) / 365.25 for d in dates]
+
+        # NPV function
+        def npv(rate):
+            return sum(cf / ((1 + rate) ** t) for cf, t in zip(cash_flows, years))
+
+        # Try bisection method - most robust
+        from scipy.optimize import brentq
+
+        # Find bounds where NPV changes sign
+        npv_low = npv(-0.99)  # Can't go below -100%
+        npv_high = npv(5.0)   # Try up to 500%
+
+        if npv_low * npv_high < 0:  # Different signs = root exists
+            irr = brentq(npv, -0.99, 5.0, xtol=1e-6)
+            return float(irr)
+        else:
+            # No sign change - try Newton's method as fallback
+            from scipy.optimize import newton
+            try:
+                irr = newton(npv, 0.1, maxiter=100)
+                return float(irr) if -1.0 < irr < 5.0 else 0.0
+            except:
+                return 0.0
     except Exception as e:
         return 0.0
 
