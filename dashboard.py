@@ -158,8 +158,15 @@ def load_portfolio_pnl() -> pd.DataFrame:
     ]
 
     # Load user-entered transactions from database
-    db_transactions = get_portfolio_transactions()
-    db_values = get_portfolio_values()
+    try:
+        db_transactions = get_portfolio_transactions()
+    except Exception:
+        db_transactions = []
+
+    try:
+        db_values = get_portfolio_values()
+    except Exception:
+        db_values = []
 
     # Combine historical + database transactions
     all_tx = historical_transactions.copy()
@@ -2052,48 +2059,54 @@ elif cur == PAGES[5]:
 
         with col_tx:
             st.markdown("**Recent Transactions**")
-            txs = get_portfolio_transactions()
-            if txs:
-                tx_display = []
-                for tx in txs[:10]:  # Show last 10
-                    tx_display.append({
-                        "Date": tx["date"],
-                        "Type": tx["type"].title(),
-                        "Amount": f"PKR {tx['amount']:,.0f}",
-                        "Notes": tx.get("notes", "—"),
-                    })
-                st.dataframe(
-                    pd.DataFrame(tx_display),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-                if st.button("🗑️ Refresh transactions", key="refresh_tx"):
-                    st.cache_data.clear()
-                    st.rerun()
-            else:
-                st.caption("No transactions recorded.")
+            try:
+                txs = get_portfolio_transactions()
+                if txs:
+                    tx_display = []
+                    for tx in txs[:10]:  # Show last 10
+                        tx_display.append({
+                            "Date": tx["date"],
+                            "Type": tx["type"].title(),
+                            "Amount": f"PKR {tx['amount']:,.0f}",
+                            "Notes": tx.get("notes", "—"),
+                        })
+                    st.dataframe(
+                        pd.DataFrame(tx_display),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    if st.button("🗑️ Refresh transactions", key="refresh_tx"):
+                        st.cache_data.clear()
+                        st.rerun()
+                else:
+                    st.caption("No transactions recorded.")
+            except Exception as e:
+                st.warning(f"Could not load transactions: {e}")
 
         with col_pv:
             st.markdown("**Recent Portfolio Values**")
-            pvs = get_portfolio_values()
-            if pvs:
-                pv_display = []
-                for pv in pvs[:10]:  # Show last 10
-                    pv_display.append({
-                        "Date": pv["date"],
-                        "Value": f"PKR {pv['value']:,.0f}",
-                        "Notes": pv.get("notes", "—"),
-                    })
-                st.dataframe(
-                    pd.DataFrame(pv_display),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-                if st.button("🗑️ Refresh values", key="refresh_pv"):
-                    st.cache_data.clear()
-                    st.rerun()
-            else:
-                st.caption("No portfolio values recorded.")
+            try:
+                pvs = get_portfolio_values()
+                if pvs:
+                    pv_display = []
+                    for pv in pvs[:10]:  # Show last 10
+                        pv_display.append({
+                            "Date": pv["date"],
+                            "Value": f"PKR {pv['value']:,.0f}",
+                            "Notes": pv.get("notes", "—"),
+                        })
+                    st.dataframe(
+                        pd.DataFrame(pv_display),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    if st.button("🗑️ Refresh values", key="refresh_pv"):
+                        st.cache_data.clear()
+                        st.rerun()
+                else:
+                    st.caption("No portfolio values recorded.")
+            except Exception as e:
+                st.warning(f"Could not load portfolio values: {e}")
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
