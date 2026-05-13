@@ -111,6 +111,97 @@ def load_data() -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
+def load_portfolio_pnl() -> pd.DataFrame:
+    """
+    Load and calculate portfolio P&L from investment transactions and closing values.
+    Adjusted according to industry standards for portfolio accounting.
+
+    Returns DataFrame with columns:
+    - date: transaction/portfolio value date
+    - portfolio_value: portfolio value on that date
+    - cumulative_deposits: cumulative net deposits (deposits - withdrawals)
+    - initial_investment: starting portfolio value
+    """
+    from database import get_index_prices
+
+    # Portfolio transactions and values (adjusted per user data)
+    transactions = [
+        {"date": "2024-10-01", "amount": -498767, "type": "initial"},  # Starting value
+        {"date": "2024-12-13", "amount": -450000, "type": "deposit"},
+        {"date": "2025-04-08", "amount": 25226, "type": "dividend"},
+        {"date": "2025-04-09", "amount": 10200, "type": "dividend"},
+        {"date": "2025-06-11", "amount": 10000, "type": "withdrawal"},
+        {"date": "2025-07-29", "amount": 55000, "type": "withdrawal"},
+        {"date": "2025-11-13", "amount": 200000, "type": "withdrawal"},
+        {"date": "2026-03-31", "amount": -1000000, "type": "deposit"},
+    ]
+
+    # Portfolio closing values on respective dates
+    portfolio_values = [
+        {"date": "2024-12-27", "value": 1039551},
+        {"date": "2025-01-31", "value": 1042921},
+        {"date": "2025-02-28", "value": 1080405},
+        {"date": "2025-03-28", "value": 1111348},
+        {"date": "2025-04-25", "value": 1062781},
+        {"date": "2025-05-30", "value": 1070866},
+        {"date": "2025-06-30", "value": 1104444},
+        {"date": "2025-07-31", "value": 1182240},  # Fixed date error
+        {"date": "2025-08-31", "value": 1191315},
+        {"date": "2025-09-30", "value": 1412790},
+        {"date": "2025-10-31", "value": 1342426},
+        {"date": "2025-11-30", "value": 1085614},
+        {"date": "2025-12-31", "value": 1135570},
+        {"date": "2026-01-31", "value": 1132629},
+        {"date": "2026-02-27", "value": 1118717},
+        {"date": "2026-03-31", "value": 2171150},
+        {"date": "2026-04-30", "value": 2151051},
+    ]
+
+    # Create DataFrame for portfolio values
+    pv_df = pd.DataFrame(portfolio_values)
+    pv_df["date"] = pd.to_datetime(pv_df["date"])
+    pv_df = pv_df.sort_values("date")
+
+    # Create DataFrame for transactions
+    tx_df = pd.DataFrame(transactions)
+    tx_df["date"] = pd.to_datetime(tx_df["date"])
+
+    # Calculate cumulative net capital (deposits - withdrawals, excluding initial)
+    tx_df_capital = tx_df[tx_df["type"] != "initial"].copy()
+    tx_df_capital["cumulative"] = tx_df_capital["amount"].cumsum()
+
+    # Merge and forward-fill cumulative capital
+    pv_df = pv_df.merge(
+        tx_df_capital[["date", "cumulative"]].drop_duplicates(),
+        on="date", how="left"
+    ).sort_values("date")
+    pv_df["cumulative"] = pv_df["cumulative"].ffill().fillna(0)
+
+    # Starting capital (initial investment)
+    initial = -transactions[0]["amount"]  # Starting Portfolio Value
+    pv_df["initial_investment"] = initial
+
+    return pv_df
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_kse100_performance() -> pd.DataFrame:
+    """Load KSE-100 index data for performance comparison."""
+    from database import get_index_prices
+
+    idx_rows = get_index_prices("KSE-100")
+    if not idx_rows:
+        return pd.DataFrame()
+
+    idx_df = pd.DataFrame(idx_rows)
+    idx_df["date"] = pd.to_datetime(idx_df["date"])
+    idx_df = idx_df[["date", "close"]].sort_values("date")
+    idx_df.columns = ["date", "kse100"]
+
+    return idx_df
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_sector_history(symbols: tuple) -> pd.DataFrame:
     from database import get_sector_price_data
     raw = get_sector_price_data()
@@ -1742,8 +1833,139 @@ elif cur == PAGES[5]:
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
+    # ── Portfolio vs KSE-100 Index Performance ─────────────────────────────────
+    st.markdown("**Portfolio Performance vs KSE-100 Index**")
+
+    try:
+        pf_df = load_portfolio_pnl()
+        kse_df = load_kse100_performance()
+
+        if not pf_df.empty and not kse_df.empty:
+            # Merge portfolio and KSE-100 data
+            merged = pf_df.merge(kse_df, on="date", how="left").sort_values("date")
+            merged["kse100"] = merged["kse100"].ffill()
+
+            # Calculate normalized performance (base = 100)
+            if len(merged) > 0:
+                pf_start = merged.iloc[0]["portfolio_value"]
+                kse_start = merged.iloc[0]["kse100"]
+
+                if pf_start > 0 and kse_start > 0:
+                    merged["pf_norm"] = (merged["portfolio_value"] / pf_start * 100)
+                    merged["kse_norm"] = (merged["kse100"] / kse_start * 100)
+
+                    # Calculate P&L values
+                    merged["pf_pnl"] = merged["portfolio_value"] - merged["initial_investment"] - merged["cumulative"]
+
+                    fig_perf = go.Figure()
+
+                    # Portfolio line
+                    fig_perf.add_trace(go.Scatter(
+                        x=merged["date"], y=merged["pf_norm"],
+                        mode="lines", name="Portfolio",
+                        line={"color": "#3b82f6", "width": 2.5},
+                        hovertemplate="<b>Portfolio</b><br>%{x|%d %b %Y}<br>%{y:.1f}<extra></extra>",
+                    ))
+
+                    # KSE-100 line
+                    fig_perf.add_trace(go.Scatter(
+                        x=merged["date"], y=merged["kse_norm"],
+                        mode="lines", name="KSE-100 Index",
+                        line={"color": "#ef4444", "width": 2, "dash": "dash"},
+                        hovertemplate="<b>KSE-100</b><br>%{x|%d %b %Y}<br>%{y:.1f}<extra></extra>",
+                    ))
+
+                    fig_perf.update_layout(
+                        height=300, margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                        xaxis={"title": "Date", "tickfont": {"size": 9}},
+                        yaxis={"title": "Indexed Value (Base=100)", "tickfont": {"size": 9}},
+                        legend={"font": {"size": 10}},
+                        hovermode="x unified",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(fig_perf, use_container_width=True)
+        else:
+            st.info("Portfolio or KSE-100 data not available yet.")
+    except Exception as e:
+        st.warning(f"Could not load portfolio vs KSE-100 comparison: {e}")
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Monthly P&L and Cumulative P&L Line Chart ──────────────────────────────
+    st.markdown("**Monthly P&L vs Cumulative P&L  (PKR)**")
+
+    try:
+        # Group closed trades by month for monthly P&L
+        closed_monthly = closed.copy()
+        ref_date = pd.to_datetime(
+            closed_monthly["exit_date"].fillna(closed_monthly["created_date"]), errors="coerce"
+        )
+        closed_monthly["month"] = ref_date.dt.to_period("M")
+
+        monthly_pnl = closed_monthly.groupby("month").agg(
+            monthly_pl=("actual_pl_pkr", "sum"),
+            num_trades=("id", "count")
+        ).reset_index()
+        monthly_pnl["month"] = monthly_pnl["month"].astype(str)
+        monthly_pnl["month"] = pd.to_datetime(monthly_pnl["month"])
+        monthly_pnl = monthly_pnl.sort_values("month")
+
+        if not monthly_pnl.empty:
+            # Calculate cumulative P&L
+            monthly_pnl["cumulative_pl"] = monthly_pnl["monthly_pl"].cumsum()
+
+            fig_monthly = go.Figure()
+
+            # Monthly P&L bars
+            fig_monthly.add_trace(go.Bar(
+                x=monthly_pnl["month"], y=monthly_pnl["monthly_pl"],
+                name="Monthly P&L",
+                marker_color=["#22c55e" if v > 0 else "#ef4444" for v in monthly_pnl["monthly_pl"]],
+                opacity=0.7,
+                hovertemplate="<b>Monthly P&L</b><br>%{x|%b %Y}<br>PKR %{y:+,.0f}<extra></extra>",
+                yaxis="y",
+            ))
+
+            # Cumulative P&L line
+            fig_monthly.add_trace(go.Scatter(
+                x=monthly_pnl["month"], y=monthly_pnl["cumulative_pl"],
+                mode="lines+markers", name="Cumulative P&L",
+                line={"color": "#3b82f6", "width": 2.5},
+                marker={"size": 6},
+                hovertemplate="<b>Cumulative P&L</b><br>%{x|%b %Y}<br>PKR %{y:+,.0f}<extra></extra>",
+                yaxis="y2",
+            ))
+
+            # Add zero line for reference
+            fig_monthly.add_hline(y=0, line_color="#94a3b8", line_width=1)
+
+            fig_monthly.update_layout(
+                height=300, margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                xaxis={"title": "Month", "tickfont": {"size": 9}},
+                yaxis={"title": "Monthly P&L (PKR)", "tickfont": {"size": 9}, "tickformat": ",.0f"},
+                yaxis2={
+                    "title": "Cumulative P&L (PKR)",
+                    "tickfont": {"size": 9},
+                    "tickformat": ",.0f",
+                    "overlaying": "y",
+                    "side": "right"
+                },
+                legend={"font": {"size": 10}, "x": 0.01, "y": 0.99},
+                hovermode="x unified",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_monthly, use_container_width=True)
+        else:
+            st.info("No monthly P&L data available yet.")
+    except Exception as e:
+        st.warning(f"Could not generate monthly P&L chart: {e}")
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
     # ── Cumulative P&L curve ──────────────────────────────────────────────────
-    st.markdown("**Cumulative P&L  (PKR)**")
+    st.markdown("**Cumulative P&L by Trade  (PKR)**")
     closed_s = closed.sort_values("exit_date", na_position="last").copy()
     closed_s["#"]      = range(1, len(closed_s) + 1)
     closed_s["cum_pl"] = closed_s["actual_pl_pkr"].fillna(0).cumsum()
