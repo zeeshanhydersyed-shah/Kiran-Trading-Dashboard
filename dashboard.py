@@ -235,6 +235,57 @@ def load_kse100_performance() -> pd.DataFrame:
     return idx_df
 
 
+def calculate_irr(cash_flows: list[tuple], dates: list) -> float:
+    """
+    Calculate Internal Rate of Return (Money-Weighted Return).
+
+    Args:
+        cash_flows: List of cash flows (negative = investment/deposit, positive = withdrawal/final value)
+        dates: List of dates corresponding to cash flows
+
+    Returns:
+        IRR as decimal (e.g., 0.15 = 15%)
+    """
+    try:
+        from scipy.optimize import newton
+        from datetime import datetime
+
+        if len(cash_flows) < 2:
+            return 0.0
+
+        # Convert dates to datetime if strings
+        if isinstance(dates[0], str):
+            dates = [pd.to_datetime(d) for d in dates]
+
+        # Use first date as reference (t=0)
+        ref_date = dates[0]
+
+        # Calculate days from reference date
+        days = [(d - ref_date).days for d in dates]
+        years = [d / 365.25 for d in days]
+
+        # NPV function: sum of all discounted cash flows
+        def npv(rate):
+            return sum(cf / ((1 + rate) ** t) for cf, t in zip(cash_flows, years))
+
+        # Try Newton's method with initial guess of 10%
+        try:
+            irr = newton(npv, 0.1, maxiter=100)
+            return float(irr)
+        except:
+            # Fallback: try different starting points
+            for guess in [0.0, 0.05, 0.15, 0.25]:
+                try:
+                    irr = newton(npv, guess, maxiter=100)
+                    return float(irr)
+                except:
+                    continue
+            return 0.0
+    except Exception as e:
+        st.warning(f"Could not calculate IRR: {e}")
+        return 0.0
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_sector_history(symbols: tuple) -> pd.DataFrame:
     from database import get_sector_price_data
@@ -1870,62 +1921,103 @@ elif cur == PAGES[5]:
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
-    # ── Portfolio vs KSE-100 Index Performance ─────────────────────────────────
-    st.markdown("**Portfolio Performance vs KSE-100 Index**")
+    # ── Portfolio MWR vs KSE-100 Return ────────────────────────────────────────
+    st.markdown("**Money-Weighted Return vs KSE-100**")
 
     try:
         pf_df = load_portfolio_pnl()
         kse_df = load_kse100_performance()
 
         if not pf_df.empty and not kse_df.empty:
-            # Merge portfolio and KSE-100 data
-            merged = pf_df.merge(kse_df, on="date", how="left").sort_values("date")
-            merged["kse100"] = merged["kse100"].ffill()
+            # Calculate KSE-100 simple return
+            kse_start = kse_df.iloc[0]["kse100"]
+            kse_end = kse_df.iloc[-1]["kse100"]
+            kse_return = ((kse_end - kse_start) / kse_start) * 100 if kse_start > 0 else 0
 
-            # Calculate normalized performance (base = 100)
-            if len(merged) > 0:
-                pf_start = merged.iloc[0]["portfolio_value"]
-                kse_start = merged.iloc[0]["kse100"]
+            # Calculate portfolio MWR (IRR accounting for deposits/withdrawals)
+            pf_df = pf_df.sort_values("date")
 
-                if pf_start > 0 and kse_start > 0:
-                    merged["pf_norm"] = (merged["portfolio_value"] / pf_start * 100)
-                    merged["kse_norm"] = (merged["kse100"] / kse_start * 100)
+            # Build cash flows for IRR:
+            # Negative = money invested (deposits), Positive = money withdrawn or final value
+            cash_flows = []
+            dates_cf = []
 
-                    # Calculate P&L values
-                    merged["pf_pnl"] = merged["portfolio_value"] - merged["initial_investment"] - merged["cumulative"]
+            # Initial investment (negative = outflow)
+            cash_flows.append(-498767)
+            dates_cf.append(pd.to_datetime("2024-10-01"))
 
-                    fig_perf = go.Figure()
+            # Other deposits (negative = outflows)
+            cash_flows.append(-450000)
+            dates_cf.append(pd.to_datetime("2024-12-13"))
 
-                    # Portfolio line
-                    fig_perf.add_trace(go.Scatter(
-                        x=merged["date"], y=merged["pf_norm"],
-                        mode="lines", name="Portfolio",
-                        line={"color": "#3b82f6", "width": 2.5},
-                        hovertemplate="<b>Portfolio</b><br>%{x|%d %b %Y}<br>%{y:.1f}<extra></extra>",
-                    ))
+            cash_flows.append(-1000000)
+            dates_cf.append(pd.to_datetime("2026-03-31"))
 
-                    # KSE-100 line
-                    fig_perf.add_trace(go.Scatter(
-                        x=merged["date"], y=merged["kse_norm"],
-                        mode="lines", name="KSE-100 Index",
-                        line={"color": "#ef4444", "width": 2, "dash": "dash"},
-                        hovertemplate="<b>KSE-100</b><br>%{x|%d %b %Y}<br>%{y:.1f}<extra></extra>",
-                    ))
+            # Withdrawals (positive = inflows)
+            cash_flows.append(10000)
+            dates_cf.append(pd.to_datetime("2025-06-11"))
 
-                    fig_perf.update_layout(
-                        height=300, margin={"l": 4, "r": 4, "t": 8, "b": 8},
-                        xaxis={"title": "Date", "tickfont": {"size": 9}},
-                        yaxis={"title": "Indexed Value (Base=100)", "tickfont": {"size": 9}},
-                        legend={"font": {"size": 10}},
-                        hovermode="x unified",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                    )
-                    st.plotly_chart(fig_perf, use_container_width=True)
+            cash_flows.append(55000)
+            dates_cf.append(pd.to_datetime("2025-07-29"))
+
+            cash_flows.append(200000)
+            dates_cf.append(pd.to_datetime("2025-11-13"))
+
+            # Dividends received (positive = inflows)
+            cash_flows.append(25226)
+            dates_cf.append(pd.to_datetime("2025-04-08"))
+
+            cash_flows.append(10200)
+            dates_cf.append(pd.to_datetime("2025-04-09"))
+
+            # Final portfolio value (positive = return of capital + gains)
+            final_pf_value = pf_df.iloc[-1]["portfolio_value"]
+            final_date = pf_df.iloc[-1]["date"]
+            cash_flows.append(final_pf_value)
+            dates_cf.append(final_date)
+
+            # Calculate IRR
+            portfolio_mwr = calculate_irr(cash_flows, dates_cf) * 100
+
+            # Display metrics side by side
+            col1, col2, col3 = st.columns([1.5, 1.5, 1])
+
+            with col1:
+                st.metric(
+                    "Portfolio MWR",
+                    f"{portfolio_mwr:+.2f}%",
+                    delta=f"Period: Oct 2024 - {final_date.strftime('%b %Y')}",
+                    delta_color="off"
+                )
+
+            with col2:
+                st.metric(
+                    "KSE-100 Return",
+                    f"{kse_return:+.2f}%",
+                    delta=f"Period: Oct 2024 - {final_date.strftime('%b %Y')}",
+                    delta_color="off"
+                )
+
+            with col3:
+                outperformance = portfolio_mwr - kse_return
+                color = "green" if outperformance > 0 else "red"
+                st.metric(
+                    "Outperformance",
+                    f"{outperformance:+.2f}%",
+                    delta=f"MWR vs Index",
+                    delta_color="off"
+                )
+
+            st.caption(
+                "📊 **MWR (Money-Weighted Return)** accounts for the timing and size of all deposits, "
+                "withdrawals, and dividends. **KSE-100 return** is simple index performance. "
+                "Both measured from Oct 2024 to current month-end."
+            )
+
         else:
             st.info("Portfolio or KSE-100 data not available yet.")
     except Exception as e:
-        st.warning(f"Could not load portfolio vs KSE-100 comparison: {e}")
+        st.warning(f"Could not calculate portfolio MWR vs KSE-100: {e}")
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
