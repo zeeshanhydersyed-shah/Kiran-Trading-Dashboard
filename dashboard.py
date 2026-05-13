@@ -1920,13 +1920,13 @@ elif cur == PAGES[5]:
             pf_df = pf_df.sort_values("date")
             kse_df = kse_df.sort_values("date")
 
-            # Use actual portfolio start/end dates
-            pf_start_date = pf_df.iloc[0]["date"]
+            # FIXED: Start date should be first cash flow (Oct 1, 2024), not first portfolio value (Dec 27, 2024)
+            measurement_start_date = pd.to_datetime("2024-10-01")  # First investment date
             pf_end_date = pf_df.iloc[-1]["date"]
             final_pf_value = pf_df.iloc[-1]["portfolio_value"]
 
-            # Find KSE-100 values on portfolio dates
-            kse_on_start = kse_df[kse_df["date"] <= pf_start_date].iloc[-1]["kse100"] if any(kse_df["date"] <= pf_start_date) else kse_df.iloc[0]["kse100"]
+            # Find KSE-100 values on actual measurement dates
+            kse_on_start = kse_df[kse_df["date"] <= measurement_start_date].iloc[-1]["kse100"] if any(kse_df["date"] <= measurement_start_date) else kse_df.iloc[0]["kse100"]
             kse_on_end = kse_df[kse_df["date"] <= pf_end_date].iloc[-1]["kse100"] if any(kse_df["date"] <= pf_end_date) else kse_df.iloc[-1]["kse100"]
 
             # Calculate KSE-100 simple return
@@ -1985,7 +1985,7 @@ elif cur == PAGES[5]:
                 st.metric(
                     "Portfolio MWR",
                     f"{portfolio_mwr:+.2f}%",
-                    delta=f"{pf_start_date.strftime('%d %b %Y')} → {pf_end_date.strftime('%d %b %Y')}",
+                    delta=f"{measurement_start_date.strftime('%d %b %Y')} → {pf_end_date.strftime('%d %b %Y')}",
                     delta_color="off"
                 )
 
@@ -1993,7 +1993,7 @@ elif cur == PAGES[5]:
                 st.metric(
                     "KSE-100 Return",
                     f"{kse_return:+.2f}%",
-                    delta=f"{pf_start_date.strftime('%d %b %Y')} → {pf_end_date.strftime('%d %b %Y')}",
+                    delta=f"{measurement_start_date.strftime('%d %b %Y')} → {pf_end_date.strftime('%d %b %Y')}",
                     delta_color="off"
                 )
 
