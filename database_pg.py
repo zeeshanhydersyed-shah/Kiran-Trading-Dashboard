@@ -178,6 +178,27 @@ def init_db():
         """,
         "CREATE INDEX IF NOT EXISTS idx_setups_symbol ON trade_setups (symbol)",
         "CREATE INDEX IF NOT EXISTS idx_setups_status ON trade_setups (status)",
+        """
+        CREATE TABLE IF NOT EXISTS portfolio_transactions (
+            id         SERIAL PRIMARY KEY,
+            date       TEXT NOT NULL,
+            type       TEXT NOT NULL,
+            amount     DOUBLE PRECISION NOT NULL,
+            notes      TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_portfolio_tx_date ON portfolio_transactions (date)",
+        """
+        CREATE TABLE IF NOT EXISTS portfolio_values (
+            id         SERIAL PRIMARY KEY,
+            date       TEXT NOT NULL UNIQUE,
+            value      DOUBLE PRECISION NOT NULL,
+            notes      TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_portfolio_val_date ON portfolio_values (date)",
     ]
     with get_conn() as conn:
         for stmt in ddl_statements:
@@ -633,3 +654,62 @@ def get_sim_portfolio_data() -> list[dict]:
             )
     except Exception:
         return []
+
+
+# ---------------------------------------------------------------------------
+# Portfolio Transactions & Values — manual end-of-month updates
+# ---------------------------------------------------------------------------
+
+def add_portfolio_transaction(date: str, tx_type: str, amount: float, notes: str = "") -> int:
+    """Add a portfolio transaction (deposit, withdrawal, dividend)."""
+    sql = """
+        INSERT INTO portfolio_transactions (date, type, amount, notes)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
+    """
+    with get_conn() as conn:
+        row = _fetchone(conn, sql, (date, tx_type, amount, notes))
+    return row["id"] if row else 0
+
+
+def get_portfolio_transactions() -> list[dict]:
+    """Get all portfolio transactions, sorted by date."""
+    with get_conn() as conn:
+        return _fetchall(
+            conn,
+            "SELECT id, date, type, amount, notes, created_at FROM portfolio_transactions ORDER BY date DESC",
+        )
+
+
+def delete_portfolio_transaction(tx_id: int):
+    """Delete a portfolio transaction by ID."""
+    with get_conn() as conn:
+        _exec(conn, "DELETE FROM portfolio_transactions WHERE id = %s", (tx_id,))
+
+
+def add_portfolio_value(date: str, value: float, notes: str = "") -> int:
+    """Add or update a portfolio value entry for a specific date."""
+    sql = """
+        INSERT INTO portfolio_values (date, value, notes)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (date) DO UPDATE SET value = EXCLUDED.value, notes = EXCLUDED.notes
+        RETURNING id
+    """
+    with get_conn() as conn:
+        row = _fetchone(conn, sql, (date, value, notes))
+    return row["id"] if row else 0
+
+
+def get_portfolio_values() -> list[dict]:
+    """Get all portfolio values, sorted by date."""
+    with get_conn() as conn:
+        return _fetchall(
+            conn,
+            "SELECT id, date, value, notes, created_at FROM portfolio_values ORDER BY date DESC",
+        )
+
+
+def delete_portfolio_value(val_id: int):
+    """Delete a portfolio value entry by ID."""
+    with get_conn() as conn:
+        _exec(conn, "DELETE FROM portfolio_values WHERE id = %s", (val_id,))

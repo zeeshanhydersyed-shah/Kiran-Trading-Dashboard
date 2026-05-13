@@ -87,6 +87,25 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_prices_symbol  ON prices (symbol);
             CREATE INDEX IF NOT EXISTS idx_setups_symbol  ON trade_setups (symbol);
             CREATE INDEX IF NOT EXISTS idx_setups_status  ON trade_setups (status);
+
+            CREATE TABLE IF NOT EXISTS portfolio_transactions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                date       TEXT NOT NULL,
+                type       TEXT NOT NULL,  -- deposit | withdrawal | dividend
+                amount     REAL NOT NULL,
+                notes      TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_portfolio_tx_date ON portfolio_transactions (date);
+
+            CREATE TABLE IF NOT EXISTS portfolio_values (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                date       TEXT NOT NULL UNIQUE,
+                value      REAL NOT NULL,
+                notes      TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_portfolio_val_date ON portfolio_values (date);
         """)
 
     # Non-destructive migrations — add new columns if they don't exist yet
@@ -605,6 +624,62 @@ def get_sim_portfolio_data() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Portfolio Transactions & Values — manual end-of-month updates
+# ---------------------------------------------------------------------------
+
+def add_portfolio_transaction(date: str, tx_type: str, amount: float, notes: str = "") -> int:
+    """Add a portfolio transaction (deposit, withdrawal, dividend)."""
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """INSERT INTO portfolio_transactions (date, type, amount, notes)
+               VALUES (?, ?, ?, ?)""",
+            (date, tx_type, amount, notes)
+        )
+        return cursor.lastrowid
+
+
+def get_portfolio_transactions() -> list[dict]:
+    """Get all portfolio transactions, sorted by date."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM portfolio_transactions ORDER BY date DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_portfolio_transaction(tx_id: int):
+    """Delete a portfolio transaction by ID."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM portfolio_transactions WHERE id = ?", (tx_id,))
+
+
+def add_portfolio_value(date: str, value: float, notes: str = "") -> int:
+    """Add or update a portfolio value entry for a specific date."""
+    with get_conn() as conn:
+        cursor = conn.execute(
+            """INSERT OR REPLACE INTO portfolio_values (date, value, notes)
+               VALUES (?, ?, ?)""",
+            (date, value, notes)
+        )
+        return cursor.lastrowid
+
+
+def get_portfolio_values() -> list[dict]:
+    """Get all portfolio values, sorted by date."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM portfolio_values ORDER BY date DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_portfolio_value(val_id: int):
+    """Delete a portfolio value entry by ID."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM portfolio_values WHERE id = ?", (val_id,))
+
+
+# ---------------------------------------------------------------------------
 # PostgreSQL override — runs LAST so PG functions replace SQLite ones
 # when DATABASE_URL is available (Streamlit Cloud / GitHub Actions).
 # ---------------------------------------------------------------------------
@@ -639,4 +714,10 @@ if _PG_URL:
         stm_pick_already_saved,
         auto_save_stm_picks,
         get_sim_portfolio_data,
+        add_portfolio_transaction,
+        get_portfolio_transactions,
+        delete_portfolio_transaction,
+        add_portfolio_value,
+        get_portfolio_values,
+        delete_portfolio_value,
     )

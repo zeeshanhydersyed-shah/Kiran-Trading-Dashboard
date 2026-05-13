@@ -29,6 +29,8 @@ from database import (
     save_trade_setup, get_trade_setups, update_trade_setup, close_trade_setup,
     activate_trade_setup, delete_trade_setup, auto_save_setups, get_backtest_summary,
     auto_save_stm_picks, get_sim_portfolio_data,
+    add_portfolio_transaction, get_portfolio_transactions, delete_portfolio_transaction,
+    add_portfolio_value, get_portfolio_values, delete_portfolio_value,
 )
 from processor import run_analysis
 from main import cmd_update
@@ -110,11 +112,11 @@ def load_data() -> dict:
     return run_analysis()
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)  # Shorter cache since user updates these
 def load_portfolio_pnl() -> pd.DataFrame:
     """
     Load and calculate portfolio P&L from investment transactions and closing values.
-    Adjusted according to industry standards for portfolio accounting.
+    Combines hardcoded historical data with database entries updated by user.
 
     Returns DataFrame with columns:
     - date: transaction/portfolio value date
@@ -122,11 +124,9 @@ def load_portfolio_pnl() -> pd.DataFrame:
     - cumulative_deposits: cumulative net deposits (deposits - withdrawals)
     - initial_investment: starting portfolio value
     """
-    from database import get_index_prices
-
-    # Portfolio transactions and values (adjusted per user data)
-    transactions = [
-        {"date": "2024-10-01", "amount": -498767, "type": "initial"},  # Starting value
+    # Historical transactions (from user's initial submission)
+    historical_transactions = [
+        {"date": "2024-10-01", "amount": -498767, "type": "initial"},
         {"date": "2024-12-13", "amount": -450000, "type": "deposit"},
         {"date": "2025-04-08", "amount": 25226, "type": "dividend"},
         {"date": "2025-04-09", "amount": 10200, "type": "dividend"},
@@ -136,8 +136,8 @@ def load_portfolio_pnl() -> pd.DataFrame:
         {"date": "2026-03-31", "amount": -1000000, "type": "deposit"},
     ]
 
-    # Portfolio closing values on respective dates
-    portfolio_values = [
+    # Historical portfolio values
+    historical_values = [
         {"date": "2024-12-27", "value": 1039551},
         {"date": "2025-01-31", "value": 1042921},
         {"date": "2025-02-28", "value": 1080405},
@@ -145,7 +145,7 @@ def load_portfolio_pnl() -> pd.DataFrame:
         {"date": "2025-04-25", "value": 1062781},
         {"date": "2025-05-30", "value": 1070866},
         {"date": "2025-06-30", "value": 1104444},
-        {"date": "2025-07-31", "value": 1182240},  # Fixed date error
+        {"date": "2025-07-31", "value": 1182240},
         {"date": "2025-08-31", "value": 1191315},
         {"date": "2025-09-30", "value": 1412790},
         {"date": "2025-10-31", "value": 1342426},
@@ -157,13 +157,39 @@ def load_portfolio_pnl() -> pd.DataFrame:
         {"date": "2026-04-30", "value": 2151051},
     ]
 
-    # Create DataFrame for portfolio values
-    pv_df = pd.DataFrame(portfolio_values)
-    pv_df["date"] = pd.to_datetime(pv_df["date"])
-    pv_df = pv_df.sort_values("date")
+    # Load user-entered transactions from database
+    db_transactions = get_portfolio_transactions()
+    db_values = get_portfolio_values()
 
-    # Create DataFrame for transactions
-    tx_df = pd.DataFrame(transactions)
+    # Combine historical + database transactions
+    all_tx = historical_transactions.copy()
+    for tx in db_transactions:
+        all_tx.append({
+            "date": tx["date"],
+            "amount": tx["amount"],
+            "type": tx["type"],
+        })
+
+    # Combine historical + database values
+    all_vals = historical_values.copy()
+    val_dates = {v["date"] for v in all_vals}
+    for val in db_values:
+        if val["date"] not in val_dates:
+            all_vals.append({
+                "date": val["date"],
+                "value": val["value"],
+            })
+        else:
+            # Update if database has newer value for same date
+            all_vals = [v if v["date"] != val["date"] else {"date": val["date"], "value": val["value"]}
+                       for v in all_vals]
+
+    # Create DataFrames
+    pv_df = pd.DataFrame(all_vals)
+    pv_df["date"] = pd.to_datetime(pv_df["date"])
+    pv_df = pv_df.sort_values("date").drop_duplicates(subset=["date"], keep="last")
+
+    tx_df = pd.DataFrame(all_tx)
     tx_df["date"] = pd.to_datetime(tx_df["date"])
 
     # Calculate cumulative net capital (deposits - withdrawals, excluding initial)
@@ -178,7 +204,7 @@ def load_portfolio_pnl() -> pd.DataFrame:
     pv_df["cumulative"] = pv_df["cumulative"].ffill().fillna(0)
 
     # Starting capital (initial investment)
-    initial = -transactions[0]["amount"]  # Starting Portfolio Value
+    initial = 498767  # From Oct 2024 starting value
     pv_df["initial_investment"] = initial
 
     return pv_df
@@ -1961,6 +1987,113 @@ elif cur == PAGES[5]:
             st.info("No monthly P&L data available yet.")
     except Exception as e:
         st.warning(f"Could not generate monthly P&L chart: {e}")
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Portfolio Management Section ───────────────────────────────────────────
+    st.markdown("### 📊 Portfolio Management")
+    st.caption("Update portfolio transactions and values at the end of each month")
+
+    with st.expander("➕ Add Portfolio Entry", expanded=False):
+        mgmt_tab1, mgmt_tab2 = st.tabs(["Transaction", "Portfolio Value"])
+
+        with mgmt_tab1:
+            st.markdown("**Add Deposit, Withdrawal, or Dividend**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                tx_date = st.date_input("Date", key="tx_date")
+            with col2:
+                tx_type = st.selectbox("Type", ["deposit", "withdrawal", "dividend"], key="tx_type")
+            with col3:
+                tx_amount = st.number_input("Amount (PKR)", min_value=0.0, step=1000.0, key="tx_amount")
+
+            tx_notes = st.text_input("Notes (optional)", key="tx_notes")
+
+            if st.button("✅ Add Transaction", key="add_tx"):
+                if tx_amount > 0:
+                    add_portfolio_transaction(
+                        date=tx_date.strftime("%Y-%m-%d"),
+                        tx_type=tx_type,
+                        amount=tx_amount,
+                        notes=tx_notes
+                    )
+                    st.success(f"Added {tx_type}: PKR {tx_amount:,.0f}")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error("Amount must be greater than 0")
+
+        with mgmt_tab2:
+            st.markdown("**Update Portfolio Value**")
+            col1, col2 = st.columns(2)
+            with col1:
+                pv_date = st.date_input("Date (month-end)", key="pv_date")
+            with col2:
+                pv_value = st.number_input("Portfolio Value (PKR)", min_value=0.0, step=10000.0, key="pv_value")
+
+            pv_notes = st.text_input("Notes (optional)", key="pv_notes")
+
+            if st.button("✅ Update Portfolio Value", key="add_pv"):
+                if pv_value > 0:
+                    add_portfolio_value(
+                        date=pv_date.strftime("%Y-%m-%d"),
+                        value=pv_value,
+                        notes=pv_notes
+                    )
+                    st.success(f"Updated portfolio value for {pv_date.strftime('%B %d, %Y')}: PKR {pv_value:,.0f}")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error("Portfolio value must be greater than 0")
+
+    # ── Display Transactions & Values ──────────────────────────────────────────
+    with st.expander("📋 View All Entries", expanded=False):
+        col_tx, col_pv = st.columns(2)
+
+        with col_tx:
+            st.markdown("**Recent Transactions**")
+            txs = get_portfolio_transactions()
+            if txs:
+                tx_display = []
+                for tx in txs[:10]:  # Show last 10
+                    tx_display.append({
+                        "Date": tx["date"],
+                        "Type": tx["type"].title(),
+                        "Amount": f"PKR {tx['amount']:,.0f}",
+                        "Notes": tx.get("notes", "—"),
+                    })
+                st.dataframe(
+                    pd.DataFrame(tx_display),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                if st.button("🗑️ Refresh transactions", key="refresh_tx"):
+                    st.cache_data.clear()
+                    st.rerun()
+            else:
+                st.caption("No transactions recorded.")
+
+        with col_pv:
+            st.markdown("**Recent Portfolio Values**")
+            pvs = get_portfolio_values()
+            if pvs:
+                pv_display = []
+                for pv in pvs[:10]:  # Show last 10
+                    pv_display.append({
+                        "Date": pv["date"],
+                        "Value": f"PKR {pv['value']:,.0f}",
+                        "Notes": pv.get("notes", "—"),
+                    })
+                st.dataframe(
+                    pd.DataFrame(pv_display),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                if st.button("🗑️ Refresh values", key="refresh_pv"):
+                    st.cache_data.clear()
+                    st.rerun()
+            else:
+                st.caption("No portfolio values recorded.")
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
