@@ -23,6 +23,38 @@ SCHEDULER_HOUR = 16
 SCHEDULER_MINUTE = 30
 SCHEDULER_TIMEZONE = "Asia/Karachi"
 
+# ---------------------------------------------------------------------------
+# Trading System Benchmark (Your Current System Performance)
+# Updated: 2026-05-21
+# Source: Historical trading results
+# ---------------------------------------------------------------------------
+BENCHMARK = {
+    "name": "Current System",
+    "description": "Kiran's existing multi-pattern screener",
+    "win_rate_pct": 48.0,
+    "loss_rate_pct": 52.0,
+    "profit_factor": 1.58,
+    "ev_pkr": 1942,
+    "risk_reward": 1.73,
+    "expectancy_pct": 3.34,
+    "sample_size": "100+ trades",
+    "date_range": "2024-2026",
+}
+
+# Support Reversal Pattern Performance (Out-of-sample 2026)
+SUPPORT_REVERSAL_STATS = {
+    "name": "Support Reversal Pattern",
+    "description": "Rejection candles at 200-MA support in uptrends",
+    "win_rate_pct": 30.5,
+    "loss_rate_pct": 69.5,
+    "profit_factor": 1.95,
+    "ev_pkr": None,  # Varies by position size
+    "risk_reward": 5.03,
+    "expectancy_pct": 5.21,
+    "sample_size": "~1,800 signals",
+    "date_range": "2026 (out-of-sample)",
+}
+
 # HTTP headers to mimic a browser visit
 REQUEST_HEADERS = {
     "User-Agent": (

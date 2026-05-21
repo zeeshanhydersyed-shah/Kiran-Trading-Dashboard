@@ -1805,6 +1805,7 @@ elif cur == PAGES[2]:  # Explorer
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[5]:
     import plotly.graph_objects as go
+    from config import BENCHMARK, SUPPORT_REVERSAL_STATS
 
     # Ensure portfolio tables exist
     init_db()
@@ -1896,6 +1897,49 @@ elif cur == PAGES[5]:
     r2[3].markdown(kpi("Avg Hold",     f"{avg_hold_win:.0f}d W · {avg_hold_loss:.0f}d L",
                        "days held: wins · losses",          BLUE), unsafe_allow_html=True)
 
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # ── BENCHMARK COMPARISON ──────────────────────────────────────────────────
+    st.markdown("### 📊 vs Benchmark")
+    st.caption(
+        f"Compare your current performance (from {n_total} closed trades) "
+        f"to your benchmark ({BENCHMARK['sample_size']}) and Support Reversal pattern ({SUPPORT_REVERSAL_STATS['sample_size']})"
+    )
+
+    comp_cols = st.columns(3)
+
+    # Build comparison dataframe
+    metrics_list = [
+        ("Win Rate %", f"{win_rate*100:.1f}%", f"{BENCHMARK['win_rate_pct']:.1f}%", f"{SUPPORT_REVERSAL_STATS['win_rate_pct']:.1f}%"),
+        ("Profit Factor", f"{profit_factor:.2f}x", f"{BENCHMARK['profit_factor']:.2f}x", f"{SUPPORT_REVERSAL_STATS['profit_factor']:.2f}x"),
+        ("Risk:Reward", f"{avg_rr:.2f}x", f"{BENCHMARK['risk_reward']:.2f}x", f"{SUPPORT_REVERSAL_STATS['risk_reward']:.2f}x"),
+        ("Expectancy %", f"{expectancy_pct:+.2f}%", f"{BENCHMARK['expectancy_pct']:+.2f}%", f"{SUPPORT_REVERSAL_STATS['expectancy_pct']:+.2f}%"),
+    ]
+
+    comp_df = pd.DataFrame(
+        metrics_list,
+        columns=["Metric", "Your Current", f"{BENCHMARK['name']}", f"{SUPPORT_REVERSAL_STATS['name']}"]
+    )
+
+    with comp_cols[0]:
+        st.markdown("**Current Performance**")
+        st.metric("Win Rate", f"{win_rate*100:.1f}%", delta=f"{win_rate*100 - BENCHMARK['win_rate_pct']:.1f}pp vs benchmark")
+        st.metric("Expectancy %", f"{expectancy_pct:+.2f}%", delta=f"{expectancy_pct - BENCHMARK['expectancy_pct']:+.2f}pp vs benchmark")
+
+    with comp_cols[1]:
+        st.markdown(f"**{BENCHMARK['name']}**")
+        st.metric("Win Rate", f"{BENCHMARK['win_rate_pct']:.1f}%", label_visibility="collapsed")
+        st.metric("Expectancy %", f"{BENCHMARK['expectancy_pct']:+.2f}%", label_visibility="collapsed")
+
+    with comp_cols[2]:
+        st.markdown(f"**{SUPPORT_REVERSAL_STATS['name']}**")
+        st.metric("Win Rate", f"{SUPPORT_REVERSAL_STATS['win_rate_pct']:.1f}%", label_visibility="collapsed")
+        st.metric("Expectancy %", f"{SUPPORT_REVERSAL_STATS['expectancy_pct']:+.2f}%", label_visibility="collapsed")
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    st.dataframe(comp_df, use_container_width=True, hide_index=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
     # ── Long vs Short side panels ─────────────────────────────────────────────
