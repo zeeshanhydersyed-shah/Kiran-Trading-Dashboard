@@ -497,7 +497,7 @@ def save_trade_setup(s: dict) -> int:
                 s.get("risk_pct", 0.0), s.get("atr_pct", 0.0),
                 s.get("status", "Pending"), s.get("notes", ""),
                 s.get("quality_score", 0),
-                json.dumps(s.get("quality_checks", {})),
+                json.dumps(s.get("quality_checks", {}), default=str),
                 s.get("range_width_pct"), s.get("range_window"),
                 s.get("sector_rank"), s.get("breadth_score"),
                 s.get("source", "System"),
