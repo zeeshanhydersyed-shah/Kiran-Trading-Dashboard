@@ -1932,26 +1932,26 @@ elif cur == PAGES[5]:  # The Audit
 
     # Generate callout
     callout = f"""
-**You took {sys_total + act_total} closed trades.**
+**You took {pa_total + act_total} closed trades.**
 
-**System setups:** {sys_total} trades, {sys_wins}W-{sys_losses}L ({sys_wr:.1f}% WR)
+**Screener you followed:** {pa_total} trades, {pa_wins}W-{pa_losses}L ({pa_wr:.1f}% WR)
 - Expected: ~67% from ML model
-- {'✓ On target' if abs(sys_wr - 67) < 10 else '✗ Below target' if sys_wr < 57 else '⚠ Above target'}
+- {'✓ On target' if abs(pa_wr - 67) < 10 else '✗ Below target' if pa_wr < 57 else '⚠ Above target'}
 
 **Your discretion:** {act_total} trades, {act_wins}W-{act_losses}L ({act_wr:.1f}% WR)
-- Yours vs System: {act_wr - sys_wr:+.1f}% {'(worse)' if act_wr < sys_wr else '(better)' if act_wr > sys_wr else '(equal)'}
+- Yours vs Screener: {act_wr - pa_wr:+.1f}% {'(worse)' if act_wr < pa_wr else '(better)' if act_wr > pa_wr else '(equal)'}
 
 **The math says:**
 """
 
     if act_total == 0:
-        callout += "You haven't taken any discretion trades. Good — follow the system."
-    elif act_wr < sys_wr - 15:
-        callout += f"Your discretion trades are underperforming by {sys_wr - act_wr:.1f}%. Stop. Follow the system."
-    elif act_wr > sys_wr + 10:
-        callout += f"Your discretion is working (+{act_wr - sys_wr:.1f}% vs system). But confirm this isn't luck — need larger sample."
+        callout += "You haven't taken any discretion trades. Good — follow the screener."
+    elif act_wr < pa_wr - 15:
+        callout += f"Your discretion trades are underperforming by {pa_wr - act_wr:.1f}%. Stop. Follow the screener."
+    elif act_wr > pa_wr + 10:
+        callout += f"Your discretion is working (+{act_wr - pa_wr:.1f}% vs screener). But confirm this isn't luck — need larger sample."
     else:
-        callout += "Your discretion and system are roughly equal. System is simpler. Use it."
+        callout += "Your discretion and screener are roughly equal. Screener is simpler. Use it."
 
     st.markdown(f"""
 <div style="background:#fee;border-left:4px solid #e11;padding:12px;border-radius:4px;margin:12px 0;">
