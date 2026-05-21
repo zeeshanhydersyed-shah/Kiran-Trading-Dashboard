@@ -238,6 +238,9 @@ def init_db():
     # Data migrations (safe to run multiple times)
     data_migrations = [
         "UPDATE trade_setups SET status='Closed' WHERE status IN ('Hit Target', 'Hit SL')",
+        "UPDATE trade_setups SET outcome='Loss' WHERE outcome='LOSS'",
+        "UPDATE trade_setups SET outcome='Win' WHERE outcome IN ('WIN', 'win')",
+        "UPDATE trade_setups SET outcome='Breakeven' WHERE outcome IN ('BREAKEVEN', 'breakeven', 'BE')",
     ]
     with get_conn() as conn:
         for sql in data_migrations:
