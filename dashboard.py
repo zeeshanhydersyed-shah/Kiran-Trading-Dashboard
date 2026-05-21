@@ -1267,12 +1267,12 @@ elif cur == PAGES[7]:  # Setups
                     f"margin-bottom:6px;'>✅ You are in this trade{ae_txt}</div>",
                     unsafe_allow_html=True,
                 )
-            elif rec_st in ("Hit Target", "Hit SL", "Breakeven", "Cancelled"):
-                outcome_col = "#22c55e" if rec_st == "Hit Target" else (
-                    "#ef4444" if rec_st == "Hit SL" else "#94a3b8")
+            elif rec_st == "Closed":
+                outcome_col = "#22c55e" if rec_oc == "Win" else (
+                    "#ef4444" if rec_oc == "Loss" else "#94a3b8")
                 st.markdown(
                     f"<div style='font-size:0.7rem; color:{outcome_col}; font-weight:600; "
-                    f"margin-bottom:6px;'>⬛ Closed — {rec_st}</div>",
+                    f"margin-bottom:6px;'>⬛ Closed — {rec_oc}</div>",
                     unsafe_allow_html=True,
                 )
             else:
@@ -1361,7 +1361,7 @@ elif cur == PAGES[4]:  # Trade Log
         )
 
         flt1, flt2, flt3, flt4 = st.columns([2, 2, 2, 2])
-        sf       = flt1.selectbox("Status", ["All","Pending","Active","Hit Target","Hit SL","Cancelled"], key="log_sf")
+        sf       = flt1.selectbox("Status", ["All","Pending","Active","Closed"], key="log_sf")
         src      = flt2.selectbox("Source", ["All","System","STM","Support Reversal","Actual"], key="log_src")
         exe      = flt3.selectbox("Execution", ["All","Paper","Actual","Paper & Actual"], key="log_exe")
         sym_srch = flt4.text_input("Symbol search", placeholder="e.g. BAFL", key="log_sym").strip().upper()
@@ -1585,7 +1585,7 @@ elif cur == PAGES[4]:  # Trade Log
                             setup_id               = int(partial_trade["id"]),
                             exit_price             = float(pc_px),
                             exit_date              = pc_dt.isoformat(),
-                            status                 = "Hit Target" if pc_pct >= 100 else "Cancelled",
+                            status                 = "Closed",
                             outcome                = "Breakeven",
                             notes                  = f"Partial close: {pc_pct:.1f}% @ {pc_px:.2f}. {pc_notes.strip()}",
                             actual_pl_pkr_override = None,
@@ -1626,7 +1626,7 @@ elif cur == PAGES[4]:  # Trade Log
             cl_pkr    = cl3.number_input("P&L PKR", step=100.0, format="%.0f",
                                           key="cl_pkr", label_visibility="collapsed",
                                           help="Your actual profit/loss in PKR (e.g. −15000). Leave 0 to auto-calculate.")
-            cl_result = cl4.selectbox("Result", ["Hit Target", "Hit SL", "Breakeven", "Cancelled"],
+            cl_result = cl4.selectbox("Result", ["Win", "Loss", "Breakeven", "Cancelled"],
                                       key="cl_result", label_visibility="collapsed")
             cl_notes  = cl5.text_input("Notes", placeholder="e.g. trailed stop", key="cl_notes",
                                        label_visibility="collapsed")
@@ -1637,15 +1637,13 @@ elif cur == PAGES[4]:  # Trade Log
                     if exit_px <= 0:
                         st.error("Enter a valid exit price.")
                     else:
-                        outcome_map = {"Hit Target": "Win", "Hit SL": "Loss",
-                                       "Breakeven": "Breakeven", "Cancelled": "Breakeven"}
                         pkr_override = float(cl_pkr) if cl_pkr != 0 else None
                         close_trade_setup(
                             setup_id               = int(chosen_trade["id"]),
                             exit_price             = float(exit_px),
                             exit_date              = exit_dt.isoformat(),
-                            status                 = cl_result,
-                            outcome                = outcome_map[cl_result],
+                            status                 = "Closed",
+                            outcome                = cl_result,
                             notes                  = cl_notes.strip() or None,
                             actual_pl_pkr_override = pkr_override,
                         )
@@ -1665,7 +1663,7 @@ elif cur == PAGES[4]:  # Trade Log
         st.markdown("**Update a setup**")
         u1, u2, u3, u4, u5 = st.columns([1, 2, 2, 3, 1])
         upd_id      = u1.number_input("ID", min_value=1, step=1, key="upd_id", label_visibility="collapsed")
-        upd_status  = u2.selectbox("Status", ["Pending","Active","Hit Target","Hit SL","Cancelled"], key="upd_st", label_visibility="collapsed")
+        upd_status  = u2.selectbox("Status", ["Pending","Active","Closed"], key="upd_st", label_visibility="collapsed")
         upd_outcome = u3.selectbox("Outcome", ["—","Win","Loss","Breakeven"], key="upd_oc", label_visibility="collapsed")
         upd_notes   = u4.text_input("Notes", placeholder="Notes…", key="upd_no", label_visibility="collapsed")
         u1.caption("ID"); u2.caption("Status"); u3.caption("Outcome"); u4.caption("Notes")
@@ -1771,7 +1769,7 @@ elif cur == PAGES[5]:  # The Audit
     st.divider()
     st.markdown("### Trade Analysis (Closed Trades Only)")
 
-    closed = trades_df[trades_df["status"].isin(["Hit Target", "Hit SL", "Cancelled"])]
+    closed = trades_df[trades_df["status"] == "Closed"]
     if closed.empty:
         st.info("No closed trades yet.")
         st.stop()
