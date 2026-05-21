@@ -107,7 +107,7 @@ div[data-testid="stHorizontalBlock"] > div > div > div > button[kind="primary"] 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=7200, show_spinner=False)  # 2 hours instead of 30 min
 def load_data() -> dict:
     init_db()
     data = run_analysis()
@@ -879,6 +879,11 @@ with st.sidebar:
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
+
+    if st.button("⚡ Clear Cache", width='stretch', key="sb_clear_cache"):
+        st.cache_data.clear()
+        st.success("Cache cleared!")
+        st.rerun()
 
     mn, mx = get_price_date_range()
     st.caption(
