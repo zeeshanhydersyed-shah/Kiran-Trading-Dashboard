@@ -1353,7 +1353,7 @@ elif cur == PAGES[4]:  # Trade Log
 
         flt1, flt2, flt3 = st.columns([2, 2, 2])
         sf       = flt1.selectbox("Status", ["All","Pending","Active","Hit Target","Hit SL","Cancelled"], key="log_sf")
-        src      = flt2.selectbox("Source", ["All","System","STM","Actual"], key="log_src")
+        src      = flt2.selectbox("Source", ["All","System","STM","Support Reversal","Actual"], key="log_src")
         sym_srch = flt3.text_input("Symbol search", placeholder="e.g. BAFL", key="log_sym").strip().upper()
 
         if sf       != "All": log_df = log_df[log_df["status"] == sf]
@@ -1393,6 +1393,7 @@ elif cur == PAGES[4]:  # Trade Log
             return [
                 "color:#3b82f6;font-weight:bold" if v == "System"
                 else "color:#0ea5e9;font-weight:bold" if v == "STM"
+                else "color:#10b981;font-weight:bold" if v == "Support Reversal"
                 else "color:#f59e0b;font-weight:bold"
                 for v in series
             ]
@@ -1417,7 +1418,7 @@ elif cur == PAGES[4]:  # Trade Log
         pending_trades = [
             t for t in all_saved
             if t.get("status") == "Pending"
-            and t.get("source") in ("System", "STM")
+            and t.get("source") in ("System", "STM", "Support Reversal")
         ]
         if pending_trades:
             st.divider()
@@ -4214,13 +4215,11 @@ elif cur == PAGES[8]:  # Support Reversals
             """)
 
         if len(pending) > 0:
+            st.info("📋 Go to **Trade Log** → **✏️ I took this trade** to activate any of these setups")
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("✅ Activate Selected", key="activate_reversal"):
-                    st.info("Select setups in the table and activate them in the Trade Log")
-            with col2:
-                if st.button("📥 Import to Trade Log", key="import_reversal"):
-                    st.info("Setups auto-appear in Trade Log when activated")
+                if st.button("→ Go to Trade Log", key="goto_trade_log"):
+                    st.info("Trade Log will appear when you navigate to it")
     else:
         st.success("No pending setups")
 
