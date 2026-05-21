@@ -4483,6 +4483,13 @@ elif cur == PAGES[12]:  # Support Research
                     st.warning("No support signals detected. Try adjusting tolerance factor or data range.")
                     st.stop()
 
+                total_signals = len(signals)
+
+                # Sample if too many (avoid Streamlit Cloud timeout)
+                if total_signals > 50000:
+                    signals = list(np.random.choice(signals, size=50000, replace=False))
+                    st.info(f"ℹ️ Analyzing random sample of 50k signals (from {total_signals:,} total)")
+
                 st.success(f"✓ Generated {len(signals):,} support signals")
 
                 # Forward test

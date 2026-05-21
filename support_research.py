@@ -278,36 +278,44 @@ class SignalAnalyzer:
         self.price_data['date'] = pd.to_datetime(self.price_data['date'])
 
     def forward_test(self, signals: List[SupportSignal], windows: List[int] = [5, 10, 20]) -> List[SupportSignal]:
-        """Calculate forward returns for each signal."""
+        """Calculate forward returns for each signal (vectorized for speed)."""
+        # Pre-index price data by symbol and date for O(1) lookup
+        price_idx = {}
+        for sym in self.price_data['symbol'].unique():
+            sym_data = self.price_data[self.price_data['symbol'] == sym].copy()
+            sym_data = sym_data.sort_values('date').reset_index(drop=True)
+            price_idx[sym] = sym_data
+
         result = []
-
         for sig in signals:
-            sig_date = pd.to_datetime(sig.date)
-            sym_data = self.price_data[self.price_data['symbol'] == sig.symbol]
-            sym_data = sym_data.sort_values('date')
-
-            sig_idx = sym_data[sym_data['date'] == sig_date].index
-            if len(sig_idx) == 0:
+            if sig.symbol not in price_idx:
                 continue
 
-            sig_idx = sym_data.index.get_loc(sig_idx[0])
+            sym_data = price_idx[sig.symbol]
+
+            # Find signal date in this symbol's data
+            dates_match = (sym_data['date'] == sig.date)
+            if not dates_match.any():
+                continue
+
+            sig_idx = sym_data.index[dates_match][0]
             entry_price = sig.entry_price
 
-            # Calculate returns and extremes over forward windows
-            forward_data = sym_data.iloc[sig_idx+1:sig_idx+21]  # up to 20 bars forward
-
-            if len(forward_data) == 0:
+            # Get forward window (up to 20 bars)
+            forward_slice = sym_data.iloc[sig_idx+1:sig_idx+21]
+            if len(forward_slice) == 0:
                 continue
 
+            # Calculate returns at each window
             for window in windows:
-                if len(forward_data) >= window:
-                    price_at_window = forward_data.iloc[window-1]['close']
-                    setattr(sig, f'return_{window}d', (price_at_window - entry_price) / entry_price)
+                if len(forward_slice) >= window:
+                    close_at_window = forward_slice.iloc[window-1]['close']
+                    setattr(sig, f'return_{window}d', (close_at_window - entry_price) / entry_price)
 
-            # Max favorable and adverse excursion
-            if len(forward_data) > 0:
-                sig.max_favorable = (forward_data['high'].max() - entry_price) / entry_price
-                sig.max_adverse = (forward_data['low'].min() - entry_price) / entry_price
+            # Max excursions
+            if len(forward_slice) > 0:
+                sig.max_favorable = (forward_slice['high'].max() - entry_price) / entry_price
+                sig.max_adverse = (forward_slice['low'].min() - entry_price) / entry_price
 
             result.append(sig)
 
