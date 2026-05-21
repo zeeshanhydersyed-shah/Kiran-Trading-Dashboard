@@ -2037,14 +2037,14 @@ elif cur == PAGES[5]:  # The Audit
         psych_callout += f"**Holding losers too long:** You hold losers {avg_hold_loss:.1f}d but winners {avg_hold_win:.1f}d. Hope is the enemy. Cut losses faster."
 
     # Check win rate consistency
-    if sys_total >= 5 and act_total >= 5:
-        if abs(sys_wr - act_wr) > 20:
+    if pa_total >= 5 and act_total >= 5:
+        if abs(pa_wr - act_wr) > 20:
             if psych_callout:
                 psych_callout += "\n\n"
-            if act_wr < sys_wr:
-                psych_callout += f"**Discretion is your Achilles heel:** {act_wr - sys_wr:.0f}% worse than system. Ego. Stop it."
+            if act_wr < pa_wr:
+                psych_callout += f"**Discretion is your Achilles heel:** {act_wr - pa_wr:.0f}% worse than screener. Ego. Stop it."
             else:
-                psych_callout += f"**Your gut is beating the system by {act_wr - sys_wr:.0f}%.** But is it luck or skill? 50 more trades will tell."
+                psych_callout += f"**Your gut is beating the screener by {act_wr - pa_wr:.0f}%.** But is it luck or skill? 50 more trades will tell."
 
     if not psych_callout:
         psych_callout = "No major psychological red flags detected. Streaks are normal. Keep the discipline."
