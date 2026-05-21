@@ -1433,6 +1433,80 @@ elif cur == PAGES[4]:  # Trade Log
             width='stretch', hide_index=True, height=340,
         )
 
+        # ── Performance table for closed trades ────────────────────────────────
+        st.divider()
+        st.markdown("**Closed Trades Performance**")
+
+        closed_df = log_df[log_df["status"] == "Closed"].copy()
+
+        if not closed_df.empty:
+            perf_rows = []
+
+            # Calculate for all closed trades
+            all_closed_wins = closed_df[closed_df["outcome"] == "Win"]
+            all_closed_losses = closed_df[closed_df["outcome"] == "Loss"]
+            all_closed_count = len(closed_df)
+            all_wins_count = len(all_closed_wins)
+            all_losses_count = len(all_closed_losses)
+            all_win_pct = (all_wins_count / all_closed_count * 100) if all_closed_count > 0 else 0
+            all_loss_pct = (all_losses_count / all_closed_count * 100) if all_closed_count > 0 else 0
+            all_pl_pct = closed_df["actual_pl_pct"].dropna().mean() if not closed_df.empty else 0
+
+            perf_rows.append({
+                "Execution": "All",
+                "Trades": all_closed_count,
+                "Win": all_wins_count,
+                "Loss": all_losses_count,
+                "Win%": round(all_win_pct, 1),
+                "Loss%": round(all_loss_pct, 1),
+                "P&L%": round(all_pl_pct, 2),
+            })
+
+            # Calculate for each execution type
+            for exe_type in ["Paper", "Actual", "Paper & Actual"]:
+                exe_closed = closed_df[closed_df["execution_type"] == exe_type]
+                if not exe_closed.empty:
+                    exe_wins = exe_closed[exe_closed["outcome"] == "Win"]
+                    exe_losses = exe_closed[exe_closed["outcome"] == "Loss"]
+                    exe_count = len(exe_closed)
+                    exe_wins_count = len(exe_wins)
+                    exe_losses_count = len(exe_losses)
+                    exe_win_pct = (exe_wins_count / exe_count * 100) if exe_count > 0 else 0
+                    exe_loss_pct = (exe_losses_count / exe_count * 100) if exe_count > 0 else 0
+                    exe_pl_pct = exe_closed["actual_pl_pct"].dropna().mean() if not exe_closed.empty else 0
+
+                    perf_rows.append({
+                        "Execution": exe_type,
+                        "Trades": exe_count,
+                        "Win": exe_wins_count,
+                        "Loss": exe_losses_count,
+                        "Win%": round(exe_win_pct, 1),
+                        "Loss%": round(exe_loss_pct, 1),
+                        "P&L%": round(exe_pl_pct, 2),
+                    })
+                else:
+                    perf_rows.append({
+                        "Execution": exe_type,
+                        "Trades": 0,
+                        "Win": 0,
+                        "Loss": 0,
+                        "Win%": 0.0,
+                        "Loss%": 0.0,
+                        "P&L%": 0.0,
+                    })
+
+            perf_df = pd.DataFrame(perf_rows)
+            st.dataframe(
+                perf_df.style.format({
+                    "Win%": "{:.1f}%",
+                    "Loss%": "{:.1f}%",
+                    "P&L%": "{:+.2f}%",
+                }),
+                width='stretch', hide_index=True, use_container_width=True,
+            )
+        else:
+            st.caption("No closed trades yet.")
+
     # ── Activate a pending trade ──────────────────────────────────────────────
     if all_saved:
         pending_trades = [
