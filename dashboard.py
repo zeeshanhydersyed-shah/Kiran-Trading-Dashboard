@@ -1847,34 +1847,50 @@ elif cur == PAGES[5]:  # The Audit
     # ── CLOSED TRADES ANALYSIS ────────────────────────────────────────────────
     st.divider()
     st.markdown("### Trade Analysis (Closed Trades Only)")
+    st.caption("Only shows trades you actually executed (Actual + Paper & Actual)")
 
-    closed = trades_df[trades_df["status"] == "Closed"]
+    closed = trades_df[trades_df["status"] == "Closed"].copy()
     if closed.empty:
         st.info("No closed trades yet.")
         st.stop()
 
-    # Categorize trades
-    system_trades = closed[closed["source"].isin(["System", "STM", "Support Reversal"])]
-    actual_trades = closed[closed["source"] == "Actual"]
+    # Calculate execution type (same logic as Trade Log)
+    closed["execution_type"] = closed.apply(
+        lambda row: "Actual" if row.get("source") == "Actual"
+        else "Paper & Actual" if row.get("actual_entry") is not None and row.get("actual_entry") > 0
+        else "Paper",
+        axis=1
+    )
 
-    sys_wins = len(system_trades[system_trades["outcome"] == "Win"])
-    sys_losses = len(system_trades[system_trades["outcome"] == "Loss"])
-    sys_total = len(system_trades)
+    # Filter to only executed trades (Actual + Paper & Actual)
+    executed = closed[closed["execution_type"].isin(["Actual", "Paper & Actual"])]
 
-    act_wins = len(actual_trades[actual_trades["outcome"] == "Win"])
-    act_losses = len(actual_trades[actual_trades["outcome"] == "Loss"])
-    act_total = len(actual_trades)
+    if executed.empty:
+        st.info("No executed trades yet. Log trades in Trade Log page first.")
+        st.stop()
 
-    sys_wr = (sys_wins / sys_total * 100) if sys_total > 0 else 0
+    # Categorize by execution type
+    paper_actual = executed[executed["execution_type"] == "Paper & Actual"]
+    actual_only = executed[executed["execution_type"] == "Actual"]
+
+    pa_wins = len(paper_actual[paper_actual["outcome"] == "Win"])
+    pa_losses = len(paper_actual[paper_actual["outcome"] == "Loss"])
+    pa_total = len(paper_actual)
+
+    act_wins = len(actual_only[actual_only["outcome"] == "Win"])
+    act_losses = len(actual_only[actual_only["outcome"] == "Loss"])
+    act_total = len(actual_only)
+
+    pa_wr = (pa_wins / pa_total * 100) if pa_total > 0 else 0
     act_wr = (act_wins / act_total * 100) if act_total > 0 else 0
 
     # Display metrics
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric("System Trades", sys_total, f"{sys_wins}W {sys_losses}L")
+        st.metric("Paper & Actual", pa_total, f"{pa_wins}W {pa_losses}L")
     with col2:
-        st.metric("System Win Rate", f"{sys_wr:.1f}%", help="Expected ~67% from ML model")
+        st.metric("Win Rate", f"{pa_wr:.1f}%", help="Screener suggestions you traded")
     with col3:
         st.metric("Your Discretion", act_total, f"{act_wins}W {act_losses}L")
     with col4:
@@ -1884,26 +1900,26 @@ elif cur == PAGES[5]:  # The Audit
     st.divider()
     st.markdown("### Trade-by-Trade Audit")
 
-    audit_df = closed[[
+    audit_df = executed[[
         "id", "created_date", "symbol", "direction", "entry_price", "actual_exit",
-        "source", "outcome", "actual_pl_pct", "holding_days", "notes"
+        "execution_type", "outcome", "actual_pl_pct", "holding_days", "notes"
     ]].copy()
     audit_df.columns = ["ID", "Entry Date", "Symbol", "Dir", "Entry", "Exit",
-                         "Source", "Result", "P&L%", "Days", "Notes"]
+                         "Execution", "Result", "P&L%", "Days", "Notes"]
     audit_df["Entry Date"] = audit_df["Entry Date"].apply(fmt_date)
     audit_df = audit_df.sort_values("Entry Date", ascending=False)
 
-    def style_audit_source(series):
+    def style_execution(series):
         return [
-            "background-color:#3b82f8;color:white" if v in ["System", "STM"]
-            else "background-color:#10b981;color:white" if v == "Support Reversal"
-            else "background-color:#f59e0b;color:white"
+            "color:#8b5cf6;font-weight:bold" if v == "Paper"
+            else "color:#06b6d4;font-weight:bold" if v == "Actual"
+            else "color:#ec4899;font-weight:bold"
             for v in series
         ]
 
     st.dataframe(
         audit_df.style
-        .apply(style_audit_source, subset=["Source"])
+        .apply(style_execution, subset=["Execution"])
         .apply(style_outcome, subset=["Result"])
         .apply(style_pct_cols, subset=["P&L%"])
         .format({"Entry":"{:.2f}", "Exit":"{:.2f}", "P&L%":"{:.2f}", "Days":"{:.0f}"}, na_rep="—"),

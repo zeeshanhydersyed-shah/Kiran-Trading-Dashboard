@@ -134,3 +134,66 @@ Do NOT import these in dashboard.py — they are not available on Streamlit Clou
 2. 5d range ≤ 5%
 3. 0% < dist above 21 MA ≤ 5%
 4. Risk ≤ 3%
+
+---
+
+## Recent Changes (May 2026)
+
+### Trade Execution Tracking
+**Trade Log page now tracks execution type:**
+
+| Execution | Definition | Counted in Analytics |
+|-----------|-----------|----------------------|
+| **Paper** | Screener suggestion not yet traded | ❌ No |
+| **Actual** | Discretionary trade (user's own call) | ✅ Yes |
+| **Paper & Actual** | Screener suggestion + actually traded | ✅ Yes |
+
+**Calculation (dynamic, based on source + actual_entry):**
+```python
+if source == 'Actual':
+    execution_type = 'Actual'
+elif source in ('System', 'STM', 'Support Reversal') and actual_entry is not None:
+    execution_type = 'Paper & Actual'
+else:
+    execution_type = 'Paper'
+```
+
+**Trade Log Filters:**
+- Status: Pending / Active / Closed
+- Source: System / STM / Support Reversal / Actual
+- **Execution: All / Paper / Actual / Paper & Actual** ← NEW
+- Symbol search
+
+**Performance Table (Closed Trades Only):**
+Shows metrics by execution type:
+- All closed trades
+- Paper (closed but untouched by user)
+- Actual (user's discretionary closed trades)
+- Paper & Actual (screener + user actually traded)
+
+Metrics: Trade count, Wins, Losses, Win%, Loss%, Avg P&L%
+
+### Status Values (Simplified)
+- **Pending** — Created but not executed (user hasn't entered actual fill)
+- **Active** — In trade (user entered actual fill, waiting for exit)
+- **Closed** — Exited (hit SL, TP, or BE) with outcome recorded
+
+**Note:** Outcome (Win/Loss/Breakeven) is separate from Status.
+
+### Analytics & Setup Performance Filtering
+- **Analytics page:** Only shows **Actual + Paper & Actual** trades (excludes pure Paper)
+- **Setup Performance page:** Only shows System setups that were **Paper & Actual** (actually traded)
+- **Audit page:** Should filter same way (needs update — see below)
+
+### Performance Optimizations
+- Cache TTL increased: 30 min → 2 hours (load_data function)
+- Added "⚡ Clear Cache" button in sidebar for manual refresh
+- Result: Page loads <1s after initial cache load (instead of 3-4s every 30 min)
+
+### Data Fixes
+- Standardized outcome values to proper case: 'Loss', 'Win', 'Breakeven' (was mixed: 'LOSS', 'Loss', etc.)
+- HBL SHORT (ID 293) marked as Active (open trade, not Pending)
+
+### Known Issues to Address
+- **Audit page** mixes all system setups with user trades. Should filter to **Actual + Paper & Actual only** (matching Trade Log)
+- Manager confusion about "system trades" — Audit should clearly show only real executed trades
