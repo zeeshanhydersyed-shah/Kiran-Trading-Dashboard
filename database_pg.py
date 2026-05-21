@@ -522,10 +522,9 @@ def activate_trade_setup(
     with get_conn() as conn:
         _exec(conn, """
             UPDATE trade_setups
-            SET status            = 'Active',
-                actual_entry      = COALESCE(%s, actual_entry),
-                notes             = COALESCE(%s, notes),
-                trade_execution   = 'Paper & Actual'
+            SET status       = 'Active',
+                actual_entry = COALESCE(%s, actual_entry),
+                notes        = COALESCE(%s, notes)
             WHERE id = %s
         """, (actual_entry, notes, setup_id))
 

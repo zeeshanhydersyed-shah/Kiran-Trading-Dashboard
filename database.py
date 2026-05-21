@@ -456,10 +456,9 @@ def activate_trade_setup(
         conn.execute(
             """
             UPDATE trade_setups
-            SET status            = 'Active',
-                actual_entry      = COALESCE(?, actual_entry),
-                notes             = COALESCE(?, notes),
-                trade_execution   = 'Paper & Actual'
+            SET status       = 'Active',
+                actual_entry = COALESCE(?, actual_entry),
+                notes        = COALESCE(?, notes)
             WHERE id = ?
             """,
             (actual_entry, notes, setup_id),

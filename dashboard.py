@@ -1352,13 +1352,23 @@ elif cur == PAGES[4]:  # Trade Log
             log_df["source"] = "System"
         log_df["source"] = log_df["source"].fillna("System")
 
-        flt1, flt2, flt3 = st.columns([2, 2, 2])
+        # Add execution type based on source and actual_entry
+        log_df["execution_type"] = log_df.apply(
+            lambda row: "Actual" if row.get("source") == "Actual"
+            else "Paper & Actual" if row.get("actual_entry") is not None and row.get("actual_entry") > 0
+            else "Paper",
+            axis=1
+        )
+
+        flt1, flt2, flt3, flt4 = st.columns([2, 2, 2, 2])
         sf       = flt1.selectbox("Status", ["All","Pending","Active","Hit Target","Hit SL","Cancelled"], key="log_sf")
         src      = flt2.selectbox("Source", ["All","System","STM","Support Reversal","Actual"], key="log_src")
-        sym_srch = flt3.text_input("Symbol search", placeholder="e.g. BAFL", key="log_sym").strip().upper()
+        exe      = flt3.selectbox("Execution", ["All","Paper","Actual","Paper & Actual"], key="log_exe")
+        sym_srch = flt4.text_input("Symbol search", placeholder="e.g. BAFL", key="log_sym").strip().upper()
 
         if sf       != "All": log_df = log_df[log_df["status"] == sf]
         if src      != "All": log_df = log_df[log_df["source"]  == src]
+        if exe      != "All": log_df = log_df[log_df["execution_type"] == exe]
         if sym_srch:          log_df = log_df[log_df["symbol"].str.upper().str.contains(sym_srch, na=False)]
 
         # Ensure exit_date column exists (older cached runs may not have it)
@@ -1374,11 +1384,8 @@ elif cur == PAGES[4]:  # Trade Log
         if "actual_entry" not in log_df.columns:
             log_df["actual_entry"] = None
 
-        if "trade_execution" not in log_df.columns:
-            log_df["trade_execution"] = "Paper"
-
         display_log = log_df[[
-            "id", "created_date", "exit_date", "source", "trade_execution", "direction", "symbol",
+            "id", "created_date", "exit_date", "source", "execution_type", "direction", "symbol",
             "entry_price", "actual_entry", "stop_loss", "actual_exit",
             "risk_pct", "actual_pl_pct", "holding_days",
             "status", "outcome", "notes",
@@ -1425,15 +1432,6 @@ elif cur == PAGES[4]:  # Trade Log
             .format(fmt_map, na_rep="—"),
             width='stretch', hide_index=True, height=340,
         )
-
-        st.divider()
-        if st.button("🔄 Evaluate Paper Trades", help="Auto-evaluate pending Paper trades against price history to determine WIN/LOSS outcomes"):
-            results = evaluate_paper_trades()
-            st.info(
-                f"✅ Evaluated {results['evaluated']} trades\n"
-                f"🎯 Wins: {results['wins']} | 📉 Losses: {results['losses']}"
-            )
-            st.rerun()
 
     # ── Activate a pending trade ──────────────────────────────────────────────
     if all_saved:
@@ -1533,7 +1531,6 @@ elif cur == PAGES[4]:  # Trade Log
                     "atr_pct":         0.0,
                     "notes":           act_notes.strip(),
                     "source":          "Actual",
-                    "trade_execution": "Actual",
                 }
                 save_trade_setup(actual_record)
                 st.success(f"{sym} {act_dir} logged as Actual trade.")
@@ -2108,13 +2105,19 @@ elif cur == PAGES[6]:
         if "source" not in adf.columns:
             adf["source"] = "System"
         adf["source"] = adf["source"].fillna("System")
-        if "trade_execution" not in adf.columns:
-            adf["trade_execution"] = "Paper"
-        adf["trade_execution"] = adf["trade_execution"].fillna("Paper")
+
+        # Calculate execution type: Actual if source="Actual", Paper&Actual if has actual_entry, else Paper
+        adf["execution_type"] = adf.apply(
+            lambda row: "Actual" if row.get("source") == "Actual"
+            else "Paper & Actual" if row.get("actual_entry") is not None and row.get("actual_entry") > 0
+            else "Paper",
+            axis=1
+        )
+
         # Include only Actual or Paper & Actual trades with resolved outcomes
         closed = adf[
             adf["outcome"].isin(["Win", "Loss", "Breakeven"]) &
-            adf["trade_execution"].isin(["Actual", "Paper & Actual"])
+            adf["execution_type"].isin(["Actual", "Paper & Actual"])
         ].copy()
         for col in ["actual_pl_pkr", "actual_pl_pct", "actual_rr", "holding_days", "exit_date"]:
             if col not in closed.columns:
@@ -3823,12 +3826,19 @@ elif cur == PAGES[10]:  # Setup Perf (updated index)
     # Normalise columns that may be missing in older rows
     for col in ["actual_pl_pct", "actual_pl_pkr", "actual_rr", "holding_days",
                 "exit_date", "actual_entry", "quality_score", "breadth_score",
-                "sector_rank", "range_window", "source", "trade_execution"]:
+                "sector_rank", "range_window", "source"]:
         if col not in sp.columns:
             sp[col] = None
     sp["source"] = sp["source"].fillna("System")
-    sp["trade_execution"] = sp["trade_execution"].fillna("Paper")
     sp["quality_score"] = pd.to_numeric(sp["quality_score"], errors="coerce").fillna(0).astype(int)
+
+    # Calculate execution type
+    sp["execution_type"] = sp.apply(
+        lambda row: "Actual" if row.get("source") == "Actual"
+        else "Paper & Actual" if row.get("actual_entry") is not None and row.get("actual_entry") > 0
+        else "Paper",
+        axis=1
+    )
 
     # System setups only for this page
     sys_sp = sp[sp["source"] == "System"].copy()
@@ -3856,23 +3866,20 @@ elif cur == PAGES[10]:  # Setup Perf (updated index)
     ].copy()
     closed = pd.concat([closed, also_closed]).drop_duplicates(subset="id")
 
-    # Filter to only show evaluated/traded setups
-    evaluated = sys_sp[
-        (sys_sp["outcome"].isin(["Win", "Loss", "Breakeven"])) |
-        (sys_sp["trade_execution"] == "Paper & Actual")
-    ].copy()
+    # Filter to only show actually traded setups (Paper & Actual)
+    traded = sys_sp[sys_sp["execution_type"] == "Paper & Actual"].copy()
 
-    wins   = evaluated[evaluated["outcome"] == "Win"]
-    losses = evaluated[evaluated["outcome"] == "Loss"]
+    wins   = traded[traded["outcome"] == "Win"]
+    losses = traded[traded["outcome"] == "Loss"]
 
-    n_total       = len(sys_sp)
-    n_pending     = len(pending)
-    n_active      = len(active)
-    n_closed      = len(closed)
-    n_evaluated   = len(evaluated)
-    n_wins        = len(wins)
-    n_losses      = len(losses)
-    win_rate      = n_wins / max(n_wins + n_losses, 1) * 100
+    n_total   = len(sys_sp)
+    n_pending = len(pending)
+    n_active  = len(active)
+    n_closed  = len(closed)
+    n_traded  = len(traded)
+    n_wins    = len(wins)
+    n_losses  = len(losses)
+    win_rate  = n_wins / max(n_wins + n_losses, 1) * 100
 
     avg_win_pct  = wins["actual_pl_pct"].dropna().mean()   if n_wins   else 0.0
     avg_loss_pct = losses["actual_pl_pct"].dropna().mean() if n_losses else 0.0
