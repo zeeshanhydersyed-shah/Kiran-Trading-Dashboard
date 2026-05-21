@@ -235,6 +235,17 @@ def init_db():
             except Exception:
                 pass
 
+    # Data migrations (safe to run multiple times)
+    data_migrations = [
+        "UPDATE trade_setups SET status='Closed' WHERE status IN ('Hit Target', 'Hit SL')",
+    ]
+    with get_conn() as conn:
+        for sql in data_migrations:
+            try:
+                _exec(conn, sql)
+            except Exception:
+                pass
+
     logger.info("PostgreSQL database initialised.")
 
 

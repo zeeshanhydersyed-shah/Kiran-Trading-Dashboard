@@ -135,6 +135,17 @@ def init_db():
             except Exception:
                 pass  # column already exists
 
+    # Data migrations (safe to run multiple times)
+    data_migrations = [
+        "UPDATE trade_setups SET status='Closed' WHERE status IN ('Hit Target', 'Hit SL')",
+    ]
+    with get_conn() as conn:
+        for sql in data_migrations:
+            try:
+                conn.execute(sql)
+            except Exception:
+                pass
+
     logger.info("Database initialised at %s", DB_PATH)
 
 
