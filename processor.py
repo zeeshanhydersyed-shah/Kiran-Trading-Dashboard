@@ -602,6 +602,152 @@ def generate_trade_setups(
 
 
 # ---------------------------------------------------------------------------
+# Support Reversal Detection
+# ---------------------------------------------------------------------------
+
+def generate_support_reversal_setups(
+    raw_prices: pd.DataFrame,
+    sector_map: dict,
+) -> list[dict]:
+    """
+    Detect support reversal setups on latest candle:
+    - 200-MA uptrend: close > 200-MA × 1.01
+    - Recovery ratio > 75%: (Close - Low) / (High - Low) > 0.75
+    - Lower wick ratio > 60%: (min(Open,Close) - Low) / (High - Low) > 0.60
+    - Low touches pivot support level (within 1 point)
+    - Entry: high + 1 point
+    - Stop loss: entry × 0.94 (-6%)
+    - Trailing stop: trail by 2% from peak
+
+    Returns list of setup dicts with source='Support Reversal'
+    """
+    from datetime import date as date_cls
+
+    if raw_prices.empty:
+        return []
+
+    rp = raw_prices.copy()
+    rp["date"] = pd.to_datetime(rp["date"])
+
+    setups = []
+    today_str = date_cls.today().isoformat()
+
+    # Group by symbol
+    for symbol, grp in rp.groupby("symbol"):
+        grp = grp.sort_values("date").reset_index(drop=True)
+
+        # Need at least 200 bars for 200-MA + some history for support calc
+        if len(grp) < 210:
+            continue
+
+        # Calculate 200-day SMA
+        grp["ma200"] = grp["close"].rolling(200, min_periods=1).mean()
+
+        # Get latest candle (most recent)
+        latest_idx = len(grp) - 1
+        latest = grp.iloc[latest_idx]
+
+        close = latest["close"]
+        open_p = latest.get("open", close)
+        high = latest.get("high", close)
+        low = latest.get("low", close)
+        ma200 = latest["ma200"]
+
+        # Skip if missing OHLC
+        if pd.isna([close, high, low, ma200]).any():
+            continue
+
+        # Skip if high == low (no range)
+        if high == low:
+            continue
+
+        # ── 200-MA Uptrend Filter ──
+        if close <= ma200 * 1.01:
+            continue  # Not in uptrend
+
+        # ── Recovery Ratio > 75% ──
+        recovery_ratio = (close - low) / (high - low)
+        if recovery_ratio <= 0.75:
+            continue  # Not enough recovery
+
+        # ── Lower Wick Ratio > 60% ──
+        wick_bottom = min(open_p, close)
+        lower_wick_ratio = (wick_bottom - low) / (high - low)
+        if lower_wick_ratio <= 0.60:
+            continue  # Not strong rejection
+
+        # ── Pivot Support Detection ──
+        # Need previous day's OHLC for pivot calculation
+        if latest_idx < 1:
+            continue
+
+        prev = grp.iloc[latest_idx - 1]
+        prev_high = prev.get("high", prev["close"])
+        prev_low = prev.get("low", prev["close"])
+        prev_close = prev["close"]
+
+        if pd.isna([prev_high, prev_low, prev_close]).any():
+            continue
+
+        # Pivot point calculation
+        # Pivot = (H + L + C) / 3
+        # Support1 = (Pivot × 2) - H
+        pivot = (prev_high + prev_low + prev_close) / 3
+        support1 = (pivot * 2) - prev_high
+
+        # Low must touch support within 1 point tolerance
+        # Assuming PSX prices typically 20-500, 1 point = 1 unit
+        if low > support1 + 1:
+            continue  # Low didn't touch support
+
+        # ── Entry & Stop Loss ──
+        entry = high + 1.0
+        stop_loss = entry * 0.94  # -6% hard stop
+        risk_pct = ((entry - stop_loss) / entry) * 100
+
+        # Get sector
+        sector = sector_map.get(symbol, "Unknown")
+
+        setups.append({
+            "created_date":     today_str,
+            "direction":        "LONG",
+            "symbol":           symbol,
+            "sector":           sector,
+            "sector_momentum":  "—",  # Not computed for this pattern
+            "stock_perf_30d":   None,
+            "stock_perf_10d":   None,
+            "latest_close":     close,
+            "support_level":    round(support1, 2),
+            "resistance_level": None,
+            "entry_price":      round(entry, 2),
+            "stop_loss":        round(stop_loss, 2),
+            "target_1r":        None,
+            "target_2r":        None,
+            "risk_pct":         round(risk_pct, 2),
+            "atr_pct":          None,
+            "status":           "Pending",
+            "notes":            f"Recovery {recovery_ratio:.1%} | Wick {lower_wick_ratio:.1%} | 200-MA {ma200:.2f}",
+            "quality_score":    (
+                (1 if recovery_ratio > 0.75 else 0) +
+                (1 if lower_wick_ratio > 0.60 else 0) +
+                (1 if close > ma200 * 1.01 else 0)
+            ),
+            "quality_checks":   {
+                "Recovery > 75%": recovery_ratio > 0.75,
+                "Wick > 60%": lower_wick_ratio > 0.60,
+                "200-MA uptrend": close > ma200 * 1.01,
+            },
+            "range_width_pct":  None,
+            "range_window":     None,
+            "sector_rank":      None,
+            "breadth_score":    None,
+            "source":           "Support Reversal",
+        })
+
+    return setups
+
+
+# ---------------------------------------------------------------------------
 # Main analysis entry point
 # ---------------------------------------------------------------------------
 
@@ -640,6 +786,11 @@ def run_analysis() -> dict:
         kse_filter=kse_filter,
     )
 
+    # Generate support reversal setups
+    sector_map = dict(zip(df["symbol"], df["sector"]))
+    support_setups = generate_support_reversal_setups(df, sector_map)
+    logger.info(f"Generated {len(support_setups)} support reversal setups")
+
     return {
         "stock_30d":        stock_30d,
         "stock_10d":        stock_10d,
@@ -649,6 +800,7 @@ def run_analysis() -> dict:
         "long_candidates":  long_c,
         "short_candidates": short_c,
         "trade_setups":     setups,
+        "support_reversal_setups": support_setups,
     }
 
 

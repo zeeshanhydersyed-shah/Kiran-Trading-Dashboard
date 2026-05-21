@@ -21,10 +21,13 @@ from database import (
     upsert_prices,
     upsert_index_prices,
     get_latest_scraped_date,
+    get_latest_prices,
+    cleanup_ghost_dates,
     count_prices,
     count_sectors,
     get_price_date_range,
     auto_save_setups,
+    auto_save_setups_with_source,
 )
 from scraper import (
     build_session,
@@ -80,6 +83,7 @@ def cmd_init(force: bool = False):
     upsert_prices(price_rows)
     if index_rows:
         upsert_index_prices(index_rows)
+    cleanup_ghost_dates()
 
     mn, mx = get_price_date_range()
     logger.info(
@@ -108,16 +112,22 @@ def cmd_update():
         result = run_analysis()
         if result:
             auto_save_setups(result.get("trade_setups", []))
+            auto_save_setups_with_source(
+                result.get("support_reversal_setups", []),
+                source="Support Reversal"
+            )
         return
 
     logger.info("Update: scraping %d new date(s) since %s…", len(new_dates), latest_str)
     session = build_session()
-    sector_rows, price_rows, index_rows = scrape_date_range(new_dates, session)
+    prev_prices = get_latest_prices()
+    sector_rows, price_rows, index_rows = scrape_date_range(new_dates, session, prev_prices=prev_prices)
 
     upsert_sectors(sector_rows)
     upsert_prices(price_rows)
     if index_rows:
         upsert_index_prices(index_rows)
+    cleanup_ghost_dates()
 
     mn, mx = get_price_date_range()
     logger.info(
@@ -125,10 +135,14 @@ def cmd_update():
         count_sectors(), count_prices(), mn, mx,
     )
 
-    # Auto-save today's system-generated setups
+    # Auto-save today's system-generated and support reversal setups
     result = run_analysis()
     if result:
         auto_save_setups(result.get("trade_setups", []))
+        auto_save_setups_with_source(
+            result.get("support_reversal_setups", []),
+            source="Support Reversal"
+        )
 
 
 def cmd_report():

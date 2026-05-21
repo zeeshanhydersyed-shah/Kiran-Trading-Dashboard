@@ -4173,8 +4173,7 @@ elif cur == PAGES[8]:  # Support Reversals
         reversal_setups = all_setups.copy() if len(all_setups) > 0 else pd.DataFrame()
 
     if len(reversal_setups) == 0:
-        st.warning("No support reversal setups generated yet. Detection function not yet integrated.")
-        st.info("Ready for Phase 2: Create `generate_support_reversal_setups()` in processor.py")
+        st.info("No support reversal setups found. Run the daily screener (python main.py --update) to generate setups.")
         st.stop()
 
     # Separate by status

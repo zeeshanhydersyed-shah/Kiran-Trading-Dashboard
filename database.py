@@ -586,6 +586,23 @@ def auto_save_setups(setups: list[dict]) -> int:
     return saved
 
 
+def auto_save_setups_with_source(setups: list[dict], source: str = "System") -> int:
+    """
+    Automatically persist setups while preserving their source.
+    Skips any setup already recorded for the same symbol+direction+date.
+    Returns the count of newly saved rows.
+    """
+    saved = 0
+    for s in setups:
+        if not setup_already_saved(s["symbol"], s["direction"], s["created_date"]):
+            s_with_source = dict(s, source=source)
+            save_trade_setup(s_with_source)
+            saved += 1
+    if saved:
+        logger.info("Auto-saved %d new %s setup(s).", saved, source)
+    return saved
+
+
 def stm_pick_already_saved(symbol: str, date: str) -> bool:
     with get_conn() as conn:
         row = conn.execute(
