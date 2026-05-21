@@ -787,7 +787,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health"]
+PAGES = ["🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Support Reversals", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health"]
 
 
 def fmt_date(d) -> str:
@@ -2336,7 +2336,7 @@ elif cur == PAGES[5]:
 # ===============================================================================
 # PAGE 7 -- BACKTEST
 # ===============================================================================
-elif cur == PAGES[9]:  # Backtest
+elif cur == PAGES[10]:  # Backtest (updated index)
     import plotly.graph_objects as go
 
     st.markdown("**Backtest Results** -- KIRAN rules replayed on historical data (Jan 2024 - present)")
@@ -3469,7 +3469,7 @@ Use the **Parameter Optimizer** to run a grid search and find the EMA spans that
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 9 — SETUP PERFORMANCE
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[8]:
+elif cur == PAGES[9]:  # Setup Perf (updated index)
     import plotly.graph_objects as go
     import plotly.express as px
 
@@ -4145,8 +4145,135 @@ elif cur == PAGES[7]:  # STM
                     "**Dist21MA%** = negative = below 21MA · Picks auto-saved to Trade Log as SHORT"
                 )
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 8 — 🔄 Support Reversals
+# ══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[8]:  # Support Reversals
+    st.markdown("### 🔄 Support Reversals")
+    st.caption(
+        "Rejection candles at 200-MA uptrend support. "
+        "Recovery >75%, Wick >60%. Entry: high+1 point, SL: -6%, Target: trailing 2% stop (20d hold). "
+        "Expected: 5.21% expectancy, 30.5% win rate, 5.03x R:R"
+    )
+
+    # Query pending and active support reversal setups
+    all_setups = get_trade_setups()
+    reversal_setups = all_setups[all_setups.get('source', '') == 'Support Reversal'].copy() if 'source' in all_setups.columns else pd.DataFrame()
+
+    if len(reversal_setups) == 0:
+        st.info("No support reversal setups generated yet. Daily screener will populate these.")
+        st.stop()
+
+    # Separate by status
+    pending = reversal_setups[reversal_setups['status'] == 'Pending'].copy()
+    active = reversal_setups[reversal_setups['status'] == 'Active'].copy()
+    closed = reversal_setups[reversal_setups['status'] == 'Closed'].copy()
+
+    # ── PENDING SETUPS ────────────────────────────────────────────────────────
+    st.markdown("#### Pending Setups")
+    if len(pending) > 0:
+        pending = pending.sort_values('created_date', ascending=False)
+
+        tab_pending, tab_criteria = st.tabs(["Table", "Criteria Reference"])
+
+        with tab_pending:
+            display_cols = ['symbol', 'entry_price', 'stop_loss', 'target_1r', 'target_2r',
+                           'risk_pct', 'atr_pct', 'created_date']
+            available_cols = [c for c in display_cols if c in pending.columns]
+
+            st.dataframe(
+                pending[available_cols].sort_values('created_date', ascending=False),
+                use_container_width=True,
+                hide_index=True
+            )
+
+        with tab_criteria:
+            st.markdown("""
+            **Entry Criteria:**
+            - 200-MA uptrend: Close > 200-SMA × 1.01
+            - Recovery >75%: (Close - Low) / (High - Low) > 0.75
+            - Lower Wick >60%: (min(O,C) - L) / (H - L) > 0.60
+            - Support: Pivot-based support level touched/penetrated
+
+            **Entry Price:** High of candle + 1 point
+            **Stop Loss:** -6% below entry (hard stop)
+            **Target:** Trailing 2% stop, 20-day hold minimum
+            **Expected:** +5.21% avg return, 30.5% win rate, 5.03x R:R
+            """)
+
+        if len(pending) > 0:
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Activate Selected", key="activate_reversal"):
+                    st.info("Select setups in the table and activate them in the Trade Log")
+            with col2:
+                if st.button("📥 Import to Trade Log", key="import_reversal"):
+                    st.info("Setups auto-appear in Trade Log when activated")
+    else:
+        st.success("No pending setups")
+
+    # ── ACTIVE SETUPS ────────────────────────────────────────────────────────
+    st.markdown("#### Active Trades")
+    if len(active) > 0:
+        active = active.sort_values('created_date', ascending=False)
+
+        metrics_cols = []
+        for col in ['symbol', 'entry_price', 'stop_loss', 'latest_close', 'created_date', 'status']:
+            if col in active.columns:
+                metrics_cols.append(col)
+
+        st.dataframe(active[metrics_cols], use_container_width=True, hide_index=True)
+
+        # Quick stats
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Active Trades", len(active))
+        with col2:
+            avg_risk = active['risk_pct'].mean() if 'risk_pct' in active.columns else 0
+            st.metric("Avg Risk %", f"{avg_risk:.2f}%")
+        with col3:
+            st.metric("Capital at Risk", f"{len(active) * avg_risk:.1f}%")
+    else:
+        st.success("No active trades")
+
+    # ── CLOSED SETUPS ────────────────────────────────────────────────────────
+    st.markdown("#### Closed Trades")
+    if len(closed) > 0:
+        closed = closed.sort_values('created_date', ascending=False)
+
+        display_cols = [c for c in ['symbol', 'entry_price', 'stop_loss', 'latest_close', 'outcome', 'created_date']
+                       if c in closed.columns]
+
+        st.dataframe(closed[display_cols].head(20), use_container_width=True, hide_index=True)
+
+        # Performance summary
+        if 'outcome' in closed.columns:
+            outcomes = closed['outcome'].value_counts()
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                wins = outcomes.get('Win', 0)
+                st.metric("Wins", f"{wins}/{len(closed)} ({wins/len(closed)*100:.1f}%)")
+            with col2:
+                st.metric("Total Closed", len(closed))
+            with col3:
+                st.metric("Recent Return", "—")
+    else:
+        st.info("No closed trades yet")
+
+    # ── DOCUMENTATION ────────────────────────────────────────────────────────
+    st.divider()
+    st.markdown("""
+    ### 📖 Full Setup Documentation
+    See **SUPPORT_REVERSAL_CRITERIA.md** in repo for:
+    - Complete entry/exit rules
+    - Position sizing formula
+    - Trade management checklist
+    - Why this setup works
+    - Red flags to avoid
+    """)
+
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
-elif cur == PAGES[11]:  # Model Health
+elif cur == PAGES[12]:  # Model Health (updated index)
     import os as _os
     import subprocess as _sp
     import traceback as _tb
