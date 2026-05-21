@@ -787,7 +787,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health"]
+PAGES = ["🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🔬 Support Research"]
 
 
 def fmt_date(d) -> str:
@@ -4404,3 +4404,199 @@ elif st.session_state.page == PAGES[11]:
         "below the 30-week MA. Review weekly only. "
         "Page auto-refreshes every 30 minutes with the latest prices."
     )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 12 — 🔬 Support Research
+# ══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[12]:  # Support Research
+    from support_research import SupportDetector, SignalAnalyzer
+
+    st.markdown("### 🔬 Support Pattern Research")
+    st.caption(
+        "Discovers quantitative definitions of price reversal from obvious support. "
+        "Tests multiple support hypothesis simultaneously (swing lows, volume clusters, pivots, etc.). "
+        "Compares win rates and expectancy by support type and trend context."
+    )
+
+    # Load price data
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def load_support_research_data():
+        """Load price data from merged CSV."""
+        import os
+        csv_path = os.path.join(os.path.dirname(__file__), "merged_psx_data.csv")
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            # Ensure required columns
+            for col in ['symbol', 'date', 'open', 'high', 'low', 'close', 'volume']:
+                if col not in df.columns:
+                    st.warning(f"Missing column: {col}")
+                    return None
+            return df
+        return None
+
+    price_df = load_support_research_data()
+    if price_df is None:
+        st.error("Could not load price data. Ensure merged_psx_data.csv exists.")
+        st.stop()
+
+    st.info(f"📊 Loaded {len(price_df):,} price records, {price_df['symbol'].nunique()} unique symbols, "
+            f"from {price_df['date'].min()} to {price_df['date'].max()}")
+
+    # ── Control Panel ────────────────────────────────────────────────────────
+    with st.expander("⚙️ Research Parameters", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            tolerance_factor = st.slider(
+                "ATR tolerance factor",
+                min_value=0.5, max_value=3.0, value=1.0, step=0.1,
+                help="Support touch tolerance = ATR × factor"
+            )
+        with col2:
+            sample_symbols = st.slider(
+                "Symbols to analyze",
+                min_value=10, max_value=len(price_df['symbol'].unique()),
+                value=min(50, len(price_df['symbol'].unique())),
+                help="Analyze top N symbols by volume"
+            )
+        with col3:
+            data_limit = st.checkbox("Use recent data only (2024+)", value=True)
+
+    # Filter data
+    test_df = price_df.copy()
+    if data_limit:
+        test_df = test_df[test_df['date'] >= '2024-01-01'].reset_index(drop=True)
+
+    # Use top symbols by volume
+    top_symbols = test_df.groupby('symbol')['volume'].sum().nlargest(sample_symbols).index.tolist()
+    test_df = test_df[test_df['symbol'].isin(top_symbols)].reset_index(drop=True)
+
+    st.write(f"**Analysis scope:** {len(test_df):,} records, {len(top_symbols)} symbols")
+
+    # ── Run Detection ────────────────────────────────────────────────────────
+    if st.button("🔍 Run Support Pattern Research", type="primary"):
+        with st.spinner("Detecting support patterns and generating signals…"):
+            try:
+                detector = SupportDetector(test_df, lookback=60)
+                signals = detector.generate_signals(tolerance_factor=tolerance_factor)
+
+                if len(signals) == 0:
+                    st.warning("No support signals detected. Try adjusting tolerance factor or data range.")
+                    st.stop()
+
+                st.success(f"✓ Generated {len(signals):,} support signals")
+
+                # Forward test
+                analyzer = SignalAnalyzer(signals, test_df)
+                signals = analyzer.forward_test(signals)
+
+                # Convert to DataFrame for analysis
+                sig_df = analyzer.to_dataframe(signals)
+
+                # ── Results: By Support Source ────────────────────────────────
+                st.markdown("#### 📊 Performance by Support Definition")
+                st.caption("Which support hypothesis has the highest win rate?")
+
+                perf_by_source = analyzer.win_rate_by_source(sig_df)
+                st.dataframe(perf_by_source, use_container_width=True, hide_index=True)
+
+                # ── Results: By Trend ────────────────────────────────────────
+                st.markdown("#### 📈 Performance by Trend Context")
+                st.caption("Do reversals work better in uptrends, downtrends, or neutral?")
+
+                perf_by_trend = analyzer.win_rate_by_trend(sig_df)
+                st.dataframe(perf_by_trend, use_container_width=True, hide_index=True)
+
+                # ── Metric Analysis ─────────────────────────────────────────
+                st.markdown("#### 🎯 Winning Setups — Metric Clusters")
+                st.caption("What candle/wick characteristics appear most in winners?")
+
+                # Winners = positive 5d return
+                winners = sig_df[sig_df['return_5d'] > 0]
+                losers = sig_df[sig_df['return_5d'] <= 0]
+
+                if len(winners) > 0 and len(losers) > 0:
+                    metric_comparison = pd.DataFrame({
+                        'Metric': [
+                            'Lower Wick Ratio',
+                            'Close Position',
+                            'Recovery Ratio',
+                            'Body Ratio',
+                            'Volume MA Ratio'
+                        ],
+                        'Winners (Avg)': [
+                            f"{winners['lower_wick_ratio'].mean():.3f}",
+                            f"{winners['close_position'].mean():.3f}",
+                            f"{winners['recovery_ratio'].mean():.3f}",
+                            f"{winners['body_ratio'].mean():.3f}",
+                            f"{winners['volume_ma_ratio'].mean():.2f}x",
+                        ],
+                        'Losers (Avg)': [
+                            f"{losers['lower_wick_ratio'].mean():.3f}",
+                            f"{losers['close_position'].mean():.3f}",
+                            f"{losers['recovery_ratio'].mean():.3f}",
+                            f"{losers['body_ratio'].mean():.3f}",
+                            f"{losers['volume_ma_ratio'].mean():.2f}x",
+                        ]
+                    })
+                    st.dataframe(metric_comparison, use_container_width=True, hide_index=True)
+
+                # ── Signal Table ────────────────────────────────────────────
+                st.markdown("#### 📋 All Signals (Sortable / Filterable)")
+
+                # Show top recent signals
+                display_cols = [
+                    'date', 'symbol', 'support_source', 'support_level',
+                    'recovery_ratio', 'lower_wick_ratio', 'trend_state',
+                    'return_5d', 'return_10d', 'max_favorable'
+                ]
+                display_df = sig_df[display_cols].sort_values('date', ascending=False)
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+                # ── Download Option ────────────────────────────────────────
+                st.divider()
+                csv = sig_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Full Signal Table (CSV)",
+                    data=csv,
+                    file_name=f"support_research_signals_{pd.Timestamp.today().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    help="Download all signals for further analysis in Excel or Python"
+                )
+
+            except Exception as e:
+                st.error(f"Error during analysis: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+    else:
+        st.info("👈 Click 'Run Support Pattern Research' to begin analysis")
+
+    # ── Guidance ─────────────────────────────────────────────────────────────
+    st.divider()
+    st.markdown("""
+    ### 📚 Research Framework
+
+    **What this does:**
+    - Tests multiple support hypothesis simultaneously (not hardcoded)
+    - Measures candle metrics (wick ratios, recovery %, close position)
+    - Calculates forward returns over 5/10/20 bar windows
+    - Analyzes in different trend contexts (uptrend vs downtrend)
+    - Identifies winning metric clusters
+
+    **Key metrics:**
+    - **Lower Wick Ratio:** (min(O,C) - L) / (H - L) — rejection tail strength
+    - **Recovery Ratio:** (C - L) / (H - L) — intraday recovery %
+    - **Close Position:** (C - L) / (H - L) — where close ended relative to range
+    - **Touch Depth:** how far low penetrated support as % of support level
+
+    **Interpretation:**
+    - Win rates vary by support definition (which hypothesis was best?)
+    - Expectancy = avg return on winning trades
+    - Trend context matters (uptrend reversals ≠ downtrend reversals)
+    - Metric clusters show which patterns lead to wins
+
+    **Next steps (not yet automated):**
+    1. Identify best support definition (highest win rate)
+    2. Filter signals by winning metric clusters
+    3. Test combinations (e.g., uptrend + high recovery + low wick)
+    4. Backtest with position sizing (1% risk rule)
+    """)
