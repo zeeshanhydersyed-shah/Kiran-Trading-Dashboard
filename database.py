@@ -456,9 +456,10 @@ def activate_trade_setup(
         conn.execute(
             """
             UPDATE trade_setups
-            SET status       = 'Active',
-                actual_entry = COALESCE(?, actual_entry),
-                notes        = COALESCE(?, notes)
+            SET status            = 'Active',
+                actual_entry      = COALESCE(?, actual_entry),
+                notes             = COALESCE(?, notes),
+                trade_execution   = 'Paper & Actual'
             WHERE id = ?
             """,
             (actual_entry, notes, setup_id),
@@ -696,6 +697,105 @@ def delete_portfolio_value(val_id: int):
         conn.execute("DELETE FROM portfolio_values WHERE id = ?", (val_id,))
 
 
+def evaluate_paper_trades() -> dict:
+    """
+    Auto-evaluate pending paper trades against price history.
+    Finds SL/TP hits based on daily closes and updates outcome.
+    Returns: {"evaluated": count, "wins": count, "losses": count}
+    """
+    with get_conn() as conn:
+        pending_paper = conn.execute(
+            """SELECT id, symbol, direction, created_date, entry_price, stop_loss, target_2r
+               FROM trade_setups
+               WHERE trade_execution='Paper' AND status='Pending' AND outcome IS NULL
+               ORDER BY created_date ASC"""
+        ).fetchall()
+
+    if not pending_paper:
+        return {"evaluated": 0, "wins": 0, "losses": 0}
+
+    results = {"evaluated": 0, "wins": 0, "losses": 0}
+
+    for trade in pending_paper:
+        setup_id = trade["id"]
+        symbol = trade["symbol"]
+        direction = trade["direction"]
+        entry_date = trade["created_date"]
+        entry_price = float(trade["entry_price"])
+        stop_loss = float(trade["stop_loss"])
+        target = float(trade["target_2r"])
+
+        with get_conn() as conn:
+            prices = conn.execute(
+                """SELECT date, close FROM prices
+                   WHERE symbol=? AND date > ?
+                   ORDER BY date ASC""",
+                (symbol, entry_date)
+            ).fetchall()
+
+        outcome = None
+        actual_exit = None
+        exit_date = None
+        holding_days = None
+        actual_pl_pct = None
+        status = "Pending"
+
+        for price_row in prices:
+            close = float(price_row["close"])
+            current_date = price_row["date"]
+
+            if direction == "LONG":
+                if close <= stop_loss:
+                    outcome = "LOSS"
+                    status = "Hit SL"
+                    actual_exit = stop_loss
+                    exit_date = current_date
+                    break
+                elif close >= target:
+                    outcome = "WIN"
+                    status = "Hit Target"
+                    actual_exit = target
+                    exit_date = current_date
+                    break
+            else:
+                if close >= stop_loss:
+                    outcome = "LOSS"
+                    status = "Hit SL"
+                    actual_exit = stop_loss
+                    exit_date = current_date
+                    break
+                elif close <= target:
+                    outcome = "WIN"
+                    status = "Hit Target"
+                    actual_exit = target
+                    exit_date = current_date
+                    break
+
+        if outcome:
+            if exit_date and entry_date:
+                from datetime import datetime
+                exit_dt = datetime.fromisoformat(exit_date)
+                entry_dt = datetime.fromisoformat(entry_date)
+                holding_days = (exit_dt - entry_dt).days
+
+            if actual_exit and entry_price > 0:
+                if direction == "LONG":
+                    actual_pl_pct = round((actual_exit - entry_price) / entry_price * 100, 2)
+                else:
+                    actual_pl_pct = round((entry_price - actual_exit) / entry_price * 100, 2)
+
+            with get_conn() as conn:
+                conn.execute(
+                    """UPDATE trade_setups
+                       SET outcome=?, status=?, actual_exit=?,
+                           exit_date=?, holding_days=?, actual_pl_pct=?
+                       WHERE id=?""",
+                    (outcome, status, actual_exit, exit_date, holding_days, actual_pl_pct, setup_id)
+                )
+
+    return results
+
+
 # ---------------------------------------------------------------------------
 # PostgreSQL override — runs LAST so PG functions replace SQLite ones
 # when DATABASE_URL is available (Streamlit Cloud / GitHub Actions).
@@ -737,4 +837,5 @@ if _PG_URL:
         add_portfolio_value,
         get_portfolio_values,
         delete_portfolio_value,
+        evaluate_paper_trades,
     )

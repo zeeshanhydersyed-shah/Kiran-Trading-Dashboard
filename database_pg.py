@@ -220,6 +220,10 @@ def init_db():
         "ALTER TABLE trade_setups ADD COLUMN IF NOT EXISTS holding_days    INTEGER",
         "ALTER TABLE trade_setups ADD COLUMN IF NOT EXISTS exit_date       TEXT",
         "ALTER TABLE trade_setups ADD COLUMN IF NOT EXISTS actual_entry    DOUBLE PRECISION",
+        "ALTER TABLE trade_setups ADD COLUMN IF NOT EXISTS trade_source    TEXT DEFAULT 'System'",
+        "ALTER TABLE trade_setups ADD COLUMN IF NOT EXISTS reason_notes    TEXT",
+        "ALTER TABLE trade_setups ADD COLUMN IF NOT EXISTS quantity        DOUBLE PRECISION",
+        "ALTER TABLE trade_setups ADD COLUMN IF NOT EXISTS trade_execution TEXT DEFAULT 'Paper'",
         "ALTER TABLE prices ADD COLUMN IF NOT EXISTS volume BIGINT",
         "ALTER TABLE prices ADD COLUMN IF NOT EXISTS high   DOUBLE PRECISION",
         "ALTER TABLE prices ADD COLUMN IF NOT EXISTS low    DOUBLE PRECISION",
@@ -462,8 +466,8 @@ def save_trade_setup(s: dict) -> int:
             risk_pct, atr_pct, status, notes,
             quality_score, quality_checks,
             range_width_pct, range_window, sector_rank, breadth_score,
-            source
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            source, trade_execution
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
     """
     with get_conn() as conn:
@@ -483,6 +487,7 @@ def save_trade_setup(s: dict) -> int:
                 s.get("range_width_pct"), s.get("range_window"),
                 s.get("sector_rank"), s.get("breadth_score"),
                 s.get("source", "System"),
+                s.get("trade_execution", "Paper"),
             ))
             return cur.fetchone()[0]
 
@@ -517,9 +522,10 @@ def activate_trade_setup(
     with get_conn() as conn:
         _exec(conn, """
             UPDATE trade_setups
-            SET status       = 'Active',
-                actual_entry = COALESCE(%s, actual_entry),
-                notes        = COALESCE(%s, notes)
+            SET status            = 'Active',
+                actual_entry      = COALESCE(%s, actual_entry),
+                notes             = COALESCE(%s, notes),
+                trade_execution   = 'Paper & Actual'
             WHERE id = %s
         """, (actual_entry, notes, setup_id))
 
@@ -713,3 +719,111 @@ def delete_portfolio_value(val_id: int):
     """Delete a portfolio value entry by ID."""
     with get_conn() as conn:
         _exec(conn, "DELETE FROM portfolio_values WHERE id = %s", (val_id,))
+
+
+def evaluate_paper_trades() -> dict:
+    """
+    Auto-evaluate pending paper trades against price history.
+    Finds SL/TP hits based on daily closes and updates outcome.
+    Returns: {"evaluated": count, "wins": count, "losses": count}
+    """
+    with get_conn() as conn:
+        pending_paper = _fetchall(
+            conn,
+            """SELECT id, symbol, direction, created_date, entry_price, stop_loss, target_2r
+               FROM trade_setups
+               WHERE trade_execution='Paper' AND status='Pending' AND outcome IS NULL
+               ORDER BY created_date ASC"""
+        )
+
+    if not pending_paper:
+        return {"evaluated": 0, "wins": 0, "losses": 0}
+
+    results = {"evaluated": 0, "wins": 0, "losses": 0}
+
+    for trade in pending_paper:
+        setup_id = trade["id"]
+        symbol = trade["symbol"]
+        direction = trade["direction"]
+        entry_date = trade["created_date"]
+        entry_price = float(trade["entry_price"])
+        stop_loss = float(trade["stop_loss"])
+        target = float(trade["target_2r"])
+
+        with get_conn() as conn:
+            prices = _fetchall(
+                conn,
+                """SELECT date, close FROM prices
+                   WHERE symbol=%s AND date > %s
+                   ORDER BY date ASC""",
+                (symbol, entry_date)
+            )
+
+        outcome = None
+        actual_exit = None
+        exit_date = None
+        holding_days = None
+        actual_pl_pct = None
+        status = "Pending"
+
+        for price_row in prices:
+            close = float(price_row["close"])
+            current_date = price_row["date"]
+
+            if direction == "LONG":
+                if close <= stop_loss:
+                    outcome = "LOSS"
+                    status = "Hit SL"
+                    actual_exit = stop_loss
+                    exit_date = current_date
+                    break
+                elif close >= target:
+                    outcome = "WIN"
+                    status = "Hit Target"
+                    actual_exit = target
+                    exit_date = current_date
+                    break
+            else:
+                if close >= stop_loss:
+                    outcome = "LOSS"
+                    status = "Hit SL"
+                    actual_exit = stop_loss
+                    exit_date = current_date
+                    break
+                elif close <= target:
+                    outcome = "WIN"
+                    status = "Hit Target"
+                    actual_exit = target
+                    exit_date = current_date
+                    break
+
+        if outcome:
+            if exit_date and entry_date:
+                from datetime import datetime
+                exit_dt = datetime.fromisoformat(exit_date)
+                entry_dt = datetime.fromisoformat(entry_date)
+                holding_days = (exit_dt - entry_dt).days
+
+            if actual_exit and entry_price > 0:
+                if direction == "LONG":
+                    actual_pl_pct = round((actual_exit - entry_price) / entry_price * 100, 2)
+                else:
+                    actual_pl_pct = round((entry_price - actual_exit) / entry_price * 100, 2)
+
+            with get_conn() as conn:
+                _exec(
+                    conn,
+                    """UPDATE trade_setups
+                       SET outcome=%s, status=%s, actual_exit=%s,
+                           exit_date=%s, holding_days=%s, actual_pl_pct=%s
+                       WHERE id=%s""",
+                    (outcome, status, actual_exit, exit_date, holding_days, actual_pl_pct, setup_id)
+                )
+
+            results["evaluated"] += 1
+            if outcome == "WIN":
+                results["wins"] += 1
+            else:
+                results["losses"] += 1
+
+    return results

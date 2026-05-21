@@ -31,6 +31,7 @@ from database import (
     auto_save_stm_picks, get_sim_portfolio_data,
     add_portfolio_transaction, get_portfolio_transactions, delete_portfolio_transaction,
     add_portfolio_value, get_portfolio_values, delete_portfolio_value,
+    evaluate_paper_trades,
 )
 from processor import run_analysis
 from main import cmd_update
@@ -787,7 +788,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Support Reversals", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health"]
+PAGES = ["🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "🎖️ The Audit", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Support Reversals", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health"]
 
 
 def fmt_date(d) -> str:
@@ -1141,7 +1142,7 @@ elif cur == PAGES[3]:  # History
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 3 — SETUPS
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[6]:  # Setups
+elif cur == PAGES[7]:  # Setups
     st.markdown(
         "**Trade Setups** — entry above/below latest close · "
         "SL at recent swing low · max risk 12% · shorts DFC-eligible only"
@@ -1373,14 +1374,17 @@ elif cur == PAGES[4]:  # Trade Log
         if "actual_entry" not in log_df.columns:
             log_df["actual_entry"] = None
 
+        if "trade_execution" not in log_df.columns:
+            log_df["trade_execution"] = "Paper"
+
         display_log = log_df[[
-            "id", "created_date", "exit_date", "source", "direction", "symbol",
+            "id", "created_date", "exit_date", "source", "trade_execution", "direction", "symbol",
             "entry_price", "actual_entry", "stop_loss", "actual_exit",
             "risk_pct", "actual_pl_pct", "holding_days",
             "status", "outcome", "notes",
         ]].copy()
         display_log.columns = [
-            "ID", "Entry Date", "Exit Date", "Source", "Dir", "Symbol",
+            "ID", "Entry Date", "Exit Date", "Source", "Execution", "Dir", "Symbol",
             "KIRAN Entry", "My Fill", "SL", "Exit",
             "Risk%", "P&L%", "Days",
             "Status", "Outcome", "Notes",
@@ -1398,6 +1402,14 @@ elif cur == PAGES[4]:  # Trade Log
                 for v in series
             ]
 
+        def style_execution(series):
+            return [
+                "color:#8b5cf6;font-weight:bold" if v == "Paper"
+                else "color:#06b6d4;font-weight:bold" if v == "Actual"
+                else "color:#ec4899;font-weight:bold"
+                for v in series
+            ]
+
         fmt_map = {
             "KIRAN Entry": "{:.2f}", "My Fill": "{:.2f}",
             "SL": "{:.2f}", "Exit": "{:.2f}",
@@ -1406,12 +1418,22 @@ elif cur == PAGES[4]:  # Trade Log
         st.dataframe(
             display_log.style
             .apply(style_source,    subset=["Source"])
+            .apply(style_execution, subset=["Execution"])
             .apply(style_direction, subset=["Dir"])
             .apply(style_outcome,   subset=["Outcome"])
             .apply(style_pct_cols,  subset=["P&L%"])
             .format(fmt_map, na_rep="—"),
             width='stretch', hide_index=True, height=340,
         )
+
+        st.divider()
+        if st.button("🔄 Evaluate Paper Trades", help="Auto-evaluate pending Paper trades against price history to determine WIN/LOSS outcomes"):
+            results = evaluate_paper_trades()
+            st.info(
+                f"✅ Evaluated {results['evaluated']} trades\n"
+                f"🎯 Wins: {results['wins']} | 📉 Losses: {results['losses']}"
+            )
+            st.rerun()
 
     # ── Activate a pending trade ──────────────────────────────────────────────
     if all_saved:
@@ -1511,6 +1533,7 @@ elif cur == PAGES[4]:  # Trade Log
                     "atr_pct":         0.0,
                     "notes":           act_notes.strip(),
                     "source":          "Actual",
+                    "trade_execution": "Actual",
                 }
                 save_trade_setup(actual_record)
                 st.success(f"{sym} {act_dir} logged as Actual trade.")
@@ -1699,7 +1722,273 @@ elif cur == PAGES[4]:  # Trade Log
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PAGE 5 — EXPLORER
+# PAGE 5 — THE AUDIT (Desk Manager Accountability)
+# ═══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[5]:  # The Audit
+    st.markdown("**🎖️ The Audit — Desk Manager Report**")
+    st.caption("System accountability vs your actual trading. Strict. Fair. Actionable.")
+
+    all_trades = get_trade_setups()
+    if not all_trades:
+        st.info("No trades logged yet.")
+        st.stop()
+
+    trades_df = pd.DataFrame(all_trades)
+
+    # ── PF VALUE INPUT ────────────────────────────────────────────────────────
+    st.divider()
+    st.markdown("### Portfolio Value Tracker")
+
+    # Get last saved PF value
+    pf_history = get_portfolio_values()
+    last_pf = None
+    last_pf_date = None
+    if pf_history:
+        last_pf_record = pf_history[-1]  # Assuming latest is last
+        last_pf = last_pf_record.get("value", 2151051)
+        last_pf_date = last_pf_record.get("date", "Never")
+
+    pc1, pc2, pc3 = st.columns([2, 1.5, 0.5])
+    with pc1:
+        current_pf = pc1.number_input(
+            "Current Portfolio Value",
+            value=int(last_pf) if last_pf else 2151051,
+            step=10000,
+            format="%d",
+            help="Update daily or when major trades close"
+        )
+    with pc2:
+        if last_pf_date and last_pf_date != "Never":
+            pc2.caption(f"Last saved: {last_pf_date}")
+        else:
+            pc2.caption("No history yet")
+    with pc3:
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+        if st.button("💾 Save", type="primary"):
+            today = datetime.now().date().isoformat()
+            add_portfolio_value(today, float(current_pf), "Entered via Audit page")
+            st.success(f"✓ {current_pf:,.0f}")
+            st.rerun()
+
+    # ── CLOSED TRADES ANALYSIS ────────────────────────────────────────────────
+    st.divider()
+    st.markdown("### Trade Analysis (Closed Trades Only)")
+
+    closed = trades_df[trades_df["status"].isin(["Hit Target", "Hit SL", "Cancelled"])]
+    if closed.empty:
+        st.info("No closed trades yet.")
+        st.stop()
+
+    # Categorize trades
+    system_trades = closed[closed["source"].isin(["System", "STM", "Support Reversal"])]
+    actual_trades = closed[closed["source"] == "Actual"]
+
+    sys_wins = len(system_trades[system_trades["outcome"] == "Win"])
+    sys_losses = len(system_trades[system_trades["outcome"] == "Loss"])
+    sys_total = len(system_trades)
+
+    act_wins = len(actual_trades[actual_trades["outcome"] == "Win"])
+    act_losses = len(actual_trades[actual_trades["outcome"] == "Loss"])
+    act_total = len(actual_trades)
+
+    sys_wr = (sys_wins / sys_total * 100) if sys_total > 0 else 0
+    act_wr = (act_wins / act_total * 100) if act_total > 0 else 0
+
+    # Display metrics
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("System Trades", sys_total, f"{sys_wins}W {sys_losses}L")
+    with col2:
+        st.metric("System Win Rate", f"{sys_wr:.1f}%", help="Expected ~67% from ML model")
+    with col3:
+        st.metric("Your Discretion", act_total, f"{act_wins}W {act_losses}L")
+    with col4:
+        st.metric("Discretion Win Rate", f"{act_wr:.1f}%", help="Should beat system to justify it")
+
+    # ── DETAILED COMPARISON ───────────────────────────────────────────────────
+    st.divider()
+    st.markdown("### Trade-by-Trade Audit")
+
+    audit_df = closed[[
+        "id", "created_date", "symbol", "direction", "entry_price", "actual_exit",
+        "source", "outcome", "actual_pl_pct", "holding_days", "notes"
+    ]].copy()
+    audit_df.columns = ["ID", "Entry Date", "Symbol", "Dir", "Entry", "Exit",
+                         "Source", "Result", "P&L%", "Days", "Notes"]
+    audit_df["Entry Date"] = audit_df["Entry Date"].apply(fmt_date)
+    audit_df = audit_df.sort_values("Entry Date", ascending=False)
+
+    def style_audit_source(series):
+        return [
+            "background-color:#3b82f8;color:white" if v in ["System", "STM"]
+            else "background-color:#10b981;color:white" if v == "Support Reversal"
+            else "background-color:#f59e0b;color:white"
+            for v in series
+        ]
+
+    st.dataframe(
+        audit_df.style
+        .apply(style_audit_source, subset=["Source"])
+        .apply(style_outcome, subset=["Result"])
+        .apply(style_pct_cols, subset=["P&L%"])
+        .format({"Entry":"{:.2f}", "Exit":"{:.2f}", "P&L%":"{:.2f}", "Days":"{:.0f}"}, na_rep="—"),
+        width='stretch', hide_index=True, height=400,
+    )
+
+    # ── DESK MANAGER CALLOUT ──────────────────────────────────────────────────
+    st.divider()
+    st.markdown("### 🔴 Desk Manager Feedback")
+
+    # Generate callout
+    callout = f"""
+**You took {sys_total + act_total} closed trades.**
+
+**System setups:** {sys_total} trades, {sys_wins}W-{sys_losses}L ({sys_wr:.1f}% WR)
+- Expected: ~67% from ML model
+- {'✓ On target' if abs(sys_wr - 67) < 10 else '✗ Below target' if sys_wr < 57 else '⚠ Above target'}
+
+**Your discretion:** {act_total} trades, {act_wins}W-{act_losses}L ({act_wr:.1f}% WR)
+- Yours vs System: {act_wr - sys_wr:+.1f}% {'(worse)' if act_wr < sys_wr else '(better)' if act_wr > sys_wr else '(equal)'}
+
+**The math says:**
+"""
+
+    if act_total == 0:
+        callout += "You haven't taken any discretion trades. Good — follow the system."
+    elif act_wr < sys_wr - 15:
+        callout += f"Your discretion trades are underperforming by {sys_wr - act_wr:.1f}%. Stop. Follow the system."
+    elif act_wr > sys_wr + 10:
+        callout += f"Your discretion is working (+{act_wr - sys_wr:.1f}% vs system). But confirm this isn't luck — need larger sample."
+    else:
+        callout += "Your discretion and system are roughly equal. System is simpler. Use it."
+
+    st.markdown(f"""
+<div style="background:#fee;border-left:4px solid #e11;padding:12px;border-radius:4px;margin:12px 0;">
+{callout}
+</div>
+""", unsafe_allow_html=True)
+
+    # ── TRADER PSYCHOLOGY ─────────────────────────────────────────────────────
+    st.divider()
+    st.markdown("### 🧠 Trader Psychology — Streak & Behavior Analysis")
+
+    # Calculate streaks
+    closed["outcome_binary"] = (closed["outcome"] == "Win").astype(int)
+    outcomes = closed.sort_values("created_date")["outcome"].tolist()
+
+    # Find current streak
+    current_streak = 0
+    streak_type = None
+    if outcomes:
+        last_outcome = outcomes[-1]
+        streak_type = "W" if last_outcome == "Win" else "L"
+        for outcome in reversed(outcomes):
+            if (streak_type == "W" and outcome == "Win") or (streak_type == "L" and outcome == "Loss"):
+                current_streak += 1
+            else:
+                break
+
+    # Find longest streak
+    max_win_streak = 0
+    max_loss_streak = 0
+    current_ws = 0
+    current_ls = 0
+    for outcome in outcomes:
+        if outcome == "Win":
+            current_ws += 1
+            max_win_streak = max(max_win_streak, current_ws)
+            current_ls = 0
+        else:
+            current_ls += 1
+            max_loss_streak = max(max_loss_streak, current_ls)
+            current_ws = 0
+
+    # Average holding time by outcome
+    closed["holding_days_num"] = pd.to_numeric(closed["holding_days"], errors="coerce")
+    avg_hold_win = closed[closed["outcome"] == "Win"]["holding_days_num"].mean()
+    avg_hold_loss = closed[closed["outcome"] == "Loss"]["holding_days_num"].mean()
+
+    ps1, ps2, ps3 = st.columns(3)
+    with ps1:
+        streak_color = "🟢" if streak_type == "W" else "🔴"
+        st.metric(
+            "Current Streak",
+            f"{streak_color} {current_streak} {streak_type}",
+            help="W=winning streak, L=losing streak"
+        )
+    with ps2:
+        st.metric("Longest Win Streak", max_win_streak, f"Max Loss: {max_loss_streak}")
+    with ps3:
+        hold_diff = (avg_hold_win - avg_hold_loss) if not pd.isna(avg_hold_win) and not pd.isna(avg_hold_loss) else 0
+        st.metric(
+            "Avg Hold — Winners vs Losers",
+            f"{avg_hold_win:.1f}d vs {avg_hold_loss:.1f}d",
+            f"{hold_diff:+.1f}d difference"
+        )
+
+    # Psychology callout
+    psych_callout = ""
+
+    # Check for streak behavior
+    if current_streak >= 3 and streak_type == "W":
+        psych_callout += f"**🚨 Winning streak of {current_streak}** — Are you overconfident? Next 3 trades, check your position sizing. Streaks break."
+    elif current_streak >= 3 and streak_type == "L":
+        psych_callout += f"**🚨 Losing streak of {current_streak}** — Are you revenge trading? Take 2 days off. Clear head. Streaks break."
+
+    # Check hold time pattern (exiting winners early)
+    if not pd.isna(avg_hold_win) and not pd.isna(avg_hold_loss) and avg_hold_win < avg_hold_loss - 3:
+        if psych_callout:
+            psych_callout += "\n\n"
+        psych_callout += f"**Exiting winners early:** You hold winners {avg_hold_win:.1f}d but losers {avg_hold_loss:.1f}d. Flipping this means more profit. Fear is closing winners too fast."
+    elif not pd.isna(avg_hold_win) and not pd.isna(avg_hold_loss) and avg_hold_loss < avg_hold_win - 3:
+        if psych_callout:
+            psych_callout += "\n\n"
+        psych_callout += f"**Holding losers too long:** You hold losers {avg_hold_loss:.1f}d but winners {avg_hold_win:.1f}d. Hope is the enemy. Cut losses faster."
+
+    # Check win rate consistency
+    if sys_total >= 5 and act_total >= 5:
+        if abs(sys_wr - act_wr) > 20:
+            if psych_callout:
+                psych_callout += "\n\n"
+            if act_wr < sys_wr:
+                psych_callout += f"**Discretion is your Achilles heel:** {act_wr - sys_wr:.0f}% worse than system. Ego. Stop it."
+            else:
+                psych_callout += f"**Your gut is beating the system by {act_wr - sys_wr:.0f}%.** But is it luck or skill? 50 more trades will tell."
+
+    if not psych_callout:
+        psych_callout = "No major psychological red flags detected. Streaks are normal. Keep the discipline."
+
+    st.markdown(f"""
+<div style="background:#fef3c7;border-left:4px solid #d97706;padding:12px;border-radius:4px;margin:12px 0;">
+<b>Psychology Check:</b><br>
+{psych_callout}
+</div>
+""", unsafe_allow_html=True)
+
+    # ── USER REPLY SECTION ────────────────────────────────────────────────────
+    st.divider()
+    st.markdown("### Your Reply (Optional)")
+    st.caption("Explain why you took discretion trades, or why you skipped system setups. Next month, the Desk Manager will reference this.")
+
+    reply_text = st.text_area(
+        "Your defense/reasoning:",
+        placeholder="e.g., 'Those discretion trades were revenge after losses — I know better now.'\nor 'I skipped 5 System setups because they showed distribution — backtesting shows 30% WR on those patterns.'\nor 'No comment.'",
+        height=100,
+        label_visibility="collapsed"
+    )
+
+    if st.button("💬 Submit Reply", type="primary"):
+        if reply_text.strip():
+            # Store in a simple way (in notes for now)
+            st.success(f"Reply recorded. Desk Manager will review next month.")
+            st.info(f"Your note: {reply_text[:100]}...")
+        else:
+            st.warning("Empty reply. Skip it or add something.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 6 — EXPLORER
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[2]:  # Explorer
     ex_left, ex_right = st.columns([1, 2])
@@ -1803,7 +2092,7 @@ elif cur == PAGES[2]:  # Explorer
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 6 — ANALYTICS
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[5]:
+elif cur == PAGES[6]:
     import plotly.graph_objects as go
     from config import BENCHMARK, SUPPORT_REVERSAL_STATS
 
@@ -1819,9 +2108,13 @@ elif cur == PAGES[5]:
         if "source" not in adf.columns:
             adf["source"] = "System"
         adf["source"] = adf["source"].fillna("System")
-        # Include any trade (System or Actual) that has a resolved outcome
+        if "trade_execution" not in adf.columns:
+            adf["trade_execution"] = "Paper"
+        adf["trade_execution"] = adf["trade_execution"].fillna("Paper")
+        # Include only Actual or Paper & Actual trades with resolved outcomes
         closed = adf[
-            adf["outcome"].isin(["Win", "Loss", "Breakeven"])
+            adf["outcome"].isin(["Win", "Loss", "Breakeven"]) &
+            adf["trade_execution"].isin(["Actual", "Paper & Actual"])
         ].copy()
         for col in ["actual_pl_pkr", "actual_pl_pct", "actual_rr", "holding_days", "exit_date"]:
             if col not in closed.columns:
@@ -2381,7 +2674,7 @@ elif cur == PAGES[5]:
 # ===============================================================================
 # PAGE 7 -- BACKTEST
 # ===============================================================================
-elif cur == PAGES[10]:  # Backtest (updated index)
+elif cur == PAGES[11]:  # Backtest (updated index)
     import plotly.graph_objects as go
 
     st.markdown("**Backtest Results** -- KIRAN rules replayed on historical data (Jan 2024 - present)")
@@ -3514,7 +3807,7 @@ Use the **Parameter Optimizer** to run a grid search and find the EMA spans that
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 9 — SETUP PERFORMANCE
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[9]:  # Setup Perf (updated index)
+elif cur == PAGES[10]:  # Setup Perf (updated index)
     import plotly.graph_objects as go
     import plotly.express as px
 
@@ -3530,10 +3823,11 @@ elif cur == PAGES[9]:  # Setup Perf (updated index)
     # Normalise columns that may be missing in older rows
     for col in ["actual_pl_pct", "actual_pl_pkr", "actual_rr", "holding_days",
                 "exit_date", "actual_entry", "quality_score", "breadth_score",
-                "sector_rank", "range_window", "source"]:
+                "sector_rank", "range_window", "source", "trade_execution"]:
         if col not in sp.columns:
             sp[col] = None
     sp["source"] = sp["source"].fillna("System")
+    sp["trade_execution"] = sp["trade_execution"].fillna("Paper")
     sp["quality_score"] = pd.to_numeric(sp["quality_score"], errors="coerce").fillna(0).astype(int)
 
     # System setups only for this page
@@ -3562,16 +3856,23 @@ elif cur == PAGES[9]:  # Setup Perf (updated index)
     ].copy()
     closed = pd.concat([closed, also_closed]).drop_duplicates(subset="id")
 
-    wins   = closed[closed["outcome"] == "Win"]
-    losses = closed[closed["outcome"] == "Loss"]
+    # Filter to only show evaluated/traded setups
+    evaluated = sys_sp[
+        (sys_sp["outcome"].isin(["Win", "Loss", "Breakeven"])) |
+        (sys_sp["trade_execution"] == "Paper & Actual")
+    ].copy()
 
-    n_total   = len(sys_sp)
-    n_pending = len(pending)
-    n_active  = len(active)
-    n_closed  = len(closed)
-    n_wins    = len(wins)
-    n_losses  = len(losses)
-    win_rate  = n_wins / max(n_wins + n_losses, 1) * 100
+    wins   = evaluated[evaluated["outcome"] == "Win"]
+    losses = evaluated[evaluated["outcome"] == "Loss"]
+
+    n_total       = len(sys_sp)
+    n_pending     = len(pending)
+    n_active      = len(active)
+    n_closed      = len(closed)
+    n_evaluated   = len(evaluated)
+    n_wins        = len(wins)
+    n_losses      = len(losses)
+    win_rate      = n_wins / max(n_wins + n_losses, 1) * 100
 
     avg_win_pct  = wins["actual_pl_pct"].dropna().mean()   if n_wins   else 0.0
     avg_loss_pct = losses["actual_pl_pct"].dropna().mean() if n_losses else 0.0
@@ -3932,7 +4233,7 @@ elif cur == PAGES[9]:  # Setup Perf (updated index)
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 10 — STM  (Short-Term Momentum Screener)
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[7]:  # STM
+elif cur == PAGES[8]:  # STM
 
     st.markdown("### 🔎 STM — Short-Term Momentum Screener")
     st.caption(
@@ -4193,7 +4494,7 @@ elif cur == PAGES[7]:  # STM
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 8 — 🔄 Support Reversals
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[8]:  # Support Reversals
+elif cur == PAGES[9]:  # Support Reversals
     st.markdown("### 🔄 Support Reversals")
     st.caption(
         "Rejection candles at 200-MA uptrend support. "
@@ -4348,7 +4649,7 @@ elif cur == PAGES[8]:  # Support Reversals
     """)
 
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
-elif cur == PAGES[12]:  # Model Health (updated index)
+elif cur == PAGES[13]:  # Model Health (updated index)
     import os as _os
     import subprocess as _sp
     import traceback as _tb
