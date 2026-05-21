@@ -608,6 +608,8 @@ def generate_trade_setups(
 def generate_support_reversal_setups(
     raw_prices: pd.DataFrame,
     sector_map: dict,
+    breadth: dict = None,
+    sector_rank_map: dict = None,
 ) -> list[dict]:
     """
     Detect support reversal setups on latest candle:
@@ -618,6 +620,7 @@ def generate_support_reversal_setups(
     - Entry: high + 1 point
     - Stop loss: entry × 0.94 (-6%)
     - Trailing stop: trail by 2% from peak
+    - ML prediction: includes kiran_model features for quality scoring
 
     Returns list of setup dicts with source='Support Reversal'
     """
@@ -632,6 +635,11 @@ def generate_support_reversal_setups(
     setups = []
     today_str = date_cls.today().isoformat()
 
+    # Defaults
+    breadth = breadth or {}
+    sector_rank_map = sector_rank_map or {}
+    breadth_score = breadth.get("breadth_score", 50)
+
     # Group by symbol
     for symbol, grp in rp.groupby("symbol"):
         grp = grp.sort_values("date").reset_index(drop=True)
@@ -642,6 +650,7 @@ def generate_support_reversal_setups(
 
         # Calculate 200-day SMA
         grp["ma200"] = grp["close"].rolling(200, min_periods=1).mean()
+        grp["atr"] = compute_atr_pct(grp["close"].tolist())
 
         # Get latest candle (most recent)
         latest_idx = len(grp) - 1
@@ -652,6 +661,7 @@ def generate_support_reversal_setups(
         high = latest.get("high", close)
         low = latest.get("low", close)
         ma200 = latest["ma200"]
+        atr_pct = latest.get("atr", 0)
 
         # Skip if missing OHLC
         if pd.isna([close, high, low, ma200]).any():
@@ -700,6 +710,25 @@ def generate_support_reversal_setups(
         if low > support1 + 1:
             continue  # Low didn't touch support
 
+        # ── Calculate stock performance (for ML features) ──
+        # 30-day performance
+        if latest_idx >= 30:
+            close_30d_ago = grp.iloc[max(0, latest_idx - 30)]["close"]
+            stock_perf_30d = ((close - close_30d_ago) / close_30d_ago * 100) if close_30d_ago > 0 else 0
+        else:
+            stock_perf_30d = 0
+
+        # 10-day performance
+        if latest_idx >= 10:
+            close_10d_ago = grp.iloc[max(0, latest_idx - 10)]["close"]
+            stock_perf_10d = ((close - close_10d_ago) / close_10d_ago * 100) if close_10d_ago > 0 else 0
+        else:
+            stock_perf_10d = 0
+
+        # 10-day average volume
+        vol_slice = grp.iloc[max(0, latest_idx - 10):latest_idx + 1].get("volume", pd.Series([0] * 11))
+        avg_vol_10d = vol_slice.mean() if len(vol_slice) > 0 else 0
+
         # ── Entry & Stop Loss ──
         entry = high + 1.0
         stop_loss = entry * 0.94  # -6% hard stop
@@ -707,6 +736,7 @@ def generate_support_reversal_setups(
 
         # Get sector
         sector = sector_map.get(symbol, "Unknown")
+        sector_rank = sector_rank_map.get(sector, 12)  # Default to middle rank
 
         setups.append({
             "created_date":     today_str,
@@ -714,8 +744,8 @@ def generate_support_reversal_setups(
             "symbol":           symbol,
             "sector":           sector,
             "sector_momentum":  "—",  # Not computed for this pattern
-            "stock_perf_30d":   None,
-            "stock_perf_10d":   None,
+            "stock_perf_30d":   round(stock_perf_30d, 2),
+            "stock_perf_10d":   round(stock_perf_10d, 2),
             "latest_close":     close,
             "support_level":    round(support1, 2),
             "resistance_level": None,
@@ -724,7 +754,7 @@ def generate_support_reversal_setups(
             "target_1r":        None,
             "target_2r":        None,
             "risk_pct":         round(risk_pct, 2),
-            "atr_pct":          None,
+            "atr_pct":          round(atr_pct, 2),
             "status":           "Pending",
             "notes":            f"Recovery {recovery_ratio:.1%} | Wick {lower_wick_ratio:.1%} | 200-MA {ma200:.2f}",
             "quality_score":    (
@@ -739,8 +769,9 @@ def generate_support_reversal_setups(
             },
             "range_width_pct":  None,
             "range_window":     None,
-            "sector_rank":      None,
-            "breadth_score":    None,
+            "sector_rank":      int(sector_rank),
+            "breadth_score":    breadth_score,
+            "avg_vol_10d":      round(avg_vol_10d),
             "source":           "Support Reversal",
         })
 
@@ -788,7 +819,10 @@ def run_analysis() -> dict:
 
     # Generate support reversal setups
     sector_map = dict(zip(df["symbol"], df["sector"]))
-    support_setups = generate_support_reversal_setups(df, sector_map)
+    sector_rank_map = dict(zip(sector_df["sector"], sector_df["rank"]))
+    support_setups = generate_support_reversal_setups(
+        df, sector_map, breadth=breadth, sector_rank_map=sector_rank_map
+    )
     logger.info(f"Generated {len(support_setups)} support reversal setups")
 
     return {

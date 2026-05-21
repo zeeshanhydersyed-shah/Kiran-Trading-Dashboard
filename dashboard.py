@@ -4231,15 +4231,35 @@ elif cur == PAGES[8]:  # Support Reversals
     if len(pending) > 0:
         pending = pending.sort_values('created_date', ascending=False)
 
+        # Add ML prediction
+        pending['ml_prob'] = pending.apply(lambda row: extract_ml_features(row), axis=1)
+
         tab_pending, tab_criteria = st.tabs(["Table", "Criteria Reference"])
 
         with tab_pending:
-            display_cols = ['symbol', 'entry_price', 'stop_loss', 'target_1r', 'target_2r',
-                           'risk_pct', 'atr_pct', 'created_date']
+            display_cols = ['symbol', 'entry_price', 'stop_loss', 'risk_pct', 'atr_pct',
+                           'stock_perf_30d', 'stock_perf_10d', 'ml_prob', 'created_date']
             available_cols = [c for c in display_cols if c in pending.columns]
 
+            # Format ML probability as percentage and color
+            display_df = pending[available_cols].copy()
+            display_df.columns = [c.replace('ml_prob', 'ML %').replace('stock_perf_', 'Perf ')
+                                  for c in display_df.columns]
+
+            def style_ml(series):
+                return [
+                    f"color:#22c55e;font-weight:bold" if v is not None and v > 0.70
+                    else f"color:#fbbf24;font-weight:bold" if v is not None and v > 0.50
+                    else f"color:#ef4444;font-weight:bold" if v is not None
+                    else "color:#94a3b8"
+                    for v in series
+                ]
+
             st.dataframe(
-                pending[available_cols].sort_values('created_date', ascending=False),
+                display_df.sort_values('created_date', ascending=False).style
+                    .apply(style_ml, subset=['ML %'])
+                    .format({'ML %': '{:.1%}', 'Perf 30d': '{:+.1f}%', 'Perf 10d': '{:+.1f}%',
+                            'risk_pct': '{:.2f}%', 'atr_pct': '{:.2f}%'}),
                 use_container_width=True,
                 hide_index=True
             )
