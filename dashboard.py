@@ -109,7 +109,11 @@ div[data-testid="stHorizontalBlock"] > div > div > div > button[kind="primary"] 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_data() -> dict:
     init_db()
-    return run_analysis()
+    data = run_analysis()
+    # Always fetch fresh KSE-100 to avoid stale 50-MA in header vs. charts
+    from kse100_filter import KSE100Filter
+    data["kse100"] = KSE100Filter().kse100_summary()
+    return data
 
 
 @st.cache_data(ttl=300, show_spinner=False)  # Shorter cache since user updates these
@@ -364,6 +368,49 @@ def load_weinstein_data() -> dict:
         }
     except Exception as exc:
         return {"error": _tb.format_exc()}
+
+
+# ── Advance-Decline loader ────────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_ad_ratio_data() -> pd.DataFrame:
+    """
+    Compute daily Advance-Decline data across all PSX stocks.
+    Returns DataFrame with columns: advances, declines, net_advances, ma10.
+    """
+    try:
+        from database import get_prices_for_breadth
+        raw = get_prices_for_breadth()
+        if not raw:
+            return pd.DataFrame()
+
+        df = (
+            pd.DataFrame(raw)
+            .assign(
+                date=lambda d: pd.to_datetime(d["date"]),
+                close=lambda d: pd.to_numeric(d["close"], errors="coerce"),
+            )
+            .dropna(subset=["close"])
+        )
+
+        psx_data = df.pivot_table(index="date", columns="symbol", values="close").sort_index()
+
+        daily_chg    = psx_data.diff()
+        advances     = (daily_chg > 0).sum(axis=1)
+        declines     = (daily_chg < 0).sum(axis=1)
+        net_advances = advances - declines
+
+        result = pd.DataFrame({
+            "advances":     advances,
+            "declines":     declines,
+            "net_advances": net_advances,
+            "ma10":         net_advances.rolling(10, min_periods=1).mean(),
+        })
+
+        # Drop the first row (no valid diff on day 0)
+        return result.iloc[1:]
+    except Exception:
+        return pd.DataFrame()
 
 
 # ── STM screener data loader ──────────────────────────────────────────────────
@@ -822,7 +869,7 @@ with st.sidebar:
         "<span style='font-size:0.9rem; font-weight:700;'>📈 KIRAN · PSX</span>",
         unsafe_allow_html=True,
     )
-    if st.button("🔄 Refresh Data", use_container_width=True, type="primary", key="sb_refresh"):
+    if st.button("🔄 Refresh Data", width='stretch', type="primary", key="sb_refresh"):
         with st.spinner("Updating…"):
             try:
                 cmd_update()
@@ -934,7 +981,7 @@ if breadth:
 nav_cols = st.columns(len(PAGES))
 for i, pg in enumerate(PAGES):
     btn_type = "primary" if st.session_state.page == pg else "secondary"
-    if nav_cols[i].button(pg, key=f"nav_{i}", use_container_width=True, type=btn_type):
+    if nav_cols[i].button(pg, key=f"nav_{i}", width='stretch', type=btn_type):
         st.session_state.page = pg
         st.rerun()
 
@@ -970,7 +1017,7 @@ if cur == PAGES[1]:  # Market
             margin={"l": 4, "r": 70, "t": 8, "b": 8},
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     except ImportError:
         st.info("pip install plotly")
 
@@ -992,7 +1039,7 @@ if cur == PAGES[1]:  # Market
         .apply(style_pct_cols, subset=["30d %", "10d %", "Best %", "Worst %"])
         .apply(style_momentum,  subset=["Momentum"])
         .format({"30d %": "{:.2f}", "10d %": "{:.2f}", "Best %": "{:.2f}", "Worst %": "{:.2f}"}),
-        use_container_width=True, hide_index=True, height=460,
+        width='stretch', hide_index=True, height=460,
     )
 
     st.markdown(
@@ -1019,7 +1066,7 @@ if cur == PAGES[1]:  # Market
                 long_cands.style
                 .apply(style_pct_cols, subset=["30d Perf %"])
                 .format({"30d Perf %": "{:.2f}", "Latest Close": "{:.2f}"}),
-                use_container_width=True, hide_index=True,
+                width='stretch', hide_index=True,
             )
         else:
             st.caption("—")
@@ -1030,7 +1077,7 @@ if cur == PAGES[1]:  # Market
                 short_cands.style
                 .apply(style_pct_cols, subset=["30d Perf %"])
                 .format({"30d Perf %": "{:.2f}", "Latest Close": "{:.2f}"}),
-                use_container_width=True, hide_index=True,
+                width='stretch', hide_index=True,
             )
         else:
             st.caption("—")
@@ -1084,7 +1131,7 @@ elif cur == PAGES[3]:  # History
                 margin={"l": 4, "r": 4, "t": 32, "b": 8},
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_hist, width='stretch')
         else:
             st.info("Select at least one sector.")
     except ImportError:
@@ -1362,7 +1409,7 @@ elif cur == PAGES[4]:  # Trade Log
             .apply(style_outcome,   subset=["Outcome"])
             .apply(style_pct_cols,  subset=["P&L%"])
             .format(fmt_map, na_rep="—"),
-            use_container_width=True, hide_index=True, height=340,
+            width='stretch', hide_index=True, height=340,
         )
 
     # ── Activate a pending trade ──────────────────────────────────────────────
@@ -1467,6 +1514,63 @@ elif cur == PAGES[4]:  # Trade Log
                 save_trade_setup(actual_record)
                 st.success(f"{sym} {act_dir} logged as Actual trade.")
                 st.rerun()
+
+    # ── Partial close ─────────────────────────────────────────────────────────
+    if all_saved:
+        partial_trades = [t for t in all_saved if t.get("status") in ("Active", "Pending") and t.get("source") == "Actual"]
+        if partial_trades:
+            st.divider()
+            st.markdown("**Partially close a position**")
+            st.caption("Close part of an Actual trade and keep the rest open. Creates a partial exit record.")
+
+            partial_opts = {
+                f"#{t['id']} · {t['symbol']} {t['direction']} @ {t['entry_price']:.2f}"
+                f"  (entry {fmt_date(t['created_date'])})": t
+                for t in partial_trades
+            }
+            partial_label = st.selectbox(
+                "Position", list(partial_opts.keys()), key="partial_sel",
+                label_visibility="collapsed"
+            )
+            partial_trade = partial_opts[partial_label]
+
+            pc1, pc2, pc3, pc4, pc5 = st.columns([1.2, 1.2, 1.2, 2, 1])
+            pc_px     = pc1.number_input("Exit Price", min_value=0.0, step=0.01,
+                                         format="%.2f", key="pc_px", label_visibility="collapsed")
+            pc_dt     = pc2.date_input("Exit Date", value=datetime.now().date(),
+                                       key="pc_dt", label_visibility="collapsed")
+            pc_pct    = pc3.number_input("% Closed", min_value=0.1, max_value=99.9, value=50.0,
+                                         step=0.1, format="%.1f", key="pc_pct", label_visibility="collapsed")
+            pc_notes  = pc4.text_input("Notes", placeholder="e.g. took 50%, holding 50%", key="pc_notes",
+                                       label_visibility="collapsed")
+            pc1.caption("Exit Price"); pc2.caption("Exit Date"); pc3.caption("% Closed"); pc4.caption("Notes")
+
+            with pc5:
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                if st.button("📊 Partial Close", key="btn_partial", type="primary"):
+                    if pc_px <= 0:
+                        st.error("Enter a valid exit price.")
+                    else:
+                        entry = float(partial_trade["entry_price"])
+                        dirn  = partial_trade["direction"]
+                        if entry > 0:
+                            pl = (pc_px - entry) / entry * 100 if dirn == "LONG" else (entry - pc_px) / entry * 100
+
+                        # Create new position for the remaining amount
+                        remainder_notes = f"Partial close recorded. {pc_pct:.1f}% closed at {pc_px:.2f} on {pc_dt.isoformat()}. Remainder open. {pc_notes.strip()}"
+
+                        # Close the original position marked as partial
+                        close_trade_setup(
+                            setup_id               = int(partial_trade["id"]),
+                            exit_price             = float(pc_px),
+                            exit_date              = pc_dt.isoformat(),
+                            status                 = "Hit Target" if pc_pct >= 100 else "Cancelled",
+                            outcome                = "Breakeven",
+                            notes                  = f"Partial close: {pc_pct:.1f}% @ {pc_px:.2f}. {pc_notes.strip()}",
+                            actual_pl_pkr_override = None,
+                        )
+                        st.success(f"#{partial_trade['id']} · {pc_pct:.1f}% closed at {pc_px:.2f}  ·  P&L {pl:+.2f}%")
+                        st.rerun()
 
     # ── Close an open position ────────────────────────────────────────────────
     if all_saved:
@@ -1627,7 +1731,7 @@ elif cur == PAGES[2]:  # Explorer
             disp_stocks.style
             .apply(style_pct_cols, subset=["30d%"])
             .format({"30d%":"{:.2f}","Close":"{:.2f}","Base":"{:.2f}"}),
-            use_container_width=True, hide_index=True, height=480,
+            width='stretch', hide_index=True, height=480,
         )
 
     with ex_right:
@@ -1688,9 +1792,9 @@ elif cur == PAGES[2]:  # Explorer
                         xaxis={"gridcolor": "#f1f5f9"},
                         yaxis={"gridcolor": "#f1f5f9"},
                     )
-                    st.plotly_chart(fig2, use_container_width=True)
+                    st.plotly_chart(fig2, width='stretch')
                 except ImportError:
-                    st.dataframe(h_df, use_container_width=True, hide_index=True)
+                    st.dataframe(h_df, width='stretch', hide_index=True)
             else:
                 st.info(f"No price data for {chosen_symbol}.")
 
@@ -2033,7 +2137,7 @@ elif cur == PAGES[5]:
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig_pf, use_container_width=True)
+            st.plotly_chart(fig_pf, width='stretch')
         else:
             st.info("Portfolio data not available yet.")
     except Exception as e:
@@ -2116,7 +2220,7 @@ elif cur == PAGES[5]:
                         })
                     st.dataframe(
                         pd.DataFrame(tx_display),
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True,
                     )
                     if st.button("🗑️ Refresh transactions", key="refresh_tx"):
@@ -2141,7 +2245,7 @@ elif cur == PAGES[5]:
                         })
                     st.dataframe(
                         pd.DataFrame(pv_display),
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True,
                     )
                     if st.button("🗑️ Refresh values", key="refresh_pv"):
@@ -2175,7 +2279,7 @@ elif cur == PAGES[5]:
         yaxis={"tickfont": {"size": 9}, "tickformat": ",.0f"},
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_cum, use_container_width=True)
+    st.plotly_chart(fig_cum, width='stretch')
 
     # ── Win / Loss distribution ───────────────────────────────────────────────
     col_wl, col_bar = st.columns(2)
@@ -2201,7 +2305,7 @@ elif cur == PAGES[5]:
             legend={"font": {"size": 10}},
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig_d, use_container_width=True)
+        st.plotly_chart(fig_d, width='stretch')
 
     with col_bar:
         st.markdown("**Avg Win % vs Avg Loss %**")
@@ -2226,7 +2330,7 @@ elif cur == PAGES[5]:
             xaxis={"tickfont": {"size": 10}},
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig_b, use_container_width=True)
+        st.plotly_chart(fig_b, width='stretch')
 
 
 # ===============================================================================
@@ -2375,7 +2479,7 @@ elif cur == PAGES[9]:  # Backtest
             legend={"font": {"size": 10}, "orientation": "v"},
             paper_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width='stretch')
 
     with ch2:
         st.markdown("**Win Rate by Quality Score**")
@@ -2409,7 +2513,7 @@ elif cur == PAGES[9]:  # Backtest
                     xaxis={"title": "Quality Score (0-4)", "tickfont": {"size": 10}},
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 )
-                st.plotly_chart(fig_qs, use_container_width=True)
+                st.plotly_chart(fig_qs, width='stretch')
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -2458,7 +2562,7 @@ elif cur == PAGES[9]:  # Backtest
         legend={"font": {"size": 10}, "orientation": "h", "y": 1.08},
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_mo, use_container_width=True)
+    st.plotly_chart(fig_mo, width='stretch')
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -2557,7 +2661,7 @@ elif cur == PAGES[9]:  # Backtest
                 legend={"font": {"size": 10}, "orientation": "h", "y": 1.08},
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig_eq, use_container_width=True)
+            st.plotly_chart(fig_eq, width='stretch')
         else:
             st.info("No triggered trades with realized_r yet. Re-run backtest after volume backfill completes.")
     else:
@@ -2623,7 +2727,7 @@ elif cur == PAGES[9]:  # Backtest
         .apply(style_direction,  subset=["Dir"])
         .apply(style_bt_outcome, subset=["Outcome"])
         .format(fmt_bt, na_rep="—"),
-        use_container_width=True, hide_index=True, height=380,
+        width='stretch', hide_index=True, height=380,
     )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -2726,7 +2830,7 @@ elif cur == PAGES[9]:  # Backtest
                 yaxis={"title": "PKR", "tickfont": {"size": 9}, "tickformat": ",.0f"},
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig_sim, use_container_width=True)
+            st.plotly_chart(fig_sim, width='stretch')
         else:
             st.info("No closed trades yet in simulation.")
 
@@ -2850,9 +2954,24 @@ elif cur == PAGES[0]:  # Regime
     kse_str  = "▲ KSE above MA" if idx_abv else "▼ KSE below MA"
     date_str = pd.Timestamp(last_date).strftime("%d %b %Y")
 
+    # Gate status for clarity: show single unified signal
+    gate_status = ""
+    if hist_val is not None and idx_abv is not None:
+        if hist_val > 0 and idx_abv:
+            gate_status = "✓ All gates green"
+            gate_color = "#22c55e"
+        elif hist_val < 0 and not idx_abv:
+            gate_status = "✗ All gates red"
+            gate_color = "#ef4444"
+        else:
+            gate_status = "⚠ Mixed signals"
+            gate_color = "#f59e0b"
+    else:
+        gate_status = zone
+        gate_color = zcolor
+
     parts = [
-        f'<span style="color:{zcolor}; font-weight:700;">{zone}</span>',
-        f'<span style="color:{dir_color}; font-weight:700;">{dir_arrow} {direction}</span>',
+        f'<span style="color:{gate_color}; font-weight:700;">{gate_status}</span>',
     ]
     if last_cross_sig and last_cross_date is not None:
         cc = cross_colors.get(last_cross_sig, "#94a3b8")
@@ -3068,7 +3187,96 @@ elif cur == PAGES[0]:  # Regime
     )
     # Show date labels only on the bottom panel
     fig.update_xaxes(showticklabels=True, row=n_rows, col=1)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
+
+    # ── Advance-Decline Net chart ──────────────────────────────────────────────
+    st.markdown(
+        "**Advance-Decline (Net)** — daily breadth signal across all PSX stocks  \n"
+        "<span style='font-size:0.75rem; color:#64748b;'>"
+        "Net Advances = Advances − Declines. Avoids ratio skew on low-volume days."
+        "</span>",
+        unsafe_allow_html=True,
+    )
+
+    with st.spinner("Computing A/D data…"):
+        ad_df = load_ad_ratio_data()
+
+    if ad_df.empty:
+        st.warning("A/D data unavailable — price data could not be loaded.")
+    else:
+        ad_tail = st.slider(
+            "A/D chart: show last N days",
+            60, max(60, len(ad_df)), min(504, len(ad_df)),
+            step=21, key="ad_tail",
+        )
+        ad_plot = ad_df.tail(ad_tail).copy()
+
+        net = ad_plot["net_advances"]
+        y_abs = max(abs(float(net.max())), abs(float(net.min()))) * 1.1
+        y_abs = max(y_abs, 50)
+
+        fig_ad = go.Figure()
+
+        # Shaded regions above/below zero
+        fig_ad.add_hrect(y0=0,     y1=y_abs,  fillcolor="rgba(34,197,94,0.08)",  line_width=0)
+        fig_ad.add_hrect(y0=-y_abs, y1=0,     fillcolor="rgba(239,68,68,0.08)", line_width=0)
+
+        # Net Advances line — green above zero, red below
+        fig_ad.add_trace(go.Scatter(
+            x=ad_plot.index, y=net.round(0),
+            mode="lines", name="Net Advances",
+            line={"color": "#3b82f6", "width": 1.8},
+            hovertemplate="Net Advances: %{y:.0f}<extra></extra>",
+        ))
+
+        # 10-day MA
+        fig_ad.add_trace(go.Scatter(
+            x=ad_plot.index, y=ad_plot["ma10"].round(1),
+            mode="lines", name="10D MA",
+            line={"color": "#f59e0b", "width": 2, "dash": "dash"},
+            hovertemplate="10D MA: %{y:.1f}<extra></extra>",
+        ))
+
+        # Zero line
+        fig_ad.add_hline(
+            y=0, line_dash="dot", line_color="#94a3b8", line_width=1.5,
+            annotation_text="Zero", annotation_position="top right",
+        )
+
+        # Interpretation annotation box
+        fig_ad.add_annotation(
+            xref="paper", yref="paper",
+            x=0.01, y=0.97,
+            text="<b>Above zero</b> = more advances than declines (bullish breadth)",
+            showarrow=False,
+            align="left",
+            bgcolor="rgba(30,41,59,0.80)",
+            bordercolor="#475569",
+            borderwidth=1,
+            font={"size": 10, "color": "#e2e8f0"},
+        )
+
+        fig_ad.update_layout(
+            height=300,
+            margin={"l": 4, "r": 4, "t": 20, "b": 8},
+            hovermode="x",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            legend={"orientation": "h", "y": 1.06, "x": 0, "font": {"size": 10}},
+        )
+        fig_ad.update_xaxes(
+            tickfont={"size": 10},
+            showspikes=True, spikemode="across", spikesnap="cursor",
+            spikecolor="#94a3b8", spikethickness=1, spikedash="dot",
+        )
+        fig_ad.update_yaxes(
+            tickfont={"size": 10},
+            range=[-y_abs, y_abs],
+            title_text="Net Advances",
+            title_font={"size": 10},
+        )
+        st.plotly_chart(fig_ad, width='stretch')
+
+    st.divider()
 
     # ── Signal history table ───────────────────────────────────────────────────
     with st.expander("Signal history (all non-HOLD signals)"):
@@ -3096,7 +3304,7 @@ elif cur == PAGES[0]:  # Regime
             st.dataframe(
                 sig_events[display_cols]
                 .style.apply(_col_signal, subset=["Signal"]),
-                use_container_width=True, hide_index=True,
+                width='stretch', hide_index=True,
             )
 
     st.divider()
@@ -3184,7 +3392,7 @@ elif cur == PAGES[0]:  # Regime
         if "weinstein_opt_results" in st.session_state:
             st.markdown("**Top 10 parameter combinations**")
             res = st.session_state["weinstein_opt_results"].head(10)
-            st.dataframe(res, use_container_width=True, hide_index=True)
+            st.dataframe(res, width='stretch', hide_index=True)
 
             best_p = st.session_state.get("weinstein_best_params", {})
             if best_p and st.button("Apply best parameters & refresh signals", key="apply_best"):
@@ -3389,7 +3597,7 @@ elif cur == PAGES[8]:
 
         st.dataframe(
             act_df.style.map(_colour_unreal, subset=["Unreal %"]),
-            use_container_width=True, hide_index=True,
+            width='stretch', hide_index=True,
         )
 
     st.divider()
@@ -3420,7 +3628,7 @@ elif cur == PAGES[8]:
                 disp.style
                     .map(_outcome_colour, subset=["Outcome"])
                     .map(lambda v: f"color:{'#22c55e' if isinstance(v,(int,float)) and v>=0 else '#ef4444'}" if isinstance(v,(int,float)) else "", subset=["P&L %"]),
-                use_container_width=True, hide_index=True,
+                width='stretch', hide_index=True,
             )
 
     with col_chart:
@@ -3445,7 +3653,7 @@ elif cur == PAGES[8]:
                 showlegend=False,
                 paper_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig_d, use_container_width=True)
+            st.plotly_chart(fig_d, width='stretch')
 
             if n_wins > 0 and n_losses > 0:
                 st.markdown(
@@ -3497,7 +3705,7 @@ elif cur == PAGES[8]:
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                 )
-                st.plotly_chart(fig_s, use_container_width=True)
+                st.plotly_chart(fig_s, width='stretch')
 
     with col_qs:
         st.markdown("##### Quality Score vs Win Rate")
@@ -3534,7 +3742,7 @@ elif cur == PAGES[8]:
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                 )
-                st.plotly_chart(fig_q, use_container_width=True)
+                st.plotly_chart(fig_q, width='stretch')
                 st.caption("Higher quality score should trend toward higher win rate as data accumulates.")
 
     st.divider()
@@ -3562,7 +3770,7 @@ elif cur == PAGES[8]:
                 legend={"orientation": "h", "y": 1.1},
                 barmode="stack",
             )
-            st.plotly_chart(fig_m, use_container_width=True)
+            st.plotly_chart(fig_m, width='stretch')
 
     # ── Pending setups summary ────────────────────────────────────────────────
     if not pending.empty:
@@ -3573,7 +3781,7 @@ elif cur == PAGES[8]:
             pend_disp["created_date"] = pend_disp["created_date"].dt.strftime("%d %b %Y")
             pend_disp.columns = ["Date", "Symbol", "Dir", "Sector",
                                   "Entry", "SL", "T1", "Risk %", "Quality"]
-            st.dataframe(pend_disp, use_container_width=True, hide_index=True)
+            st.dataframe(pend_disp, width='stretch', hide_index=True)
 
     st.divider()
 
@@ -3666,7 +3874,7 @@ elif cur == PAGES[8]:
                         "Close": "{:.2f}", "RS %": "{:+.2f}", "30d %": "{:+.2f}",
                         "5d Range %": "{:.2f}", "Dist 21MA %": "{:+.2f}",
                     }),
-                use_container_width=True, hide_index=False,
+                width='stretch', hide_index=False,
                 height=min(600, 60 + len(xref) * 36),
             )
             st.caption(
@@ -3822,7 +4030,7 @@ elif cur == PAGES[7]:  # STM
                         .format({"Close":"{:.2f}","RS %":"{:+.2f}","30d %":"{:+.2f}",
                                  "5d Rng %":"{:.2f}","21MA":"{:.2f}","50MA":"{:.2f}",
                                  "Dist21MA%":"{:+.2f}","SL":"{:.2f}","Risk%":"{:.2f}","T2R":"{:.2f}"}, na_rep="—"),
-                    use_container_width=True, hide_index=False,
+                    width='stretch', hide_index=False,
                     height=min(640, 60 + n_passed * 36),
                 )
                 st.caption("SL = 1% below day low · T2R = 2R target · ML% = LightGBM win probability · Picks auto-saved to Trade Log")
@@ -3928,7 +4136,7 @@ elif cur == PAGES[7]:  # STM
                         .format({"Close":"{:.2f}","Under-RS%":"{:+.2f}","30d %":"{:+.2f}",
                                  "5d Rng %":"{:.2f}","21MA":"{:.2f}","50MA":"{:.2f}",
                                  "Dist21MA%":"{:+.2f}","SL":"{:.2f}","Risk%":"{:.2f}","T2R":"{:.2f}"}, na_rep="—"),
-                    use_container_width=True, hide_index=False,
+                    width='stretch', hide_index=False,
                     height=min(640, 60 + n_short * 36),
                 )
                 st.caption(
@@ -3981,7 +4189,7 @@ elif cur == PAGES[11]:  # Model Health
                 recent["actual_return"]  = pd.to_numeric(recent["actual_return"],  errors="coerce").map(lambda x: f"{x:+.2%}" if pd.notna(x) else "—")
             if "was_correct" in recent.columns:
                 recent["was_correct"]    = recent["was_correct"].map(lambda x: "✔" if x == 1 else ("✖" if x == 0 else "—"))
-            st.dataframe(recent, use_container_width=True, hide_index=True)
+            st.dataframe(recent, width='stretch', hide_index=True)
     else:
         st.info("No prediction log yet. Use the buttons below to start logging predictions.")
 
@@ -4072,7 +4280,7 @@ elif st.session_state.page == PAGES[11]:
 
         st.dataframe(
             display.style.apply(lambda _: [""] * len(display), axis=0).pipe(_style),
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
         )
 
@@ -4130,7 +4338,7 @@ elif st.session_state.page == PAGES[11]:
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig_rs, use_container_width=True)
+        st.plotly_chart(fig_rs, width='stretch')
 
     # Stage 1 watchlist
     with _tab1:
