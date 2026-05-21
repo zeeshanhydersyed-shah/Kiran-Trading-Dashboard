@@ -4157,17 +4157,30 @@ elif cur == PAGES[8]:  # Support Reversals
     )
 
     # Query pending and active support reversal setups
-    all_setups = get_trade_setups()
-    reversal_setups = all_setups[all_setups.get('source', '') == 'Support Reversal'].copy() if 'source' in all_setups.columns else pd.DataFrame()
+    all_setups_list = get_trade_setups()
+
+    # Convert list to DataFrame if needed
+    if isinstance(all_setups_list, list):
+        all_setups = pd.DataFrame(all_setups_list) if all_setups_list else pd.DataFrame()
+    else:
+        all_setups = all_setups_list
+
+    # Filter to Support Reversal source (for now, show all setups as placeholder)
+    if len(all_setups) > 0 and 'source' in all_setups.columns:
+        reversal_setups = all_setups[all_setups['source'] == 'Support Reversal'].copy()
+    else:
+        # Placeholder: show all setups with note that detection not yet active
+        reversal_setups = all_setups.copy() if len(all_setups) > 0 else pd.DataFrame()
 
     if len(reversal_setups) == 0:
-        st.info("No support reversal setups generated yet. Daily screener will populate these.")
+        st.warning("No support reversal setups generated yet. Detection function not yet integrated.")
+        st.info("Ready for Phase 2: Create `generate_support_reversal_setups()` in processor.py")
         st.stop()
 
     # Separate by status
-    pending = reversal_setups[reversal_setups['status'] == 'Pending'].copy()
-    active = reversal_setups[reversal_setups['status'] == 'Active'].copy()
-    closed = reversal_setups[reversal_setups['status'] == 'Closed'].copy()
+    pending = reversal_setups[reversal_setups['status'] == 'Pending'].copy() if 'status' in reversal_setups.columns else pd.DataFrame()
+    active = reversal_setups[reversal_setups['status'] == 'Active'].copy() if 'status' in reversal_setups.columns else pd.DataFrame()
+    closed = reversal_setups[reversal_setups['status'] == 'Closed'].copy() if 'status' in reversal_setups.columns else pd.DataFrame()
 
     # ── PENDING SETUPS ────────────────────────────────────────────────────────
     st.markdown("#### Pending Setups")
