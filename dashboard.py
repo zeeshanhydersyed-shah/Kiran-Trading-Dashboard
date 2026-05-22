@@ -1999,7 +1999,7 @@ elif cur == PAGES[5]:  # Trade Log
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 5 — THE AUDIT (Desk Manager Accountability)
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[7]:  # The Audit
+elif cur == PAGES[6]:  # The Audit
     st.markdown("**🎖️ The Audit — Desk Manager Report**")
     st.caption("System accountability vs your actual trading. Strict. Fair. Actionable.")
 
