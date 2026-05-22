@@ -1713,56 +1713,6 @@ elif cur == PAGES[5]:  # Trade Log
             width='stretch', hide_index=True, height=340,
         )
 
-        # ── Performance table for closed trades ────────────────────────────────
-        st.divider()
-        st.markdown("**Closed Trades Performance**")
-
-        perf_rows = []
-
-        for exe_type in ["All", "Paper", "Actual", "Paper & Actual"]:
-            if exe_type == "All":
-                trades = [t for t in all_saved if t.get("status") == "Closed"]
-            else:
-                trades = []
-                for t in all_saved:
-                    if t.get("status") != "Closed":
-                        continue
-                    source = t.get("source") or "System"
-                    actual_entry = t.get("actual_entry")
-                    if exe_type == "Actual" and source == "Actual":
-                        trades.append(t)
-                    elif exe_type == "Paper & Actual" and source in ("System", "STM", "Support Reversal") and actual_entry is not None and float(actual_entry) > 0:
-                        trades.append(t)
-                    elif exe_type == "Paper" and source not in ("Actual",) and not (actual_entry is not None and float(actual_entry) > 0):
-                        trades.append(t)
-
-            wins = sum(1 for t in trades if t.get("outcome") == "Win")
-            losses = sum(1 for t in trades if t.get("outcome") == "Loss")
-            count = len(trades)
-            win_pct = (wins / count * 100) if count > 0 else 0
-            loss_pct = (losses / count * 100) if count > 0 else 0
-            pl_pct = sum(t.get("actual_pl_pct") or 0 for t in trades) / count if count > 0 else 0
-
-            perf_rows.append({
-                "Execution": exe_type,
-                "Trades": count,
-                "Win": wins,
-                "Loss": losses,
-                "Win%": round(win_pct, 1),
-                "Loss%": round(loss_pct, 1),
-                "P&L%": round(pl_pct, 2),
-            })
-
-        perf_df = pd.DataFrame(perf_rows)
-        st.dataframe(
-            perf_df.style.format({
-                "Win%": "{:.1f}%",
-                "Loss%": "{:.1f}%",
-                "P&L%": "{:+.2f}%",
-            }),
-            width='stretch', hide_index=True, use_container_width=True,
-        )
-
     # ── Activate a pending trade ──────────────────────────────────────────────
     if all_saved:
         pending_trades = [
