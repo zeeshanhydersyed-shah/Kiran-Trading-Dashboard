@@ -1,0 +1,31 @@
+============================================================
+  PSX DATA MERGE REPORT
+  2026-05-09 09:20
+============================================================
+  Sources:
+    BI PostgreSQL : localhost:55432 / company_history
+    Kiran DB      : psx_data.db / Supabase
+    Winner        : Kiran on overlapping dates
+
+  KIRAN FILTER APPLIED:
+    Symbols before filter : 587
+    Removed (futures pat) : 0
+    Removed (excl sector) : 158546
+    Removed (index syms)  : 0
+    Unverified (kept)     : 96  (BI-only, no sector tag)
+    Symbols after filter  : 403
+
+  MERGED RESULT:
+    Rows       : 412,207
+    Symbols    : 409
+    Date range : 2020-01-01 -> 2026-05-08
+
+  WARNINGS:
+    [!] INFO: 2 short gaps (7-14 days) found -- likely Eid/holidays, not errors.
+    [!] PRICE SPIKES >50% (44 rows -- saved to merge_price_spikes.csv)
+    [!]   AHCL on 2025-03-27: 109.69 -> 11.58  (89%)
+    [!]   BECO on 2025-11-17: 71.41 -> 8.14  (89%)
+    [!]   BELA on 2023-11-20: 1.30 -> 2.06  (58%)
+
+  NEXT STEP: python part2_feature_engineering.py
+============================================================

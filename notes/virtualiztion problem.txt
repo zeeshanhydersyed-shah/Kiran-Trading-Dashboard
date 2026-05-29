@@ -1,0 +1,3 @@
+Claude's workspace failed to start with HRESULT 0x80370102 (hypervisor not running).
+
+Hardware virtualization (Intel VT-x or AMD-V) is disabled in this device's firmware. Enable it in BIOS/UEFI settings and restart. On devices with a firmware password or vendor management (Dell Command, HP BCU, Lenovo, vPro), this may need to be changed via that tool.

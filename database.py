@@ -151,6 +151,13 @@ def init_db():
 
     logger.info("Database initialised at %s", DB_PATH)
 
+    # Agent tables (non-destructive — safe to call every startup)
+    try:
+        from agent_db import init_agent_tables
+        init_agent_tables()
+    except Exception as _e:
+        logger.warning("agent_db tables not initialised: %s", _e)
+
 
 def upsert_sectors(rows: list[tuple[str, str]]):
     """Insert or replace (symbol, sector) pairs."""

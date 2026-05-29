@@ -1,0 +1,9 @@
+log_date,trade_date,symbol,direction,quality_score,ml_probability,prediction,entry_price,stop_loss,actual_entry,actual_exit,actual_return,was_correct,outcome_date,notes
+2026-05-09 00:00:00,2026-05-09 00:00:00,HTL,LONG,2,0.5868,BUY,46.21,41.09,,,,,,
+2026-05-09 00:00:00,2026-05-09 00:00:00,BAFL,SHORT,2,0.2254,AVOID,56.72,61.81,,,,,,
+2026-05-09 00:00:00,2026-05-08 00:00:00,NRL,LONG,0,0.5221,WAIT,382.68,371.74,,,,,,
+2026-05-11,2026-05-09,HTL,LONG,2,0.5868,BUY,46.21,41.09,,,,,,
+2026-05-11,2026-05-09,BAFL,SHORT,2,0.2254,AVOID,56.72,61.81,,,,,,
+2026-05-11,2026-05-08,NRL,LONG,0,0.5221,WAIT,382.68,371.74,,,,,,
+2026-05-11,2026-05-11,HTL,LONG,2,0.5868,BUY,46.21,41.09,,,,,,
+2026-05-11,2026-05-11,BAFL,SHORT,2,0.2254,AVOID,56.72,61.81,,,,,,

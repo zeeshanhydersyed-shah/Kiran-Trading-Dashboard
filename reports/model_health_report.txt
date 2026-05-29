@@ -1,0 +1,37 @@
+==============================================================
+  PSX MODEL HEALTH DASHBOARD
+  Generated: 2026-05-09 09:38
+==============================================================
+  NOTE: No prediction log yet -- showing stored test accuracy.
+        Run daily_morning.bat to start logging predictions.
+
+--------------------------------------------------------------
+  30-SECOND HEALTH CHECK
+--------------------------------------------------------------
+  Last 20  predictions:  ##########..........  (estimated from test set)
+  Last 100 predictions:  ##########..........  (estimated from test set)
+
+  STATUS: [?] UNKNOWN  -- log predictions for 20+ days first
+
+--------------------------------------------------------------
+  DETAILED METRICS
+--------------------------------------------------------------
+  Metric                                      Value
+  --------------------------------------------------
+  Out-of-sample acc (last 20 preds)             N/A
+  Out-of-sample acc (last 100 preds)            N/A
+  Benchmark (persistent forecast)           ~50-52%
+  Beat benchmark by                             N/A
+
+--------------------------------------------------------------
+  MODEL INFO
+--------------------------------------------------------------
+  Last direction retrain: Never retrained
+  Direction model             : Not yet trained (run part3)
+
+--------------------------------------------------------------
+  RECOMMENDATION
+--------------------------------------------------------------
+  Start logging daily predictions (run daily_morning.bat).
+  After 20 trading days you will see real accuracy stats here.
+==============================================================

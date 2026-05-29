@@ -1,0 +1,10 @@
+import pandas as pd
+df = pd.read_csv('merged_psx_data.csv')
+df['date'] = pd.to_datetime(df['date'])
+print(f'Date range: {df["date"].min()} to {df["date"].max()}')
+print(f'Unique symbols: {df["symbol"].nunique()}')
+print(f'Total rows: {len(df)}')
+print(f'\nData quality:')
+print(f'  Zero volume rows: {(df["volume"] == 0).sum()}')
+print(f'  NaN in open: {df["open"].isna().sum()}')
+print(f'  NaN in close: {df["close"].isna().sum()}')

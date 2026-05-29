@@ -1,0 +1,65 @@
+{
+  "generated_at": "2026-05-28T10:42:03.398421",
+  "content": {
+    "breadth": {
+      "type": "breadth",
+      "pct_above": 45.5,
+      "above": 570,
+      "below": 684,
+      "total": 1254,
+      "regime": "Neutral ⚪",
+      "tweet": "📊 PSX Market Breadth — 28 May 2026\n\nOnly 45.5% of PSX stocks are holding above their 50 EMA.\n\nMore than half the market is under pressure.\nNot the time to be a hero. Patience over aggression.\n\n#PSX #KSE100 #Pakistan",
+      "chart": "C:\\Users\\Lenovo\\psx_pipeline\\twitter_output\\breadth_chart.png",
+      "kse_chart": "C:\\Users\\Lenovo\\psx_pipeline\\twitter_output\\kse_chart.png"
+    },
+    "setups": {
+      "type": "setups",
+      "stale": true,
+      "newest_date": "2026-05-25",
+      "note": "Newest qualifying setup is from 2026-05-25 — too old to post. Wait for fresh screener run."
+    },
+    "sectors": {
+      "type": "sectors",
+      "top3": [
+        {
+          "sector": "AUTOMOBILE ASSEMBLER",
+          "perf": 15.489999999999998
+        },
+        {
+          "sector": "PROPERTY",
+          "perf": 14.34
+        },
+        {
+          "sector": "AUTOMOBILE PARTS & ACCESSORIES",
+          "perf": 12.675
+        }
+      ],
+      "bottom3": [
+        {
+          "sector": "PHARMACEUTICALS",
+          "perf": 0.3
+        },
+        {
+          "sector": "REAL ESTATE INVESTMENT TRUST",
+          "perf": 0.5349999999999999
+        },
+        {
+          "sector": "POWER GENERATION & DISTRIBUTION",
+          "perf": 0.59
+        }
+      ],
+      "tweet": "📊 PSX Sector Rotation — 28 May 2026\n\nAutomobile Assembler is up 15.5% over the last 30 days. That's where the real momentum is right now.\n\nPharmaceuticals is barely moving at +0.3% — money clearly isn't going there.\n\nFull breakdown 👇\n🟢 Automobile Assembler: +15.5%\n🟢 Property: +14.3%\n🟢 Automobile Parts & Accessories: +12.7%\n\n🟡 Pharmaceuticals: +0.3%\n🟡 Real Estate Investment Trust: +0.5%\n🟡 Power Generation & Distribution: +0.6%\n\n#PSX #SectorRotation #KSE100 #Pakistan",
+      "chart": "C:\\Users\\Lenovo\\psx_pipeline\\twitter_output\\sector_chart.png"
+    },
+    "performance": {
+      "type": "performance",
+      "total": 5,
+      "wins": 0,
+      "losses": 5,
+      "win_pct": 0.0,
+      "avg_rr": -0.82,
+      "avg_pl": -3.65,
+      "tweet": "📋 My PSX Trading — 28 May 2026\n\nPerformance snapshot (last 30 days):\n  Trades: 5  |  Wins: 0  |  Losses: 5\n  Win rate: 0.0%\n  Avg R:R: -0.82\n  Avg P&L: -3.65%\n\nFull breakdown in this month's newsletter ↓\n\n#PSX #Trading #TradingJournal #Pakistan"
+    }
+  }
+}

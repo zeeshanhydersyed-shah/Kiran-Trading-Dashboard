@@ -144,6 +144,19 @@ def cmd_update():
             source="Support Reversal"
         )
 
+    # Regenerate market breadth oscillator data for Regime page
+    try:
+        import subprocess
+        subprocess.run(
+            [sys.executable, "market_breadth_oscillator.py"],
+            timeout=300,
+            check=False,
+            capture_output=True,
+        )
+        logger.info("Market breadth oscillator data updated.")
+    except Exception as exc:
+        logger.warning("Breadth oscillator update failed: %s", exc)
+
 
 def cmd_report():
     """Print sector performance ranking to terminal."""
@@ -219,8 +232,26 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--report",   action="store_true", help="Print sector rankings")
     group.add_argument("--schedule", action="store_true", help="Start daily scheduler")
     group.add_argument("--all",      action="store_true", help="Update then report")
+    group.add_argument("--agent",    action="store_true", help="Run Claude trading agent (daily analysis)")
+    group.add_argument("--agent-weekly",  action="store_true", help="Run Claude agent — weekly deep-dive")
+    group.add_argument("--agent-monthly", action="store_true", help="Run Claude agent — monthly review")
     p.add_argument("--force", action="store_true", help="With --init: re-scrape even if data exists")
     return p
+
+
+def cmd_agent(run_type: str = "daily"):
+    """Run the Claude trading agent."""
+    try:
+        from agent import TradingDeskAgent
+    except ImportError as e:
+        logger.error("Could not import agent: %s", e)
+        return
+    agent = TradingDeskAgent(run_type=run_type)
+    result = agent.run()
+    if result and result.get("narrative"):
+        logger.info("Agent run complete — %d opportunities generated.", len(result.get("opportunities", [])))
+    else:
+        logger.warning("Agent run returned no results.")
 
 
 def main():
@@ -237,6 +268,12 @@ def main():
     elif args.all:
         cmd_update()
         cmd_report()
+    elif args.agent:
+        cmd_agent("daily")
+    elif args.agent_weekly:
+        cmd_agent("weekly")
+    elif args.agent_monthly:
+        cmd_agent("monthly")
 
 
 if __name__ == "__main__":

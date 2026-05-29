@@ -58,6 +58,7 @@ from database import (
     evaluate_paper_trades,
 )
 from processor import run_analysis
+from stm_sr_integration import enrich_stm_with_sr_zones
 
 # Gracefully handle missing optional imports
 try:
@@ -848,7 +849,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "🎖️ The Audit", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Support Reversals", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Support Reversals", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows"]
 
 
 def fmt_date(d) -> str:
@@ -1008,60 +1009,96 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Breadth banner ─────────────────────────────────────────────────────────────
-if breadth:
-    cond   = breadth["condition"]
-    color  = breadth["color"]
-    emoji  = breadth["emoji"]
-    score  = breadth["breadth_score"]
-    spct   = breadth["stock_pct_pos"]
-    secpct = breadth["sector_pct_pos"]
-    avg_p  = breadth["avg_sector_perf"]
+# ── Market Gates header banner (3-state logic: Bullish/Bearish/Ranging) ───────
+try:
+    wd_header = load_weinstein_data()
+    if not wd_header.get("error"):
+        regime = wd_header.get("regime", {})
+        signals = wd_header.get("signals", pd.DataFrame())
+        breadth_osc = load_breadth_oscillator_data()
 
-    # KSE-100 50-day MA pill
-    if kse100.get("available") and kse100.get("ma50") is not None:
-        above   = kse100["above_ma50"]
-        kse_c   = kse100["close"]
-        kse_m   = kse100["ma50"]
-        kse_pct = kse100.get("pct_vs_ma50", 0)
-        kse_col = "#22c55e" if above else "#ef4444"
-        kse_lbl = "▲ ABOVE" if above else "▼ BELOW"
-        kse_p30   = kse100.get("perf_30d")
-        p30_col   = "#22c55e" if (kse_p30 is not None and kse_p30 >= 0) else "#ef4444"
-        p30_txt   = (f"&nbsp;·&nbsp; 30d <span style='color:{p30_col};font-weight:700;'>"
-                     f"{kse_p30:+.1f}%</span>"
-                     if kse_p30 is not None else "")
-        kse_txt = (f"KSE-100 <b>{kse_c:,.0f}</b> &nbsp;·&nbsp; "
-                   f"50-MA <b>{kse_m:,.0f}</b> &nbsp;·&nbsp; "
-                   f"<span style='color:{kse_col};font-weight:700;'>{kse_lbl} 50MA "
-                   f"({kse_pct:+.1f}%)</span>{p30_txt}")
-        kse_note = ("&nbsp;·&nbsp; <b>LONGs active</b>" if above
-                    else "&nbsp;·&nbsp; <b>LONGs suppressed — index below 50MA</b>")
+        # ── Determine 4 gate states ────────────────────────────────────────
+        # Gate 1: KSE > 50MA
+        gate1 = kse100.get("above_ma50", False) if kse100.get("available") else False
+
+        # Gate 2: % above 50MA >= 70%
+        pct_above_ma = regime.get("pct_above_ma", 0)
+        gate2 = pct_above_ma >= 70
+
+        # Gate 3: Histogram >= 0
+        hist_val = regime.get("z_histogram")
+        gate3 = hist_val is not None and hist_val >= 0
+
+        # Gate 4: Long > Short
+        if not breadth_osc.empty:
+            latest_long = breadth_osc["Long_Count"].iloc[-1]
+            latest_short = breadth_osc["Short_Count"].iloc[-1]
+            gate4 = latest_long > latest_short
+        else:
+            gate4 = None
+
+        # ── Determine 3-state logic ────────────────────────────────────────
+        all_gates_pass = gate1 and gate2 and gate3 and (gate4 is True)
+        all_gates_fail = (not gate1) and (not gate2) and (not gate3) and (gate4 is False)
+
+        if all_gates_pass:
+            cond, color, emoji = "Bullish", "#22c55e", "🟢"
+            guidance = "All gates green. Look for LONG trades only."
+        elif all_gates_fail:
+            cond, color, emoji = "Bearish", "#ef4444", "🔴"
+            guidance = "All gates red. Look for SHORT trades only."
+        else:
+            cond, color, emoji = "Ranging", "#fbbf24", "🟡"
+            guidance = "Mixed signals. Sit out — wait for clarity."
     else:
-        kse_txt  = "KSE-100 50MA: <i>data loading…</i>"
-        kse_note = ""
+        raise Exception("Weinstein data error")
+except Exception:
+    # Fallback to breadth-based logic if Weinstein fails
+    cond = breadth.get("condition", "Ranging") if breadth else "Ranging"
+    color = breadth.get("color", "#fbbf24") if breadth else "#fbbf24"
+    emoji = breadth.get("emoji", "🟡") if breadth else "🟡"
+    guidance = GUIDANCE.get(cond, "")
 
-    st.markdown(
-        f"""<div style="background:{color}18; border-left:4px solid {color};
-            padding:7px 14px; border-radius:6px; margin-bottom:4px;
-            display:flex; align-items:center; gap:16px;">
-            <span style="font-size:0.95rem; font-weight:700; color:{color}; white-space:nowrap;">
-                {emoji} {cond}
-            </span>
-            <span style="font-size:0.72rem; color:#64748b;">
-                Score <b>{score:.0f}/100</b> &nbsp;·&nbsp;
-                Stocks positive <b>{spct}%</b> &nbsp;·&nbsp;
-                Sectors positive <b>{secpct}%</b> &nbsp;·&nbsp;
-                Avg sector perf <b>{avg_p:+.2f}%</b> &nbsp;·&nbsp;
-                {GUIDANCE.get(cond, "")}
-            </span>
-        </div>
-        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;
-            padding:5px 14px; margin-bottom:8px; font-size:0.72rem; color:#64748b;">
-            📈 {kse_txt}{kse_note}
-        </div>""",
-        unsafe_allow_html=True,
-    )
+# ── KSE-100 50-day MA pill ────────────────────────────────────────────────
+if kse100.get("available") and kse100.get("ma50") is not None:
+    above   = kse100["above_ma50"]
+    kse_c   = kse100["close"]
+    kse_m   = kse100["ma50"]
+    kse_pct = kse100.get("pct_vs_ma50", 0)
+    kse_col = "#22c55e" if above else "#ef4444"
+    kse_lbl = "▲ ABOVE" if above else "▼ BELOW"
+    kse_p30   = kse100.get("perf_30d")
+    p30_col   = "#22c55e" if (kse_p30 is not None and kse_p30 >= 0) else "#ef4444"
+    p30_txt   = (f"&nbsp;·&nbsp; 30d <span style='color:{p30_col};font-weight:700;'>"
+                 f"{kse_p30:+.1f}%</span>"
+                 if kse_p30 is not None else "")
+    kse_txt = (f"KSE-100 <b>{kse_c:,.0f}</b> &nbsp;·&nbsp; "
+               f"50-MA <b>{kse_m:,.0f}</b> &nbsp;·&nbsp; "
+               f"<span style='color:{kse_col};font-weight:700;'>{kse_lbl} 50MA "
+               f"({kse_pct:+.1f}%)</span>{p30_txt}")
+    kse_note = ("&nbsp;·&nbsp; <b>LONGs active</b>" if above
+                else "&nbsp;·&nbsp; <b>LONGs suppressed — index below 50MA</b>")
+else:
+    kse_txt  = "KSE-100 50MA: <i>data loading…</i>"
+    kse_note = ""
+
+st.markdown(
+    f"""<div style="background:{color}18; border-left:4px solid {color};
+        padding:7px 14px; border-radius:6px; margin-bottom:4px;
+        display:flex; align-items:center; gap:16px;">
+        <span style="font-size:0.95rem; font-weight:700; color:{color}; white-space:nowrap;">
+            {emoji} {cond}
+        </span>
+        <span style="font-size:0.72rem; color:#64748b;">
+            {guidance}
+        </span>
+    </div>
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;
+        padding:5px 14px; margin-bottom:8px; font-size:0.72rem; color:#64748b;">
+        📈 {kse_txt}{kse_note}
+    </div>""",
+    unsafe_allow_html=True,
+)
 
 cur = st.session_state.page
 
@@ -1139,8 +1176,8 @@ if cur == PAGES[0]:  # Market Gates Dashboard
 
         # ── GATE 2: ABSOLUTE PARTICIPATION ────────────────────────────────────────
         with g2_col:
-            breadth_color = "#10b981" if pct_val > 65 else "#f59e0b" if pct_val > 50 else "#ef4444"
-            breadth_strength = "STRONG" if pct_val > 65 else "NEUTRAL" if pct_val > 50 else "WEAK"
+            breadth_color = "#10b981" if pct_val >= 70 else "#f59e0b" if pct_val >= 50 else "#ef4444"
+            breadth_strength = "HEALTHY BREADTH" if pct_val >= 70 else "NEUTRAL PARTICIPATION" if pct_val >= 50 else "WEAK BREADTH"
             breadth_html = f"""
             <div style="background:linear-gradient(135deg, {breadth_color}11, {breadth_color}05);
                         border:2px solid {breadth_color}; border-radius:12px; padding:24px; text-align:center;">
@@ -1320,7 +1357,8 @@ elif cur == PAGES[2]:  # Market
         .apply(style_pct_cols, subset=["30d %", "10d %", "Best %", "Worst %"])
         .apply(style_momentum,  subset=["Momentum"])
         .format({"30d %": "{:.2f}", "10d %": "{:.2f}", "Best %": "{:.2f}", "Worst %": "{:.2f}"}),
-        width='stretch', hide_index=True, height=460,
+        use_container_width=True, hide_index=True,
+        height=max(880, (len(disp) + 1) * 38),
     )
 
     st.markdown(
@@ -1336,32 +1374,6 @@ elif cur == PAGES[2]:  # Market
         unsafe_allow_html=True,
     )
 
-    # Quick long/short ideas
-    st.divider()
-    st.markdown("**Quick Ideas** — strongest / weakest stock per top-3 / bottom-3 sectors")
-    ci1, ci2 = st.columns(2)
-    with ci1:
-        st.caption("🟢 Long candidates")
-        if not long_cands.empty:
-            st.dataframe(
-                long_cands.style
-                .apply(style_pct_cols, subset=["30d Perf %"])
-                .format({"30d Perf %": "{:.2f}", "Latest Close": "{:.2f}"}),
-                width='stretch', hide_index=True,
-            )
-        else:
-            st.caption("—")
-    with ci2:
-        st.caption("🔴 Short candidates")
-        if not short_cands.empty:
-            st.dataframe(
-                short_cands.style
-                .apply(style_pct_cols, subset=["30d Perf %"])
-                .format({"30d Perf %": "{:.2f}", "Latest Close": "{:.2f}"}),
-                width='stretch', hide_index=True,
-            )
-        else:
-            st.caption("—")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1422,7 +1434,7 @@ elif cur == PAGES[4]:  # History
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 3 — SETUPS
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[8]:  # Setups
+elif cur == PAGES[7]:  # Setups
     st.markdown(
         "**Trade Setups** — entry above/below latest close · "
         "SL at recent swing low · max risk 12% · shorts DFC-eligible only"
@@ -1613,212 +1625,69 @@ elif cur == PAGES[8]:  # Setups
 # PAGE 4 — TRADE LOG
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[5]:  # Trade Log
-    st.markdown("**Trade Log**")
+    st.markdown("**Trade Log — Your Real Trades**")
     st.caption(
-        "**System** = KIRAN's recommendation (taken or not). "
-        "**STM** = Short-Term Momentum screener pick, auto-saved daily for tracking. "
-        "**Actual** = a trade you took that neither screener suggested (log it below)."
+        "Your personal trading journal — discretionary trades from ASSET ALLOCATION.XLSX. "
+        "Synced automatically each day. System/paper screener records are tracked separately and do not appear here."
     )
 
     all_saved = get_trade_setups()
 
+    # ── Filter to Actual trades only ──────────────────────────────────────────
+    actual_trades = [t for t in all_saved if t.get("source") == "Actual"] if all_saved else []
+
     # ── Log table ─────────────────────────────────────────────────────────────
-    if not all_saved:
-        st.info("No entries yet. Save a setup above or log an actual trade below.")
+    if not actual_trades:
+        st.info("No actual trades yet. Trades sync automatically from your Excel journal each day, or log one below.")
     else:
-        log_df = pd.DataFrame(all_saved)
+        log_df = pd.DataFrame(actual_trades)
 
-        if "source" not in log_df.columns:
-            log_df["source"] = "System"
-        log_df["source"] = log_df["source"].fillna("System")
+        flt1, flt2 = st.columns([2, 2])
+        sf       = flt1.selectbox("Status", ["All", "Active", "Closed", "Pending"], key="log_sf")
+        sym_srch = flt2.text_input("Symbol search", placeholder="e.g. BAFL", key="log_sym").strip().upper()
 
-        # Add execution type based on source and actual_entry
-        log_df["execution_type"] = log_df.apply(
-            lambda row: "Actual" if row.get("source") == "Actual"
-            else "Paper & Actual" if row.get("actual_entry") is not None and row.get("actual_entry") > 0
-            else "Paper",
-            axis=1
-        )
+        if sf != "All":
+            log_df = log_df[log_df["status"] == sf]
+        if sym_srch:
+            log_df = log_df[log_df["symbol"].str.upper().str.contains(sym_srch, na=False)]
 
-        flt1, flt2, flt3, flt4 = st.columns([2, 2, 2, 2])
-        sf       = flt1.selectbox("Status", ["All","Pending","Active","Closed"], key="log_sf")
-        src      = flt2.selectbox("Source", ["All","System","STM","Support Reversal","Actual"], key="log_src")
-        exe      = flt3.selectbox("Execution", ["All","Paper","Actual","Paper & Actual"], key="log_exe")
-        sym_srch = flt4.text_input("Symbol search", placeholder="e.g. BAFL", key="log_sym").strip().upper()
-
-        if sf       != "All": log_df = log_df[log_df["status"] == sf]
-        if src      != "All": log_df = log_df[log_df["source"]  == src]
-        if exe      != "All": log_df = log_df[log_df["execution_type"] == exe]
-        if sym_srch:          log_df = log_df[log_df["symbol"].str.upper().str.contains(sym_srch, na=False)]
-
-        # Ensure exit_date column exists (older cached runs may not have it)
-        if "exit_date" not in log_df.columns:
-            log_df["exit_date"] = None
-        if "actual_exit" not in log_df.columns:
-            log_df["actual_exit"] = None
-        if "actual_pl_pct" not in log_df.columns:
-            log_df["actual_pl_pct"] = None
-        if "holding_days" not in log_df.columns:
-            log_df["holding_days"] = None
-
-        if "actual_entry" not in log_df.columns:
-            log_df["actual_entry"] = None
+        # Ensure columns exist
+        for col in ["exit_date", "actual_exit", "actual_pl_pct", "holding_days", "actual_entry"]:
+            if col not in log_df.columns:
+                log_df[col] = None
 
         display_log = log_df[[
-            "id", "created_date", "exit_date", "source", "execution_type", "direction", "symbol",
-            "entry_price", "actual_entry", "stop_loss", "actual_exit",
+            "id", "created_date", "exit_date", "direction", "symbol",
+            "entry_price", "stop_loss", "actual_exit",
             "risk_pct", "actual_pl_pct", "holding_days",
             "status", "outcome", "notes",
         ]].copy()
         display_log.columns = [
-            "ID", "Entry Date", "Exit Date", "Source", "Execution", "Dir", "Symbol",
-            "KIRAN Entry", "My Fill", "SL", "Exit",
+            "ID", "Entry Date", "Exit Date", "Dir", "Symbol",
+            "Entry", "SL", "Exit",
             "Risk%", "P&L%", "Days",
             "Status", "Outcome", "Notes",
         ]
-        # Format dates as DD/MM/YY
         display_log["Entry Date"] = display_log["Entry Date"].apply(fmt_date)
         display_log["Exit Date"]  = display_log["Exit Date"].apply(fmt_date)
 
-        def style_source(series):
-            return [
-                "color:#3b82f6;font-weight:bold" if v == "System"
-                else "color:#0ea5e9;font-weight:bold" if v == "STM"
-                else "color:#10b981;font-weight:bold" if v == "Support Reversal"
-                else "color:#f59e0b;font-weight:bold"
-                for v in series
-            ]
-
-        def style_execution(series):
-            return [
-                "color:#8b5cf6;font-weight:bold" if v == "Paper"
-                else "color:#06b6d4;font-weight:bold" if v == "Actual"
-                else "color:#ec4899;font-weight:bold"
-                for v in series
-            ]
-
         fmt_map = {
-            "KIRAN Entry": "{:.2f}", "My Fill": "{:.2f}",
-            "SL": "{:.2f}", "Exit": "{:.2f}",
+            "Entry": "{:.2f}", "SL": "{:.2f}", "Exit": "{:.2f}",
             "Risk%": "{:.2f}", "P&L%": "{:.2f}", "Days": "{:.0f}",
         }
         st.dataframe(
             display_log.style
-            .apply(style_source,    subset=["Source"])
-            .apply(style_execution, subset=["Execution"])
             .apply(style_direction, subset=["Dir"])
             .apply(style_outcome,   subset=["Outcome"])
             .apply(style_pct_cols,  subset=["P&L%"])
             .format(fmt_map, na_rep="—"),
-            width='stretch', hide_index=True, height=340,
+            use_container_width=True, hide_index=True,
+            height=min(900, max(200, (len(display_log) + 1) * 38)),
         )
 
-    # ── Activate a pending trade ──────────────────────────────────────────────
-    if all_saved:
-        pending_trades = [
-            t for t in all_saved
-            if t.get("status") == "Pending"
-            and t.get("source") in ("System", "STM", "Support Reversal")
-        ]
-        if pending_trades:
-            st.divider()
-            st.markdown("**✏️ I took this trade**")
-            st.caption(
-                "Select a Pending setup (System or STM) you actually entered. "
-                "Records your fill and marks it Active — no duplicate created."
-            )
-            act_opts = {
-                f"#{t['id']} · {t['symbol']} {t['direction']} "
-                f"@ {t['entry_price']:.2f}  [{t.get('source','?')} · {fmt_date(t['created_date'])}]": t
-                for t in pending_trades
-            }
-            with st.form("activate_trade_form", clear_on_submit=True):
-                act_chosen_label = st.selectbox(
-                    "Pending setup", list(act_opts.keys()),
-                    label_visibility="collapsed", key="act_sel",
-                )
-                act_chosen = act_opts[act_chosen_label]
-
-                af1, af2 = st.columns([1, 3])
-                act_fill  = af1.number_input(
-                    "My fill price", min_value=0.0,
-                    value=float(act_chosen["entry_price"]),
-                    step=0.01, format="%.2f",
-                )
-                act_note = af2.text_input("Notes (optional)", placeholder="e.g. filled at open, partial")
-
-                if st.form_submit_button("✏️ Mark as Active", type="primary"):
-                    fill = act_fill if act_fill > 0 else None
-                    activate_trade_setup(act_chosen["id"], fill, act_note.strip() or None)
-                    st.success(
-                        f"{act_chosen['symbol']} {act_chosen['direction']} "
-                        f"marked Active — fill {fill:.2f}" if fill else
-                        f"{act_chosen['symbol']} {act_chosen['direction']} marked Active."
-                    )
-                    st.rerun()
-
-    # ── Log a non-KIRAN trade ─────────────────────────────────────────────────
-    st.divider()
-    st.markdown("**Log a non-KIRAN trade**")
-    st.caption(
-        "Use this **only** for trades no screener suggested. "
-        "For System or STM setups, use **✏️ I took this trade** above — "
-        "that updates the existing record instead of creating a duplicate."
-    )
-
-    with st.form("actual_trade_form", clear_on_submit=True):
-        a1, a2, a3, a4 = st.columns([1, 1, 1, 1])
-        act_symbol  = a1.text_input("Symbol", placeholder="e.g. FABL")
-        act_dir     = a2.selectbox("Direction", ["LONG", "SHORT"])
-        act_date    = a3.date_input("Trade Date", value=datetime.now().date())
-        act_sector  = a4.text_input("Sector", placeholder="optional")
-
-        b1, b2, b3, b4 = st.columns([1, 1, 1, 1])
-        act_entry  = b1.number_input("Entry Price",  min_value=0.0, step=0.01, format="%.2f")
-        act_sl     = b2.number_input("Stop Loss",    min_value=0.0, step=0.01, format="%.2f")
-        act_target = b3.number_input("Target (T2R)", min_value=0.0, step=0.01, format="%.2f")
-        act_notes  = b4.text_input("Notes", placeholder="why you took it, any context")
-
-        submitted = st.form_submit_button("➕ Add to Log", type="primary")
-        if submitted:
-            sym = act_symbol.strip().upper()
-            if not sym:
-                st.error("Symbol is required.")
-            elif act_entry <= 0:
-                st.error("Entry price must be > 0.")
-            elif act_sl <= 0:
-                st.error("Stop loss must be > 0.")
-            else:
-                if act_dir == "LONG":
-                    risk = round((act_entry - act_sl) / act_entry * 100, 2) if act_entry > act_sl else 0.0
-                else:
-                    risk = round((act_sl - act_entry) / act_entry * 100, 2) if act_sl > act_entry else 0.0
-
-                actual_record = {
-                    "created_date":    act_date.isoformat(),
-                    "direction":       act_dir,
-                    "symbol":          sym,
-                    "sector":          act_sector.strip() or "—",
-                    "sector_momentum": "—",
-                    "stock_perf_30d":  0.0,
-                    "stock_perf_10d":  0.0,
-                    "latest_close":    act_entry,
-                    "entry_price":     act_entry,
-                    "stop_loss":       act_sl,
-                    "target_1r":       act_target,
-                    "target_2r":       act_target,
-                    "risk_pct":        risk,
-                    "atr_pct":         0.0,
-                    "notes":           act_notes.strip(),
-                    "source":          "Actual",
-                }
-                save_trade_setup(actual_record)
-                st.success(f"{sym} {act_dir} logged as Actual trade.")
-                st.rerun()
-
     # ── Partial close ─────────────────────────────────────────────────────────
-    if all_saved:
-        partial_trades = [t for t in all_saved if t.get("status") in ("Active", "Pending") and t.get("source") == "Actual"]
+    if actual_trades:
+        partial_trades = [t for t in actual_trades if t.get("status") in ("Active", "Pending")]
         if partial_trades:
             st.divider()
             st.markdown("**Partially close a position**")
@@ -1874,8 +1743,8 @@ elif cur == PAGES[5]:  # Trade Log
                         st.rerun()
 
     # ── Close an open position ────────────────────────────────────────────────
-    if all_saved:
-        active_trades = [t for t in all_saved if t.get("status") in ("Active", "Pending")]
+    if actual_trades:
+        active_trades = [t for t in actual_trades if t.get("status") in ("Active", "Pending")]
         if active_trades:
             st.divider()
             st.markdown("**Close a position**")
@@ -1937,345 +1806,7 @@ elif cur == PAGES[5]:  # Trade Log
                             st.success(f"#{chosen_trade['id']} closed.")
                         st.rerun()
 
-    # ── Update a setup ────────────────────────────────────────────────────────
-    if all_saved:
-        st.divider()
-        st.markdown("**Update a setup**")
-        u1, u2, u3, u4, u5 = st.columns([1, 2, 2, 3, 1])
-        upd_id      = u1.number_input("ID", min_value=1, step=1, key="upd_id", label_visibility="collapsed")
-        upd_status  = u2.selectbox("Status", ["Pending","Active","Closed"], key="upd_st", label_visibility="collapsed")
-        upd_outcome = u3.selectbox("Outcome", ["—","Win","Loss","Breakeven"], key="upd_oc", label_visibility="collapsed")
-        upd_notes   = u4.text_input("Notes", placeholder="Notes…", key="upd_no", label_visibility="collapsed")
-        u1.caption("ID"); u2.caption("Status"); u3.caption("Outcome"); u4.caption("Notes")
-        with u5:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Update", key="btn_upd"):
-                update_trade_setup(
-                    int(upd_id),
-                    upd_status,
-                    None if upd_outcome == "—" else upd_outcome,
-                    upd_notes.strip() or None,
-                )
-                st.success(f"#{int(upd_id)} updated")
-                st.rerun()
 
-    # ── Delete a duplicate / erroneous entry ─────────────────────────────────
-    if all_saved:
-        st.divider()
-        with st.expander("🗑️ Delete an entry", expanded=False):
-            st.caption("Use this to remove duplicate or mistaken entries. This cannot be undone.")
-            d1, d2, d3 = st.columns([1, 4, 1])
-            del_id = d1.number_input("ID to delete", min_value=1, step=1,
-                                     key="del_id", label_visibility="collapsed")
-            d1.caption("ID")
-
-            # Preview the row before deletion
-            del_preview = next((r for r in all_saved if r["id"] == int(del_id)), None)
-            if del_preview:
-                d2.markdown(
-                    f"<div style='font-size:0.8rem; padding:6px 0;'>"
-                    f"<b>#{del_preview['id']}</b> &nbsp;·&nbsp; "
-                    f"{del_preview['symbol']} {del_preview['direction']} &nbsp;·&nbsp; "
-                    f"{del_preview.get('source','—')} &nbsp;·&nbsp; "
-                    f"Status: <b>{del_preview.get('status','—')}</b> &nbsp;·&nbsp; "
-                    f"Date: {fmt_date(del_preview.get('created_date'))}"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                d2.caption("Enter an ID to preview the record.")
-
-            with d3:
-                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-                if st.button("🗑️ Delete", key="btn_del", type="secondary"):
-                    if del_preview is None:
-                        st.error(f"ID {int(del_id)} not found.")
-                    else:
-                        delete_trade_setup(int(del_id))
-                        st.success(f"#{int(del_id)} deleted.")
-                        st.rerun()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE 5 — THE AUDIT (Desk Manager Accountability)
-# ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[6]:  # The Audit
-    st.markdown("**🎖️ The Audit — Desk Manager Report**")
-    st.caption("System accountability vs your actual trading. Strict. Fair. Actionable.")
-
-    all_trades = get_trade_setups()
-    if not all_trades:
-        st.info("No trades logged yet.")
-        st.stop()
-
-    trades_df = pd.DataFrame(all_trades)
-
-    # ── PF VALUE INPUT ────────────────────────────────────────────────────────
-    st.divider()
-    st.markdown("### Portfolio Value Tracker")
-
-    # Get last saved PF value
-    pf_history = get_portfolio_values()
-    last_pf = None
-    last_pf_date = None
-    if pf_history:
-        last_pf_record = pf_history[-1]  # Assuming latest is last
-        last_pf = last_pf_record.get("value", 2151051)
-        last_pf_date = last_pf_record.get("date", "Never")
-
-    pc1, pc2, pc3 = st.columns([2, 1.5, 0.5])
-    with pc1:
-        current_pf = pc1.number_input(
-            "Current Portfolio Value",
-            value=int(last_pf) if last_pf else 2151051,
-            step=10000,
-            format="%d",
-            help="Update daily or when major trades close"
-        )
-    with pc2:
-        if last_pf_date and last_pf_date != "Never":
-            pc2.caption(f"Last saved: {last_pf_date}")
-        else:
-            pc2.caption("No history yet")
-    with pc3:
-        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-        if st.button("💾 Save", type="primary"):
-            today = datetime.now().date().isoformat()
-            add_portfolio_value(today, float(current_pf), "Entered via Audit page")
-            st.success(f"✓ {current_pf:,.0f}")
-            st.rerun()
-
-    # ── CLOSED TRADES ANALYSIS ────────────────────────────────────────────────
-    st.divider()
-    st.markdown("### Trade Analysis (Closed Trades Only)")
-    st.caption("Only shows trades you actually executed (Actual + Paper & Actual)")
-
-    closed = trades_df[trades_df["status"] == "Closed"].copy()
-    if closed.empty:
-        st.info("No closed trades yet.")
-        st.stop()
-
-    # Calculate execution type (same logic as Trade Log)
-    closed["execution_type"] = closed.apply(
-        lambda row: "Actual" if row.get("source") == "Actual"
-        else "Paper & Actual" if row.get("actual_entry") is not None and row.get("actual_entry") > 0
-        else "Paper",
-        axis=1
-    )
-
-    # Filter to only executed trades (Actual + Paper & Actual)
-    executed = closed[closed["execution_type"].isin(["Actual", "Paper & Actual"])]
-
-    if executed.empty:
-        st.info("No executed trades yet. Log trades in Trade Log page first.")
-        st.stop()
-
-    # Categorize by execution type
-    paper_actual = executed[executed["execution_type"] == "Paper & Actual"]
-    actual_only = executed[executed["execution_type"] == "Actual"]
-
-    pa_wins = len(paper_actual[paper_actual["outcome"] == "Win"])
-    pa_losses = len(paper_actual[paper_actual["outcome"] == "Loss"])
-    pa_total = len(paper_actual)
-
-    act_wins = len(actual_only[actual_only["outcome"] == "Win"])
-    act_losses = len(actual_only[actual_only["outcome"] == "Loss"])
-    act_total = len(actual_only)
-
-    pa_wr = (pa_wins / pa_total * 100) if pa_total > 0 else 0
-    act_wr = (act_wins / act_total * 100) if act_total > 0 else 0
-
-    # Display metrics
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric("Paper & Actual", pa_total, f"{pa_wins}W {pa_losses}L")
-    with col2:
-        st.metric("Win Rate", f"{pa_wr:.1f}%", help="Screener suggestions you traded")
-    with col3:
-        st.metric("Your Discretion", act_total, f"{act_wins}W {act_losses}L")
-    with col4:
-        st.metric("Discretion Win Rate", f"{act_wr:.1f}%", help="Should beat system to justify it")
-
-    # ── DETAILED COMPARISON ───────────────────────────────────────────────────
-    st.divider()
-    st.markdown("### Trade-by-Trade Audit")
-
-    audit_df = executed[[
-        "id", "created_date", "symbol", "direction", "entry_price", "actual_exit",
-        "execution_type", "outcome", "actual_pl_pct", "holding_days", "notes"
-    ]].copy()
-    audit_df.columns = ["ID", "Entry Date", "Symbol", "Dir", "Entry", "Exit",
-                         "Execution", "Result", "P&L%", "Days", "Notes"]
-    audit_df["Entry Date"] = audit_df["Entry Date"].apply(fmt_date)
-    audit_df = audit_df.sort_values("Entry Date", ascending=False)
-
-    def style_execution(series):
-        return [
-            "color:#8b5cf6;font-weight:bold" if v == "Paper"
-            else "color:#06b6d4;font-weight:bold" if v == "Actual"
-            else "color:#ec4899;font-weight:bold"
-            for v in series
-        ]
-
-    st.dataframe(
-        audit_df.style
-        .apply(style_execution, subset=["Execution"])
-        .apply(style_outcome, subset=["Result"])
-        .apply(style_pct_cols, subset=["P&L%"])
-        .format({"Entry":"{:.2f}", "Exit":"{:.2f}", "P&L%":"{:.2f}", "Days":"{:.0f}"}, na_rep="—"),
-        width='stretch', hide_index=True, height=400,
-    )
-
-    # ── DESK MANAGER CALLOUT ──────────────────────────────────────────────────
-    st.divider()
-    st.markdown("### 🔴 Desk Manager Feedback")
-
-    # Generate callout
-    callout = f"""
-**You took {pa_total + act_total} closed trades.**
-
-**Screener you followed:** {pa_total} trades, {pa_wins}W-{pa_losses}L ({pa_wr:.1f}% WR)
-- Expected: ~67% from ML model
-- {'✓ On target' if abs(pa_wr - 67) < 10 else '✗ Below target' if pa_wr < 57 else '⚠ Above target'}
-
-**Your discretion:** {act_total} trades, {act_wins}W-{act_losses}L ({act_wr:.1f}% WR)
-- Yours vs Screener: {act_wr - pa_wr:+.1f}% {'(worse)' if act_wr < pa_wr else '(better)' if act_wr > pa_wr else '(equal)'}
-
-**The math says:**
-"""
-
-    if act_total == 0:
-        callout += "You haven't taken any discretion trades. Good — follow the screener."
-    elif act_wr < pa_wr - 15:
-        callout += f"Your discretion trades are underperforming by {pa_wr - act_wr:.1f}%. Stop. Follow the screener."
-    elif act_wr > pa_wr + 10:
-        callout += f"Your discretion is working (+{act_wr - pa_wr:.1f}% vs screener). But confirm this isn't luck — need larger sample."
-    else:
-        callout += "Your discretion and screener are roughly equal. Screener is simpler. Use it."
-
-    st.markdown(f"""
-<div style="background:#fee;border-left:4px solid #e11;padding:12px;border-radius:4px;margin:12px 0;">
-{callout}
-</div>
-""", unsafe_allow_html=True)
-
-    # ── TRADER PSYCHOLOGY ─────────────────────────────────────────────────────
-    st.divider()
-    st.markdown("### 🧠 Trader Psychology — Streak & Behavior Analysis")
-
-    # Calculate streaks
-    closed["outcome_binary"] = (closed["outcome"] == "Win").astype(int)
-    outcomes = closed.sort_values("created_date")["outcome"].tolist()
-
-    # Find current streak
-    current_streak = 0
-    streak_type = None
-    if outcomes:
-        last_outcome = outcomes[-1]
-        streak_type = "W" if last_outcome == "Win" else "L"
-        for outcome in reversed(outcomes):
-            if (streak_type == "W" and outcome == "Win") or (streak_type == "L" and outcome == "Loss"):
-                current_streak += 1
-            else:
-                break
-
-    # Find longest streak
-    max_win_streak = 0
-    max_loss_streak = 0
-    current_ws = 0
-    current_ls = 0
-    for outcome in outcomes:
-        if outcome == "Win":
-            current_ws += 1
-            max_win_streak = max(max_win_streak, current_ws)
-            current_ls = 0
-        else:
-            current_ls += 1
-            max_loss_streak = max(max_loss_streak, current_ls)
-            current_ws = 0
-
-    # Average holding time by outcome
-    closed["holding_days_num"] = pd.to_numeric(closed["holding_days"], errors="coerce")
-    avg_hold_win = closed[closed["outcome"] == "Win"]["holding_days_num"].mean()
-    avg_hold_loss = closed[closed["outcome"] == "Loss"]["holding_days_num"].mean()
-
-    ps1, ps2, ps3 = st.columns(3)
-    with ps1:
-        streak_color = "🟢" if streak_type == "W" else "🔴"
-        st.metric(
-            "Current Streak",
-            f"{streak_color} {current_streak} {streak_type}",
-            help="W=winning streak, L=losing streak"
-        )
-    with ps2:
-        st.metric("Longest Win Streak", max_win_streak, f"Max Loss: {max_loss_streak}")
-    with ps3:
-        hold_diff = (avg_hold_win - avg_hold_loss) if not pd.isna(avg_hold_win) and not pd.isna(avg_hold_loss) else 0
-        st.metric(
-            "Avg Hold — Winners vs Losers",
-            f"{avg_hold_win:.1f}d vs {avg_hold_loss:.1f}d",
-            f"{hold_diff:+.1f}d difference"
-        )
-
-    # Psychology callout
-    psych_callout = ""
-
-    # Check for streak behavior
-    if current_streak >= 3 and streak_type == "W":
-        psych_callout += f"**🚨 Winning streak of {current_streak}** — Are you overconfident? Next 3 trades, check your position sizing. Streaks break."
-    elif current_streak >= 3 and streak_type == "L":
-        psych_callout += f"**🚨 Losing streak of {current_streak}** — Are you revenge trading? Take 2 days off. Clear head. Streaks break."
-
-    # Check hold time pattern (exiting winners early)
-    if not pd.isna(avg_hold_win) and not pd.isna(avg_hold_loss) and avg_hold_win < avg_hold_loss - 3:
-        if psych_callout:
-            psych_callout += "\n\n"
-        psych_callout += f"**Exiting winners early:** You hold winners {avg_hold_win:.1f}d but losers {avg_hold_loss:.1f}d. Flipping this means more profit. Fear is closing winners too fast."
-    elif not pd.isna(avg_hold_win) and not pd.isna(avg_hold_loss) and avg_hold_loss < avg_hold_win - 3:
-        if psych_callout:
-            psych_callout += "\n\n"
-        psych_callout += f"**Holding losers too long:** You hold losers {avg_hold_loss:.1f}d but winners {avg_hold_win:.1f}d. Hope is the enemy. Cut losses faster."
-
-    # Check win rate consistency
-    if pa_total >= 5 and act_total >= 5:
-        if abs(pa_wr - act_wr) > 20:
-            if psych_callout:
-                psych_callout += "\n\n"
-            if act_wr < pa_wr:
-                psych_callout += f"**Discretion is your Achilles heel:** {act_wr - pa_wr:.0f}% worse than screener. Ego. Stop it."
-            else:
-                psych_callout += f"**Your gut is beating the screener by {act_wr - pa_wr:.0f}%.** But is it luck or skill? 50 more trades will tell."
-
-    if not psych_callout:
-        psych_callout = "No major psychological red flags detected. Streaks are normal. Keep the discipline."
-
-    st.markdown(f"""
-<div style="background:#fef3c7;border-left:4px solid #d97706;padding:12px;border-radius:4px;margin:12px 0;">
-<b>Psychology Check:</b><br>
-{psych_callout}
-</div>
-""", unsafe_allow_html=True)
-
-    # ── USER REPLY SECTION ────────────────────────────────────────────────────
-    st.divider()
-    st.markdown("### Your Reply (Optional)")
-    st.caption("Explain why you took discretion trades, or why you skipped system setups. Next month, the Desk Manager will reference this.")
-
-    reply_text = st.text_area(
-        "Your defense/reasoning:",
-        placeholder="e.g., 'Those discretion trades were revenge after losses — I know better now.'\nor 'I skipped 5 System setups because they showed distribution — backtesting shows 30% WR on those patterns.'\nor 'No comment.'",
-        height=100,
-        label_visibility="collapsed"
-    )
-
-    if st.button("💬 Submit Reply", type="primary"):
-        if reply_text.strip():
-            # Store in a simple way (in notes for now)
-            st.success(f"Reply recorded. Desk Manager will review next month.")
-            st.info(f"Your note: {reply_text[:100]}...")
-        else:
-            st.warning("Empty reply. Skip it or add something.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2383,7 +1914,7 @@ elif cur == PAGES[3]:  # Explorer
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 6 — ANALYTICS
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[7]:
+elif cur == PAGES[6]:  # Analytics
     from config import BENCHMARK, SUPPORT_REVERSAL_STATS
 
     # Ensure portfolio tables exist
@@ -2430,7 +1961,7 @@ elif cur == PAGES[7]:
             ).round(2)
 
     if closed.empty:
-        st.info("No closed trades yet. Close positions in the Trade Log first.")
+        st.info("No closed actual trades yet. Trades sync from your Excel journal daily.")
         st.stop()
 
     # ── Core calculations ──────────────────────────────────────────────────────
@@ -2444,7 +1975,13 @@ elif cur == PAGES[7]:
 
     gross_win  = wins["actual_pl_pkr"].fillna(0).sum()
     gross_loss = losses["actual_pl_pkr"].fillna(0).sum()
-    profit_factor = (gross_win / abs(gross_loss)) if gross_loss < 0 else float("inf")
+    # Guard: gross_loss should be negative (losses); if 0 or positive use inf
+    if gross_loss < 0:
+        profit_factor = gross_win / abs(gross_loss)
+    elif gross_win > 0:
+        profit_factor = float("inf")
+    else:
+        profit_factor = 0.0
 
     total_pl_pkr   = closed["actual_pl_pkr"].fillna(0).sum()
     avg_win_pct    = wins["actual_pl_pct"].fillna(0).mean()   if n_wins   else 0
@@ -2575,75 +2112,87 @@ elif cur == PAGES[7]:
     ref_date = pd.to_datetime(
         closed["exit_date"].fillna(closed["created_date"]), errors="coerce"
     )
+    closed = closed.copy()
     closed["_yr"]  = ref_date.dt.year.astype("Int64")
     closed["_mo"]  = ref_date.dt.month.astype("Int64")
+
+    # Drop rows where date parsing failed (no valid year/month)
+    pivot_df = closed.dropna(subset=["_yr", "_mo"]).copy()
 
     MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun",
                    "Jul","Aug","Sep","Oct","Nov","Dec"]
 
-    pivot = (
-        closed.groupby(["_yr","_mo"])["actual_pl_pkr"]
-        .sum()
-        .reset_index()
-        .pivot(index="_yr", columns="_mo", values="actual_pl_pkr")
-    )
-    pivot.columns = [MONTH_NAMES[m-1] for m in pivot.columns]
-    pivot.index.name = "Year"
+    if pivot_df.empty:
+        st.info("No dated closed trades to build monthly P&L table.")
+        pivot = pd.DataFrame()
+    else:
+        pivot = (
+            pivot_df.groupby(["_yr","_mo"])["actual_pl_pkr"]
+            .sum()
+            .reset_index()
+            .pivot(index="_yr", columns="_mo", values="actual_pl_pkr")
+        )
+    if not pivot.empty:
+        pivot.columns = [MONTH_NAMES[m-1] for m in pivot.columns]
+        pivot.index.name = "Year"
 
-    all_months = MONTH_NAMES
-    for m in all_months:
-        if m not in pivot.columns:
-            pivot[m] = float("nan")
-    pivot = pivot[all_months]
-    pivot["Total"] = pivot.sum(axis=1, skipna=True, min_count=1)
+        all_months = MONTH_NAMES
+        for m in all_months:
+            if m not in pivot.columns:
+                pivot[m] = float("nan")
+        pivot = pivot[all_months]
+        pivot["Total"] = pivot.sum(axis=1, skipna=True, min_count=1)
 
     # ── Colour-coded HTML table ───────────────────────────────────────────────
-    def cell(v, bold=False):
-        if pd.isna(v):
-            return '<td style="text-align:right;padding:4px 8px;color:#94a3b8;font-size:0.72rem;">—</td>'
-        color  = "#22c55e" if v > 0 else ("#ef4444" if v < 0 else "#94a3b8")
-        weight = "800" if bold else "600"
-        return (f'<td style="text-align:right;padding:4px 8px;font-size:0.72rem;'
-                f'color:{color};font-weight:{weight};">{v:+,.0f}</td>')
+    if pivot.empty:
+        st.info("No P&L data with valid dates to display.")
+    else:
+        def cell(v, bold=False):
+            if pd.isna(v):
+                return '<td style="text-align:right;padding:4px 8px;color:#94a3b8;font-size:0.72rem;">—</td>'
+            color  = "#22c55e" if v > 0 else ("#ef4444" if v < 0 else "#94a3b8")
+            weight = "800" if bold else "600"
+            return (f'<td style="text-align:right;padding:4px 8px;font-size:0.72rem;'
+                    f'color:{color};font-weight:{weight};">{v:+,.0f}</td>')
 
-    hdr_cells = "".join(
-        f'<th style="text-align:right;padding:4px 8px;font-size:0.70rem;'
-        f'color:#64748b;font-weight:600;">{m}</th>'
-        for m in all_months + ["Total"]
-    )
-    header = (
-        f'<tr><th style="text-align:left;padding:4px 8px;font-size:0.70rem;'
-        f'color:#64748b;font-weight:600;">Year</th>{hdr_cells}</tr>'
-    )
+        hdr_cells = "".join(
+            f'<th style="text-align:right;padding:4px 8px;font-size:0.70rem;'
+            f'color:#64748b;font-weight:600;">{m}</th>'
+            for m in all_months + ["Total"]
+        )
+        header = (
+            f'<tr><th style="text-align:left;padding:4px 8px;font-size:0.70rem;'
+            f'color:#64748b;font-weight:600;">Year</th>{hdr_cells}</tr>'
+        )
 
-    body_rows = []
-    for yr in sorted(pivot.index):
-        yr_cell = (f'<td style="text-align:left;padding:4px 8px;font-size:0.72rem;'
-                   f'font-weight:700;color:#1e293b;">{yr}</td>')
-        month_cells = "".join(cell(pivot.loc[yr, m]) for m in all_months)
-        total_cell  = cell(pivot.loc[yr, "Total"], bold=True)
-        body_rows.append(f"<tr>{yr_cell}{month_cells}{total_cell}</tr>")
+        body_rows = []
+        for yr in sorted(pivot.index):
+            yr_cell = (f'<td style="text-align:left;padding:4px 8px;font-size:0.72rem;'
+                       f'font-weight:700;color:#1e293b;">{yr}</td>')
+            month_cells = "".join(cell(pivot.loc[yr, m]) for m in all_months)
+            total_cell  = cell(pivot.loc[yr, "Total"], bold=True)
+            body_rows.append(f"<tr>{yr_cell}{month_cells}{total_cell}</tr>")
 
-    # Grand total row — min_count=1 keeps NaN when a whole column is empty
-    grand_cells = "".join(
-        cell(pivot[m].sum(skipna=True, min_count=1)) for m in all_months
-    )
-    grand_total = cell(pivot["Total"].sum(skipna=True, min_count=1), bold=True)
-    grand_row = (
-        f'<tr style="border-top:1px solid #e2e8f0;">'
-        f'<td style="text-align:left;padding:4px 8px;font-size:0.72rem;font-weight:700;'
-        f'color:#1e293b;">Total</td>{grand_cells}{grand_total}</tr>'
-    )
+        # Grand total row
+        grand_cells = "".join(
+            cell(pivot[m].sum(skipna=True, min_count=1)) for m in all_months
+        )
+        grand_total = cell(pivot["Total"].sum(skipna=True, min_count=1), bold=True)
+        grand_row = (
+            f'<tr style="border-top:1px solid #e2e8f0;">'
+            f'<td style="text-align:left;padding:4px 8px;font-size:0.72rem;font-weight:700;'
+            f'color:#1e293b;">Total</td>{grand_cells}{grand_total}</tr>'
+        )
 
-    table_html = (
-        '<div style="overflow-x:auto;">'
-        '<table style="width:100%;border-collapse:collapse;'
-        'border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">'
-        f'<thead style="background:#f8fafc;">{header}</thead>'
-        f'<tbody>{"".join(body_rows)}{grand_row}</tbody>'
-        '</table></div>'
-    )
-    st.markdown(table_html, unsafe_allow_html=True)
+        table_html = (
+            '<div style="overflow-x:auto;">'
+            '<table style="width:100%;border-collapse:collapse;'
+            'border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">'
+            f'<thead style="background:#f8fafc;">{header}</thead>'
+            f'<tbody>{"".join(body_rows)}{grand_row}</tbody>'
+            '</table></div>'
+        )
+        st.markdown(table_html, unsafe_allow_html=True)
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
@@ -2663,9 +2212,11 @@ elif cur == PAGES[7]:
             pf_end_date = pf_df.iloc[-1]["date"]
             final_pf_value = pf_df.iloc[-1]["portfolio_value"]
 
-            # Find KSE-100 values on actual measurement dates
-            kse_on_start = kse_df[kse_df["date"] <= measurement_start_date].iloc[-1]["kse100"] if any(kse_df["date"] <= measurement_start_date) else kse_df.iloc[0]["kse100"]
-            kse_on_end = kse_df[kse_df["date"] <= pf_end_date].iloc[-1]["kse100"] if any(kse_df["date"] <= pf_end_date) else kse_df.iloc[-1]["kse100"]
+            # Find KSE-100 values on actual measurement dates (robust slice)
+            _kse_start_slice = kse_df[kse_df["date"] <= measurement_start_date]
+            _kse_end_slice   = kse_df[kse_df["date"] <= pf_end_date]
+            kse_on_start = _kse_start_slice.iloc[-1]["kse100"] if not _kse_start_slice.empty else (kse_df.iloc[0]["kse100"] if not kse_df.empty else 0)
+            kse_on_end   = _kse_end_slice.iloc[-1]["kse100"]   if not _kse_end_slice.empty   else (kse_df.iloc[-1]["kse100"] if not kse_df.empty else 0)
 
             # Calculate KSE-100 simple return
             kse_return = ((kse_on_end - kse_on_start) / kse_on_start) * 100 if kse_on_start > 0 else 0
@@ -2970,7 +2521,7 @@ elif cur == PAGES[7]:
 # ===============================================================================
 # PAGE 7 -- BACKTEST
 # ===============================================================================
-elif cur == PAGES[12]:  # Backtest (updated index)
+elif cur == PAGES[11]:  # Backtest (updated index)
     st.markdown("**Backtest Results** -- KIRAN rules replayed on historical data (Jan 2024 - present)")
     st.caption(
         "Point-in-time correct: each date only uses data available on that day. "
@@ -3786,7 +3337,7 @@ elif cur == PAGES[1]:  # Regime
     # To show original layout, uncomment: if True: instead of if False:
     # ═══════════════════════════════════════════════════════════════════════════════
 
-    if False:  # ← TOGGLE THIS TO SHOW/HIDE ORIGINAL LAYOUT (set to True to show)
+    if True:  # ← TOGGLE THIS TO SHOW/HIDE ORIGINAL LAYOUT (set to True to show)
 
         if last_cross_sig and last_cross_date is not None:
             cross_col  = cross_colors.get(last_cross_sig, "#94a3b8")
@@ -4038,125 +3589,6 @@ elif cur == PAGES[1]:  # Regime
         fig.update_xaxes(showticklabels=True, row=n_rows, col=1)
         st.plotly_chart(fig, width='stretch')
 
-        # ── Advance-Decline Net chart ──────────────────────────────────────────────
-        st.markdown(
-            "**Advance-Decline (Net)** — daily breadth signal across all PSX stocks  \n"
-            "<span style='font-size:0.75rem; color:#64748b;'>"
-            "Net Advances = Advances − Declines. Avoids ratio skew on low-volume days."
-            "</span>",
-            unsafe_allow_html=True,
-        )
-
-        with st.spinner("Computing A/D data…"):
-            ad_df = load_ad_ratio_data()
-
-        if ad_df.empty:
-            st.warning("A/D data unavailable — price data could not be loaded.")
-        else:
-            ad_tail = st.slider(
-                "A/D chart: show last N days",
-                60, max(60, len(ad_df)), min(504, len(ad_df)),
-                step=21, key="ad_tail",
-            )
-            ad_plot = ad_df.tail(ad_tail).copy()
-
-            net = ad_plot["net_advances"]
-            y_abs = max(abs(float(net.max())), abs(float(net.min()))) * 1.1
-            y_abs = max(y_abs, 50)
-
-            fig_ad = go.Figure()
-
-            # Shaded regions above/below zero
-            fig_ad.add_hrect(y0=0,     y1=y_abs,  fillcolor="rgba(34,197,94,0.08)",  line_width=0)
-            fig_ad.add_hrect(y0=-y_abs, y1=0,     fillcolor="rgba(239,68,68,0.08)", line_width=0)
-
-            # Net Advances line — green above zero, red below
-            fig_ad.add_trace(go.Scatter(
-                x=ad_plot.index, y=net.round(0),
-                mode="lines", name="Net Advances",
-                line={"color": "#3b82f6", "width": 1.8},
-                hovertemplate="Net Advances: %{y:.0f}<extra></extra>",
-            ))
-
-            # 10-day MA
-            fig_ad.add_trace(go.Scatter(
-                x=ad_plot.index, y=ad_plot["ma10"].round(1),
-                mode="lines", name="10D MA",
-                line={"color": "#f59e0b", "width": 2, "dash": "dash"},
-                hovertemplate="10D MA: %{y:.1f}<extra></extra>",
-            ))
-
-            # Zero line
-            fig_ad.add_hline(
-                y=0, line_dash="dot", line_color="#94a3b8", line_width=1.5,
-                annotation_text="Zero", annotation_position="top right",
-            )
-
-            # Interpretation annotation box
-            fig_ad.add_annotation(
-                xref="paper", yref="paper",
-                x=0.01, y=0.97,
-                text="<b>Above zero</b> = more advances than declines (bullish breadth)",
-                showarrow=False,
-                align="left",
-                bgcolor="rgba(30,41,59,0.80)",
-                bordercolor="#475569",
-                borderwidth=1,
-                font={"size": 10, "color": "#e2e8f0"},
-            )
-
-            fig_ad.update_layout(
-                height=300,
-                margin={"l": 4, "r": 4, "t": 20, "b": 8},
-                hovermode="x",
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                legend={"orientation": "h", "y": 1.06, "x": 0, "font": {"size": 10}},
-            )
-            fig_ad.update_xaxes(
-                tickfont={"size": 10},
-                showspikes=True, spikemode="across", spikesnap="cursor",
-                spikecolor="#94a3b8", spikethickness=1, spikedash="dot",
-            )
-            fig_ad.update_yaxes(
-                tickfont={"size": 10},
-                range=[-y_abs, y_abs],
-                title_text="Net Advances",
-                title_font={"size": 10},
-            )
-            st.plotly_chart(fig_ad, width='stretch')
-
-        st.divider()
-
-        # ── Signal history table ───────────────────────────────────────────────────
-        with st.expander("Signal history (all non-HOLD signals)"):
-            sig_events = signals[signals["signal"] != 0].copy()
-            if sig_events.empty:
-                st.info("No signals generated yet.")
-            else:
-                sig_events = sig_events.tail(50).copy()
-                sig_events.index.name = "Date"
-                sig_events = sig_events.reset_index()
-                sig_events["Date"]   = sig_events["Date"].dt.strftime("%d %b %Y")
-                sig_events["Signal"] = sig_events["signal"].map({1:"BUY", -1:"SELL"})
-                sig_events["Fast Z"] = sig_events["fast_z"].round(2)
-                sig_events["Sig Line"] = sig_events["signal_line"].round(2)
-                sig_events["Histogram"] = sig_events["z_histogram"].round(2) if "z_histogram" in sig_events.columns else "—"
-                sig_events["% Above MA"] = sig_events["pct_above_ma"].round(1)
-                sig_events["KSE-100"] = sig_events["index_close"].round(0)
-
-                def _col_signal(s):
-                    c = {"BUY": "#22c55e", "SELL": "#ef4444"}
-                    return [f"color:{c.get(v,'#94a3b8')}; font-weight:bold" for v in s]
-
-                display_cols = ["Date","Signal","Fast Z","Sig Line","Histogram","% Above MA","KSE-100"]
-                display_cols = [c for c in display_cols if c in sig_events.columns]
-                st.dataframe(
-                    sig_events[display_cols]
-                    .style.apply(_col_signal, subset=["Signal"]),
-                    width='stretch', hide_index=True,
-                )
-
-        st.divider()
 
         # ── Parameter Optimizer ────────────────────────────────────────────────────
         with st.expander("⚙️ Parameter Optimizer — find best thresholds for PSX history"):
@@ -4318,7 +3750,7 @@ elif cur == PAGES[1]:  # Regime
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 9 — SETUP PERFORMANCE
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[11]:  # Setup Perf (updated index)
+elif cur == PAGES[10]:  # Setup Perf (updated index)
     st.markdown("**Setup Performance** — lifecycle and P&L of every system-generated setup")
 
     all_setups_raw = get_trade_setups()
@@ -4745,7 +4177,7 @@ elif cur == PAGES[11]:  # Setup Perf (updated index)
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 10 — STM  (Short-Term Momentum Screener)
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[9]:  # STM
+elif cur == PAGES[8]:  # STM
 
     st.markdown("### 🔎 STM — Short-Term Momentum Screener")
     st.caption(
@@ -4823,6 +4255,11 @@ elif cur == PAGES[9]:  # STM
                 auto_save_stm_picks(picks)
                 st.session_state[_stm_key] = True
 
+            # ── Enrich with S/R zone context ──────────────────────────────
+            if not result.empty:
+                with st.spinner("Analysing S/R zones…"):
+                    result = enrich_stm_with_sr_zones(result, load_stm_prices())
+
             sm1, sm2, sm3, sm4 = st.columns(4)
             sm1.metric("KSE-100 30d",       f"{kse_30d:+.1f}%")
             sm2.metric("Passed Filters",     f"{n_passed}")
@@ -4854,21 +4291,34 @@ elif cur == PAGES[9]:  # STM
                       + (row.get("range_5d_pct", 99.) <= 5.0)
                       + (0 < row.get("dist_21ma_pct", 99.) <= 5.0)
                       + (row.get("risk_pct", 99.) <= 3.0)
+                      + bool(row.get("coiling", False))   # 5th pt: coiling at resistance
                     )
                     qual_scores.append(qs)
+
+                _has_sr = "dist_to_r_pct" in result.columns
+                _sr_src_cols  = ["dist_to_r_pct", "r_zone_strength", "in_r_zone"] if _has_sr else []
+                _sr_disp_cols = ["Dist R%", "R Str", "In Zone"]                   if _has_sr else []
 
                 disp = result[[
                     "symbol", "sector", "as_of_date", "latest_close",
                     "rs", "perf_30d", "range_5d_pct", "avg_vol_10d",
                     "ma21", "ma50", "dist_21ma_pct",
                     "stop_loss", "risk_pct", "target_2r", "tradeable",
-                ]].copy()
+                ] + _sr_src_cols].copy()
                 disp["avg_vol_10d"] = (disp["avg_vol_10d"] / 1_000).round(0).astype(int)
                 disp["as_of_date"]  = pd.to_datetime(disp["as_of_date"]).dt.strftime("%d %b %Y")
                 disp["Score"] = qual_scores; disp["ML %"] = ml_scores
                 disp["tradeable"] = disp["tradeable"].map({True: "Valid", False: "Skip"})
-                disp.columns = ["Symbol","Sector","As Of","Close","RS %","30d %","5d Rng %",
-                                "Vol(K)","21MA","50MA","Dist21MA%","SL","Risk%","T2R","Trade","Score","ML%"]
+                if _has_sr:
+                    disp["in_r_zone"] = disp["in_r_zone"].map({True: "YES", False: "—"})
+                # Column order in disp: 15 base cols → 3 SR cols (if any) → Score → ML%
+                # Rename must match that exact order
+                disp.columns = (
+                    ["Symbol","Sector","As Of","Close","RS %","30d %","5d Rng %",
+                     "Vol(K)","21MA","50MA","Dist21MA%","SL","Risk%","T2R","Trade"]
+                    + _sr_disp_cols
+                    + ["Score","ML%"]
+                )
 
                 def _srs(s):  return ["color:#22c55e;font-weight:bold" if v>0 else "color:#ef4444;font-weight:bold" for v in s]
                 def _srng(s): return ["color:#22c55e" if v<=5 else "color:#fbbf24" if v<=8 else "color:#94a3b8" for v in s]
@@ -4878,20 +4328,52 @@ elif cur == PAGES[9]:  # STM
                 def _sscr(s): return ["color:#16a34a;font-weight:700" if v>=3 else "color:#b45309;font-weight:700" if v==2 else "color:#94a3b8" for v in s]
                 def _sml(s):  return ["color:#16a34a;font-weight:700" if (v is not None and v>=65) else "color:#b45309;font-weight:700" if (v is not None and v>=50) else "color:#dc2626" if v is not None else "color:#94a3b8" for v in s]
 
-                st.caption("**Score 0-4:** 3-4 best · 2 borderline · 0-1 weak")
+                st.caption("**Score 0-5:** 4-5 best · 3 good · 2 borderline · 0-1 weak  (5th pt = Coiling at resistance)")
+                _fmt = {"Close":"{:.2f}","RS %":"{:+.2f}","30d %":"{:+.2f}",
+                        "5d Rng %":"{:.2f}","21MA":"{:.2f}","50MA":"{:.2f}",
+                        "Dist21MA%":"{:+.2f}","SL":"{:.2f}","Risk%":"{:.2f}","T2R":"{:.2f}"}
+                if _has_sr:
+                    _fmt["Dist R%"] = "{:.2f}"
+                    _fmt["R Str"]   = "{:.0f}"
                 st.dataframe(
                     disp.style
                         .apply(_srs,  subset=["RS %","30d %"]).apply(_srng, subset=["5d Rng %"])
                         .apply(_sdist,subset=["Dist21MA%"]).apply(_strd, subset=["Trade"])
                         .apply(_srsk, subset=["Risk%"]).apply(_sscr, subset=["Score"])
                         .apply(_sml,  subset=["ML%"])
-                        .format({"Close":"{:.2f}","RS %":"{:+.2f}","30d %":"{:+.2f}",
-                                 "5d Rng %":"{:.2f}","21MA":"{:.2f}","50MA":"{:.2f}",
-                                 "Dist21MA%":"{:+.2f}","SL":"{:.2f}","Risk%":"{:.2f}","T2R":"{:.2f}"}, na_rep="—"),
+                        .format(_fmt, na_rep="—"),
                     width='stretch', hide_index=False,
                     height=min(640, 60 + n_passed * 36),
                 )
-                st.caption("SL = 1% below day low · T2R = 2R target · ML% = LightGBM win probability · Picks auto-saved to Trade Log")
+                st.caption(
+                    "SL = 1% below day low · T2R = 2R target · ML% = LightGBM win probability · "
+                    "Dist R% = % to nearest resistance zone floor · R Str = zone strength 0-100 · "
+                    "In Zone = price inside resistance zone · Picks auto-saved to Trade Log"
+                )
+
+                # ── Coiling highlight ──────────────────────────────────────
+                if _has_sr:
+                    coil_rows = result[result["coiling"] == True]
+                    if not coil_rows.empty:
+                        st.divider()
+                        st.markdown("#### 🔥 Coiling at Resistance")
+                        st.caption(
+                            "Tight 5-day range building within 5% of a confirmed resistance zone. "
+                            "Watch for volume expansion as the trigger."
+                        )
+                        for _, r in coil_rows.iterrows():
+                            in_z    = "🔴 Inside zone" if r.get("in_r_zone") else f"{r.get('dist_to_r_pct', 0):.1f}% below"
+                            r_str   = r.get('r_zone_strength')
+                            r_str_s = f"{r_str:.0f}" if r_str is not None else "—"
+                            st.markdown(
+                                f"**{r['symbol']}** &nbsp;·&nbsp; "
+                                f"Close: {r['latest_close']:.2f} &nbsp;·&nbsp; "
+                                f"RS: {r['rs']:+.1f}% &nbsp;·&nbsp; "
+                                f"Zone: {in_z} &nbsp;·&nbsp; "
+                                f"Zone Str: {r_str_s} &nbsp;·&nbsp; "
+                                f"5d Rng: {r['range_5d_pct']:.1f}% &nbsp;·&nbsp; "
+                                f"Risk: {r['risk_pct']:.1f}%"
+                            )
 
     # ════════════════ SHORT TAB ═══════════════════════════════════════════════
     with _tab_short:
@@ -5006,7 +4488,7 @@ elif cur == PAGES[9]:  # STM
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 8 — 🔄 Support Reversals
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[10]:  # Support Reversals
+elif cur == PAGES[9]:  # Support Reversals
     st.markdown("### 🔄 Support Reversals")
     st.caption(
         "Rejection candles at 200-MA uptrend support. "
@@ -5161,7 +4643,7 @@ elif cur == PAGES[10]:  # Support Reversals
     """)
 
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
-elif cur == PAGES[14]:  # Model Health (updated index)
+elif cur == PAGES[13]:  # Model Health (updated index)
     import os as _os
     import subprocess as _sp
     import traceback as _tb
@@ -5228,7 +4710,7 @@ elif cur == PAGES[14]:  # Model Health (updated index)
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 11 — 🗂️ Portfolio  (Weinstein Stage 2 Portfolio Screener)
 # ══════════════════════════════════════════════════════════════════════════════
-elif st.session_state.page == PAGES[13]:
+elif st.session_state.page == PAGES[12]:
     st.markdown("### 🗂️ Stage 2 Portfolio")
     st.caption(
         "Stocks in Weinstein Stage 2 (price above rising 30-week MA) ranked by "
@@ -5419,4 +4901,855 @@ elif st.session_state.page == PAGES[13]:
         "below the 30-week MA. Review weekly only. "
         "Page auto-refreshes every 30 minutes with the latest prices."
     )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE — 🤖 Agent   (Claude Trading Desk Agent)
+# ══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[14]:  # Agent
+    import subprocess as _agent_sp
+    import sys as _agent_sys
+
+    st.markdown("### 🤖 Claude Trading Desk Agent")
+    st.caption(
+        "AI-powered daily market analysis. The agent runs every morning, "
+        "analyses your trade history + today's market, and generates screened opportunities."
+    )
+
+    # ── Try importing agent_db ────────────────────────────────────────────────
+    try:
+        import agent_db as _adb
+        _adb.init_agent_tables()
+        _adb_ok = True
+    except Exception as _adb_err:
+        _adb_ok = False
+        st.error(f"agent_db import failed: {_adb_err}")
+
+    if _adb_ok:
+        # ── Top-bar: run buttons + status ─────────────────────────────────────
+        _ac1, _ac2, _ac3, _ac4, _ac5 = st.columns([2, 1, 1, 1, 1])
+        with _ac1:
+            _latest_log = _adb.get_learning_log(limit=1)
+            if _latest_log:
+                _ll = _latest_log[0]
+                _ago = _ll.get("run_date", "?")
+                st.success(f"✅ Last run: **{_ago}** · {_ll.get('opportunities_generated',0)} opps · "
+                           f"{_ll.get('run_duration_sec','?')}s")
+            else:
+                st.info("ℹ️ Agent has not run yet. Click **Run Now** to start.")
+
+        with _ac2:
+            if st.button("▶ Run Agent Now", type="primary", use_container_width=True):
+                with st.spinner("Running agent… (30–60 seconds)"):
+                    try:
+                        _r = _agent_sp.run(
+                            [_agent_sys.executable, "agent.py", "--type", "daily"],
+                            capture_output=True, text=True, timeout=180,
+                            cwd=_os.path.dirname(_os.path.abspath(__file__)),
+                        )
+                        if _r.returncode == 0:
+                            st.success("Agent run complete!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error("Agent run failed.")
+                            st.code(_r.stderr[-2000:] if _r.stderr else _r.stdout[-2000:])
+                    except Exception as _re:
+                        st.error(f"Failed to launch agent: {_re}")
+
+        with _ac3:
+            if st.button("📅 Weekly Run", use_container_width=True):
+                with st.spinner("Running weekly analysis…"):
+                    try:
+                        _r = _agent_sp.run(
+                            [_agent_sys.executable, "agent.py", "--type", "weekly"],
+                            capture_output=True, text=True, timeout=300,
+                            cwd=_os.path.dirname(_os.path.abspath(__file__)),
+                        )
+                        if _r.returncode == 0:
+                            st.success("Weekly analysis complete!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error("Weekly run failed.")
+                            st.code(_r.stderr[-1500:])
+                    except Exception as _re:
+                        st.error(f"Failed: {_re}")
+
+        with _ac4:
+            if st.button("🧠 Learn Now", use_container_width=True, help="Grade past suggestions and update pattern stats"):
+                with st.spinner("Grading opportunities and writing learning summary…"):
+                    try:
+                        from agent_learn import run_learning_loop as _rll
+                        _learn_result = _rll()
+                        st.success(
+                            f"Done — graded {_learn_result['graded']} opps, "
+                            f"updated {_learn_result['patterns_updated']} patterns."
+                        )
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as _rll_err:
+                        st.error(f"Learning loop error: {_rll_err}")
+
+        with _ac5:
+            _perf = _adb.get_agent_performance_summary()
+            if _perf:
+                _pc1, _pc2, _pc3 = st.columns(3)
+                _pc1.metric("Agent Win Rate", f"{_perf.get('win_rate','—')}%" if _perf.get('win_rate') else "—")
+                _pc2.metric("Avg P&L", f"{_perf.get('avg_pl','—')}%" if _perf.get('avg_pl') else "—")
+                _pc3.metric("Pending", str(_perf.get('pending', 0)))
+
+        st.divider()
+
+        # ── Ask the Agent — Chat Interface ────────────────────────────────────
+        st.markdown("#### 💬 Ask the Agent")
+        st.caption(
+            "Ask anything — regime explanations, your performance stats, psychology, "
+            "setup questions. The agent reads your live data before answering."
+        )
+
+        # Initialise session chat history + stable session ID for logging
+        if "agent_chat_history" not in st.session_state:
+            st.session_state.agent_chat_history = []
+        if "agent_session_id" not in st.session_state:
+            import uuid as _uuid
+            st.session_state.agent_session_id = str(_uuid.uuid4())[:8]
+
+        # Render existing messages
+        for _msg in st.session_state.agent_chat_history:
+            with st.chat_message(_msg["role"]):
+                st.markdown(_msg["content"])
+
+        # Chat input
+        _chat_input = st.chat_input(
+            "Ask the agent… e.g. 'Why is the market ranging?' / 'How is my win rate?' / 'I'm in a losing streak — what should I do?'"
+        )
+        if _chat_input:
+            # Show user message immediately
+            with st.chat_message("user"):
+                st.markdown(_chat_input)
+            st.session_state.agent_chat_history.append({"role": "user", "content": _chat_input})
+
+            # Get agent response
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking…"):
+                    try:
+                        from agent import chat_with_agent as _chat_fn
+                        _reply = _chat_fn(
+                            user_message=_chat_input,
+                            conversation_history=st.session_state.agent_chat_history[:-1],
+                            session_id=st.session_state.agent_session_id,
+                        )
+                    except Exception as _chat_err:
+                        _reply = f"⚠️ Chat failed: {_chat_err}"
+                st.markdown(_reply)
+            st.session_state.agent_chat_history.append({"role": "assistant", "content": _reply})
+
+        # Clear chat button
+        if st.session_state.agent_chat_history:
+            if st.button("🗑️ Clear chat", key="clear_agent_chat"):
+                st.session_state.agent_chat_history = []
+                st.rerun()
+
+        st.divider()
+
+        # ── Regime Playbook Banner ────────────────────────────────────────────
+        _latest_daily = _adb.get_latest_agent_report(report_type="daily")
+        if _latest_daily and _latest_daily.get("raw_json"):
+            try:
+                _rj = json.loads(_latest_daily["raw_json"])
+                _reg = _rj.get("regime", {})
+                _reg_label  = _reg.get("regime", "")
+                _reg_sub    = _reg.get("regime_subtype", "")
+                _playbook   = _reg.get("playbook", "")
+                _sizing     = _reg.get("position_sizing", "")
+                _rw         = _rj.get("regime_warning", "")
+                _is_ranging = any(r in (_reg_label or "").lower() for r in ("range", "ranging"))
+
+                if _reg_label:
+                    _pb_color = "#f59e0b" if _is_ranging else "#22c55e" if "bull" in _reg_label.lower() else "#ef4444"
+                    st.markdown(
+                        f"<div style='background:{_pb_color}22;border-left:4px solid {_pb_color};"
+                        f"padding:10px 14px;border-radius:6px;margin-bottom:12px'>"
+                        f"<b>📍 Regime: {_reg_label}</b>"
+                        + (f" — {_reg_sub}" if _reg_sub and _reg_sub != "N/A" else "")
+                        + f"<br><span style='font-size:0.9em'>📖 <b>Playbook:</b> {_playbook}</span>"
+                        + (f"<br><span style='color:{_pb_color};font-size:0.9em'>⚠️ {_rw}</span>" if _rw else "")
+                        + f"<br><span style='font-size:0.85em;opacity:0.8'>💼 Sizing: {_sizing}</span>"
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
+            except Exception:
+                pass
+
+        # ── Today's Opportunities — with read-time regime veto ───────────────
+        st.markdown("#### 🎯 Today's Opportunities")
+
+        # ── Read-time veto helpers ────────────────────────────────────────────
+        def _get_veto_context() -> dict:
+            """
+            Derive suppression flags from the latest daily agent report.
+            Returns a dict the display loop uses to decide per-opportunity visibility.
+            Escape hatch: Range Support Play / Mean Reversion patterns are
+            permitted in ranging regimes — they ARE the correct ranging strategy.
+            """
+            import json as _json
+            _regime = _adb.get_latest_regime_for_veto()
+            if not _regime:
+                return {"active": False}
+            _label    = _regime.get("regime", "").lower()
+            _bias     = _regime.get("trade_bias", "Balanced").lower()
+            _sizing   = _regime.get("position_sizing", "Full").lower()
+            _is_cash  = _bias == "cash" or _sizing == "cash"
+            _is_range = any(r in _label for r in (
+                "range", "ranging", "tight range", "wide range", "volatile range"
+            ))
+            _late_ex  = "late bull" in _label and _sizing in ("cash", "minimal")
+            return {
+                "active":        _is_cash or _is_range or _late_ex,
+                "suppress_longs": _is_cash or _is_range or _late_ex,
+                "suppress_all":   _is_cash,
+                "is_ranging":     _is_range,
+                "regime_label":   _regime.get("regime", "Unknown"),
+                "trade_bias":     _regime.get("trade_bias", "?"),
+                "position_sizing": _regime.get("position_sizing", "?"),
+            }
+
+        # Escape-hatch pattern tags — these are the CORRECT ranging strategies
+        _RANGE_ESCAPE_TAGS = ("Mean Reversion", "Range Support Play", "Range Resistance Short")
+
+        def _is_suppressed(opp: dict, veto: dict) -> tuple[bool, str]:
+            """
+            Returns (suppressed, reason).
+            Opportunities with range-adapted pattern names bypass the veto —
+            they are the pivot strategy, not the broken one.
+            """
+            if not veto.get("active"):
+                return False, ""
+            _pname = opp.get("pattern_name", "") or ""
+            if any(tag in _pname for tag in _RANGE_ESCAPE_TAGS):
+                return False, ""  # escape hatch: range play is allowed in ranging regime
+            _dir = opp.get("direction", "LONG")
+            if _dir == "LONG" and veto.get("suppress_longs"):
+                _reason = (
+                    f"Regime: **{veto['regime_label']}** "
+                    f"({veto['trade_bias']}, {veto['position_sizing']}) — "
+                    f"breakout longs suppressed. "
+                    f"Setup preserved; reactivates if regime clears or pattern is a Range play."
+                )
+                return True, _reason
+            if veto.get("suppress_all"):
+                return True, f"Cash regime — all positions suppressed."
+            return False, ""
+
+        _veto_ctx   = _get_veto_context()
+        _todays_opps = _adb.get_todays_opportunities()
+
+        if not _todays_opps:
+            _recent_opps = _adb.get_agent_opportunities(limit=10)
+            if _recent_opps:
+                st.info(f"No new opportunities generated today. Showing most recent ({_recent_opps[0].get('run_date','?')}).")
+                _todays_opps = _recent_opps[:5]
+            else:
+                st.info("No opportunities yet. Run the agent to generate today's setups.")
+
+        # Partition into active vs suppressed
+        _active_opps     = []
+        _suppressed_opps = []  # list of (opp, reason)
+        for _opp in _todays_opps:
+            _supp, _reason = _is_suppressed(_opp, _veto_ctx)
+            if _supp:
+                _suppressed_opps.append((_opp, _reason))
+            else:
+                _active_opps.append(_opp)
+
+        # ── Suppression notice ────────────────────────────────────────────────
+        if _suppressed_opps:
+            _n = len(_suppressed_opps)
+            _veto_label = _veto_ctx.get("regime_label", "Unknown")
+            _veto_bias  = _veto_ctx.get("trade_bias", "?")
+            st.warning(
+                f"**Regime Veto Active** — {_n} opportunit{'y' if _n == 1 else 'ies'} "
+                f"suppressed ({_veto_label}, {_veto_bias}). "
+                f"Only Range Support Play / Mean Reversion setups are shown when ranging.",
+                icon="🚫",
+            )
+            with st.expander(f"Show {_n} suppressed setup{'s' if _n > 1 else ''} (read-only)"):
+                for _s_opp, _s_reason in _suppressed_opps:
+                    st.markdown(
+                        f"~~**{_s_opp.get('direction','')} {_s_opp.get('symbol','')}**~~ "
+                        f"| {_s_opp.get('pattern_name','?')} | "
+                        f"Created: {_s_opp.get('run_date','?')} | "
+                        f"Regime when created: {_s_opp.get('regime_at_creation','?')}"
+                    )
+                    st.caption(f"Suppressed: {_s_reason}")
+                    st.divider()
+
+        # ── Active opportunities ──────────────────────────────────────────────
+        if not _active_opps and not _suppressed_opps:
+            st.info("No opportunities yet. Run the agent to generate today's setups.")
+        elif not _active_opps and _suppressed_opps:
+            st.info("All current setups are suppressed by the regime veto. No actionable opportunities today.")
+        else:
+            for _opp in _active_opps:
+                _dir_emoji = "📈" if _opp.get("direction") == "LONG" else "📉"
+                _conf = _opp.get("confidence_pct", 0) or 0
+                _conf_color = "#22c55e" if _conf >= 70 else "#f59e0b" if _conf >= 55 else "#ef4444"
+
+                with st.expander(
+                    f"{_dir_emoji} **{_opp.get('direction','')} {_opp.get('symbol','')}** "
+                    f"| Pattern: {_opp.get('pattern_name','?')} "
+                    f"| Confidence: {_conf:.0f}%  "
+                    f"| Status: {_opp.get('status','Pending')}",
+                    expanded=_conf >= 65,
+                ):
+                    _oc1, _oc2, _oc3, _oc4 = st.columns(4)
+                    _oc1.metric("Entry", f"{_opp.get('entry_price',0):.2f}")
+                    _oc2.metric("Stop Loss", f"{_opp.get('stop_loss',0):.2f}")
+                    _oc3.metric("Target 1R", f"{_opp.get('target_1r',0):.2f}")
+                    _oc4.metric("Target 2R", f"{_opp.get('target_2r',0):.2f}")
+
+                    _meta_parts = []
+                    if _opp.get("sector"):
+                        _meta_parts.append(f"**Sector:** {_opp['sector']}")
+                    if _opp.get("sector_momentum"):
+                        _meta_parts.append(f"**Momentum:** {_opp['sector_momentum']}")
+                    if _opp.get("regime_at_creation"):
+                        _meta_parts.append(f"**Regime when created:** {_opp['regime_at_creation']}")
+                    if _meta_parts:
+                        st.caption("  |  ".join(_meta_parts))
+
+                    st.markdown(f"**Reasoning:** {_opp.get('reasoning','')}")
+
+                    # Status update controls
+                    _opp_id = _opp.get("id")
+                    if _opp.get("status") == "Pending" and _opp_id:
+                        _btn_c1, _btn_c2, _ = st.columns(3)
+                        if _btn_c1.button("Mark Taken", key=f"opp_taken_{_opp_id}"):
+                            _adb.update_opportunity_status(_opp_id, status="Taken")
+                            st.rerun()
+                        if _btn_c2.button("Skip", key=f"opp_skip_{_opp_id}"):
+                            _adb.update_opportunity_status(_opp_id, status="Skipped")
+                            st.rerun()
+
+        st.divider()
+
+        # ── Agent Reports ─────────────────────────────────────────────────────
+        st.markdown("#### 📋 Agent Reports")
+
+        _report_tab_daily, _report_tab_weekly, _report_tab_monthly, _report_tab_bm, _report_tab_log, _report_tab_profile = st.tabs([
+            "📅 Daily", "📆 Weekly", "🗓️ Monthly", "📊 vs KSE-100", "🔍 Run Log", "🧠 My Profile"
+        ])
+
+        with _report_tab_daily:
+            _daily_reports = _adb.get_agent_reports(report_type="daily", limit=7)
+            if _daily_reports:
+                _sel_date = st.selectbox(
+                    "Select date",
+                    options=[r["run_date"] for r in _daily_reports],
+                    key="agent_daily_date",
+                )
+                _sel_report = next((r for r in _daily_reports if r["run_date"] == _sel_date), None)
+                if _sel_report:
+                    _rc1, _rc2 = st.columns([3, 1])
+                    with _rc1:
+                        st.markdown(_sel_report.get("narrative", "*No narrative.*"))
+                    with _rc2:
+                        st.metric("Regime", _sel_report.get("market_regime", "?"))
+                        if _sel_report.get("breadth_score"):
+                            st.metric("Breadth Score", f"{_sel_report['breadth_score']:.0f}/100")
+            else:
+                st.info("No daily reports yet. Run the agent to generate your first report.")
+
+        with _report_tab_weekly:
+            _weekly_reports = _adb.get_agent_reports(report_type="weekly", limit=5)
+            if _weekly_reports:
+                for _wr in _weekly_reports:
+                    with st.expander(f"Week of {_wr['run_date']} — {_wr.get('market_regime','?')}"):
+                        st.markdown(_wr.get("narrative", "*No narrative.*"))
+            else:
+                st.info("No weekly reports yet. Use the **📅 Weekly Run** button above.")
+
+        with _report_tab_monthly:
+            _monthly_reports = _adb.get_agent_reports(report_type="monthly", limit=3)
+            if _monthly_reports:
+                for _mr in _monthly_reports:
+                    with st.expander(f"Month of {_mr['run_date'][:7]} — {_mr.get('market_regime','?')}"):
+                        st.markdown(_mr.get("narrative", "*No narrative.*"))
+            else:
+                st.info("No monthly reports yet. Run at end of month for a deep-dive review.")
+
+        # ── vs KSE-100 BENCHMARK TAB ──────────────────────────────────────
+        with _report_tab_bm:
+            try:
+                import agent_benchmark as _abm
+                _abm.init_benchmark_columns()
+
+                # ── Portfolio target progress ─────────────────────────────
+                # Get portfolio value from DB (latest entry)
+                _port_vals = get_portfolio_values()
+                _port_value = float(_port_vals[0]["value"]) if _port_vals else 2_000_000
+                _target = _abm.get_portfolio_target_progress(
+                    portfolio_value=_port_value, target_pct=1.5
+                )
+                if _target:
+                    st.markdown("##### 🎯 Monthly Target: 1.5% Portfolio Return")
+                    _tpct = _target.get("achieved_pct", 0) or 0
+                    _tpkr = _target.get("target_pkr", 0) or 0
+                    _apkr = _target.get("achieved_pkr", 0) or 0
+                    _prog = min(1.0, _apkr / _tpkr) if _tpkr > 0 else 0
+                    st.progress(_prog)
+                    _tc1, _tc2, _tc3, _tc4 = st.columns(4)
+                    _tc1.metric("Target (PKR)", f"{_tpkr:,.0f}")
+                    _tc2.metric("Achieved (PKR)", f"{_apkr:,.0f}",
+                                delta=f"{_tpct:+.2f}%")
+                    _tc3.metric("Remaining", f"{_target.get('remaining_pkr',0):,.0f}")
+                    _tc4.metric("Trades Taken", str(_target.get("taken_count", 0)))
+                    if _target.get("on_track"):
+                        st.success("✅ On track for this month's 1.5% target!")
+                    else:
+                        st.warning(f"⚠️ Still need **PKR {_target.get('remaining_pkr',0):,.0f}** to hit target.")
+
+                st.divider()
+
+                # ── Rolling alpha KPIs ─────────────────────────────────────
+                st.markdown("##### 📈 Agent Returns vs KSE-100 Index")
+                _r30  = _abm.get_rolling_comparison(30)
+                _r90  = _abm.get_rolling_comparison(90)
+                _r180 = _abm.get_rolling_comparison(180)
+                _inc  = _abm.get_inception_summary()
+
+                _bk1, _bk2, _bk3, _bk4 = st.columns(4)
+
+                def _bm_metric(col, label, agent_r, kse_r, alpha):
+                    """Render one benchmark KPI column."""
+                    if agent_r is None:
+                        col.metric(label, "—", "No data")
+                        return
+                    delta_str = f"α {alpha:+.1f}% vs KSE-100" if alpha is not None else "—"
+                    col.metric(
+                        label,
+                        f"{agent_r:+.1f}%",
+                        delta=delta_str,
+                        delta_color="normal" if alpha is None else ("normal" if alpha >= 0 else "inverse"),
+                    )
+
+                _bm_metric(_bk1, "Last 30 days",
+                            _r30.get("avg_agent_return"), _r30.get("kse100_period_return"), _r30.get("avg_alpha"))
+                _bm_metric(_bk2, "Last 90 days",
+                            _r90.get("avg_agent_return"), _r90.get("kse100_period_return"), _r90.get("avg_alpha"))
+                _bm_metric(_bk3, "Last 180 days",
+                            _r180.get("avg_agent_return"), _r180.get("kse100_period_return"), _r180.get("avg_alpha"))
+                _bm_metric(_bk4, "Since Inception",
+                            _inc.get("avg_agent_return"), _inc.get("avg_kse100_return"), _inc.get("avg_alpha"))
+
+                # Verdicts
+                for _window, _rv in [("30d", _r30), ("90d", _r90), ("Inception", {"verdict": _inc.get("avg_alpha","") and ("✅ Beating market" if (_inc.get("avg_alpha") or 0) > 0 else "❌ Lagging market")})]:
+                    _v = _rv.get("verdict", "")
+                    if _v:
+                        st.caption(f"**{_window}:** {_v}")
+
+                st.divider()
+
+                # ── Monthly scoreboard ────────────────────────────────────
+                st.markdown("##### 📅 Monthly Scoreboard")
+                _scorecard = _abm.get_monthly_scorecard()
+                if _scorecard:
+                    _sc_df = pd.DataFrame(_scorecard)
+                    # Rename for display
+                    _sc_df = _sc_df.rename(columns={
+                        "month": "Month",
+                        "opp_count": "Trades",
+                        "avg_agent_return": "Avg Agent Return %",
+                        "kse100_month_return": "KSE-100 Month %",
+                        "avg_alpha": "Alpha %",
+                        "win_rate": "Win Rate %",
+                        "verdict": "Verdict",
+                    })
+
+                    def _colour_alpha(val):
+                        if isinstance(val, (int, float)):
+                            return "color:#22c55e;font-weight:bold" if val > 0 else "color:#ef4444;font-weight:bold"
+                        return ""
+
+                    st.dataframe(
+                        _sc_df.style.map(_colour_alpha, subset=["Alpha %"]),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("No closed opportunities yet. The scoreboard populates as agent trades close out.")
+
+                st.divider()
+
+                # ── What-if analysis ──────────────────────────────────────
+                st.markdown("##### 🔍 What-If Analysis")
+                st.caption("What would have happened if you took every agent suggestion vs skipping all of them vs just holding KSE-100?")
+                _wif = _abm.get_what_if_analysis()
+                if _wif:
+                    _wc1, _wc2, _wc3 = st.columns(3)
+                    _wc1.metric(
+                        f"Took All ({_wif.get('total_count',0)} trades)",
+                        f"{_wif.get('all_suggestions_avg','?')}%",
+                        delta=f"α {_wif.get('all_alpha',0):+.1f}% vs KSE-100" if _wif.get("all_alpha") is not None else None,
+                    )
+                    _wc2.metric(
+                        f"Only Taken ({_wif.get('taken_count',0)} trades)",
+                        f"{_wif.get('taken_only_avg','?')}%" if _wif.get("taken_only_avg") else "—",
+                        delta=f"α {_wif.get('taken_alpha',0):+.1f}% vs KSE-100" if _wif.get("taken_alpha") is not None else None,
+                    )
+                    _wc3.metric(
+                        "KSE-100 Avg (same periods)",
+                        f"{_wif.get('kse100_avg','?')}%" if _wif.get("kse100_avg") else "—",
+                    )
+                else:
+                    st.info("What-if data will populate once agent opportunities start closing out.")
+
+                st.divider()
+
+                # ── Per-trade breakdown ───────────────────────────────────
+                st.markdown("##### 📋 Per-Trade Breakdown")
+                _trades = _abm.get_per_trade_benchmark(limit=50)
+                if _trades:
+                    _pt_df = pd.DataFrame(_trades)
+                    _show = [c for c in [
+                        "exit_date", "symbol", "direction", "pattern_name",
+                        "outcome", "actual_pl_pct",
+                        "kse100_return_pct", "alpha_pct", "confidence_pct", "status"
+                    ] if c in _pt_df.columns]
+                    _pt_df = _pt_df[_show].rename(columns={
+                        "exit_date": "Exit Date",
+                        "symbol": "Symbol",
+                        "direction": "Dir",
+                        "pattern_name": "Pattern",
+                        "outcome": "Outcome",
+                        "actual_pl_pct": "Agent %",
+                        "kse100_return_pct": "KSE-100 %",
+                        "alpha_pct": "Alpha %",
+                        "confidence_pct": "Conf %",
+                        "status": "Status",
+                    })
+
+                    def _style_row(row):
+                        styles = [""] * len(row)
+                        if "Alpha %" in row.index:
+                            idx = row.index.get_loc("Alpha %")
+                            val = row.iloc[idx]
+                            if isinstance(val, (int, float)):
+                                styles[idx] = "color:#22c55e;font-weight:bold" if val > 0 else "color:#ef4444"
+                        if "Agent %" in row.index:
+                            idx = row.index.get_loc("Agent %")
+                            val = row.iloc[idx]
+                            if isinstance(val, (int, float)):
+                                styles[idx] = "color:#22c55e" if val > 0 else "color:#ef4444"
+                        return styles
+
+                    st.dataframe(
+                        _pt_df.style.apply(_style_row, axis=1),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("No closed trades with benchmark data yet.")
+
+            except Exception as _bm_page_err:
+                st.error(f"Benchmark tab error: {_bm_page_err}")
+                import traceback as _bm_tb
+                st.code(_bm_tb.format_exc())
+
+        with _report_tab_log:
+            # ── Manual trigger ─────────────────────────────────────────────
+            st.markdown("#### 🔁 Self-Learning Loop")
+            st.caption(
+                "Grades ungraded agent suggestions against actual price history, "
+                "updates pattern stats, and asks Claude to write a weekly post-mortem. "
+                "Runs automatically every Sunday — or trigger manually here."
+            )
+            if st.button("▶ Run Learning Loop Now", key="run_learn_btn"):
+                with st.spinner("Grading opportunities and writing learning summary…"):
+                    try:
+                        from agent_learn import run_learning_loop as _rll
+                        _learn_result = _rll()
+                        st.success(
+                            f"Done — graded {_learn_result['graded']} opportunities, "
+                            f"updated {_learn_result['patterns_updated']} patterns."
+                        )
+                        st.rerun()
+                    except Exception as _rll_err:
+                        st.error(f"Learning loop error: {_rll_err}")
+
+            st.divider()
+
+            # ── Weekly learning summaries ──────────────────────────────────
+            st.markdown("#### 📝 Weekly Learning Summaries")
+            _logs = _adb.get_learning_log(limit=20)
+            _learn_logs = [l for l in _logs if l.get("run_type") == "weekly_learn"]
+            _daily_logs  = [l for l in _logs if l.get("run_type") != "weekly_learn"]
+
+            if _learn_logs:
+                for _ll in _learn_logs[:5]:
+                    with st.expander(
+                        f"📅 {_ll.get('run_date','?')} — "
+                        f"Graded: {_ll.get('opportunities_generated', '?')} | "
+                        f"Patterns updated: {_ll.get('patterns_updated', '?')}",
+                        expanded=(_ll == _learn_logs[0])
+                    ):
+                        _summary_text = _ll.get("key_observations", "")
+                        if _summary_text:
+                            st.markdown(_summary_text)
+                        else:
+                            st.info("No summary text for this run.")
+            else:
+                st.info("No weekly learning summaries yet. Run the learning loop to generate the first one.")
+
+            st.divider()
+            st.markdown("#### 🗂 Run Log (all runs)")
+            if _daily_logs:
+                _log_df = pd.DataFrame(_daily_logs)
+                _display_cols = [c for c in [
+                    "run_date", "run_type", "market_regime",
+                    "opportunities_generated", "patterns_updated",
+                    "run_duration_sec", "model_used", "error_log"
+                ] if c in _log_df.columns]
+                st.dataframe(_log_df[_display_cols], hide_index=True, use_container_width=True)
+            else:
+                st.info("No run log entries yet.")
+
+        with _report_tab_profile:
+            st.markdown("#### 🧠 Your Trader Profile")
+            st.caption(
+                "Built from your chat history. The agent tracks what stocks you ask about, "
+                "what emotions you express, and builds guardrails to protect you from your own biases. "
+                "Updates every Sunday when the learning loop runs — or trigger it manually below."
+            )
+
+            if st.button("🔄 Update Profile Now", key="update_profile_btn",
+                         help="Analyse recent chat history and rewrite your behavioral profile"):
+                with st.spinner("Analysing your chat patterns…"):
+                    try:
+                        from agent_learn import build_behavioral_profile as _bpf
+                        _prof = _bpf()
+                        if _prof:
+                            st.success("Profile updated.")
+                            st.rerun()
+                        else:
+                            st.info("Not enough chat history yet — keep chatting with the agent first.")
+                    except Exception as _pe:
+                        st.error(f"Profile update failed: {_pe}")
+
+            st.divider()
+
+            _profile = _adb.get_latest_trader_profile()
+            if _profile:
+                _pw = _profile.get("week_date", "?")
+                st.caption(f"Last updated: week of {_pw}")
+
+                # Guardrails as a highlighted box
+                try:
+                    _grules = json.loads(_profile.get("guardrail_rules") or "[]")
+                    if _grules:
+                        st.markdown("**⚠️ Active Guardrails**")
+                        for _gr in _grules:
+                            st.warning(_gr, icon="⚠️")
+                        st.divider()
+                except Exception:
+                    pass
+
+                # Full profile text
+                st.markdown(_profile.get("profile_text", ""))
+
+                # Emotion stats
+                try:
+                    _ec = json.loads(_profile.get("emotion_counts") or "{}")
+                    if _ec:
+                        st.divider()
+                        st.markdown("**Emotion signal counts (last 30 days)**")
+                        _ec_cols = st.columns(len(_ec))
+                        for _i, (_em, _cnt) in enumerate(sorted(_ec.items(), key=lambda x: -x[1])):
+                            _ec_cols[_i].metric(_em.title(), _cnt)
+                except Exception:
+                    pass
+
+                # Most-asked stocks
+                try:
+                    _ts = json.loads(_profile.get("temptation_stocks") or "{}")
+                    if _ts:
+                        st.divider()
+                        st.markdown("**Stocks you asked about most (last 30 days)**")
+                        _ts_sorted = sorted(_ts.items(), key=lambda x: -x[1])[:8]
+                        _ts_cols = st.columns(min(4, len(_ts_sorted)))
+                        for _j, (_sym, _cnt) in enumerate(_ts_sorted):
+                            _ts_cols[_j % 4].metric(_sym, f"{_cnt}x")
+                except Exception:
+                    pass
+
+                # History
+                _prof_history = _adb.get_trader_profile_history(limit=5)
+                if len(_prof_history) > 1:
+                    st.divider()
+                    st.markdown("**Profile history**")
+                    for _ph in _prof_history[1:]:
+                        with st.expander(f"Week of {_ph.get('week_date','?')}", expanded=False):
+                            st.markdown(_ph.get("profile_text", ""))
+            else:
+                st.info(
+                    "No profile yet. Chat with the agent for a week, then click **Update Profile Now** "
+                    "or wait for Sunday's automated learning loop."
+                )
+
+        st.divider()
+
+        # ── Pattern Library ───────────────────────────────────────────────────
+        st.markdown("#### 🧠 Discovered Patterns")
+        _patterns = _adb.get_agent_patterns(active_only=False)
+        if _patterns:
+            for _pat in _patterns:
+                _is_active = bool(_pat.get("is_active", 1))
+                _active_badge = "🟢 Active" if _is_active else "🔴 Retired"
+                _conf = _pat.get("confidence", "Low")
+                _wr_display = f"{_pat['win_rate_pct']:.0f}%" if _pat.get("win_rate_pct") else "—"
+                with st.expander(
+                    f"**{_pat['pattern_name']}** · {_active_badge} · Conf: {_conf} · Win Rate: {_wr_display}",
+                    expanded=False,
+                ):
+                    st.markdown(f"**Description:** {_pat.get('description','')}")
+                    _conds = _pat.get("conditions", "{}")
+                    if isinstance(_conds, str):
+                        try:
+                            _conds = json.loads(_conds)
+                        except Exception:
+                            _conds = {}
+                    if _conds:
+                        st.json(_conds)
+                    _pc1, _pc2, _pc3 = st.columns(3)
+                    _pc1.metric("Signals", _pat.get("signal_count", 0))
+                    _pc2.metric("Wins", _pat.get("win_count", 0))
+                    _pc3.metric("Losses", _pat.get("loss_count", 0))
+                    st.caption(f"First seen: {_pat.get('first_seen','?')} · Last updated: {_pat.get('last_updated','?')}")
+        else:
+            st.info("No patterns discovered yet. Run the agent first — it will analyse your trade history and populate this library.")
+
+        st.divider()
+
+        # ── Reference Breakout Library ────────────────────────────────────────
+        st.markdown("#### 📚 Teach the Agent — Reference Breakouts")
+        st.caption(
+            "Provide examples of your best trades — longs AND shorts. The agent analyses each one, "
+            "measures the pre-signal characteristics (consolidation, MA structure, RS, volume), "
+            "and uses them to calibrate its screening. Longs and shorts build separate profiles."
+        )
+
+        with st.expander("➕ Add a Reference Trade Example", expanded=False):
+            _rb_c1, _rb_c2, _rb_c3 = st.columns([2, 2, 1])
+            _rb_symbol = _rb_c1.text_input("Symbol", placeholder="e.g. SAZEW").upper().strip()
+            _rb_date   = _rb_c2.date_input("Signal Date", value=None, help="The day price broke out (long) or broke down (short)")
+            _rb_dir    = _rb_c3.selectbox("Direction", ["LONG", "SHORT"])
+            _rb_notes  = st.text_area(
+                "Your notes (optional)",
+                placeholder="e.g. 8-day tight base after 30% runup, bought the breakout candle at 1340, held 9 days, exited at 1520",
+                height=80,
+            )
+            if st.button("🔍 Analyse This Trade", type="primary", disabled=not (_rb_symbol and _rb_date)):
+                if _rb_symbol and _rb_date:
+                    with st.spinner(f"Retrieving {_rb_symbol} price history and analysing {_rb_dir} pattern…"):
+                        try:
+                            from agent import analyze_reference_breakout as _arb_fn
+                            _rb_result = _arb_fn(
+                                symbol=_rb_symbol,
+                                breakout_date=str(_rb_date),
+                                direction=_rb_dir,
+                                notes=_rb_notes,
+                            )
+                            if "error" in _rb_result:
+                                st.error(_rb_result["error"])
+                            else:
+                                st.success(f"✅ {_rb_dir} trade analysed and saved for {_rb_symbol} on {_rb_date}")
+                                _rb_m1, _rb_m2, _rb_m3, _rb_m4 = st.columns(4)
+                                _rb_m1.metric("Consol Days", _rb_result.get("pre_consol_days", "?"))
+                                _rb_m2.metric("5d Range", f"{_rb_result.get('pre_range_pct','?'):.1f}%" if _rb_result.get("pre_range_pct") else "?")
+                                _rb_m3.metric("RS vs KSE", f"{_rb_result.get('pre_rs_vs_kse','?'):+.1f}%" if _rb_result.get("pre_rs_vs_kse") is not None else "?")
+                                _rb_m4.metric("Post-BO Gain", f"{_rb_result.get('post_gain_pct','?'):+.1f}%" if _rb_result.get("post_gain_pct") is not None else "?")
+                                if _rb_result.get("analysis_text"):
+                                    st.markdown("**Agent's Analysis:**")
+                                    st.markdown(_rb_result["analysis_text"])
+                        except Exception as _rb_err:
+                            st.error(f"Analysis failed: {_rb_err}")
+
+        # Show existing reference breakouts
+        _ref_bos = _adb.get_reference_breakouts(limit=20)
+        if _ref_bos:
+            st.markdown(f"**{len(_ref_bos)} reference breakout(s) in library:**")
+            _ref_df = pd.DataFrame(_ref_bos)
+            _ref_display_cols = [c for c in [
+                "symbol", "direction", "breakout_date", "pre_consol_days", "pre_range_pct",
+                "pre_rs_vs_kse", "pre_ma21_dist_pct", "post_gain_pct", "post_days_to_peak"
+            ] if c in _ref_df.columns]
+            _ref_display = _ref_df[_ref_display_cols].rename(columns={
+                "direction": "Dir",
+                "pre_consol_days": "Consol Days",
+                "pre_range_pct": "5d Range%",
+                "pre_rs_vs_kse": "RS vs KSE",
+                "pre_ma21_dist_pct": "Dist MA21%",
+                "post_gain_pct": "Post Gain%",
+                "post_days_to_peak": "Days to Peak",
+            })
+            st.dataframe(_ref_display, use_container_width=True, hide_index=True)
+
+            # Show aggregate profile
+            _bp_stats = _adb.get_breakout_profile_stats()
+            if _bp_stats and _bp_stats.get("n", 0) >= 2:
+                st.markdown("**Average profile of your breakouts (calibrates agent screening):**")
+                _bp1, _bp2, _bp3, _bp4 = st.columns(4)
+                _bp1.metric("Avg Consol Days", f"{_bp_stats.get('avg_consol_days', 0):.1f}d")
+                _bp2.metric("Avg 5d Range", f"{_bp_stats.get('avg_range_pct', 0):.1f}%")
+                _bp3.metric("Avg RS vs KSE", f"{_bp_stats.get('avg_rs', 0):+.1f}%")
+                _bp4.metric("Avg Post-BO Gain", f"{_bp_stats.get('avg_post_gain', 0):+.1f}%")
+        else:
+            st.info("No reference breakouts added yet. Add your 3–5 best trades above to teach the agent your pattern.")
+
+        st.divider()
+
+        # ── Setup Instructions ────────────────────────────────────────────────
+        with st.expander("⚙️ Setup Instructions (first time)", expanded=False):
+            st.markdown("""
+**Step 1 — Install the Anthropic package:**
+```
+pip install anthropic
+```
+
+**Step 2 — Get your API key:**
+- Go to [console.anthropic.com](https://console.anthropic.com)
+- Create an API key (free trial or paid)
+
+**Step 3 — Add your key to the project:**
+Create a file called `.env` in `C:\\Users\\Lenovo\\psx_pipeline\\` with:
+```
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+```
+
+**Step 4 — Run the agent:**
+- Click **▶ Run Agent Now** above, OR
+- Run from terminal: `python agent.py`
+- Or double-click `run_agent.bat`
+
+**Step 5 — Automate (optional):**
+- Open `run_update.bat` and add a line: `python agent.py --type daily`
+- This runs the agent every morning after your data update
+
+**Cost estimate:** ~$1–2 per month running daily (Haiku model for daily, Sonnet for weekly/monthly).
+""")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE — 💰 Valuation   (Financial Highlights / DCF Data)
+# ══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[15]:  # Valuation
+    from page_valuation import render_valuation_page
+    render_valuation_page()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE — 📡 Flows   (FIPI / LIPI Institutional Flow Tracker)
+# ══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[16]:  # Flows
+    from page_flows import render_flows_page
+    render_flows_page()
+
 

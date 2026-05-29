@@ -103,6 +103,33 @@ SECTOR_OVERRIDES = {
     "GAL": "AUTOMOBILE ASSEMBLER",
 }
 
+# ---------------------------------------------------------------------------
+# Agent preferences — edit these to match your personal trading style
+# ---------------------------------------------------------------------------
+
+# Minimum average daily volume (shares) for a stock to be considered by the agent.
+# Protects against thin/illiquid stocks like STML.
+AGENT_MIN_VOLUME = 50_000
+
+# Maximum stop-loss % the agent should suggest. Setups wider than this are skipped.
+# You said ~6% is your max — the agent will not suggest anything wider.
+AGENT_MAX_SL_PCT = 6.0
+
+# Sectors you personally trade in. Agent will PRIORITISE these.
+# Leave empty [] to let the agent consider all non-excluded sectors.
+AGENT_PREFERRED_SECTORS = [
+    # Examples — uncomment / add your actual preferred sectors:
+    # "CEMENT",
+    # "COMMERCIAL BANKS",
+    # "OIL & GAS EXPLORATION COMPANIES",
+    # "FERTILIZER",
+    # "TECHNOLOGY & COMMUNICATION",
+]
+
+# Sectors you never trade. Agent will skip stocks from these entirely.
+AGENT_AVOIDED_SECTORS: set = set()  # add sector names as strings if needed
+
+# ---------------------------------------------------------------------------
 # Sectors excluded from performance rankings.
 # Includes derivatives, financials-of-financials, and sectors with thin/noisy data.
 EXCLUDED_SECTORS = {

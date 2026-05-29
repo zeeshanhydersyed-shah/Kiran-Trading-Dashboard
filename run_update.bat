@@ -27,6 +27,20 @@ cd /d C:\Users\Lenovo\psx_pipeline
 echo. >> psx_scheduler.log
 echo ===== %DATE% %TIME% ===== >> psx_scheduler.log
 python main.py --all >> psx_scheduler.log 2>&1
+
+:: ── Generate Twitter content drafts ──────────────────────────────────────────
+echo Generating Twitter content drafts... >> psx_scheduler.log
+python content_generator.py >> psx_scheduler.log 2>&1
+
+:: ── Sync actual trades from Excel ────────────────────────────────────────────
+echo Syncing actual trades from ASSET ALLOCATION.XLSX... >> psx_scheduler.log
+python import_actual_trades.py --file "D:\PERSONAL\Personal Sheets\ASSET ALLOCATION\ASSET ALLOCATION.XLSX" >> psx_scheduler.log 2>&1
+
+:: ── Weekly: agent self-learning loop (Sundays only) ─────────────────────────
+if "%DOW%"=="0" (
+    echo Running agent self-learning loop... >> psx_scheduler.log
+    python agent_learn.py >> psx_scheduler.log 2>&1
+)
 exit /b
 
 :no_net

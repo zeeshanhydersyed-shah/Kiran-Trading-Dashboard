@@ -79,29 +79,33 @@ def compute_sector_rankings(
     if stock_30d.empty:
         return pd.DataFrame()
 
-    # Build 10d avg per sector
+    # Build 10d median per sector (robust to corporate actions: rights issues, splits, etc)
     perf_10d = {}
     if not stock_10d.empty:
         for sector, grp in stock_10d.groupby("sector"):
-            perf_10d[sector] = round(grp["perf_pct"].mean(), 2)
+            perf_10d[sector] = round(grp["perf_pct"].median(), 2)
 
     rows = []
     for sector, grp in stock_30d.groupby("sector"):
-        avg_30d  = round(grp["perf_pct"].mean(), 2)
+        avg_30d  = round(grp["perf_pct"].median(), 2)
         avg_10d  = perf_10d.get(sector, None)
         best     = grp.loc[grp["perf_pct"].idxmax()]
         worst    = grp.loc[grp["perf_pct"].idxmin()]
 
-        # Momentum label
+        # 4-Stage momentum label (Weinstein-based)
         if avg_10d is not None:
             if avg_30d >= 0 and avg_10d >= 0:
-                label = "Heating Up" if avg_10d > avg_30d else "Cooling Down"
+                # Both positive = Uptrend phase
+                label = "Stage 2: Advancing" if avg_10d > avg_30d else "Stage 3: Topping"
             elif avg_30d < 0 and avg_10d >= 0:
-                label = "Recovering"
+                # Transitioning from down to up = Early Advancing
+                label = "Stage 2: Advancing"
             elif avg_30d >= 0 and avg_10d < 0:
-                label = "Rolling Over"
-            else:  # both negative
-                label = "Falling" if avg_10d < avg_30d else "Stabilising"
+                # Transitioning from up to down = Late Topping
+                label = "Stage 3: Topping"
+            else:  # both negative or near zero
+                # Downtrend or flat = Declining or Basing
+                label = "Stage 4: Declining" if avg_10d < avg_30d else "Stage 1: Basing"
         else:
             label = "—"
 
@@ -151,7 +155,7 @@ def compute_market_breadth(stock_30d: pd.DataFrame, sector_df: pd.DataFrame) -> 
     pos_sectors    = (sector_df["avg_perf_pct"] > 0).sum()
     sector_pct_pos = round(pos_sectors / total_sectors * 100, 1) if total_sectors else 0
 
-    avg_sector_perf = round(sector_df["avg_perf_pct"].mean(), 2)
+    avg_sector_perf = round(sector_df["avg_perf_pct"].median(), 2)
 
     # Composite breadth score: blend stock breadth + sector breadth
     breadth_score = round(stock_pct_pos * 0.6 + sector_pct_pos * 0.4, 1)

@@ -48,17 +48,19 @@ Local edits alone **never** update the live app.
 | `weekly_ml_retrain.yml` | Sunday 10:00 UTC | Retrains kiran_model.pkl via phase4_train.py |
 
 ## Dashboard pages (PAGES list in dashboard.py)
-0. 📊 Market
-1. 📈 History
-2. 💡 Setups
-3. 📋 Trade Log
-4. 🔍 Explorer
-5. 📉 Analytics
-6. 🤖 Backtest
-7. 🧭 Regime
-8. 🎯 Setup Perf
-9. 🔎 STM
-10. 🏥 Model Health *(added in recent session)*
+0. 🧭 Regime
+1. 📊 Market
+2. 🔍 Explorer
+3. 📈 History
+4. 📋 Trade Log
+5. 🎖️ The Audit
+6. 📉 Analytics
+7. 💡 Setups
+8. 🔎 STM
+9. 🔄 Support Reversals
+10. 🎯 Setup Perf
+11. 🤖 Backtest
+12. 🗂️ Portfolio
 
 ## ML model architecture
 Two separate models:
@@ -197,3 +199,82 @@ Metrics: Trade count, Wins, Losses, Win%, Loss%, Avg P&L%
 ### Known Issues to Address
 - **Audit page** mixes all system setups with user trades. Should filter to **Actual + Paper & Actual only** (matching Trade Log)
 - Manager confusion about "system trades" — Audit should clearly show only real executed trades
+
+---
+
+## Agent System (agent.py)
+
+### Architecture
+Four sub-agents orchestrated by `TradingDeskAgent`:
+- **PatternAnalyzerAgent** — finds patterns from closed trade history, saves to `agent_patterns` table
+- **RegimeDetectorAgent** — identifies market regime (trending/ranging/bear) + playbook
+- **OpportunityGeneratorAgent** — independent universe scan, picks 3–5 setups, saves to `agent_opportunities`
+- **PerformanceTrackerAgent** — reviews edge health, flags degradation
+
+### Key agent files
+| File | Purpose |
+|------|---------|
+| `agent.py` | Main orchestrator + all sub-agents + chat interface |
+| `agent_db.py` | SQLite tables: agent_patterns, agent_opportunities, agent_reports, chat_log, trader_profile |
+| `agent_benchmark.py` | KSE-100 comparison — alpha per trade, rolling 30d verdict |
+| `agent_learn.py` | Weekly self-learning loop — updates trader behavioral profile |
+| `import_actual_trades.py` | Syncs Excel JOURNAL-2 → psx_data.db (runs daily via run_update.bat) |
+| `fix_paper_actual.py` | One-time utility — finds Paper & Actual trades duplicated in Excel import |
+
+### LLM cost strategy — IMPORTANT
+- **Chat interface** (`chat_with_agent()`) → uses **Groq** (free, llama-3.3-70b-versatile)
+- **Agent runs** (daily analysis, all 4 sub-agents) → uses **Claude** (Haiku for daily, Sonnet for weekly/monthly)
+- Groq key in `.env` as `GROQ_API_KEY`. Falls back to Claude if key missing or Groq fails.
+- Rule: **no Claude API calls except the agent run** — chat is always Groq
+
+### Running the agent
+```
+python agent.py              # daily analysis
+python agent.py --type weekly   # deep weekly report
+run_agent.bat                # same as daily via batch
+```
+GitHub Actions does NOT run agent.py — it runs daily_scraper.yml (scrape + setups only).
+Agent is run locally or manually.
+
+### Reference breakout learning
+User can teach the agent what a good setup looks like:
+```python
+from agent import analyze_reference_breakout
+analyze_reference_breakout("LUCK", "2026-04-15", direction="LONG", notes="...")
+analyze_reference_breakout("BAFL", "2026-05-05", direction="SHORT", notes="...")
+```
+Saves to `agent_reference_breakouts` table. Agent uses these as calibration examples when screening.
+
+---
+
+## Excel Journal Sync — CRITICAL
+
+### Source
+`D:\PERSONAL\Personal Sheets\ASSET ALLOCATION\ASSET ALLOCATION.XLSX` — sheet: `JOURNAL-2`
+
+### Column mapping
+| Excel col | DB field |
+|-----------|---------|
+| Date1 | created_date (entry date) |
+| Name | symbol |
+| Status | C=Closed / O=Active |
+| BUY | entry_price + actual_entry |
+| SELL | actual_exit |
+| Gain/Loss | actual_pl_pkr |
+| Gain/Loss% | actual_pl_pct |
+| SL | stop_loss |
+| R:R | actual_rr |
+| Days | holding_days |
+| POS | direction (Long/Short) |
+
+### Import behaviour (upsert — not insert-only)
+`import_actual_trades.py` runs daily via `run_update.bat`. It:
+1. **Inserts** new trades not yet in DB
+2. **Updates** existing trades when status, outcome, pl_pkr, or pl_pct differs from Excel
+3. **Reclassifies** any Breakeven records where actual_pl_pct ≠ 0 → Win or Loss
+
+Outcome threshold: `pl_pct > 0 = Win`, `pl_pct < 0 = Loss`, `pl_pct == 0 = Breakeven` (matches Excel exactly).
+
+### Verified state (May 2026)
+Analytics page matches Excel: **240 closed trades · 114 wins · 126 losses**
+Excel is always ground truth for P&L, status, and outcome.
