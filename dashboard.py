@@ -1,4 +1,4 @@
-"""PSX Sector Performance Dashboard — KIRAN."""
+﻿"""PSX Sector Performance Dashboard — KIRAN."""
 
 import json
 import sys
@@ -849,7 +849,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Support Reversals", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Support Reversals", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏹 Minervini Setup"]
 
 
 def fmt_date(d) -> str:
@@ -3750,868 +3750,440 @@ elif cur == PAGES[1]:  # Regime
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 9 — SETUP PERFORMANCE
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[10]:  # Setup Perf — Screener Audit Dashboard
-    # ═══════════════════════════════════════════════════════════════════════════
-    # SETUP PERF — UNIFIED SCREENER AUDIT DASHBOARD
-    # Covers: System (Breakout) · STM · Support Reversal
-    # Read-only · Reproducible · Truth-separated
-    # [OBSERVED] = from DB  |  [INFERRED] = from screener rules  |  [UNKNOWN] = missing
-    # ═══════════════════════════════════════════════════════════════════════════
-    from datetime import date as _dct, timedelta as _tdc
-    import math as _math
+elif cur == PAGES[10]:  # Setup Perf (updated index)
+    st.markdown("**Setup Performance** — lifecycle and P&L of every system-generated setup")
 
-    _CLS_COLORS = {
-        "🟢 CAPTURED EDGE":     ("#16a34a", "#dcfce7"),
-        "🟡 MISSED VALID EDGE": ("#d97706", "#fef9c3"),
-        "🔵 CORRECT REJECTION": ("#1d4ed8", "#dbeafe"),
-        "🔴 SYSTEM FAILURE":    ("#dc2626", "#fee2e2"),
-        "❓ UNKNOWN":            ("#6b7280", "#f3f4f6"),
-    }
-    _SRC_C = {"OBSERVED": "#16a34a", "INFERRED": "#7c3aed", "UNKNOWN": "#9ca3af", "COMPUTED": "#0369a1"}
-
-    # ── Data loading ──────────────────────────────────────────────────────────
     all_setups_raw = get_trade_setups()
     if not all_setups_raw:
-        st.warning("⚠ No trade setups found. Run a data update first.")
+        st.info("No setups recorded yet. Run a data update to generate setups.")
         st.stop()
 
     sp = pd.DataFrame(all_setups_raw)
 
-    for _c in ["actual_pl_pct","actual_pl_pkr","actual_rr","holding_days",
-               "exit_date","actual_entry","quality_score","breadth_score",
-               "sector_rank","range_window","source","outcome","status",
-               "stock_perf_30d","stock_perf_10d","entry_price","stop_loss",
-               "target_1r","target_2r","sector_momentum","direction","symbol","sector"]:
-        if _c not in sp.columns:
-            sp[_c] = None
-    sp["source"]        = sp["source"].fillna("System")
+    # Normalise columns that may be missing in older rows
+    for col in ["actual_pl_pct", "actual_pl_pkr", "actual_rr", "holding_days",
+                "exit_date", "actual_entry", "quality_score", "breadth_score",
+                "sector_rank", "range_window", "source"]:
+        if col not in sp.columns:
+            sp[col] = None
+    sp["source"] = sp["source"].fillna("System")
     sp["quality_score"] = pd.to_numeric(sp["quality_score"], errors="coerce").fillna(0).astype(int)
-    sp["breadth_score"] = pd.to_numeric(sp["breadth_score"], errors="coerce").fillna(0)
-    sp["created_date"]  = pd.to_datetime(sp["created_date"])
+
+    # Calculate execution type
     sp["execution_type"] = sp.apply(
-        lambda r: "Actual" if r["source"] == "Actual"
-        else ("Paper & Actual"
-              if pd.notna(r["actual_entry"]) and float(r["actual_entry"] or 0) > 0
-              else "Paper"),
-        axis=1,
+        lambda row: "Actual" if row.get("source") == "Actual"
+        else "Paper & Actual" if row.get("actual_entry") is not None and row.get("actual_entry") > 0
+        else "Paper",
+        axis=1
     )
 
-    # ── Screener source selector (page-level, drives all modes) ──────────────
-    if "sp_source" not in st.session_state: st.session_state["sp_source"] = "All Screeners"
-    _active_sources = {
-        "All Screeners":    ["System", "STM", "Support Reversal"],
-        "System":           ["System"],
-        "STM":              ["STM"],
-        "Support Reversal": ["Support Reversal"],
-    }
-    _sys = sp[sp["source"].isin(
-        _active_sources.get(st.session_state["sp_source"], ["System", "STM", "Support Reversal"])
-    )].copy()
-    if _sys.empty:
-        st.info("No setups found for the selected screener.")
+    # Source selector — lets auditors filter by screener
+    _sp_sources = ["System", "STM", "Support Reversal", "Minervini"]
+    _sp_src_sel = st.multiselect(
+        "📊 Screener source",
+        _sp_sources,
+        default=["System"],
+        key="sp_src_sel"
+    )
+    sys_sp = sp[sp["source"].isin(_sp_src_sel)].copy() if _sp_src_sel else sp[sp["source"] == "System"].copy()
+
+    if sys_sp.empty:
+        st.info("No system-generated setups found.")
         st.stop()
 
-    _today = _dct.today()
-    _cut30 = _today - _tdc(days=30)
-    _cut7  = _today - _tdc(days=7)
+    sys_sp["created_date"] = pd.to_datetime(sys_sp["created_date"])
 
-    _cur_px: dict[str, float] = {}
+    # ── Build current-price map from latest stock_30d data ────────────────────
+    cur_price: dict[str, float] = {}
     if not stock_30d.empty and "latest_close" in stock_30d.columns:
-        _cur_px = dict(zip(stock_30d["symbol"], stock_30d["latest_close"]))
+        cur_price = dict(zip(stock_30d["symbol"], stock_30d["latest_close"]))
 
-    # ── Classification engine ─────────────────────────────────────────────────
-    def _classify_sp(row: pd.Series) -> tuple:
-        stat  = str(row.get("status") or "")
-        out   = str(row.get("outcome") or "")
-        et    = str(row.get("execution_type") or "Paper")
-        sym   = str(row.get("symbol") or "")
-        entry = float(row.get("entry_price") or 0)
-        q     = int(row.get("quality_score") or 0)
-        cur_p = _cur_px.get(sym)
-        if et == "Paper & Actual":
-            if out == "Win":
-                return ("🟢 CAPTURED EDGE", "Traded + Won", "OBSERVED")
-            if out == "Loss":
-                if q >= 3:
-                    return ("🔴 SYSTEM FAILURE", f"Q={q} setup closed as Loss", "OBSERVED")
-                return ("🟡 MISSED VALID EDGE", f"Traded + Lost (Q={q})", "OBSERVED")
-            if stat == "Active":
-                return ("🟢 CAPTURED EDGE", "Active trade in progress", "OBSERVED")
-            return ("🔵 CORRECT REJECTION", "Traded — outcome pending", "OBSERVED")
-        if et == "Paper":
-            if stat == "Pending":
-                if cur_p and entry > 0 and cur_p > entry * 1.06:
-                    return ("🟡 MISSED VALID EDGE",
-                            f"Price {cur_p:.2f} passed entry {entry:.2f} — not executed",
-                            "INFERRED")
-                return ("🔵 CORRECT REJECTION", "Pending — entry not triggered", "INFERRED")
-            if stat in ("Closed", "Expired"):
-                if out == "Win":
-                    return ("🟡 MISSED VALID EDGE", "Would have won — not traded", "INFERRED")
-                if out == "Loss":
-                    return ("🔵 CORRECT REJECTION", "Correctly avoided — would have lost", "INFERRED")
-                return ("🔵 CORRECT REJECTION", "Paper closed, no outcome", "UNKNOWN")
-        return ("❓ UNKNOWN", "Insufficient data", "UNKNOWN")
-
-    _sys[["_cls", "_reason", "_src"]] = _sys.apply(
-        lambda r: pd.Series(_classify_sp(r)), axis=1
-    )
-
-    # ── Gate reconstructor ────────────────────────────────────────────────────
-    def _reconstruct_gates(row: pd.Series) -> list:
-        src  = str(row.get("source") or "System")
-        b    = float(row.get("breadth_score") or 0)
-        q    = int(row.get("quality_score") or 0)
-        p30  = float(row.get("stock_perf_30d") or 0)
-        p10  = float(row.get("stock_perf_10d") or 0)
-        risk = float(row.get("risk_pct") or 0)
-        sr   = int(row.get("sector_rank") or 999)
-        mom  = str(row.get("sector_momentum") or "—")
-        dirn = str(row.get("direction") or "")
-        kse_ok  = kse100.get("above_ma50", None)
-        kse_src = "OBSERVED" if kse_ok is not None else "UNKNOWN"
-
-        # ── STM gates ─────────────────────────────────────────────────────────
-        if src == "STM":
-            _zh     = kse100.get("z_hist_positive", None)
-            _zh_src = "OBSERVED" if _zh is not None else "UNKNOWN"
-            gates = [
-                {"Gate": "🔴 KSE-100 ≥ 50-day MA [HARD]",
-                 "Result": "✅ PASS" if kse_ok else ("❌ FAIL" if kse_ok is False else "❓ UNKNOWN"),
-                 "Value": f"above_ma50={kse_ok}", "Source": kse_src},
-                {"Gate": "🔴 Z-Histogram Positive [HARD]",
-                 "Result": "✅ PASS" if _zh else ("❌ FAIL" if _zh is False else "❓ UNKNOWN"),
-                 "Value": f"z_hist_positive={_zh}", "Source": _zh_src},
-                {"Gate": "🔴 Breadth ≥ 70% [HARD]",
-                 "Result": "✅ PASS" if b >= 70 else "❌ FAIL",
-                 "Value": f"{b:.0f}", "Source": "OBSERVED"},
-            ]
-            if dirn == "LONG":
-                gates.append({"Gate": "Sector top performers (LONG)",
-                               "Result": "✅ PASS" if sr <= 8 else "❌ FAIL",
-                               "Value": f"Rank {sr}", "Source": "OBSERVED"})
-            else:
-                gates.append({"Gate": "Sector weak performers (SHORT)",
-                               "Result": "✅ PASS" if sr > 15 else "❌ FAIL",
-                               "Value": f"Rank {sr}", "Source": "OBSERVED"})
-            gates += [
-                {"Gate": "Q1 — RS > 5% vs KSE-100",
-                 "Result": "❓ UNKNOWN", "Value": "rs_pct not stored per-row", "Source": "UNKNOWN"},
-                {"Gate": "Q2 — 5d range ≤ 5%",
-                 "Result": "❓ UNKNOWN", "Value": "range_5d not stored per-row", "Source": "UNKNOWN"},
-                {"Gate": "Q3 — Dist above 21MA 0–5%",
-                 "Result": "❓ UNKNOWN", "Value": "dist_21ma not stored per-row", "Source": "UNKNOWN"},
-                {"Gate": "Q4 — Risk ≤ 3%",
-                 "Result": "✅ PASS" if 0 < risk <= 3 else "❌ FAIL",
-                 "Value": f"{risk:.1f}%", "Source": "OBSERVED"},
-                {"Gate": "Quality Score (sum)",
-                 "Result": "✅ PASS" if q >= 2 else "❌ FAIL",
-                 "Value": f"{q}/4", "Source": "OBSERVED"},
-            ]
-            return gates
-
-        # ── Support Reversal gates ─────────────────────────────────────────────
-        if src == "Support Reversal":
-            gates = [
-                {"Gate": "Stock above 200-day MA [HARD]",
-                 "Result": "✅ PASS" if q >= 1 else "❌ FAIL",
-                 "Value": "Inferred from quality_score ≥ 1 (200MA is Q3)", "Source": "INFERRED"},
-                {"Gate": "Q1 — Recovery ratio > 75%",
-                 "Result": "❓ UNKNOWN", "Value": "recovery_ratio not stored per-row", "Source": "UNKNOWN"},
-                {"Gate": "Q2 — Lower wick > 60%",
-                 "Result": "❓ UNKNOWN", "Value": "wick_ratio not stored per-row", "Source": "UNKNOWN"},
-                {"Gate": "Q3 — Above 200-day MA",
-                 "Result": "❓ UNKNOWN", "Value": "stored as part of quality_score only", "Source": "INFERRED"},
-                {"Gate": "Quality Score (sum)",
-                 "Result": "✅ PASS" if q >= 2 else "❌ FAIL",
-                 "Value": f"{q}/3", "Source": "OBSERVED"},
-                {"Gate": "Risk 0–12%",
-                 "Result": "✅ PASS" if 0 < risk <= 12 else "❌ FAIL",
-                 "Value": f"{risk:.1f}%", "Source": "OBSERVED"},
-            ]
-            return gates
-
-        # ── System (Breakout) gates ────────────────────────────────────────────
-        gates = []
-        if dirn == "LONG":
-            gates += [
-                {"Gate": "KSE-100 ≥ 50-day MA",
-                 "Result": "✅ PASS" if kse_ok else ("❌ FAIL" if kse_ok is False else "❓ UNKNOWN"),
-                 "Value": f"above_ma50={kse_ok}", "Source": kse_src},
-                {"Gate": "Breadth ≥ 55",
-                 "Result": "✅ PASS" if b >= 55 else "❌ FAIL",
-                 "Value": f"{b:.0f}", "Source": "OBSERVED"},
-                {"Gate": "Sector top 35%",
-                 "Result": "✅ PASS" if sr <= 8 else "❌ FAIL",
-                 "Value": f"Rank {sr}", "Source": "OBSERVED"},
-                {"Gate": "Momentum Heating/Cooling",
-                 "Result": "✅ PASS" if mom in ("Heating Up","Cooling Down") else "❌ FAIL",
-                 "Value": mom, "Source": "OBSERVED"},
-                {"Gate": "30d perf ≥ 15%",
-                 "Result": "✅ PASS" if p30 >= 15 else "❌ FAIL",
-                 "Value": f"{p30:+.1f}%", "Source": "OBSERVED"},
-                {"Gate": "Risk 0–12%",
-                 "Result": "✅ PASS" if 0 < risk <= 12 else "❌ FAIL",
-                 "Value": f"{risk:.1f}%", "Source": "OBSERVED"},
-                {"Gate": "Quality ≥ 2",
-                 "Result": "✅ PASS" if q >= 2 else "❌ FAIL",
-                 "Value": f"{q}/4", "Source": "OBSERVED"},
-            ]
-        else:
-            gates += [
-                {"Gate": "DFC-eligible",
-                 "Result": "✅ PASS", "Value": "In DFC list (setup generated)", "Source": "INFERRED"},
-                {"Gate": "Sector bottom 35%",
-                 "Result": "✅ PASS" if sr > 15 else "❌ FAIL",
-                 "Value": f"Rank {sr}", "Source": "OBSERVED"},
-                {"Gate": "Momentum Rolling/Falling",
-                 "Result": "✅ PASS" if mom in ("Rolling Over","Falling") else "❌ FAIL",
-                 "Value": mom, "Source": "OBSERVED"},
-                {"Gate": "10d perf < 0",
-                 "Result": "✅ PASS" if p10 < 0 else "❌ FAIL",
-                 "Value": f"{p10:+.1f}%", "Source": "OBSERVED"},
-                {"Gate": "30d ≤ −15% OR 10d ≤ −10%",
-                 "Result": "✅ PASS" if (p30 <= -15 or p10 <= -10) else "❌ FAIL",
-                 "Value": f"30d={p30:+.1f}% 10d={p10:+.1f}%", "Source": "OBSERVED"},
-                {"Gate": "Risk 0–12%",
-                 "Result": "✅ PASS" if 0 < risk <= 12 else "❌ FAIL",
-                 "Value": f"{risk:.1f}%", "Source": "OBSERVED"},
-                {"Gate": "Quality ≥ 2",
-                 "Result": "✅ PASS" if q >= 2 else "❌ FAIL",
-                 "Value": f"{q}/4", "Source": "OBSERVED"},
-            ]
-        return gates
-
-    # ── Forensic panel renderer ───────────────────────────────────────────────
-    def _render_sp_forensic(row: pd.Series) -> None:
-        sym   = str(row.get("symbol",""))
-        src   = str(row.get("source","System"))
-        dirn  = str(row.get("direction",""))
-        entry = float(row.get("entry_price") or 0)
-        sl    = float(row.get("stop_loss") or 0)
-        t1    = float(row.get("target_1r") or 0)
-        t2    = float(row.get("target_2r") or 0)
-        risk  = float(row.get("risk_pct") or 0)
-        q     = int(row.get("quality_score") or 0)
-        q_max = "3" if src == "Support Reversal" else "4"
-        cdate = row.get("created_date")
-        cls_lbl = str(row.get("_cls","❓ UNKNOWN"))
-        reason  = str(row.get("_reason",""))
-        dsrc    = str(row.get("_src","UNKNOWN"))
-        cur_p   = _cur_px.get(sym)
-        _fg, _bg = _CLS_COLORS.get(cls_lbl, ("#374151","#f3f4f6"))
-
-        st.markdown(
-            f'<div style="background:{_bg};color:{_fg};border-radius:8px;'
-            f'padding:8px 16px;font-weight:700;font-size:0.88rem;margin-bottom:12px;">'
-            f'{cls_lbl} &nbsp;·&nbsp; {reason} '
-            f'<span style="color:{_SRC_C.get(dsrc,"#9ca3af")};font-size:0.72rem;">[{dsrc}]</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        _fl, _fr = st.columns(2)
-        with _fl:
-            st.markdown("**Setup Details** `[OBSERVED]`")
-            _sd = pd.DataFrame([
-                {"Field":"Symbol",       "Value":sym},
-                {"Field":"Screener",     "Value":src},
-                {"Field":"Direction",    "Value":dirn},
-                {"Field":"Created",      "Value":cdate.strftime("%d %b %Y") if pd.notna(cdate) else "—"},
-                {"Field":"Entry Price",  "Value":f"{entry:.2f}"},
-                {"Field":"Stop Loss",    "Value":f"{sl:.2f}"},
-                {"Field":"Target 1R",    "Value":f"{t1:.2f}"},
-                {"Field":"Target 2R",    "Value":f"{t2:.2f}"},
-                {"Field":"Risk %",       "Value":f"{risk:.1f}%"},
-                {"Field":"Quality",      "Value":f"{q}/{q_max}"},
-                {"Field":"Breadth@Gen",  "Value":f"{float(row.get('breadth_score') or 0):.0f}"},
-                {"Field":"Status",       "Value":str(row.get("status","—"))},
-                {"Field":"Outcome",      "Value":str(row.get("outcome","—"))},
-                {"Field":"Execution",    "Value":str(row.get("execution_type","—"))},
-                {"Field":"Current Price","Value":f"{cur_p:.2f}" if cur_p else "UNKNOWN"},
-                {"Field":"vs Entry",     "Value":f"{(cur_p-entry)/entry*100:+.1f}%"
-                         if cur_p and entry > 0 else "UNKNOWN"},
-            ])
-            st.dataframe(_sd, hide_index=True, width="stretch")
-
-        with _fr:
-            st.markdown("**Screener Gate Trace** `[INFERRED]`")
-            st.caption("Reconstructed from screener rules + stored row data — not a direct DB log.")
-            _gdf = pd.DataFrame(_reconstruct_gates(row))
-            def _gc_style(v):
-                if "PASS" in str(v): return "color:#16a34a;font-weight:700"
-                if "FAIL" in str(v): return "color:#dc2626;font-weight:700"
-                return "color:#9ca3af"
-            def _gsrc_style(v):
-                return f"color:{_SRC_C.get(v,'#9ca3af')};font-size:0.72rem"
-            st.dataframe(
-                _gdf.style.map(_gc_style, subset=["Result"]).map(_gsrc_style, subset=["Source"]),
-                hide_index=True, width="stretch",
-            )
-
-        _db1, _db2 = st.columns(2)
-        with _db1:
-            st.markdown("**What screener did** `[OBSERVED]`")
-            _et = str(row.get("execution_type","Paper"))
-            _st2 = str(row.get("status","—"))
-            _out = str(row.get("outcome","—"))
-            if _et == "Paper & Actual":
-                st.success(f"✅ Generated + Executed · Outcome: {_out}")
-            else:
-                st.info(f"📋 Generated (Paper only) · Status: {_st2} · Not executed")
-        with _db2:
-            st.markdown("**What screener should have done** `[INFERRED]`")
-            if cls_lbl == "🟢 CAPTURED EDGE":
-                st.success("✅ Correct — generated and executed")
-            elif cls_lbl == "🟡 MISSED VALID EDGE":
-                if cur_p and entry > 0 and cur_p > entry * 1.06:
-                    st.warning(f"⚠ Should have executed — price moved {(cur_p-entry)/entry*100:+.1f}% past entry")
-                else:
-                    st.warning("⚠ Valid setup — should have been traded")
-            elif cls_lbl == "🔵 CORRECT REJECTION":
-                st.info("ℹ Correct to avoid — entry never triggered or would have lost")
-            elif cls_lbl == "🔴 SYSTEM FAILURE":
-                st.error(f"🔴 Q={q} setup traded but closed as Loss — investigate filter calibration")
-            else:
-                st.caption("Classification unknown — insufficient data")
-
-        # Price chart
-        _px_df = load_stm_prices()
-        if not _px_df.empty and sym in _px_df["symbol"].values:
-            _sym_px = _px_df[_px_df["symbol"]==sym].sort_values("date").tail(35)
-            if not _sym_px.empty:
-                st.markdown("**30-Day Price History** `[OBSERVED]`")
-                _pf = go.Figure()
-                _pf.add_trace(go.Scatter(
-                    x=_sym_px["date"], y=_sym_px["close"],
-                    mode="lines", line={"color":"#6366f1","width":2}, name="Close",
-                ))
-                if entry > 0:
-                    _pf.add_hline(y=entry, line_dash="dot", line_color="#22c55e",
-                                  annotation_text=f"Entry {entry:.2f}",
-                                  annotation_position="bottom right")
-                if sl > 0:
-                    _pf.add_hline(y=sl, line_dash="dot", line_color="#ef4444",
-                                  annotation_text=f"SL {sl:.2f}",
-                                  annotation_position="bottom right")
-                if t1 > 0:
-                    _pf.add_hline(y=t1, line_dash="dot", line_color="#f59e0b",
-                                  annotation_text=f"T1 {t1:.2f}",
-                                  annotation_position="top right")
-                _pf.update_layout(
-                    height=220, margin={"l":4,"r":90,"t":8,"b":8},
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    showlegend=False,
-                )
-                st.plotly_chart(_pf, width="stretch")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # PAGE HEADER
-    # ─────────────────────────────────────────────────────────────────────────
-    st.markdown("## 🎯 Setup Perf — Screener Audit Dashboard")
-    st.caption(
-        "Read-only · Deterministic · Reproducible &nbsp;|&nbsp; "
-        "🟢 **OBSERVED** = from DB &nbsp;·&nbsp; "
-        "🟣 **INFERRED** = from screener rules &nbsp;·&nbsp; "
-        "⚪ **UNKNOWN** = data unavailable"
-    )
-    st.markdown("---")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # CONTROL BAR
-    # ─────────────────────────────────────────────────────────────────────────
-    if "sp_mode"     not in st.session_state: st.session_state["sp_mode"]     = "MODE1"
-    if "sp_stock"    not in st.session_state: st.session_state["sp_stock"]    = ""
-    if "sp_screener" not in st.session_state: st.session_state["sp_screener"] = "Setup"
-
-    # Screener source filter — page-level selector
-    _src_opts = ["All Screeners", "System", "STM", "Support Reversal"]
-    _src_col1, _src_col2 = st.columns([1, 3])
-    with _src_col1:
-        _src_widget = st.selectbox(
-            "📊 Screener",
-            _src_opts,
-            index=_src_opts.index(st.session_state["sp_source"]),
-            key="sp_source_widget",
-        )
-        if _src_widget != st.session_state["sp_source"]:
-            st.session_state["sp_source"] = _src_widget
-            st.rerun()
-
-    _cb1,_cb2,_cb3,_cb4,_cb5 = st.columns(5)
-    with _cb1:
-        if st.button("🔘 Run Live Audit",
-                     use_container_width=True,
-                     type="primary" if st.session_state["sp_mode"] == "MODE1" else "secondary"):
-            st.session_state["sp_mode"] = "MODE1"
-    with _cb2:
-        if st.button("🔒 30-Day Locked Scan",
-                     use_container_width=True,
-                     type="primary" if st.session_state["sp_mode"] == "MODE1_LOCKED" else "secondary"):
-            st.session_state["sp_mode"] = "MODE1_LOCKED"
-    with _cb3:
-        if st.button("🔬 Screener Audit",
-                     use_container_width=True,
-                     type="primary" if st.session_state["sp_mode"] == "MODE3" else "secondary"):
-            st.session_state["sp_mode"] = "MODE3"
-    with _cb4:
-        if st.button("🔍 Single Stock",
-                     use_container_width=True,
-                     type="primary" if st.session_state["sp_mode"] == "MODE2" else "secondary"):
-            st.session_state["sp_mode"] = "MODE2"
-    with _cb5:
-        _export_btn = st.button("📤 Export Report", use_container_width=True)
-
-    _mode = st.session_state["sp_mode"]
-
-    if _mode == "MODE2":
-        _sc1,_sc2,_sc3 = st.columns([1,1,2])
-        with _sc1:
-            _sym_in = st.text_input("Symbol", value=st.session_state.get("sp_stock",""), placeholder="e.g. TRG")
-            st.session_state["sp_stock"] = _sym_in.upper().strip()
-        with _sc2:
-            _m2_from = st.date_input("From", value=_today - _tdc(days=30), key="sp_m2_from")
-        with _sc3:
-            _m2_to   = st.date_input("To",   value=_today, key="sp_m2_to")
-    elif _mode == "MODE3":
-        _sc1,_sc2,_sc3 = st.columns([1,1,2])
-        with _sc1:
-            _scrn_sel = st.selectbox("Screener Detail", ["Setup","STM","Support Reversal"],
-                                     index=["Setup","STM","Support Reversal"]
-                                     .index(st.session_state.get("sp_screener","Setup")))
-            st.session_state["sp_screener"] = _scrn_sel
-        with _sc2:
-            _m3_from = st.date_input("From", value=_today - _tdc(days=30), key="sp_m3_from")
-        with _sc3:
-            _m3_to   = st.date_input("To",   value=_today, key="sp_m3_to")
-
-    st.markdown("---")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # SYSTEM HEALTH KPI PANEL
-    # ─────────────────────────────────────────────────────────────────────────
-    _cl_sys = _sys[
-        _sys["status"].isin(["Closed","Expired","Win","Loss","Breakeven"]) |
-        _sys["outcome"].isin(["Win","Loss","Breakeven"])
+    # ── Status buckets ────────────────────────────────────────────────────────
+    pending = sys_sp[sys_sp["status"] == "Pending"]
+    active  = sys_sp[sys_sp["status"] == "Active"]
+    closed  = sys_sp[sys_sp["status"].isin(["Closed", "Expired", "Win", "Loss",
+                                             "Breakeven"])].copy()
+    # Also capture rows where outcome is set (some workflows set outcome directly)
+    also_closed = sys_sp[
+        sys_sp["outcome"].isin(["Win", "Loss", "Breakeven"]) &
+        ~sys_sp["status"].isin(["Pending", "Active"])
     ].copy()
-    _cl30 = _cl_sys[_cl_sys["created_date"].dt.date >= _cut30]
-    _cl7  = _cl_sys[_cl_sys["created_date"].dt.date >= _cut7]
-    _tr30 = _cl30[_cl30["execution_type"] == "Paper & Actual"]
-    _tr7  = _cl7[_cl7["execution_type"]  == "Paper & Actual"]
+    closed = pd.concat([closed, also_closed]).drop_duplicates(subset="id")
 
-    def _wr(df):
-        w = (df["outcome"]=="Win").sum(); l = (df["outcome"]=="Loss").sum()
-        return round(w/max(w+l,1)*100,1)
+    # Filter to only show actually traded setups (Paper & Actual)
+    traded = sys_sp[sys_sp["execution_type"] == "Paper & Actual"].copy()
 
-    _ocr30 = round(len(_tr30)/max(len(_cl30),1)*100,1)
-    _ocr7  = round(len(_tr7)/max(len(_cl7),1)*100,1)
-    _sys30 = _sys[_sys["created_date"].dt.date >= _cut30]
-    _sys7  = _sys[_sys["created_date"].dt.date >= _cut7]
-    _hf30  = len(_tr30[(_tr30["quality_score"]>=3) & (_tr30["outcome"]=="Loss")])
-    _hf7   = len(_tr7[(_tr7["quality_score"] >=3) & (_tr7["outcome"]=="Loss")])
-    _q3r30 = round(len(_sys30[_sys30["quality_score"]>=3])/max(len(_sys30),1)*100,1)
-    _l30   = len(_sys30[_sys30["direction"]=="LONG"])
-    _s30   = len(_sys30[_sys30["direction"]=="SHORT"])
-    _l7    = len(_sys7[_sys7["direction"]=="LONG"])
-    _s7    = len(_sys7[_sys7["direction"]=="SHORT"])
-    _reg30 = round(_l30/max(_l30+_s30,1)*100,1)
-    _reg7  = round(_l7/max(_l7+_s7,1)*100,1)
+    wins   = traded[traded["outcome"] == "Win"]
+    losses = traded[traded["outcome"] == "Loss"]
 
-    _src_label = st.session_state["sp_source"]
-    st.markdown(f"##### 🏥 Screener Health — {_src_label} &nbsp; `[OBSERVED + COMPUTED]`")
-    _h1,_h2,_h3,_h4,_h5 = st.columns(5)
-    _h1.metric("Capture Rate",      f"{_ocr30}%",   delta=f"7d: {_ocr7}%",
-               help="% closed setups actually traded (Paper & Actual)")
-    _h2.metric("Traded Win Rate",
-               f"{_wr(_tr30)}%" if len(_tr30)>0 else "—",
-               delta=f"7d: {_wr(_tr7)}%" if len(_tr7)>0 else None,
-               help="Win rate of Paper & Actual setups")
-    _h3.metric("Quality≥3 Rate",    f"{_q3r30}%",
-               help="% of generated setups scoring ≥3 quality")
-    _h4.metric("HQ Losses",         str(_hf30),
-               delta=f"7d: {_hf7}" if _hf7 else None, delta_color="inverse",
-               help="Quality≥3 setups that closed as Loss — potential screener failures")
-    _h5.metric("Regime Long Bias",  f"{_reg30}%",   delta=f"7d: {_reg7}%",
-               help="% of 30d setups that are LONG")
+    n_total   = len(sys_sp)
+    n_pending = len(pending)
+    n_active  = len(active)
+    n_closed  = len(closed)
+    n_traded  = len(traded)
+    n_wins    = len(wins)
+    n_losses  = len(losses)
+    win_rate  = n_wins / max(n_wins + n_losses, 1) * 100
 
-    st.markdown("---")
+    avg_win_pct  = wins["actual_pl_pct"].dropna().mean()   if n_wins   else 0.0
+    avg_loss_pct = losses["actual_pl_pct"].dropna().mean() if n_losses else 0.0
+    avg_rr = (abs(avg_win_pct / avg_loss_pct)
+              if avg_loss_pct and avg_loss_pct != 0 else 0.0)
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # MODE 1 / MODE1_LOCKED — 30-DAY OPPORTUNITY UNIVERSE SCAN
-    # ═══════════════════════════════════════════════════════════════════════
-    if _mode in ("MODE1", "MODE1_LOCKED"):
+    # ── KPI row ───────────────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+    k1.metric("Total Generated", n_total)
+    k2.metric("Pending", n_pending)
+    k3.metric("Active", n_active)
+    k4.metric("Closed", n_closed)
+    k5.metric("Win Rate", f"{win_rate:.0f}%" if n_closed else "—",
+              delta=f"{n_wins}W / {n_losses}L")
+    k6.metric("Avg Win", f"{avg_win_pct:+.1f}%" if n_wins else "—")
+    k7.metric("Avg R:R", f"{avg_rr:.2f}x" if avg_rr else "—")
 
-        _sp30 = _sys[_sys["created_date"].dt.date >= _cut30].copy()
-        _badge = "🔒 LOCKED SNAPSHOT" if _mode == "MODE1_LOCKED" else "🔴 LIVE"
-        st.markdown(f"##### 📊 Opportunity Universe — Last 30 Days &nbsp; `{_badge}`")
-        st.caption(f"[OBSERVED] {len(_sp30)} setups · {_cut30.strftime('%d %b')} → {_today.strftime('%d %b %Y')} · Screener: {_src_label}")
+    st.divider()
 
-        if _sp30.empty:
-            st.info("No setups generated in the last 30 days.")
+    # ── Active positions: unrealised P&L ─────────────────────────────────────
+    st.markdown("##### Active Positions — Unrealised P&L")
+
+    if active.empty:
+        st.caption("No active positions right now.")
+    else:
+        act_rows = []
+        for _, r in active.iterrows():
+            sym      = r["symbol"]
+            entry    = float(r.get("actual_entry") or r["entry_price"])
+            t1       = float(r["target_1r"])
+            t2       = float(r["target_2r"])
+            sl       = float(r["stop_loss"])
+            cur_p    = cur_price.get(sym, None)
+            direction = r["direction"]
+
+            if cur_p and entry > 0:
+                if direction == "LONG":
+                    unreal_pct = (cur_p - entry) / entry * 100
+                else:
+                    unreal_pct = (entry - cur_p) / entry * 100
+                dist_t1 = (t1 - cur_p) / cur_p * 100 if direction == "LONG" else (cur_p - t1) / cur_p * 100
+                dist_t2 = (t2 - cur_p) / cur_p * 100 if direction == "LONG" else (cur_p - t2) / cur_p * 100
+                dist_sl = (cur_p - sl) / cur_p * 100 if direction == "LONG" else (sl - cur_p) / cur_p * 100
+            else:
+                unreal_pct = dist_t1 = dist_t2 = dist_sl = None
+
+            act_rows.append({
+                "Symbol":      sym,
+                "Dir":         direction,
+                "Sector":      r["sector"],
+                "Entry":       round(entry, 2),
+                "Current":     round(cur_p, 2) if cur_p else "—",
+                "Unreal %":    round(unreal_pct, 1) if unreal_pct is not None else "—",
+                "→T1 %":       f"{dist_t1:+.1f}%" if dist_t1 is not None else "—",
+                "→T2 %":       f"{dist_t2:+.1f}%" if dist_t2 is not None else "—",
+                "SL gap %":    f"{dist_sl:+.1f}%" if dist_sl is not None else "—",
+                "Quality":     int(r["quality_score"]),
+                "Opened":      r["created_date"].strftime("%d %b"),
+            })
+
+        act_df = pd.DataFrame(act_rows)
+
+        def _colour_unreal(val):
+            if isinstance(val, (int, float)):
+                c = "#22c55e" if val >= 0 else "#ef4444"
+                return f"color:{c}; font-weight:700"
+            return ""
+
+        st.dataframe(
+            act_df.style.map(_colour_unreal, subset=["Unreal %"]),
+            width='stretch', hide_index=True,
+        )
+
+    st.divider()
+
+    # ── Two-column block: closed journal + outcome donut ─────────────────────
+    col_tbl, col_chart = st.columns([2, 1])
+
+    with col_tbl:
+        st.markdown("##### Closed Setups Journal")
+        if closed.empty:
+            st.caption("No closed setups yet.")
         else:
-            _fc1,_fc2,_fc3,_fc4 = st.columns(4)
-            with _fc1:
-                _flt_cls = st.multiselect(
-                    "Classification",
-                    list(_CLS_COLORS.keys()),
-                    default=["🟢 CAPTURED EDGE","🟡 MISSED VALID EDGE","🔴 SYSTEM FAILURE"],
-                    key="sp_flt_cls",
-                )
-            with _fc2:
-                _flt_dir = st.multiselect("Direction", ["LONG","SHORT"],
-                                          default=["LONG","SHORT"], key="sp_flt_dir")
-            with _fc3:
-                _flt_src = st.multiselect("Screener", ["System","STM","Support Reversal"],
-                                          default=["System","STM","Support Reversal"],
-                                          key="sp_flt_src")
-            with _fc4:
-                _srt = st.selectbox("Sort by",
-                                    ["Missed Alpha First","Date (newest)","Quality Score","Risk %"],
-                                    key="sp_srt")
+            disp = closed[["created_date", "symbol", "direction", "sector",
+                           "outcome", "actual_pl_pct", "actual_rr",
+                           "holding_days", "quality_score"]].copy()
+            disp["created_date"] = disp["created_date"].dt.strftime("%d %b %Y")
+            disp.columns = ["Date", "Symbol", "Dir", "Sector",
+                            "Outcome", "P&L %", "R:R",
+                            "Days", "Quality"]
+            disp["P&L %"] = pd.to_numeric(disp["P&L %"], errors="coerce").round(1)
+            disp["R:R"]   = pd.to_numeric(disp["R:R"],   errors="coerce").round(2)
 
-            _view = _sp30[
-                _sp30["_cls"].isin(_flt_cls) &
-                _sp30["direction"].isin(_flt_dir) &
-                _sp30["source"].isin(_flt_src)
-            ].copy()
-
-            _so_map = {"🟢 CAPTURED EDGE":2,"🟡 MISSED VALID EDGE":0,
-                       "🔴 SYSTEM FAILURE":1,"🔵 CORRECT REJECTION":3,"❓ UNKNOWN":4}
-            if _srt == "Missed Alpha First":
-                _view["_so"] = _view["_cls"].map(_so_map)
-                _view = _view.sort_values(["_so","stock_perf_30d"], ascending=[True,False])
-            elif _srt == "Date (newest)":
-                _view = _view.sort_values("created_date", ascending=False)
-            elif _srt == "Quality Score":
-                _view = _view.sort_values("quality_score", ascending=False)
-            elif _srt == "Risk %":
-                _view = _view.sort_values("risk_pct")
-
-            _lc   = _view["_cls"].value_counts()
-            _pills = ""
-            for _lbl,(_fg,_bg) in _CLS_COLORS.items():
-                _cnt = _lc.get(_lbl,0)
-                if _cnt:
-                    _pills += (f'<span style="background:{_bg};color:{_fg};border-radius:16px;'
-                               f'padding:3px 12px;font-size:0.72rem;font-weight:700;margin-right:6px;">'
-                               f'{_lbl} {_cnt}</span>')
-            st.markdown(_pills + "<br>", unsafe_allow_html=True)
-
-            _tbl = _view[[
-                "created_date","symbol","source","direction","sector",
-                "stock_perf_30d","stock_perf_10d","risk_pct",
-                "quality_score","breadth_score","entry_price",
-                "status","outcome","_cls","_reason","_src",
-            ]].copy()
-            _tbl["created_date"]   = _tbl["created_date"].dt.strftime("%d %b")
-            _tbl["stock_perf_30d"] = pd.to_numeric(_tbl["stock_perf_30d"],errors="coerce").round(1)
-            _tbl["stock_perf_10d"] = pd.to_numeric(_tbl["stock_perf_10d"],errors="coerce").round(1)
-            _tbl["risk_pct"]       = pd.to_numeric(_tbl["risk_pct"],errors="coerce").round(1)
-            _tbl["breadth_score"]  = pd.to_numeric(_tbl["breadth_score"],errors="coerce").round(0)
-            _tbl["entry_price"]    = pd.to_numeric(_tbl["entry_price"],errors="coerce").round(2)
-            _tbl["cur_px"]  = _tbl["symbol"].map(_cur_px)
-            _tbl["vs_entry%"] = _tbl.apply(
-                lambda r: round((r["cur_px"]-r["entry_price"])/r["entry_price"]*100,1)
-                if pd.notna(r["cur_px"]) and r["entry_price"] and r["entry_price"]>0 else None,
-                axis=1
-            )
-            _tbl.columns = [
-                "Date","Symbol","Screener","Dir","Sector",
-                "30d%","10d%","Risk%","Quality",
-                "Breadth","Entry","Status","Outcome",
-                "Classification","Reason","DataSrc","CurPx","vsEntry%"
-            ]
-
-            def _cc(v):
-                c = _CLS_COLORS.get(v,("",""))
-                return f"color:{c[0]};font-weight:700" if c[0] else ""
-            def _sc(v):
-                return f"color:{_SRC_C.get(v,'#9ca3af')};font-size:0.72rem"
-            def _pc(v):
-                if isinstance(v,(int,float)) and not _math.isnan(float(v)):
-                    return f"color:{'#16a34a' if v>=0 else '#dc2626'}"
-                return ""
+            def _outcome_colour(val):
+                c = {"Win": "#22c55e", "Loss": "#ef4444", "Breakeven": "#f59e0b"}
+                return f"color:{c.get(val,'#94a3b8')}; font-weight:700"
 
             st.dataframe(
-                _tbl.style
-                    .map(_cc, subset=["Classification"])
-                    .map(_sc, subset=["DataSrc"])
-                    .map(_pc, subset=["30d%","10d%","vsEntry%"]),
-                width="stretch", hide_index=True,
-                height=min(700, 60+len(_tbl)*36),
+                disp.style
+                    .map(_outcome_colour, subset=["Outcome"])
+                    .map(lambda v: f"color:{'#22c55e' if isinstance(v,(int,float)) and v>=0 else '#ef4444'}" if isinstance(v,(int,float)) else "", subset=["P&L %"]),
+                width='stretch', hide_index=True,
+            )
+
+    with col_chart:
+        st.markdown("##### Outcome Breakdown")
+        if n_closed == 0:
+            st.caption("No closed setups yet.")
+        else:
+            outcome_counts = closed["outcome"].value_counts()
+            colours = {"Win": "#22c55e", "Loss": "#ef4444",
+                       "Breakeven": "#f59e0b", "Expired": "#94a3b8"}
+            fig_d = go.Figure(go.Pie(
+                labels=outcome_counts.index.tolist(),
+                values=outcome_counts.values.tolist(),
+                hole=0.55,
+                marker_colors=[colours.get(o, "#94a3b8") for o in outcome_counts.index],
+                textinfo="label+percent",
+                textfont_size=11,
+            ))
+            fig_d.update_layout(
+                height=220,
+                margin={"l": 0, "r": 0, "t": 8, "b": 8},
+                showlegend=False,
+                paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_d, width='stretch')
+
+            if n_wins > 0 and n_losses > 0:
+                st.markdown(
+                    f"<div style='text-align:center;font-size:0.8rem;color:#64748b;'>"
+                    f"Avg win <b style='color:#22c55e'>{avg_win_pct:+.1f}%</b> &nbsp;·&nbsp; "
+                    f"Avg loss <b style='color:#ef4444'>{avg_loss_pct:+.1f}%</b><br>"
+                    f"Expectancy R:R <b>{avg_rr:.2f}x</b></div>",
+                    unsafe_allow_html=True,
+                )
+
+    st.divider()
+
+    # ── Sector performance heatmap ────────────────────────────────────────────
+    col_sec, col_qs = st.columns(2)
+
+    with col_sec:
+        st.markdown("##### Win Rate by Sector")
+        if closed.empty or "sector" not in closed.columns:
+            st.caption("No data yet.")
+        else:
+            sec_grp = closed.groupby("sector").agg(
+                Setups=("id", "count"),
+                Wins=("outcome", lambda x: (x == "Win").sum()),
+            ).reset_index()
+            sec_grp["Win Rate %"] = (sec_grp["Wins"] / sec_grp["Setups"] * 100).round(1)
+            sec_grp = sec_grp[sec_grp["Setups"] >= 1].sort_values("Win Rate %", ascending=True)
+
+            if sec_grp.empty:
+                st.caption("No data yet.")
+            else:
+                fig_s = go.Figure(go.Bar(
+                    x=sec_grp["Win Rate %"],
+                    y=sec_grp["sector"],
+                    orientation="h",
+                    marker_color=[
+                        "#22c55e" if v >= 55 else "#fbbf24" if v >= 40 else "#ef4444"
+                        for v in sec_grp["Win Rate %"]
+                    ],
+                    text=sec_grp.apply(
+                        lambda r: f"{r['Win Rate %']:.0f}% ({r['Wins']}/{r['Setups']})", axis=1
+                    ),
+                    textposition="outside",
+                    textfont={"size": 9},
+                ))
+                fig_s.update_layout(
+                    height=max(180, len(sec_grp) * 28),
+                    margin={"l": 4, "r": 60, "t": 8, "b": 8},
+                    xaxis={"ticksuffix": "%", "range": [0, 115]},
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_s, width='stretch')
+
+    with col_qs:
+        st.markdown("##### Quality Score vs Win Rate")
+        if closed.empty:
+            st.caption("No data yet.")
+        else:
+            qs_grp = closed.groupby("quality_score").agg(
+                Setups=("id", "count"),
+                Wins=("outcome", lambda x: (x == "Win").sum()),
+            ).reset_index()
+            qs_grp["Win Rate %"] = (qs_grp["Wins"] / qs_grp["Setups"] * 100).round(1)
+            qs_grp["quality_score"] = qs_grp["quality_score"].astype(str)
+
+            if qs_grp.empty:
+                st.caption("No data yet.")
+            else:
+                fig_q = go.Figure(go.Bar(
+                    x=qs_grp["quality_score"],
+                    y=qs_grp["Win Rate %"],
+                    marker_color=[
+                        "#22c55e" if v >= 55 else "#fbbf24" if v >= 40 else "#ef4444"
+                        for v in qs_grp["Win Rate %"]
+                    ],
+                    text=[f"{v:.0f}%<br>({n} setups)" for v, n in
+                          zip(qs_grp["Win Rate %"], qs_grp["Setups"])],
+                    textposition="outside",
+                    textfont={"size": 9},
+                ))
+                fig_q.update_layout(
+                    height=280,
+                    margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                    xaxis={"title": "Quality Score (0–4)"},
+                    yaxis={"ticksuffix": "%", "range": [0, 115]},
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_q, width='stretch')
+                st.caption("Higher quality score should trend toward higher win rate as data accumulates.")
+
+    st.divider()
+
+    # ── Monthly generation volume ──────────────────────────────────────────────
+    st.markdown("##### Setup Generation Volume (by month & direction)")
+    if sys_sp.empty:
+        st.caption("No data.")
+    else:
+        sys_sp["month"] = sys_sp["created_date"].dt.to_period("M").astype(str)
+        monthly = sys_sp.groupby(["month", "direction"]).size().reset_index(name="count")
+        if not monthly.empty:
+            fig_m = px.bar(
+                monthly, x="month", y="count", color="direction",
+                color_discrete_map={"LONG": "#22c55e", "SHORT": "#ef4444"},
+                text="count",
+                labels={"month": "", "count": "Setups", "direction": ""},
+            )
+            fig_m.update_traces(textposition="outside", textfont_size=9)
+            fig_m.update_layout(
+                height=240,
+                margin={"l": 4, "r": 4, "t": 8, "b": 8},
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                legend={"orientation": "h", "y": 1.1},
+                barmode="stack",
+            )
+            st.plotly_chart(fig_m, width='stretch')
+
+    # ── Pending setups summary ────────────────────────────────────────────────
+    if not pending.empty:
+        with st.expander(f"🕐 Pending Setups ({len(pending)}) — waiting for entry trigger"):
+            pend_disp = pending[["created_date", "symbol", "direction", "sector",
+                                 "entry_price", "stop_loss", "target_1r",
+                                 "risk_pct", "quality_score"]].copy()
+            pend_disp["created_date"] = pend_disp["created_date"].dt.strftime("%d %b %Y")
+            pend_disp.columns = ["Date", "Symbol", "Dir", "Sector",
+                                  "Entry", "SL", "T1", "Risk %", "Quality"]
+            st.dataframe(pend_disp, width='stretch', hide_index=True)
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # STM SCREENER — KIRAN SETUP CROSS-REFERENCE
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("##### 🔎 STM Screener — Kiran Setup Cross-Reference")
+    st.caption(
+        "STM results with a column showing whether Kiran independently has an open setup. "
+        "Both screeners work on their own logic — this is purely informational."
+    )
+
+    with st.spinner("Running STM screener…"):
+        _w = load_weinstein_data()
+        _stm = _run_stm_screener(data, _w)
+
+    # ── STM gate status (compact pills) ──────────────────────────────────────
+    def _mini_pill(label, passed):
+        col  = "#22c55e" if passed else "#ef4444"
+        icon = "✔" if passed else "✖"
+        return (
+            f'<span style="background:{"#f0fdf4" if passed else "#fff5f5"};'
+            f'border:1px solid {col}55;border-radius:20px;padding:3px 10px;'
+            f'font-size:0.7rem;color:{col};font-weight:700;margin-right:6px;">'
+            f'{icon} {label}</span>'
+        )
+
+    pills_html = "".join(_mini_pill(lbl, ok) for lbl, ok, _ in _stm["gates"])
+    st.markdown(
+        f'<div style="margin-bottom:10px;">STM gates: {pills_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if not _stm["all_pass"]:
+        st.info("STM market gates are not all active — cross-reference will show when conditions are met.")
+    else:
+        stm_result = _stm["result"]
+
+        if stm_result.empty:
+            st.info("STM screener returned no stocks under current conditions.")
+        else:
+            # Build Kiran open LONG symbol set
+            kiran_open = pd.concat([pending, active], ignore_index=True) \
+                if (not pending.empty or not active.empty) else pd.DataFrame()
+            kiran_long = kiran_open[kiran_open["direction"] == "LONG"] \
+                if not kiran_open.empty else pd.DataFrame()
+            kiran_syms = set(kiran_long["symbol"].tolist()) if not kiran_long.empty else set()
+
+            # STM result with Kiran flag
+            xref = stm_result.reset_index()[[
+                "symbol", "sector", "as_of_date", "latest_close",
+                "rs", "perf_30d", "range_5d_pct", "dist_21ma_pct", "avg_vol_10d",
+            ]].copy()
+            xref["kiran_setup"] = xref["symbol"].apply(
+                lambda s: "✔ Has setup" if s in kiran_syms else "— No setup"
+            )
+            xref["avg_vol_10d"] = (xref["avg_vol_10d"] / 1_000).round(0).astype(int)
+            xref["as_of_date"]  = pd.to_datetime(xref["as_of_date"]).dt.strftime("%d %b %Y")
+            xref = xref.sort_values("rs", ascending=False).reset_index(drop=True)
+            xref.index = xref.index + 1
+
+            n_with    = (xref["kiran_setup"] == "✔ Has setup").sum()
+            n_without = (xref["kiran_setup"] == "— No setup").sum()
+
+            xm1, xm2, xm3 = st.columns(3)
+            xm1.metric("STM stocks",          len(xref))
+            xm2.metric("Kiran also has setup", n_with)
+            xm3.metric("No Kiran setup",       n_without)
+
+            xref.columns = [
+                "Symbol", "Sector", "As Of", "Close",
+                "RS %", "30d %", "5d Range %", "Dist 21MA %", "Vol 10d (K)",
+                "Kiran Setup",
+            ]
+
+            def _kiran_col(s):
+                return [
+                    "color:#22c55e;font-weight:700" if v == "✔ Has setup"
+                    else "color:#94a3b8"
+                    for v in s
+                ]
+
+            st.dataframe(
+                xref.style
+                    .apply(_kiran_col, subset=["Kiran Setup"])
+                    .apply(lambda s: ["color:#22c55e;font-weight:bold" if v > 0
+                                      else "color:#ef4444;font-weight:bold" for v in s],
+                           subset=["RS %", "30d %"])
+                    .format({
+                        "Close": "{:.2f}", "RS %": "{:+.2f}", "30d %": "{:+.2f}",
+                        "5d Range %": "{:.2f}", "Dist 21MA %": "{:+.2f}",
+                    }),
+                width='stretch', hide_index=False,
+                height=min(600, 60 + len(xref) * 36),
             )
             st.caption(
-                "**DataSrc:** 🟢 OBSERVED = DB records &nbsp;|&nbsp; "
-                "🟣 INFERRED = screener rules &nbsp;|&nbsp; ⚪ UNKNOWN = missing data"
+                "Kiran Setup column shows whether Kiran independently generated an open LONG setup "
+                "for that stock. '— No setup' simply means Kiran hasn't flagged it — "
+                "both screeners operate on their own criteria."
             )
-            st.markdown("---")
-
-            # Screener Attribution
-            st.markdown("##### 🔬 Screener Attribution")
-            _n_all  = len(_view)
-            _n_cap  = (_view["_cls"]=="🟢 CAPTURED EDGE").sum()
-            _n_mis  = (_view["_cls"]=="🟡 MISSED VALID EDGE").sum()
-            _n_rej  = (_view["_cls"]=="🔵 CORRECT REJECTION").sum()
-            _n_fail = (_view["_cls"]=="🔴 SYSTEM FAILURE").sum()
-            _prec   = round(_n_cap/max(_n_cap+_n_fail,1)*100,1)
-            _rec    = round(_n_cap/max(_n_cap+_n_mis,1)*100,1)
-
-            _at1,_at2 = st.columns(2)
-            with _at1:
-                st.markdown("**Screener Performance**")
-                _attr_df = pd.DataFrame([
-                    {"Metric":"Setups Generated (30d)", "Value":_n_all,          "Source":"OBSERVED"},
-                    {"Metric":"🟢 Captured Edges",      "Value":_n_cap,          "Source":"OBSERVED"},
-                    {"Metric":"🟡 Missed Valid Edges",   "Value":_n_mis,          "Source":"INFERRED"},
-                    {"Metric":"🔵 Correct Rejections",   "Value":_n_rej,          "Source":"INFERRED"},
-                    {"Metric":"🔴 System Failures",      "Value":_n_fail,         "Source":"OBSERVED"},
-                    {"Metric":"Precision",               "Value":f"{_prec}%",     "Source":"COMPUTED"},
-                    {"Metric":"Recall",                  "Value":f"{_rec}%",      "Source":"COMPUTED"},
-                ])
-                def _asrc(v):
-                    return f"color:{_SRC_C.get(v,'#374151')};font-size:0.72rem;font-weight:600"
-                st.dataframe(_attr_df.style.map(_asrc,subset=["Source"]),
-                             hide_index=True, width="stretch")
-
-                # Current STM gate state
-                st.markdown("**STM Gate State** `[OBSERVED]`")
-                _wd_s = load_weinstein_data()
-                _stm_s = _run_stm_screener(data, _wd_s)
-                _gh = ""
-                for _gl,_gok,_gv in _stm_s["gates"]:
-                    _gc2 = "#16a34a" if _gok else "#dc2626"
-                    _gb2 = "#dcfce7" if _gok else "#fee2e2"
-                    _gh += (f'<span style="background:{_gb2};color:{_gc2};border-radius:14px;'
-                            f'padding:3px 10px;font-size:0.68rem;font-weight:700;'
-                            f'margin:2px 4px 2px 0;display:inline-block;">'
-                            f'{"✔" if _gok else "✖"} {_gl} ({_gv})</span>')
-                st.markdown(_gh, unsafe_allow_html=True)
-
-            with _at2:
-                st.markdown("**False Blocking Pressure by Quality Score** `[INFERRED]`")
-                _rej_v = _view[_view["_cls"]=="🔵 CORRECT REJECTION"]
-                if not _rej_v.empty:
-                    _qsr = _rej_v["quality_score"].value_counts().sort_index()
-                    _fbf = go.Figure(go.Bar(
-                        x=[str(k) for k in _qsr.index], y=_qsr.values,
-                        marker_color=["#22c55e" if q>=3 else "#fbbf24" if q==2 else "#ef4444"
-                                      for q in _qsr.index],
-                        text=_qsr.values, textposition="outside", textfont_size=9,
-                    ))
-                    _fbf.update_layout(
-                        xaxis_title="Quality Score", yaxis_title="Rejections",
-                        height=200, margin={"l":4,"r":4,"t":8,"b":8},
-                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    )
-                    st.plotly_chart(_fbf, width="stretch")
-                    st.caption("High quality in rejection bucket = macro gate over-filtering valid patterns")
-                else:
-                    st.caption("No correct rejections in filtered view.")
-
-                st.markdown("**Breadth @ Generation** `[OBSERVED]`")
-                _bsd = _view["breadth_score"].dropna()
-                if not _bsd.empty:
-                    _bsf = go.Figure(go.Histogram(x=_bsd, nbinsx=10,
-                                                  marker_color="#6366f1", opacity=0.8))
-                    _bsf.add_vline(x=55, line_dash="dash", line_color="#22c55e",
-                                   annotation_text="System gate (55)")
-                    _bsf.add_vline(x=70, line_dash="dash", line_color="#f59e0b",
-                                   annotation_text="STM gate (70)")
-                    _bsf.update_layout(
-                        xaxis_title="Breadth Score", yaxis_title="Count",
-                        height=180, margin={"l":4,"r":4,"t":8,"b":8},
-                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    )
-                    st.plotly_chart(_bsf, width="stretch")
-
-            st.markdown("---")
-
-            # Forensic Drill-Down
-            st.markdown("##### 🔍 Forensic Drill-Down")
-            _drill_syms = sorted(_view["symbol"].unique().tolist())
-            _drill_sel  = st.selectbox("Select symbol for forensic trace",
-                                       ["— select —"] + _drill_syms, key="sp_drill_m1")
-            if _drill_sel and _drill_sel != "— select —":
-                _drow = _view[_view["symbol"]==_drill_sel].sort_values("created_date",ascending=False).iloc[0]
-                _render_sp_forensic(_drow)
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # MODE 2 — SINGLE STOCK FORENSIC TRACE
-    # ═══════════════════════════════════════════════════════════════════════
-    elif _mode == "MODE2":
-        _sym_m2 = st.session_state.get("sp_stock","")
-        if not _sym_m2:
-            st.info("Enter a stock symbol in the field above to begin forensic trace.")
-        else:
-            _m2_start = st.session_state.get("sp_m2_from", _today - _tdc(days=30))
-            _m2_end   = st.session_state.get("sp_m2_to",   _today)
-            _rows_m2  = _sys[
-                (_sys["symbol"] == _sym_m2) &
-                (_sys["created_date"].dt.date >= _m2_start) &
-                (_sys["created_date"].dt.date <= _m2_end)
-            ].sort_values("created_date", ascending=False)
-
-            st.markdown(f"##### 🔍 MODE 2 — {_sym_m2} Forensic Trace")
-            if _rows_m2.empty:
-                st.warning(f"[OBSERVED] No setups for **{_sym_m2}** in selected range (screener: {_src_label}).")
-                _cp = _cur_px.get(_sym_m2)
-                if _cp:
-                    st.metric("Current Price", f"{_cp:.2f}")
-            else:
-                st.caption(f"[OBSERVED] {len(_rows_m2)} setup(s) found")
-                for _, _r2 in _rows_m2.iterrows():
-                    _lbl2 = _r2.get("_cls","❓ UNKNOWN")
-                    _dt2  = _r2["created_date"].strftime("%d %b %Y")
-                    with st.expander(
-                        f"{_dt2} · {_r2['source']} · {_r2['direction']} · Status: {_r2.get('status','?')} · {_lbl2}",
-                        expanded=True,
-                    ):
-                        _render_sp_forensic(_r2)
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # MODE 3 — SCREENER PERFORMANCE AUDIT
-    # ═══════════════════════════════════════════════════════════════════════
-    elif _mode == "MODE3":
-        _scrn_m3 = st.session_state.get("sp_screener","Setup")
-        _src_key_m3 = {"Setup": "System", "STM": "STM", "Support Reversal": "Support Reversal"}[_scrn_m3]
-        st.markdown(f"##### 🔬 MODE 3 — {_scrn_m3} Screener Performance Audit")
-        _m3_from_dt = st.session_state.get("sp_m3_from", _today - _tdc(days=30))
-        _m3_to_dt   = st.session_state.get("sp_m3_to",   _today)
-        st.caption(f"[OBSERVED + INFERRED] {_m3_from_dt.strftime('%d %b')} → {_m3_to_dt.strftime('%d %b %Y')}")
-
-        _m3d = _sys[
-            (_sys["source"] == _src_key_m3) &
-            (_sys["created_date"].dt.date >= _m3_from_dt) &
-            (_sys["created_date"].dt.date <= _m3_to_dt)
-        ].copy()
-
-        if _m3d.empty:
-            st.info(f"No {_scrn_m3} setups found in the selected date range.")
-        else:
-            _m3c  = _m3d["_cls"].value_counts()
-            _m3n  = len(_m3d)
-            _m3w  = _m3c.get("🟢 CAPTURED EDGE", 0)
-            _m3mv = _m3c.get("🟡 MISSED VALID EDGE", 0)
-            _m3cr = _m3c.get("🔵 CORRECT REJECTION", 0)
-            _m3sf = _m3c.get("🔴 SYSTEM FAILURE", 0)
-            _m3pr = round(_m3w/max(_m3w+_m3sf,1)*100,1)
-            _m3rc = round(_m3w/max(_m3w+_m3mv,1)*100,1)
-
-            _mk1,_mk2,_mk3,_mk4 = st.columns(4)
-            _mk1.metric("Total Setups",    str(_m3n))
-            _mk2.metric("Precision",       f"{_m3pr}%", help="Captured/(Captured+Failures)")
-            _mk3.metric("Recall",          f"{_m3rc}%", help="Captured/(Captured+Missed)")
-            _mk4.metric("System Failures", str(_m3sf))
-
-            def _cls_bar(df, title):
-                _cv = df["_cls"].value_counts()
-                if _cv.empty:
-                    st.caption(f"No {title} setups.")
-                    return
-                _cbf = go.Figure(go.Bar(
-                    x=_cv.index.tolist(), y=_cv.values.tolist(),
-                    marker_color=[
-                        "#22c55e" if "CAPTURED" in l else "#d97706" if "MISSED" in l
-                        else "#1d4ed8" if "CORRECT" in l else "#dc2626"
-                        for l in _cv.index
-                    ],
-                    text=_cv.values, textposition="outside", textfont_size=9,
-                ))
-                _cbf.update_layout(
-                    title=title, height=230,
-                    margin={"l":4,"r":4,"t":30,"b":60},
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    xaxis_tickangle=-15,
-                )
-                st.plotly_chart(_cbf, width="stretch")
-
-            _m3d1, _m3d2 = st.columns(2)
-            with _m3d1: _cls_bar(_m3d[_m3d["direction"]=="LONG"],  "LONG Setups")
-            with _m3d2: _cls_bar(_m3d[_m3d["direction"]=="SHORT"], "SHORT Setups")
-
-            st.markdown("**Failure Mode Clustering** `[OBSERVED]`")
-            _fails = _m3d[_m3d["_cls"].isin(["🟡 MISSED VALID EDGE","🔴 SYSTEM FAILURE"])]
-            if not _fails.empty:
-                _fmc = _fails.groupby(["quality_score","_cls"]).size().reset_index(name="count")
-                _fmf = px.bar(_fmc, x="quality_score", y="count", color="_cls", barmode="group",
-                              color_discrete_map={"🟡 MISSED VALID EDGE":"#d97706","🔴 SYSTEM FAILURE":"#dc2626"},
-                              labels={"quality_score":"Quality Score","count":"Count","_cls":""})
-                _fmf.update_layout(height=220, margin={"l":4,"r":4,"t":8,"b":8},
-                                   paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-                st.plotly_chart(_fmf, width="stretch")
-            else:
-                st.caption("No failures in selected window.")
-
-            st.markdown("**Sector-Level Attribution** `[OBSERVED]`")
-            _sec_attr = _m3d.groupby(["sector","_cls"]).size().reset_index(name="count")
-            _sec_pvt  = _sec_attr.pivot(index="sector", columns="_cls", values="count").fillna(0)
-            for _lbl in _CLS_COLORS:
-                if _lbl not in _sec_pvt.columns:
-                    _sec_pvt[_lbl] = 0
-            _sec_pvt = _sec_pvt[[c for c in _CLS_COLORS if c in _sec_pvt.columns]].reset_index()
-            st.dataframe(_sec_pvt, hide_index=True, width="stretch")
-            st.caption("[INFERRED] Sectors with highest Missed Valid Edge = systematic under-performance in that sector")
-
-            # STM: also show live gate state
-            if _src_key_m3 == "STM":
-                st.markdown("**Live STM Gate State** `[OBSERVED]`")
-                _wd_m3  = load_weinstein_data()
-                _stm_m3 = _run_stm_screener(data, _wd_m3)
-                _gh3 = ""
-                for _gl,_gok,_gv in _stm_m3["gates"]:
-                    _gc3 = "#16a34a" if _gok else "#dc2626"
-                    _gb3 = "#dcfce7" if _gok else "#fee2e2"
-                    _gh3 += (f'<span style="background:{_gb3};color:{_gc3};border-radius:14px;'
-                             f'padding:3px 10px;font-size:0.68rem;font-weight:700;'
-                             f'margin:2px 4px 2px 0;display:inline-block;">'
-                             f'{"✔" if _gok else "✖"} {_gl} ({_gv})</span>')
-                st.markdown(_gh3, unsafe_allow_html=True)
-                st.caption("⚠ Q1–Q3 per-row gate detail (RS%, 5d range, dist to 21MA) is not stored — shows UNKNOWN in forensic trace. Save these fields at generation time for full per-row audit.")
-
-    # ── Export ─────────────────────────────────────────────────────────────────
-    if _export_btn:
-        _exp_sp = _sys[_sys["created_date"].dt.date >= _cut30].copy()
-        _exp_lines = [
-            "# Setup Perf Audit Report",
-            f"Generated: {_today.strftime('%Y-%m-%d')} | Period: last 30 days | Screener: {_src_label}",
-            "",
-            "## Screener Health",
-            f"- Capture Rate: {_ocr30}%",
-            f"- Traded Win Rate: {_wr(_tr30)}%",
-            f"- Quality≥3 Rate: {_q3r30}%",
-            f"- High-Quality Losses: {_hf30}",
-            f"- Regime Long Bias: {_reg30}%",
-            "",
-            "## Classification Summary (30d)",
-        ]
-        for _lbl in _CLS_COLORS:
-            _cnt2 = (_exp_sp["_cls"] == _lbl).sum()
-            if _cnt2:
-                _exp_lines.append(f"- {_lbl}: {_cnt2}")
-        _exp_lines += [
-            "",
-            "## Setup Detail",
-            "| Date | Symbol | Screener | Dir | Classification | Reason | DataSrc | 30d% | Risk% | Quality |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-        ]
-        for _, _er in _exp_sp.iterrows():
-            _exp_lines.append(
-                f"| {_er['created_date'].strftime('%d %b')} "
-                f"| {_er['symbol']} | {_er.get('source','System')} | {_er['direction']} "
-                f"| {_er['_cls']} | {_er['_reason']} | {_er['_src']} "
-                f"| {_er.get('stock_perf_30d','?')} "
-                f"| {_er.get('risk_pct','?')} "
-                f"| {_er.get('quality_score','?')} |"
-            )
-        _exp_md = "\n".join(_exp_lines)
-        st.download_button(
-            "⬇ Download Audit Report (Markdown)",
-            _exp_md,
-            file_name=f"setup_audit_{_today.strftime('%Y%m%d')}.md",
-            mime="text/markdown",
-        )
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE 10 — STM  (Short-Term Momentum Screener)
+# ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[8]:  # STM
 
     st.markdown("### 🔎 STM — Short-Term Momentum Screener")
@@ -6188,3 +5760,216 @@ elif cur == PAGES[16]:  # Flows
     render_flows_page()
 
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 17 — 🏹 Minervini Setup Screener
+# Read-only. Signals from Zeeshan's confirmed 8-trade entry pattern.
+# Writes ONLY to trade_setups (source="Minervini") via explicit Save button.
+# Does NOT modify any other page, table, or data source.
+# ══════════════════════════════════════════════════════════════════════════════
+elif cur == PAGES[17]:  # Minervini Setup
+
+    st.markdown("### 🏹 Minervini Setup — Breakout Screener")
+
+    with st.expander("📖 How this screener works — read before trading", expanded=False):
+        st.markdown("""
+**Derived from systematic analysis of 8 confirmed real trades** (DGKC×2, FFC×3, UBL×2, TPLP×1 — 2021–2025).
+Every condition below was present in 7 or 8 of those entries.
+
+---
+#### LONG Signal — all liquid stocks
+| Condition | Rule | Evidence |
+|---|---|---|
+| **Stage 2** | close > SMA20 > SMA50 > SMA200 | 7/8 entries in confirmed uptrend |
+| **Pivot Breakout** | close > 60-day highest close (prior day) | **8/8 entries** — THE core signal |
+| **Volume** | today ≥ 2× 20-day avg volume | Institutional participation on the break |
+| **Market** | KSE-100 close > 50 SMA | 8/8 entries in bull market |
+| **RS Rating** | Cross-sectional percentile ≥ 60 | Avg 74 at entry, range 53–87 |
+| **Liquidity** | 20-day avg volume ≥ 100,000 shares | Filters untradeable names |
+| **Volatility** | ATR14 between 1% and 6% of price | Avg 2.85% — controlled breakouts only |
+
+#### SHORT Signal — DFC counters only
+Inverse rules: Stage 4 (close < SMA20 < SMA50 < SMA200), close below 60-day low,
+volume ≥ 2×, KSE-100 below SMA50, RS Rating ≤ 40. Only PSX-shortable (DFC) stocks.
+
+#### RS Rating explained
+Cross-sectional **percentile rank** of multi-period momentum:
+40% × 1yr return + 30% × 6m + 20% × 3m + 10% × 1m.
+Rating 75 = stock stronger than 75% of all PSX stocks on that day.
+
+#### Known limitation
+Stocks post-bonus-issue have distorted SMAs for ~200 days. Stage 2 may fail
+on recently ex-dated stocks until SMA200 normalises on adjusted prices.
+
+---
+*Signals are read-only. Use **Save to Setup Perf** to track them over time.*
+        """)
+
+    # ── Load prices ───────────────────────────────────────────────────────────
+    with st.spinner("Loading price data…"):
+        _mv_prices = load_stm_prices()
+
+    if _mv_prices.empty:
+        st.error("No price data available. Run a data update first.")
+        st.stop()
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _load_mv_index():
+        from database import get_db
+        db = get_db()
+        rows = db.execute_query(
+            "SELECT date, close FROM index_prices WHERE symbol='KSE-100' ORDER BY date"
+        )
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows, columns=["date", "close"])
+        df["date"]  = pd.to_datetime(df["date"])
+        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        return df.sort_values("date").rename(columns={"close": "idx_close"})
+
+    _mv_index = _load_mv_index()
+    if _mv_index.empty:
+        st.error("No index data available.")
+        st.stop()
+
+    # ── Run signal engine ─────────────────────────────────────────────────────
+    with st.spinner("Computing Minervini signals across full universe…"):
+        from breakout_signal import build_features as _mv_build, get_signals as _mv_get
+        _mv_df   = _mv_build(_mv_prices, _mv_index)
+
+    _mv_latest          = _mv_df["date"].max()
+    _mv_longs, _mv_shorts = _mv_get(_mv_df, _mv_latest)
+
+    # ── Market regime banner ──────────────────────────────────────────────────
+    _mv_idx_close = float(_mv_index[_mv_index["date"] <= _mv_latest].tail(1)["idx_close"].iloc[0])
+    _mv_idx_sma50 = float(_mv_index["idx_close"].rolling(50).mean().iloc[-1])
+    _mv_mkt_up    = _mv_idx_close > _mv_idx_sma50
+    _mv_mkt_col   = "#16a34a" if _mv_mkt_up else "#dc2626"
+    _mv_mkt_txt   = "BULL — KSE-100 above 50 SMA" if _mv_mkt_up else "BEAR — KSE-100 below 50 SMA"
+    st.markdown(
+        f'<div style="background:{"#f0fdf4" if _mv_mkt_up else "#fff5f5"};'
+        f'border-left:4px solid {_mv_mkt_col};padding:8px 14px;border-radius:6px;margin-bottom:10px;">'
+        f'<b style="color:{_mv_mkt_col};">Market: {_mv_mkt_txt}</b>'
+        f' &nbsp;·&nbsp; KSE-100: <b>{_mv_idx_close:,.0f}</b>'
+        f' &nbsp;·&nbsp; SMA50: <b>{_mv_idx_sma50:,.0f}</b>'
+        f' &nbsp;·&nbsp; As of: {_mv_latest.strftime("%d %b %Y")}'
+        f'</div>', unsafe_allow_html=True
+    )
+
+    # ── Gate funnel KPIs ──────────────────────────────────────────────────────
+    _mv_day      = _mv_df[_mv_df["date"] == _mv_latest]
+    _mv_total    = _mv_day["symbol"].nunique()
+    _mv_s2       = int(_mv_day["stage2"].sum())
+    _mv_bo       = int((_mv_day["stage2"] & _mv_day["bo_long"]).sum())
+    _mv_nl       = len(_mv_longs)
+    _mv_ns       = len(_mv_shorts)
+
+    _kc = st.columns(5)
+    for _col, _lbl, _val, _clr in [
+        (_kc[0], "Universe",      f"{_mv_total:,}",  "#1d4ed8"),
+        (_kc[1], "Stage 2",       f"{_mv_s2:,}",     "#7c3aed"),
+        (_kc[2], "Broke Pivot",   f"{_mv_bo:,}",     "#d97706"),
+        (_kc[3], "LONG Signals",  f"{_mv_nl}",       "#16a34a"),
+        (_kc[4], "SHORT (DFC)",   f"{_mv_ns}",       "#dc2626"),
+    ]:
+        _col.markdown(
+            f'<div style="border:1px solid {_clr}33;border-top:3px solid {_clr};'
+            f'border-radius:8px;padding:10px;text-align:center;">'
+            f'<div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;'
+            f'letter-spacing:.06em;">{_lbl}</div>'
+            f'<div style="font-size:1.4rem;font-weight:800;color:{_clr};">{_val}</div>'
+            f'</div>', unsafe_allow_html=True
+        )
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Tabs ──────────────────────────────────────────────────────────────────
+    _mv_tab_l, _mv_tab_s = st.tabs([
+        f"📈 LONG Signals ({_mv_nl})",
+        f"📉 SHORT Signals — DFC only ({_mv_ns})"
+    ])
+
+    with _mv_tab_l:
+        if _mv_longs.empty:
+            st.info("No LONG signals today." if _mv_mkt_up else
+                    "⚠ Market in BEAR regime — LONG signals require KSE-100 above SMA50.")
+        else:
+            _ld = _mv_longs.copy()
+            _ld["Vol/Avg"]  = _ld["vol_ratio"].apply(lambda x: f"{x:.1f}×")
+            _ld["RS Rating"]= _ld["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
+            _ld["ATR%"]     = _ld["atr_pct"].apply(lambda x: f"{x:.2f}%")
+            _ld["DFC"]      = _ld["is_dfc"].map({True: "✓", False: ""})
+            _disp_cols      = ["symbol","close","sma20","sma50","sma200",
+                               "pivot_high","ATR%","Vol/Avg","RS Rating","rs_score","DFC"]
+            st.dataframe(_ld[_disp_cols].rename(columns={
+                "symbol":"Symbol","close":"Close","sma20":"SMA20","sma50":"SMA50",
+                "sma200":"SMA200","pivot_high":"Pivot High","rs_score":"RS Score%"
+            }), use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+            _sc1, _sc2 = st.columns([2, 3])
+            with _sc1:
+                _mv_save_btn = st.button(
+                    f"💾 Save {_mv_nl} signal(s) to Setup Perf",
+                    type="primary",
+                    help="Saves today's signals with source='Minervini' for audit in Setup Perf. "
+                         "Does not open trades or affect Trade Log."
+                )
+            with _sc2:
+                st.caption(
+                    "Saving records this screen's picks for later audit. "
+                    "It does **not** open a trade or affect the Trade Log."
+                )
+
+            if _mv_save_btn:
+                _date_str  = _mv_latest.strftime("%Y-%m-%d")
+                _existing  = get_trade_setups()
+                _ex_keys   = {
+                    (r.get("symbol",""), str(r.get("created_date",""))[:10], r.get("source",""))
+                    for r in (_existing or [])
+                }
+                _saved, _skipped = 0, 0
+                for _, _sr in _mv_longs.iterrows():
+                    if (_sr["symbol"], _date_str, "Minervini") in _ex_keys:
+                        _skipped += 1
+                        continue
+                    save_trade_setup({
+                        "created_date":    _date_str,
+                        "direction":       "LONG",
+                        "symbol":          _sr["symbol"],
+                        "sector":          "",
+                        "source":          "Minervini",
+                        "entry_price":     float(_sr["close"]),
+                        "stop_loss":       round(float(_sr["close"]) * 0.96, 2),
+                        "target_1r":       round(float(_sr["close"]) * 1.08, 2),
+                        "target_2r":       round(float(_sr["close"]) * 1.16, 2),
+                        "status":          "Pending",
+                        "quality_score":   int(min(round(float(_sr["rs_rating"]) / 20), 5)),
+                        "risk_pct":        4.0,
+                        "stock_perf_30d":  float(_sr.get("rs_score", 0)),
+                        "stock_perf_10d":  0.0,
+                        "sector_momentum": "",
+                        "breadth_score":   0.0,
+                        "sector_rank":     0,
+                    })
+                    _saved += 1
+                if _saved:
+                    st.success(f"✅ {_saved} signal(s) saved to Setup Perf (source=Minervini).")
+                if _skipped:
+                    st.info(f"ℹ {_skipped} already existed — skipped.")
+
+    with _mv_tab_s:
+        if _mv_shorts.empty:
+            st.info("No SHORT signals today." if not _mv_mkt_up else
+                    "⚠ Market in BULL regime — SHORT signals require KSE-100 below SMA50.")
+        else:
+            _sd = _mv_shorts.copy()
+            _sd["Vol/Avg"]  = _sd["vol_ratio"].apply(lambda x: f"{x:.1f}×")
+            _sd["RS Rating"]= _sd["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
+            _sd["ATR%"]     = _sd["atr_pct"].apply(lambda x: f"{x:.2f}%")
+            _sd_cols        = ["symbol","close","sma20","sma50","sma200",
+                               "pivot_low","ATR%","Vol/Avg","RS Rating","rs_score"]
+            st.dataframe(_sd[_sd_cols].rename(columns={
+                "symbol":"Symbol","close":"Close","sma20":"SMA20","sma50":"SMA50",
+                "sma200":"SMA200","pivot_low":"Pivot Low","rs_score":"RS Score%"
+            }), use_container_width=True, hide_index=True)
