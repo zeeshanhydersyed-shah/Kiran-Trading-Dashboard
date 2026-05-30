@@ -1,4 +1,4 @@
-﻿"""PSX Sector Performance Dashboard — KIRAN."""
+"""PSX Sector Performance Dashboard — KIRAN."""
 
 import json
 import sys
@@ -5816,17 +5816,14 @@ on recently ex-dated stocks until SMA200 normalises on adjusted prices.
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _load_mv_index():
-        from database import get_db
-        db = get_db()
-        rows = db.execute_query(
-            "SELECT date, close FROM index_prices WHERE symbol='KSE-100' ORDER BY date"
-        )
+        from database import get_index_prices
+        rows = get_index_prices("KSE-100")
         if not rows:
             return pd.DataFrame()
-        df = pd.DataFrame(rows, columns=["date", "close"])
+        df = pd.DataFrame(rows)
         df["date"]  = pd.to_datetime(df["date"])
-        df["close"] = pd.to_numeric(df["close"], errors="coerce")
-        return df.sort_values("date").rename(columns={"close": "idx_close"})
+        df["idx_close"] = pd.to_numeric(df["close"], errors="coerce")
+        return df[["date","idx_close"]].sort_values("date")
 
     _mv_index = _load_mv_index()
     if _mv_index.empty:
