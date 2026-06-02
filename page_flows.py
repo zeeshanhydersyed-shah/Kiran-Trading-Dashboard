@@ -24,6 +24,7 @@ Add "📡 Flows" to the PAGES list and at the bottom of dashboard.py:
         render_flows_page()
 """
 
+import os
 import sqlite3
 import re
 import time
@@ -31,13 +32,13 @@ import logging
 from contextlib import contextmanager
 from datetime import date as _date_cls, timedelta
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
 try:
     from config import DB_PATH
 except ImportError:
-    import os
     DB_PATH = os.path.join(os.path.dirname(__file__), "psx_data.db")
 
 logger = logging.getLogger(__name__)
@@ -917,470 +918,603 @@ def compute_signals(roll10: pd.DataFrame, roll5: pd.DataFrame, roll20: pd.DataFr
 # STREAMLIT PAGE RENDERER
 # ══════════════════════════════════════════════════════════════════════════════
 
-def render_flows_page():
-    """Entry point — called from dashboard.py."""
+# ══════════════════════════════════════════════════════════════════════════════
+# INTELLIGENCE ENGINE — helpers (called by _render_intelligence_section)
+# ══════════════════════════════════════════════════════════════════════════════
 
-    init_flows_table()
+_FLOW_SECTOR_MAP_INTEL = {
+    "CEMENT":           "CEMENT",
+    "COMM. BANKS":      "COMMERCIAL BANKS",
+    "FERTILIZER":       "FERTILIZER",
+    "FOOD & PERSON.":   "FOOD & PERSONAL CARE PRODUCTS",
+    "OIL & GAS EXP.":   "OIL & GAS EXPLORATION COMPANIES",
+    "OIL & GAS MKTG.":  "OIL & GAS MARKETING COMPANIES",
+    "POWER GEN.":       "POWER GENERATION & DISTRIBUTION",
+    "TECH. & COMM.":    "TECHNOLOGY & COMMUNICATION",
+    "TEXTILE COMP.":    "TEXTILE COMPOSITE",
+}
 
-    st.markdown("### 📡 Institutional Flows — FIPI / LIPI")
-    st.caption(
-        "Daily settlement data from NCCPL via khistocks.com. "
-        "Tracks where foreign and local institutional money is flowing "
-        "across PSX sectors. Regular market only — futures excluded from all signals."
+_SMART_CLIENTS_INTEL = {
+    "FOREIGN CORPORATES", "OVERSEAS PAKISTANI",
+    "BANKS / DFI", "COMPANIES", "INSURANCE COMPANIES", "BROKER PROPRIETARY TRADING",
+}
+
+_INTEL_LOG_PATH = os.path.join(os.path.dirname(__file__), "sector_flows_log.csv")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _intel_load_flows_agg() -> pd.DataFrame:
+    """Load + aggregate raw flows into (date, sector) frame with buy_ratio, rolling metrics."""
+    with _get_conn() as conn:
+        rows = conn.execute("""
+            SELECT date, sector, flow_type, client_type,
+                   buy_volume, sell_volume, net_volume, buy_value, sell_value
+            FROM market_flows
+            WHERE sector NOT IN ('ALL OTHER SECTORS','DEBT MARKET')
+              AND market_type = 'REGULAR'
+            ORDER BY date, sector
+        """).fetchall()
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame([dict(r) for r in rows])
+    df["date"] = pd.to_datetime(df["date"])
+    df["is_smart"] = df["client_type"].isin(_SMART_CLIENTS_INTEL)
+    df["abs_buy"]  = df["buy_volume"].clip(lower=0)
+    df["abs_sell"] = df["sell_volume"].abs()
+
+    grp = df.groupby(["date", "sector"])
+    agg = grp.agg(
+        total_buy_vol  =("abs_buy",    "sum"),
+        total_sell_vol =("abs_sell",   "sum"),
+        total_net_vol  =("net_volume", "sum"),
+    ).reset_index()
+
+    smart = (
+        df[df["is_smart"]]
+        .groupby(["date", "sector"])
+        .agg(smart_buy_vol=("abs_buy", "sum"), smart_sell_vol=("abs_sell", "sum"))
+        .reset_index()
+    )
+    agg = agg.merge(smart, on=["date", "sector"], how="left").fillna(0)
+
+    act = agg["total_buy_vol"] + agg["total_sell_vol"]
+    agg["buy_ratio"] = np.where(act > 0, agg["total_buy_vol"] / act, np.nan)
+
+    smart_act = agg["smart_buy_vol"] + agg["smart_sell_vol"]
+    agg["smart_buy_ratio"] = np.where(smart_act > 0, agg["smart_buy_vol"] / smart_act, np.nan)
+
+    agg = agg.sort_values(["sector", "date"])
+
+    agg["buy_ratio_3d_avg"] = (
+        agg.groupby("sector")["buy_ratio"]
+        .transform(lambda x: x.rolling(3, min_periods=1).mean())
+    )
+    agg["buy_ratio_5d_avg"] = (
+        agg.groupby("sector")["buy_ratio"]
+        .transform(lambda x: x.rolling(5, min_periods=1).mean())
     )
 
-    available = get_available_dates()
-    n_dates   = len(available)
+    def _consec(series, thr=0.55):
+        result, count = [], 0
+        for v in series:
+            count = (count + 1) if (pd.notna(v) and v > thr) else 0
+            result.append(count)
+        return result
 
-    # ── Top stats ─────────────────────────────────────────────────────────────
-    sc1, sc2, sc3 = st.columns(3)
-    sc1.metric("Trading Days Stored",  n_dates)
-    sc2.metric("Latest Date",  available[0]  if available else "—")
-    sc3.metric("Earliest Date", available[-1] if available else "—")
+    consec_all = []
+    for _, grp2 in agg.groupby("sector"):
+        consec_all.extend(_consec(grp2["buy_ratio"].values))
+    agg["consec_buy_days"] = consec_all
 
-    st.divider()
+    agg["vol_zscore"] = (
+        agg.groupby("sector")["total_buy_vol"]
+        .transform(lambda x: (x - x.rolling(20, min_periods=5).mean())
+                              / (x.rolling(20, min_periods=5).std() + 1e-9))
+    )
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # SECTION 1 — DATA COLLECTION
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("#### 🔄 Data Collection")
+    agg["psx_sector"] = agg["sector"].map(_FLOW_SECTOR_MAP_INTEL)
+    return agg.reset_index(drop=True)
 
-    # Playwright check
-    playwright_ok = True
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _intel_load_prices() -> pd.DataFrame:
+    """Sector median close per day for the tracked sectors (Jan 2026+)."""
+    psx_sectors = list(_FLOW_SECTOR_MAP_INTEL.values())
+    placeholders = ",".join("?" * len(psx_sectors))
+    with _get_conn() as conn:
+        rows = conn.execute(f"""
+            SELECT p.date, s.sector, AVG(p.close) AS close
+            FROM prices p
+            JOIN sectors s ON p.symbol = s.symbol
+            WHERE s.sector IN ({placeholders})
+              AND p.date >= '2026-01-01'
+            GROUP BY p.date, s.sector
+            ORDER BY s.sector, p.date
+        """, psx_sectors).fetchall()
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame([dict(r) for r in rows])
+    df["date"] = pd.to_datetime(df["date"])
+    df["ret_1d"] = df.groupby("sector")["close"].pct_change()
+    return df
+
+
+def _intel_build_fwd_returns(agg: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
+    """Attach fwd returns to the agg frame for pattern analysis."""
+    sp = prices.rename(columns={"sector": "psx_sector"}).sort_values(["psx_sector", "date"])
+    for lag in [5, 10, 20]:
+        sp[f"ret_fwd_{lag}d"] = (
+            sp.groupby("psx_sector")["close"]
+            .transform(lambda x: x.shift(-lag) / x - 1)
+        )
+    sp["ret_prior_5d"] = (
+        sp.groupby("psx_sector")["close"]
+        .transform(lambda x: x / x.shift(5) - 1)
+    )
+    return agg.merge(
+        sp[["date", "psx_sector", "ret_prior_5d",
+            "ret_fwd_5d", "ret_fwd_10d", "ret_fwd_20d"]],
+        on=["date", "psx_sector"], how="left",
+    )
+
+
+def _intel_pattern_stats(df: pd.DataFrame, mask: pd.Series, horizon: str = "ret_fwd_5d") -> dict:
     try:
-        import playwright  # noqa: F401
-    except ImportError:
-        playwright_ok = False
-        st.warning(
-            "⚠️ Playwright not installed.\n\n"
-            "```\npip install playwright\nplaywright install chromium\n```"
-        )
+        from scipy import stats as _stats
+        sub = df[mask & df[horizon].notna()][horizon]
+        if len(sub) < 5:
+            return {"n": len(sub), "win_rate": None, "avg_ret": None, "p": None}
+        wr  = float((sub > 0).mean())
+        avg = float(sub.mean() * 100)
+        _, p = _stats.ttest_1samp(sub, 0)
+        return {"n": len(sub), "win_rate": wr, "avg_ret": round(avg, 2), "p": round(float(p), 4)}
+    except Exception:
+        return {"n": 0, "win_rate": None, "avg_ret": None, "p": None}
 
-    today_str = _date_cls.today().isoformat()
 
-    # Flow type selector — run FIPI, LIPI, or both independently
-    flow_choice = st.radio(
-        "Which flow to scrape?",
-        ["Both FIPI + LIPI", "FIPI only", "LIPI only"],
-        horizontal=True,
-        key="flows_choice",
+def _intel_run_patterns(df: pd.DataFrame) -> list[dict]:
+    df = df.copy()
+    df["buy_ratio_lag3"] = df.groupby("sector")["buy_ratio"].shift(3)
+
+    patterns = [
+        {
+            "name": "SUSTAINED_ACCUMULATION",
+            "label": "Sustained Accumulation",
+            "desc": "3+ consecutive days buy_ratio > 55%",
+            "mask": df["consec_buy_days"] >= 3,
+        },
+        {
+            "name": "ACCUMULATION_DIVERGENCE",
+            "label": "Accumulation Divergence",
+            "desc": "3d avg buy_ratio > 62% + sector flat/down prior 5d",
+            "mask": (df["buy_ratio_3d_avg"] > 0.62) & (df["ret_prior_5d"].fillna(0) < 0.02),
+        },
+        {
+            "name": "FLOW_MOMENTUM_TRANSITION",
+            "label": "Flow Momentum Transition",
+            "desc": "Buy ratio flipped <45% → >60% in 3 days",
+            "mask": (df["buy_ratio"] > 0.60) & (df["buy_ratio_lag3"].fillna(1) < 0.45),
+        },
+        {
+            "name": "VOLUME_SPIKE_BUYING",
+            "label": "Volume Spike + Buying",
+            "desc": "Buy vol z-score > 1.5 AND buy_ratio > 60%",
+            "mask": (df["vol_zscore"] > 1.5) & (df["buy_ratio"] > 0.60),
+        },
+        {
+            "name": "DISTRIBUTION",
+            "label": "Distribution Warning",
+            "desc": "3d avg buy_ratio < 40% (persistent selling)",
+            "mask": df["buy_ratio_3d_avg"] < 0.40,
+        },
+    ]
+
+    results = []
+    for p in patterns:
+        s5  = _intel_pattern_stats(df, p["mask"], "ret_fwd_5d")
+        s10 = _intel_pattern_stats(df, p["mask"], "ret_fwd_10d")
+        results.append({**p, "stats_5d": s5, "stats_10d": s10})
+
+    return results
+
+
+def _intel_correlations(df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for sector, grp in df.dropna(subset=["buy_ratio", "ret_fwd_5d"]).groupby("sector"):
+        grp = grp.sort_values("date")
+        full = grp["buy_ratio"].corr(grp["ret_fwd_5d"])
+        last30 = grp.tail(30)
+        c30 = last30["buy_ratio"].corr(last30["ret_fwd_5d"]) if len(last30) >= 8 else None
+        rows.append({
+            "sector": sector,
+            "n": len(grp),
+            "corr_full": round(float(full), 3) if pd.notna(full) else None,
+            "corr_30d":  round(float(c30),  3) if c30 and pd.notna(c30) else None,
+        })
+    return pd.DataFrame(rows).sort_values("corr_full", key=lambda x: x.abs(), ascending=False)
+
+
+def _intel_generate_signals(agg: pd.DataFrame, prices: pd.DataFrame) -> list[dict]:
+    """Generate today's actionable signals and auto-save to log CSV."""
+    latest = agg["date"].max()
+    today_agg = agg[agg["date"] == latest]
+    sp = prices.rename(columns={"sector": "psx_sector"}).sort_values(["psx_sector", "date"])
+
+    def _sector_ret(psx_sec, days):
+        s = sp[sp["psx_sector"] == psx_sec]
+        if len(s) < days + 1:
+            return None
+        return round((s["close"].iloc[-1] / s["close"].iloc[-1 - days] - 1) * 100, 2)
+
+    signals = []
+    for _, row in today_agg.iterrows():
+        r = row.to_dict()
+        psx = r.get("psx_sector")
+        if not psx:
+            continue
+        ret5 = _sector_ret(psx, 5) if psx else None
+
+        checks = [
+            ("SUSTAINED_ACCUMULATION",   r.get("consec_buy_days", 0) >= 3, "🟢 BUY BIAS",  "3+ day buy streak"),
+            ("ACCUMULATION_DIVERGENCE",  r.get("buy_ratio_3d_avg", 0) > 0.62 and (ret5 or 0) < 2, "🟢 BUY BIAS", "Strong buying into flat sector"),
+            ("VOLUME_SPIKE_BUYING",      r.get("vol_zscore", 0) > 1.5 and r.get("buy_ratio", 0) > 0.60, "🟢 BUY BIAS", "Volume surge + buying"),
+            ("DISTRIBUTION_WARNING",     r.get("buy_ratio_3d_avg", 1) < 0.40, "🔴 AVOID",   "Persistent selling pressure"),
+        ]
+        for sig_name, cond, action, trigger in checks:
+            if cond:
+                strength = "STRONG" if (
+                    r.get("consec_buy_days", 0) >= 5 or
+                    r.get("buy_ratio", 0) > 0.70 or
+                    r.get("buy_ratio_3d_avg", 1) < 0.35
+                ) else "MODERATE"
+                signals.append({
+                    "date":            latest.date().isoformat(),
+                    "sector":          r["sector"],
+                    "signal_type":     sig_name,
+                    "action":          action,
+                    "strength":        strength,
+                    "trigger":         trigger,
+                    "buy_ratio":       round(r.get("buy_ratio", 0), 3),
+                    "buy_ratio_3d":    round(r.get("buy_ratio_3d_avg", 0), 3),
+                    "consec_buy_days": r.get("consec_buy_days", 0),
+                    "vol_zscore":      round(r.get("vol_zscore", 0), 2),
+                    "ret_5d_pct":      ret5,
+                    "outcome":         "PENDING",
+                    "fwd_5d_actual":   None,
+                })
+
+    # Auto-save new signals to CSV journal
+    if signals:
+        _intel_save_signals(signals)
+
+    return signals
+
+
+def _intel_save_signals(signals: list[dict]):
+    """Upsert signals into sector_flows_log.csv."""
+    new_df = pd.DataFrame(signals)
+    if os.path.exists(_INTEL_LOG_PATH):
+        existing = pd.read_csv(_INTEL_LOG_PATH)
+        keys = set(zip(existing["date"].astype(str), existing["sector"], existing["signal_type"]))
+        to_add = new_df[~new_df.apply(
+            lambda r: (r["date"], r["sector"], r["signal_type"]) in keys, axis=1
+        )]
+        if not to_add.empty:
+            combined = pd.concat([existing, to_add], ignore_index=True)
+            combined.to_csv(_INTEL_LOG_PATH, index=False)
+    else:
+        new_df.to_csv(_INTEL_LOG_PATH, index=False)
+
+
+def _intel_validate_signals(agg: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
+    """Fill in fwd_5d_actual for matured PENDING signals and mark WIN/LOSS."""
+    if not os.path.exists(_INTEL_LOG_PATH):
+        return pd.DataFrame()
+
+    journal = pd.read_csv(_INTEL_LOG_PATH)
+    if journal.empty:
+        return journal
+
+    sp = prices.rename(columns={"sector": "psx_sector"}).sort_values(["psx_sector", "date"])
+    today = pd.Timestamp.today()
+    changed = False
+
+    for idx, row in journal.iterrows():
+        if str(row.get("outcome", "")) != "PENDING":
+            continue
+        try:
+            sig_date = pd.to_datetime(row["date"])
+        except Exception:
+            continue
+        if (today - sig_date).days < 5:
+            continue
+        if pd.notna(row.get("fwd_5d_actual")):
+            continue
+
+        psx_sec = agg[agg["sector"] == row["sector"]]["psx_sector"].dropna()
+        if psx_sec.empty:
+            continue
+        psx_sec = psx_sec.iloc[0]
+        s = sp[sp["psx_sector"] == psx_sec].sort_values("date")
+        base = s[s["date"] <= sig_date]
+        fwd  = s[s["date"] >  sig_date]
+        if base.empty or len(fwd) < 5:
+            continue
+
+        ret5 = round((fwd["close"].iloc[4] / base["close"].iloc[-1] - 1) * 100, 2)
+        journal.at[idx, "fwd_5d_actual"] = ret5
+        if row["signal_type"] == "DISTRIBUTION_WARNING":
+            outcome = "WIN" if ret5 < -1 else ("LOSS" if ret5 > 1 else "BREAKEVEN")
+        else:
+            outcome = "WIN" if ret5 > 1 else ("LOSS" if ret5 < -1 else "BREAKEVEN")
+        journal.at[idx, "outcome"] = outcome
+        changed = True
+
+    if changed:
+        journal.to_csv(_INTEL_LOG_PATH, index=False)
+
+    return journal
+
+
+def _stat_badge(s: dict) -> str:
+    """Return a short HTML badge string for pattern stats."""
+    if not s or s["n"] < 5:
+        return f"<span style='color:#6b7280'>n={s['n'] if s else 0} — building data</span>"
+    sig_color = "#15803d" if (s["win_rate"] or 0) >= 0.65 else "#92400e"
+    sig_label = "✅ Significant" if (
+        (s["win_rate"] or 0) >= 0.65 and s["n"] >= 10 and (s["p"] or 1) < 0.05
+    ) else "⏳ Building"
+    return (
+        f"n={s['n']} &nbsp;·&nbsp; "
+        f"win <b style='color:{sig_color}'>{int((s['win_rate'] or 0)*100)}%</b> &nbsp;·&nbsp; "
+        f"avg {s['avg_ret']:+.1f}% &nbsp;·&nbsp; "
+        f"p={s['p']} &nbsp; <span style='color:{sig_color}'>{sig_label}</span>"
     )
-    FLOW_TARGETS = {
-        "Both FIPI + LIPI": [("FIPI", FIPI_URL), ("LIPI", LIPI_URL)],
-        "FIPI only":         [("FIPI", FIPI_URL)],
-        "LIPI only":         [("LIPI", LIPI_URL)],
-    }
 
-    tab_today, tab_hist = st.tabs(["📅 Scrape Today", "📚 Scrape Historical Range"])
 
-    with tab_today:
-        st.caption(
-            "Scrapes today's FIPI + LIPI data. Run after ~16:30 PKT once "
-            "NCCPL settlement data is published on khistocks."
-        )
-        col_btn, col_info = st.columns([1, 3])
-        with col_btn:
-            run_today = st.button(
-                "⬇️ Get Today's Flows",
-                type="primary",
-                disabled=not playwright_ok,
-                key="flows_today",
-            )
-        with col_info:
-            if today_str in available:
-                st.success(f"✅ Today ({today_str}) is already in the database.")
-            elif available:
-                st.info(f"Latest in DB: **{available[0]}**. Today not yet scraped.")
-            else:
-                st.info("No data yet.")
+def _render_intelligence_section(available: list, n_dates: int):
+    """Section 5 — renders inside render_flows_page()."""
+    st.markdown("#### 🧠 Intelligence Engine")
+    st.caption(
+        "Correlates FIPI/LIPI flows with subsequent price performance. "
+        "Hunts for statistically validated patterns. Confidence builds over 6–8 weeks. "
+        "Signals are auto-saved to `sector_flows_log.csv` for validation."
+    )
 
-        if run_today:
-            pb  = st.progress(0.0)
-            txt = st.empty()
-            res = scrape_bulk(today_str, today_str, pb, txt,
-                              targets=FLOW_TARGETS[flow_choice])
-            pb.progress(1.0)
-            if res["rows_saved"]:
-                st.success(f"✅ {res['rows_saved']} rows saved.")
-                st.rerun()
-            else:
-                st.warning(
-                    "No data returned — market may be closed or data not yet "
-                    "published. Try 🔬 Test Connection below."
-                )
-
-    with tab_hist:
-        st.caption(
-            "Scrape a historical date range in one pass. "
-            "The page accepts a date range filter — all matching days are "
-            "returned across paginated results. Already-saved dates are safely "
-            "overwritten (no duplicates created)."
-        )
-        hc1, hc2 = st.columns(2)
-        hist_start = hc1.date_input(
-            "From", value=_date_cls.today() - timedelta(days=90), key="fh_start"
-        )
-        hist_end = hc2.date_input(
-            "To", value=_date_cls.today(), key="fh_end"
-        )
-
-        n_days = (hist_end - hist_start).days + 1
-        n_weekdays = sum(
-            1 for i in range(n_days)
-            if (_date_cls.fromisoformat(str(hist_start)) + timedelta(days=i)).weekday() < 5
-        )
-        already = sum(
-            1 for i in range(n_days)
-            if (_date_cls.fromisoformat(str(hist_start)) + timedelta(days=i)).isoformat()
-            in set(available)
-        )
-        st.caption(
-            f"Range: **{n_weekdays}** weekdays · "
-            f"**{already}** already in DB · "
-            f"**{n_weekdays - already}** new days expected"
-        )
-
-        if st.button(
-            f"🚀 Scrape {flow_choice} · {str(hist_start)} → {str(hist_end)}",
-            type="primary",
-            disabled=not playwright_ok,
-            key="flows_hist",
-        ):
-            pb  = st.progress(0.0)
-            txt = st.empty()
-            res = scrape_bulk(str(hist_start), str(hist_end), pb, txt,
-                              targets=FLOW_TARGETS[flow_choice])
-            pb.progress(1.0)
-            if res["rows_saved"]:
-                st.success(
-                    f"✅ Done — **{res['rows_saved']:,} rows** saved "
-                    f"({res['dates_attempted']})."
-                )
-            else:
-                st.warning(
-                    f"No rows returned for {res['dates_attempted']}. "
-                    "Market may have been closed or page structure changed."
-                )
-            if res["failed"]:
-                st.caption(f"{res['failed']} flow type(s) returned no data.")
-            st.rerun()
-
-    # ── Diagnostic test ───────────────────────────────────────────────────────
-    with st.expander("🔬 Test Connection (diagnose scraper)", expanded=False):
-        st.caption(
-            "Navigates to the FIPI or LIPI page with a real browser, waits for the "
-            "AJAX table to load, then reports what was found — without saving anything. "
-            "Run this first if the bulk scraper returns no data."
-        )
-        diag_flow = st.radio("Test page", ["FIPI", "LIPI"], horizontal=True, key="flows_diag_type")
-        diag_url  = FIPI_URL if diag_flow == "FIPI" else LIPI_URL
-
-        if st.button("🔬 Run Connection Test", key="flows_diag_btn", disabled=not playwright_ok):
-            with st.spinner(f"Loading {diag_flow} page…"):
-                diag = debug_scrape_flow_page(diag_url, diag_flow)
-
-            if "error" in diag:
-                st.error(f"Error: {diag['error']}")
-            else:
-                st.write(f"**Landed URL:** `{diag.get('landed_url')}`")
-                st.write(f"**Page title:** {diag.get('page_title')}")
-                found = diag.get("table_found", False)
-                nrows = diag.get("table_row_count", 0)
-                if found and nrows > 1:
-                    st.success(f"✅ Table found with **{nrows} rows** (including header).")
-                    st.write(f"**Headers:** {diag.get('table_headers')}")
-                    st.write(f"**Sample row:** {diag.get('sample_row')}")
-                elif found:
-                    st.warning(f"Table element found but only {nrows} rows — data didn't load.")
-                else:
-                    st.error("No table found on the page.")
-
-                if diag.get("date_inputs"):
-                    st.write("**Date inputs found:**")
-                    st.json(diag["date_inputs"])
-                else:
-                    st.warning("No date input found — date filtering may not work.")
-
-                if diag.get("selects"):
-                    st.write("**Select dropdowns:**")
-                    st.json(diag["selects"])
-
-                if diag.get("buttons"):
-                    st.write("**Buttons:**")
-                    st.json(diag["buttons"])
-
-    if not available:
-        st.info("No data yet. Scrape at least one day to see charts and signals.")
+    if n_dates < 3:
+        st.info("Need at least 3 days of flows data. Keep scraping daily.")
         return
 
-    st.divider()
+    with st.spinner("Running intelligence engine…"):
+        agg    = _intel_load_flows_agg()
+        prices = _intel_load_prices()
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # SECTION 2 — TODAY'S SNAPSHOT
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("#### 📊 Latest Day Snapshot")
-    st.caption(f"Data for **{available[0]}** · REGULAR market only")
+    if agg.empty or prices.empty:
+        st.warning("No data to analyse yet.")
+        return
 
-    day_df = get_flows_df(
-        date_from=available[0], date_to=available[0], market_type="REGULAR"
-    )
+    # Validate past signals silently
+    journal = _intel_validate_signals(agg, prices)
 
-    if day_df.empty:
-        st.info("No REGULAR market data for the latest date.")
-    else:
-        col_fipi, col_lipi = st.columns(2)
+    tab_snap, tab_patterns, tab_corr, tab_journal = st.tabs([
+        "📊 Sector Snapshot", "🔬 Pattern Analysis", "📈 Correlations", "📓 Signal Journal"
+    ])
 
-        # ── FIPI by sector ────────────────────────────────────────────────────
-        with col_fipi:
-            st.markdown("**🌏 FIPI — Foreign Net by Sector**")
-            fipi = day_df[day_df["flow_type"] == "FIPI"].copy()
-            if not fipi.empty:
-                sec_net = (
-                    fipi.groupby("sector")["net_value"]
-                    .sum()
-                    .reset_index()
-                    .rename(columns={"net_value": "Net (USD Mn)"})
-                )
-                sec_net["Net (USD Mn)"]   = sec_net["Net (USD Mn)"].round(2)
-                sec_net["Flow"]          = sec_net["Net (USD Mn)"].apply(
-                    lambda v: "🟢 In" if v >= 0 else "🔴 Out"
-                )
-                sec_net = sec_net.sort_values("Net (USD Mn)")
-                st.dataframe(sec_net, hide_index=True, use_container_width=True)
+    # ── TAB 1: SECTOR SNAPSHOT ──────────────────────────────────────────────
+    with tab_snap:
+        st.caption("Latest day's flow metrics per sector + today's actionable signals.")
 
-                total_fipi = fipi["net_value"].sum()
-                st.metric(
-                    "FIPI Grand Total",
-                    f"{total_fipi:+,.0f}",
-                    delta="Net Inflow" if total_fipi >= 0 else "Net Outflow",
-                    delta_color="normal" if total_fipi >= 0 else "inverse",
-                )
+        latest  = agg["date"].max()
+        today_agg = agg[agg["date"] == latest].copy()
 
-        # ── LIPI by client type ───────────────────────────────────────────────
-        with col_lipi:
-            st.markdown("**🏦 LIPI — Local Institutional by Client**")
-            lipi = day_df[day_df["flow_type"] == "LIPI"].copy()
-            if not lipi.empty:
-                client_net = (
-                    lipi.groupby("client_type")["net_value"]
-                    .sum()
-                    .reset_index()
-                    .rename(columns={"net_value": "Net (USD Mn)"})
-                )
-                client_net["Net (USD Mn)"] = client_net["Net (USD Mn)"].round(2)
-                client_net["Money Type"]  = client_net["client_type"].apply(
-                    lambda c: "🧠 Institutional" if c.upper() in SMART_MONEY_CLIENTS
-                              else "👥 Retail/Funds" if c.upper() in RETAIL_MONEY_CLIENTS
-                              else "—"
-                )
-                client_net["Flow"] = client_net["Net (USD Mn)"].apply(
-                    lambda v: "🟢 Buying" if v >= 0 else "🔴 Selling"
-                )
-                client_net = client_net.sort_values("Net (USD Mn)", ascending=False)
-                st.dataframe(
-                    client_net[["client_type", "Money Type", "Net (USD Mn)", "Flow"]],
-                    hide_index=True, use_container_width=True
-                )
+        sp = prices.rename(columns={"sector": "psx_sector"}).sort_values(["psx_sector", "date"])
 
-                # Smart vs Retail divergence callout
-                smart_net  = lipi[lipi["client_type"].str.upper().isin(SMART_MONEY_CLIENTS)]["net_value"].sum()
-                retail_net = lipi[lipi["client_type"].str.upper().isin(RETAIL_MONEY_CLIENTS)]["net_value"].sum()
-                sm1, sm2   = st.columns(2)
-                sm1.metric("🧠 Institutional",  f"{smart_net:+,.0f}")
-                sm2.metric("👥 Retail/Funds",  f"{retail_net:+,.0f}")
+        def _ret(psx_sec, days):
+            s = sp[sp["psx_sector"] == psx_sec]
+            if len(s) < days + 1:
+                return None
+            return round((s["close"].iloc[-1] / s["close"].iloc[-1 - days] - 1) * 100, 2)
 
-                if smart_net > 0 and retail_net < 0:
-                    st.success("Smart buying · Retail selling — **accumulation pattern**")
-                elif smart_net < 0 and retail_net > 0:
-                    st.warning("Smart selling · Retail buying — **distribution pattern**")
+        rows_snap = []
+        for _, r in today_agg.iterrows():
+            psx = r.get("psx_sector")
+            rows_snap.append({
+                "Sector":       r["sector"],
+                "BuyRatio":     round(r.get("buy_ratio", 0) * 100, 1) if pd.notna(r.get("buy_ratio")) else None,
+                "SmartBuyR":    round(r.get("smart_buy_ratio", 0) * 100, 1) if pd.notna(r.get("smart_buy_ratio")) else None,
+                "3d Avg":       round(r.get("buy_ratio_3d_avg", 0) * 100, 1) if pd.notna(r.get("buy_ratio_3d_avg")) else None,
+                "Streak":       int(r.get("consec_buy_days", 0)),
+                "VolZ":         round(r.get("vol_zscore", 0), 2) if pd.notna(r.get("vol_zscore")) else None,
+                "Perf 1d%":     _ret(psx, 1) if psx else None,
+                "Perf 5d%":     _ret(psx, 5) if psx else None,
+            })
 
-    st.divider()
+        snap_df = pd.DataFrame(rows_snap).sort_values("BuyRatio", ascending=False)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # SECTION 3 — TREND BOARD
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("#### 📅 Trend Board — Rolling Flows by Sector")
+        def _color_buyratio(val):
+            if val is None:
+                return ""
+            if val >= 65:
+                return "background-color:#bbf7d0"
+            if val >= 55:
+                return "background-color:#dcfce7"
+            if val <= 35:
+                return "background-color:#fee2e2"
+            if val <= 45:
+                return "background-color:#fef9c3"
+            return ""
 
-    roll_days = st.radio(
-        "Window",
-        options=[5, 10, 20],
-        format_func=lambda x: f"{x}-day",
-        horizontal=True,
-        key="flows_window",
-    )
+        styled = snap_df.style.applymap(_color_buyratio, subset=["BuyRatio", "3d Avg"])
+        st.dataframe(styled, hide_index=True, use_container_width=True)
+        st.caption(f"Data as of: **{latest.date()}** · 🟢 ≥65% · 🟡 55–65% · 🔴 ≤35%")
 
-    if n_dates < 2:
-        st.info("Need at least 2 days of data for the trend board.")
-    else:
-        # Daily totals for the heatmap (sector × date grid)
-        avail_for_window = available[:roll_days]
-        cutoff = avail_for_window[-1]
-
-        with _get_conn() as conn:
-            hm_rows = conn.execute("""
-                SELECT date, sector,
-                       SUM(CASE WHEN flow_type='FIPI' THEN net_value ELSE 0 END) AS fipi_net,
-                       SUM(CASE WHEN flow_type='LIPI' THEN net_value ELSE 0 END) AS lipi_net,
-                       SUM(net_value) AS total_net
-                FROM market_flows
-                WHERE date >= ? AND market_type = 'REGULAR'
-                GROUP BY date, sector
-                ORDER BY sector, date
-            """, (cutoff,)).fetchall()
-
-        if hm_rows:
-            hm_df = pd.DataFrame([dict(r) for r in hm_rows])
-
-            # ── Summary bar: sector × rolling total ──────────────────────────
-            sector_summary = (
-                hm_df.groupby("sector")[["fipi_net", "lipi_net", "total_net"]]
-                .sum()
-                .sort_values("total_net")
-            )
-            sector_summary.columns = ["FIPI Net", "LIPI Net", "Total Net"]
-
-            tb_col1, tb_col2 = st.columns(2)
-            with tb_col1:
-                st.caption(f"**Foreign (FIPI) Net — {roll_days}d rolling**")
-                st.bar_chart(sector_summary[["FIPI Net"]], height=280)
-            with tb_col2:
-                st.caption(f"**Local Institutional (LIPI) Net — {roll_days}d rolling**")
-                st.bar_chart(sector_summary[["LIPI Net"]], height=280)
-
-            # ── Heatmap: sector rows × date columns ───────────────────────────
-            st.markdown(f"**Daily Total Net — {roll_days}d grid** *(raw values from source — unit TBC)*")
-            pivot = (
-                hm_df.pivot_table(
-                    index="sector", columns="date",
-                    values="total_net", aggfunc="sum"
-                ).fillna(0)
-            )
-            # Sort sectors: biggest net seller at top, biggest buyer at bottom
-            pivot["_sort"] = pivot.sum(axis=1)
-            pivot = pivot.sort_values("_sort").drop(columns="_sort")
-
-            def _cell_color(v):
-                if pd.isna(v) or v == 0: return ""
-                if v > 0:  return "background-color:#dcfce7; color:#166534"
-                return             "background-color:#fee2e2; color:#991b1b"
-
-            st.caption("🟢 Green = net inflow · 🔴 Red = net outflow · Unit TBC (confirm via 🔬 diagnostic)")
-            st.dataframe(
-                pivot.style.map(_cell_color).format("{:+.1f}"),
-                use_container_width=True,
-            )
-
-            # ── FIPI vs LIPI divergence table ─────────────────────────────────
-            with st.expander("🔍 FIPI vs LIPI Divergence Detail", expanded=False):
-                div_df = sector_summary.copy()
-                div_df["Divergence"] = div_df.apply(
-                    lambda r: "🟢 Accumulation"
-                              if r["FIPI Net"] < 0 and r["LIPI Net"] > 0
-                              else ("🔴 Distribution"
-                                    if r["FIPI Net"] < 0 and r["LIPI Net"] < 0
-                                    else ("💰 Foreign Buying"
-                                          if r["FIPI Net"] > 0
-                                          else "—")),
-                    axis=1,
-                )
-                st.dataframe(div_df.reset_index(), hide_index=True, use_container_width=True)
-
-    st.divider()
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # SECTION 4 — DECISION SIGNALS
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("#### 🎯 Decision Signals")
-    st.caption(
-        "Auto-computed from rolling flows. Needs 5+ days to be reliable. "
-        "Exit Watch cross-references your currently Active trades (read-only)."
-    )
-
-    if n_dates < 5:
-        st.info(
-            f"Signals activate after **5 days** of data — "
-            f"you have **{n_dates}** so far. Keep scraping daily."
-        )
-    else:
-        roll5  = _rolling_sector_pivot(5)
-        roll10 = _rolling_sector_pivot(10)
-        roll20 = _rolling_sector_pivot(min(20, n_dates))
-
-        signals = compute_signals(roll10, roll5, roll20)
-
+        # Signals for today
+        st.markdown("**📡 Signals Firing Today**")
+        signals = _intel_generate_signals(agg, prices)
         if not signals:
-            st.success("✅ No active signals. Flow picture looks neutral across all sectors.")
+            st.success("✅ No extreme signals today — neutral flow picture.")
         else:
-            bg_map = {
-                "strong":   "#bbf7d0",
-                "positive": "#dcfce7",
-                "neutral":  "#f0f9ff",
-                "warning":  "#fef9c3",
-                "negative": "#fee2e2",
-            }
-            border_map = {
-                "strong":   "#15803d",
-                "positive": "#16a34a",
-                "neutral":  "#0284c7",
-                "warning":  "#ca8a04",
-                "negative": "#dc2626",
-            }
-            # already sorted by tier inside compute_signals
-            for sig in signals:
-                sev  = sig.get("severity", "neutral")
-                bg   = bg_map.get(sev, "#f8fafc")
-                bdr  = border_map.get(sev, "#94a3b8")
-                detail_html = sig["detail"].replace("\n", "<br/>")
+            for s in signals:
+                color = "#bbf7d0" if "BUY" in s["action"] else "#fee2e2"
+                border = "#15803d" if "BUY" in s["action"] else "#dc2626"
                 st.markdown(
-                    f"""<div style="background:{bg}; border-left:4px solid {bdr};
-                    border-radius:6px; padding:10px 14px; margin-bottom:10px;">
-                    <strong>{sig['type']}</strong>
-                    &nbsp;·&nbsp;
-                    <strong style="font-size:1rem">{sig['sector']}</strong><br/>
-                    <span style="font-size:0.82rem; color:#374151;">{detail_html}</span>
-                    </div>""",
+                    f"""<div style="background:{color}; border-left:4px solid {border};
+                    border-radius:6px; padding:10px 14px; margin-bottom:8px;">
+                    <strong>{s['action']}</strong> &nbsp;·&nbsp;
+                    <strong>{s['sector']}</strong> &nbsp;·&nbsp;
+                    <span style="color:#374151">{s['strength']}</span><br/>
+                    <span style="font-size:0.82rem; color:#374151;">
+                    {s['trigger']} &nbsp;·&nbsp;
+                    BuyR {s['buy_ratio']:.1%} &nbsp;·&nbsp;
+                    3d avg {s['buy_ratio_3d']:.1%} &nbsp;·&nbsp;
+                    Streak {int(s['consec_buy_days'])}d &nbsp;·&nbsp;
+                    VolZ {s['vol_zscore']:+.1f} &nbsp;·&nbsp;
+                    Sector 5d: {s['ret_5d_pct']}%
+                    </span></div>""",
                     unsafe_allow_html=True,
                 )
 
-    # ── Raw data inspector ────────────────────────────────────────────────────
-    with st.expander("🗃️ Raw Data Inspector", expanded=False):
-        if available:
-            inspect_date = st.selectbox(
-                "Select date", options=available[:60], key="flows_inspect_date"
-            )
-            mkt_filter = st.radio(
-                "Market", ["REGULAR", "OFF-MARKET", "All"],
-                horizontal=True, key="flows_inspect_mkt"
-            )
-            raw = get_flows_df(
-                date_from=inspect_date,
-                date_to=inspect_date,
-                market_type=None if mkt_filter == "All" else mkt_filter,
-            )
-            if not raw.empty:
-                show_cols = [
-                    "date", "flow_type", "client_type", "sector", "market_type",
-                    "buy_value", "sell_value", "net_value", "usd_net",
-                ]
-                show_cols = [c for c in show_cols if c in raw.columns]
-                st.dataframe(raw[show_cols], hide_index=True, use_container_width=True)
-                st.caption(f"Total rows: {len(raw)}")
-            else:
-                st.info("No data for selected date/market.")
+    # ── TAB 2: PATTERN ANALYSIS ─────────────────────────────────────────────
+    with tab_patterns:
+        st.caption(
+            "Statistical analysis of historical pattern occurrences vs forward returns. "
+            "Needs 10+ occurrences + p<0.05 + win≥65% to be called significant."
+        )
 
-    st.divider()
-    st.caption(
-        "**Reading guide —** "
-        "FIPI = foreign money (Corps + Individuals + Overseas) · "
-        "LIPI = local institutions (Banks, Companies, Mutual Funds, Insurance, Broker Prop.) · "
-        "**Institutional** = principal-at-risk players (banks, corporates, insurance, broker prop.) · "
-        "**Retail/Funds** = mutual funds + individual investors · "
-        "🟢🟢 Strong Buy = FIPI + LIPI both net positive · "
-        "🟢 Accumulation = foreigners selling, local companies absorbing · "
-        "⚡ Flow Reversal = 20d net negative turning positive in 5d · "
-        "🔵 Foreign Buying = FIPI positive, locals neutral · "
-        "🟡 Local Accumulation = LIPI companies buying, FIPI out · "
-        "🔴 Distribution = both FIPI + LIPI net sellers · "
-        "⚠️ Exit Watch = institutions selling into your active position. "
-        "**Signals are observations only** — accumulate 4+ weeks of data before acting on them."
-    )
+        with st.spinner("Running pattern analysis…"):
+            df_fwd   = _intel_build_fwd_returns(agg, prices)
+            patterns = _intel_run_patterns(df_fwd)
+
+        sig_count = sum(
+            1 for p in patterns
+            if (p["stats_5d"]["win_rate"] or 0) >= 0.65
+            and p["stats_5d"]["n"] >= 10
+            and (p["stats_5d"]["p"] or 1) < 0.05
+        )
+        st.caption(f"**{sig_count}** statistically significant patterns so far (need 10+ occurrences)")
+
+        for p in patterns:
+            s5  = p["stats_5d"]
+            s10 = p["stats_10d"]
+            is_sig = (s5["n"] >= 10 and (s5["win_rate"] or 0) >= 0.65 and (s5["p"] or 1) < 0.05)
+            label = "✅ SIGNIFICANT" if is_sig else ("⏳ Building" if s5["n"] >= 5 else "🔸 Too few data points")
+            header_color = "#15803d" if is_sig else ("#92400e" if s5["n"] >= 5 else "#6b7280")
+
+            with st.expander(f"{p['label']}  ·  {label}", expanded=is_sig):
+                st.caption(p["desc"])
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("**5-day forward return:**")
+                    st.markdown(_stat_badge(s5), unsafe_allow_html=True)
+                with c2:
+                    st.markdown("**10-day forward return:**")
+                    st.markdown(_stat_badge(s10), unsafe_allow_html=True)
+
+                # Show historical occurrences table
+                if st.checkbox(f"Show occurrences", key=f"occ_{p['name']}"):
+                    mask = {
+                        "SUSTAINED_ACCUMULATION":  df_fwd["consec_buy_days"] >= 3,
+                        "ACCUMULATION_DIVERGENCE": (df_fwd["buy_ratio_3d_avg"] > 0.62) & (df_fwd["ret_prior_5d"].fillna(0) < 0.02),
+                        "FLOW_MOMENTUM_TRANSITION": (df_fwd["buy_ratio"] > 0.60) & (df_fwd["buy_ratio_lag3"].fillna(1) < 0.45)
+                                                    if "buy_ratio_lag3" in df_fwd.columns else (df_fwd["buy_ratio"] > 0.60),
+                        "VOLUME_SPIKE_BUYING":      (df_fwd["vol_zscore"] > 1.5) & (df_fwd["buy_ratio"] > 0.60),
+                        "DISTRIBUTION":             df_fwd["buy_ratio_3d_avg"] < 0.40,
+                    }.get(p["name"], pd.Series(False, index=df_fwd.index))
+
+                    occ = df_fwd[mask][["date","sector","buy_ratio","buy_ratio_3d_avg","ret_fwd_5d","ret_fwd_10d"]].copy()
+                    occ = occ.dropna(subset=["ret_fwd_5d"])
+                    occ["buy_ratio"] = (occ["buy_ratio"] * 100).round(1)
+                    occ["buy_ratio_3d_avg"] = (occ["buy_ratio_3d_avg"] * 100).round(1)
+                    occ["ret_fwd_5d"] = (occ["ret_fwd_5d"] * 100).round(2)
+                    occ["ret_fwd_10d"] = (occ["ret_fwd_10d"] * 100).round(2)
+                    st.dataframe(occ, hide_index=True, use_container_width=True)
+
+    # ── TAB 3: CORRELATIONS ─────────────────────────────────────────────────
+    with tab_corr:
+        st.caption(
+            "Pearson correlation: buy_ratio today vs 5-day forward sector return. "
+            "|corr| > 0.20 is worth tracking. Negative = buying flows follow price run-ups (chasing)."
+        )
+
+        with st.spinner("Computing correlations…"):
+            df_fwd2 = _intel_build_fwd_returns(agg, prices) if "ret_fwd_5d" not in agg.columns else agg
+            corr_df = _intel_correlations(df_fwd2 if "ret_fwd_5d" in df_fwd2.columns else _intel_build_fwd_returns(agg, prices))
+
+        if corr_df.empty:
+            st.info("Not enough data for correlation yet.")
+        else:
+            def _corr_color(val):
+                if val is None:
+                    return ""
+                if val >= 0.25:
+                    return "background-color:#bbf7d0"
+                if val >= 0.10:
+                    return "background-color:#dcfce7"
+                if val <= -0.25:
+                    return "background-color:#fee2e2"
+                if val <= -0.10:
+                    return "background-color:#fef9c3"
+                return ""
+
+            styled_corr = corr_df.style.applymap(_corr_color, subset=["corr_full", "corr_30d"])
+            st.dataframe(styled_corr, hide_index=True, use_container_width=True)
+
+            st.caption(
+                "🟢 Positive correlation: flow buying predicts sector gains. "
+                "🔴 Negative: buyers may be chasing existing moves. "
+                "Watch for sectors where corr flips from negative → positive over time."
+            )
+
+            # Interesting finding callout
+            neg_sectors = corr_df[corr_df["corr_full"].notna() & (corr_df["corr_full"] < -0.25)]["sector"].tolist()
+            if neg_sectors:
+                st.warning(
+                    f"**Counter-intuitive finding:** {', '.join(neg_sectors)} show negative buy→return correlation. "
+                    "This may mean institutional buying in these sectors tends to follow recent price strength (chasing), "
+                    "not precede it. Treat buy signals in these sectors with extra skepticism until more data accumulates."
+                )
+
+    # ── TAB 4: SIGNAL JOURNAL ───────────────────────────────────────────────
+    with tab_journal:
+        st.caption("All generated signals with outcomes as they mature (5-day window).")
+
+        if not os.path.exists(_INTEL_LOG_PATH) or journal.empty:
+            st.info("No signals logged yet. Run the engine for a few days.")
+        else:
+            # Summary stats
+            closed = journal[journal["outcome"].isin(["WIN", "LOSS", "BREAKEVEN"])]
+            pending = journal[journal["outcome"] == "PENDING"]
+
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            mc1.metric("Total Signals", len(journal))
+            mc2.metric("Pending", len(pending))
+            mc3.metric("Resolved", len(closed))
+            win_rate = f"{(closed['outcome']=='WIN').sum() / len(closed):.0%}" if len(closed) > 0 else "—"
+            mc4.metric("Win Rate", win_rate)
+
+            # Filter
+            filter_type = st.selectbox(
+                "Filter by signal type",
+                ["All"] + sorted(journal["signal_type"].unique().tolist()),
+                key="journal_filter",
+            )
+            show = journal if filter_type == "All" else journal[journal["signal_type"] == filter_type]
+            show = show.sort_values("date", ascending=False)
+
+            def _outcome_color(val):
+                if val == "WIN":      return "background-color:#bbf7d0"
+                if val == "LOSS":     return "background-color:#fee2e2"
+                if val == "PENDING":  return "background-color:#fef9c3"
+                return ""
+
+            styled_j = show.style.applymap(_outcome_color, subset=["outcome"])
+            st.dataframe(styled_j, hide_index=True, use_container_width=True)
+
+            if st.button("🔄 Force Re-validate Signals", key="intel_revalidate"):
+                _intel_load_flows_agg.clear()
+                _intel_load_prices.clear()
+                st.rerun()
