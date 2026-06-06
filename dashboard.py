@@ -50,6 +50,7 @@ except Exception:
 
 from database import (
     init_db, get_price_date_range, count_prices, count_sectors,
+    get_latest_stock_date, get_latest_index_date,
     save_trade_setup, get_trade_setups, update_trade_setup, close_trade_setup,
     activate_trade_setup, delete_trade_setup, auto_save_setups, get_backtest_summary,
     auto_save_stm_picks, get_sim_portfolio_data,
@@ -68,6 +69,19 @@ except ImportError as e:
     HAS_CMD_UPDATE = False
     warnings.warn(f"Could not import cmd_update from main: {e}", RuntimeWarning)
     cmd_update = None
+
+try:
+    from refresh_manager import (
+        execute_refresh_with_tracking,
+        check_refresh_throttle,
+        record_refresh_time,
+        get_refresh_message,
+        get_source_date_cached,
+    )
+    HAS_REFRESH_MANAGER = True
+except ImportError as e:
+    HAS_REFRESH_MANAGER = False
+    warnings.warn(f"Could not import refresh_manager: {e}", RuntimeWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -849,7 +863,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Support Reversals", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏹 Minervini Setup"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏹 Minervini Setup"]
 
 
 def fmt_date(d) -> str:
@@ -902,6 +916,15 @@ BLUE = "#3b82f6"
 if "page" not in st.session_state:
     st.session_state.page = PAGES[0]
 
+# ── Session state — refresh tracking ──────────────────────────────────────────
+if "last_refresh_time" not in st.session_state:
+    st.session_state.last_refresh_time = None
+# Source-date cache (populated by get_source_date_cached; 30-min TTL)
+if "_ksestocks_source_date" not in st.session_state:
+    st.session_state["_ksestocks_source_date"] = None
+if "_ksestocks_source_date_fetched_at" not in st.session_state:
+    st.session_state["_ksestocks_source_date_fetched_at"] = None
+
 # ── Auto-log today's predictions once per calendar day ───────────────────────
 import datetime as _dt, os as _auto_os, subprocess as _auto_sp, sys as _auto_sys
 _today_key = f"predictions_logged_{_dt.date.today()}"
@@ -948,18 +971,78 @@ with st.sidebar:
 
     st.divider()
 
+    # ── Source-date status (cached, 30-min TTL) ────────────────────────────────
+    # Shows what trading date ksestocks.com is currently publishing so the user
+    # knows whether new data is available before clicking Refresh.
+    # _src_fetched_at is None  → never attempted this session (show neutral)
+    # _src_fetched_at is set, _src_date_str is None  → tried and FAILED (show red)
+    # _src_fetched_at is set, _src_date_str is set   → success (show status)
+    _src_date_str  = None
+    _src_fetched_at = None
+    if HAS_REFRESH_MANAGER:
+        try:
+            _src_date_str, _src_fetched_at = get_source_date_cached(st.session_state)
+        except Exception:
+            _src_date_str   = None
+            _src_fetched_at = None  # treat as never-tried; Refresh button will surface the error
+
+    latest_stock_date = get_latest_stock_date()
+
+    if _src_date_str:
+        if latest_stock_date and latest_stock_date >= _src_date_str:
+            st.caption(f"✅ ksestocks: {fmt_date(_src_date_str)} · DB up to date")
+        else:
+            st.caption(f"📥 ksestocks: {fmt_date(_src_date_str)} · new data available")
+    elif _src_fetched_at is not None:
+        # We attempted a fetch this session but got no date — site structure changed
+        # or the site is unreachable.  Show a red warning so the user knows immediately.
+        st.error(
+            "⚠️ Could not read source date from ksestocks.com — "
+            "scrape aborted. Check the page manually or try again later."
+        )
+    else:
+        # Session just started; haven't tried yet (first render before cache warms)
+        st.caption("📡 ksestocks: checking…")
+
     if st.button("🔄 Refresh Data", type="primary", key="sb_refresh", use_container_width=True):
-        with st.spinner("Updating…"):
+        with st.spinner("Checking ksestocks.com for new data…"):
             try:
-                if HAS_CMD_UPDATE and cmd_update is not None:
-                    cmd_update()
+                if not HAS_CMD_UPDATE or cmd_update is None:
+                    st.error("Data update not available in this environment.")
+                elif HAS_REFRESH_MANAGER:
+                    throttle_result = check_refresh_throttle(st.session_state)
+                    if throttle_result:
+                        msg, msg_type = get_refresh_message(throttle_result)
+                        if msg_type == "warning":
+                            st.warning(msg)
+                        else:
+                            st.info(msg)
+                    else:
+                        result = execute_refresh_with_tracking(cmd_update)
+                        msg, msg_type = get_refresh_message(result)
+
+                        if msg_type == "success":
+                            st.success(msg)
+                        elif msg_type == "info":
+                            st.info(msg)
+                        elif msg_type == "warning":
+                            st.warning(msg)
+                        else:
+                            st.error(msg)
+
+                        # Invalidate source-date cache so the caption refreshes
+                        st.session_state["_ksestocks_source_date"] = None
+                        record_refresh_time(st.session_state)
                 else:
-                    st.warning("Data update not available in this environment.")
+                    # Fallback (no refresh_manager)
+                    cmd_update()
+                    st.success("Done!")
+
                 st.cache_data.clear()
-                st.success("Done!")
                 st.rerun()
+
             except Exception as exc:
-                st.error(str(exc))
+                st.error(f"Refresh failed: {str(exc)}")
 
     if st.button("⚡ Clear Cache", key="sb_clear_cache", use_container_width=True):
         st.cache_data.clear()
@@ -967,10 +1050,32 @@ with st.sidebar:
         st.rerun()
 
     mn, mx = get_price_date_range()
+    latest_index_date = get_latest_index_date()
+
+    st.markdown("---")
+    st.markdown("**📊 Data Status**")
+
+    if latest_stock_date:
+        st.write(f"**Stocks latest:** {fmt_date(latest_stock_date)}")
+    else:
+        st.write("**Stocks latest:** No data")
+
+    if latest_index_date:
+        st.write(f"**Index latest:** {fmt_date(latest_index_date)}")
+    else:
+        st.write("**Index latest:** No data")
+
+    # Gap alert: if source shows a newer date than the DB, flag it
+    if _src_date_str and latest_stock_date and _src_date_str > latest_stock_date:
+        st.warning(
+            f"⚠️ DB is missing data for {fmt_date(_src_date_str)} "
+            f"(ksestocks source). Click Refresh to update."
+        )
+
     st.caption(
-        f"📅 {fmt_date(mn)} → {fmt_date(mx)}  \n"
+        f"📅 Range: {fmt_date(mn)} → {fmt_date(mx)}  \n"
         f"**{count_prices():,}** prices · **{count_sectors():,}** symbols  \n"
-        f"As of {datetime.now().strftime('%d/%m/%y %H:%M')}"
+        f"Source: ksestocks.com  |  dates derived from database"
     )
 
 
@@ -4493,161 +4598,444 @@ elif cur == PAGES[8]:  # STM
                 )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE 8 — 🔄 Support Reversals
+# PAGE 9 — 🔄 Recovery Bases
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[9]:  # Support Reversals
-    st.markdown("### 🔄 Support Reversals")
+elif cur == PAGES[9]:  # Recovery Bases
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _run_recovery_screener():
+        """
+        Post-capitulation VCP screener.
+        Decline ≥30% → tight base (backward scan) → volume contraction → breakout trigger.
+        Returns (watchlist_df, triggered_df, kse_regime_ok).
+        """
+        import numpy as np
+        from database import get_sector_price_data, get_index_prices
+        from config import EXCLUDED_SECTORS
+
+        # ── Load price data ───────────────────────────────────────────────────
+        raw = get_sector_price_data()
+        if not raw:
+            return pd.DataFrame(), pd.DataFrame(), True
+
+        all_df = pd.DataFrame(raw)
+        all_df["date"] = pd.to_datetime(all_df["date"])
+        for col in ("open", "high", "low", "close"):
+            all_df[col] = pd.to_numeric(all_df[col], errors="coerce")
+        all_df["volume"] = pd.to_numeric(all_df["volume"], errors="coerce").fillna(0)
+
+        # Keep last ~420 calendar days — enough for vol_ma50 + 90-day pre-base window
+        cutoff = all_df["date"].max() - pd.Timedelta(days=420)
+        all_df = all_df[all_df["date"] >= cutoff]
+        all_df = all_df.sort_values(["symbol", "date"]).reset_index(drop=True)
+
+        # ── KSE-100 regime: latest close vs 10 trading days ago ───────────────
+        kse_regime_ok = True
+        try:
+            kse_rows = get_index_prices("KSE-100")
+            if kse_rows:
+                kse_df = pd.DataFrame(kse_rows)
+                kse_df["date"]  = pd.to_datetime(kse_df["date"])
+                kse_df["close"] = pd.to_numeric(kse_df["close"], errors="coerce")
+                kse_df = kse_df.sort_values("date")
+                if len(kse_df) >= 12:
+                    kse_regime_ok = float(kse_df["close"].iloc[-1]) >= float(kse_df["close"].iloc[-11])
+        except Exception:
+            pass
+
+        # ── Sector + derivative filters ───────────────────────────────────────
+        all_df = all_df[~all_df["sector"].isin(EXCLUDED_SECTORS)]
+        all_df = all_df[~all_df["symbol"].str.match(r"^P\d", na=False)]
+        all_df = all_df[all_df["close"] >= 5.0]
+
+        # ── Trading date universe ─────────────────────────────────────────────
+        all_dates  = sorted(all_df["date"].unique())
+        if not all_dates:
+            return pd.DataFrame(), pd.DataFrame(), kse_regime_ok
+        latest_date  = all_dates[-1]
+        last_5_dates = set(all_dates[-5:]) if len(all_dates) >= 5 else set(all_dates)
+        today_dt     = pd.Timestamp(latest_date).date()
+
+        # ── Backward-scan helper ──────────────────────────────────────────────
+        def _base_scan(c, from_idx, thr=0.20, max_lb=90):
+            """Extend window backward while range stays < thr. Returns base_start_idx."""
+            hi = lo = c[from_idx]
+            start = from_idx
+            for i in range(from_idx - 1, max(from_idx - max_lb, 0) - 1, -1):
+                nh = max(hi, c[i])
+                nl = min(lo, c[i])
+                if (nh - nl) / nl >= thr:
+                    break
+                hi, lo, start = nh, nl, i
+            return start
+
+        watchlist_rows = []
+        triggered_rows = []
+        triggered_syms = set()
+
+        for sym, grp in all_df.groupby("symbol", sort=False):
+            grp = grp.reset_index(drop=True)
+            n   = len(grp)
+            if n < 60:
+                continue
+
+            closes  = grp["close"].values.astype(float)
+            opens   = grp["open"].values.astype(float)
+            highs   = grp["high"].values.astype(float)
+            lows    = grp["low"].values.astype(float)
+            volumes = grp["volume"].values.astype(float)
+            dates   = grp["date"].values
+            sector  = grp["sector"].iloc[0]
+
+            # ── Liquidity filter: avg vol last 20d > 800K ─────────────────────
+            avg_vol_20d = volumes[-20:].mean() if n >= 20 else volumes.mean()
+            if avg_vol_20d < 800_000:
+                continue
+
+            # ── vol_ma50 (min 30 periods so early bars still get a value) ─────
+            vol_s    = pd.Series(volumes)
+            vol_ma50 = vol_s.rolling(50, min_periods=30).mean().values
+            if np.isnan(vol_ma50[-1]) or vol_ma50[-1] <= 0:
+                continue
+
+            # ══════════════════════════════════════════════════════════════════
+            # TRIGGERED CHECK — last 5 trading days
+            # For each candidate trigger day T, compute the base as of T-1,
+            # then verify trigger conditions on day T.
+            # ══════════════════════════════════════════════════════════════════
+            trigger_hit = None
+            for t in range(max(1, n - 5), n):
+                if dates[t] not in last_5_dates:
+                    continue
+                prev = t - 1
+                if prev < 15:
+                    continue
+
+                # Base as of the day before the trigger
+                bs     = _base_scan(closes, prev)
+                b_days = prev - bs + 1
+                if b_days < 8:
+                    continue
+
+                b_closes = closes[bs : prev + 1]
+                b_high   = b_closes.max()
+                b_low    = b_closes.min()
+                b_range  = (b_high - b_low) / b_low
+                if b_range >= 0.20:
+                    continue
+
+                # Pre-base drawdown: 90-bar high before base start
+                pre      = closes[max(0, bs - 90) : bs]
+                if len(pre) < 5:
+                    continue
+                pre_high = pre.max()
+                drawdown = (pre_high - closes[bs]) / pre_high
+                if drawdown < 0.30:
+                    continue
+
+                # Volume contraction: last 5 bars of base
+                bv   = volumes[bs : prev + 1]
+                bm50 = vol_ma50[bs : prev + 1]
+                l5v  = bv[-5:]
+                l5m  = bm50[-5:]
+                ok   = l5m > 0
+                if ok.sum() < 3:
+                    continue
+                l5r = np.where(ok, l5v / np.where(l5m > 0, l5m, 1.0), 1.0)
+                if not (l5r[ok].mean() < 0.50 and (l5r[ok] < 0.60).sum() >= 3):
+                    continue
+
+                # Occasional buy activity in base (≥2 days vol_ratio > 1.5)
+                all_br = np.where(bm50 > 0, bv / bm50, 0.0)
+                if (all_br > 1.5).sum() < 2:
+                    continue
+
+                # Trigger conditions on day T
+                if vol_ma50[t] <= 0:
+                    continue
+                vr     = volumes[t] / vol_ma50[t]
+                day_rng = highs[t] - lows[t]
+                if not (
+                    vr >= 2.5
+                    and closes[t] > b_high
+                    and closes[t] > opens[t]
+                    and day_rng > 0
+                    and (closes[t] - lows[t]) / day_rng >= 0.40
+                ):
+                    continue
+
+                trigger_hit = dict(
+                    t_date       = pd.Timestamp(dates[t]).date(),
+                    t_close      = round(closes[t], 2),
+                    t_vol_ratio  = round(vr, 2),
+                    b_days       = b_days,
+                    b_range_pct  = round(b_range * 100, 1),
+                    drawdown_pct = round(drawdown * 100, 1),
+                    pre_high     = round(pre_high, 2),
+                    current      = round(closes[-1], 2),
+                )
+                break  # most recent trigger only
+
+            if trigger_hit:
+                triggered_rows.append(dict(
+                    symbol         = sym,
+                    sector         = sector,
+                    triggered_date = trigger_hit["t_date"],
+                    fresh          = trigger_hit["t_date"] == today_dt,
+                    trigger_close  = trigger_hit["t_close"],
+                    trigger_vol_x  = trigger_hit["t_vol_ratio"],
+                    current_close  = trigger_hit["current"],
+                    move_pct       = round(
+                        (trigger_hit["current"] - trigger_hit["t_close"])
+                        / trigger_hit["t_close"] * 100, 1
+                    ),
+                    drawdown_pct   = trigger_hit["drawdown_pct"],
+                    base_days      = trigger_hit["b_days"],
+                    base_range_pct = trigger_hit["b_range_pct"],
+                    avg_vol_m      = round(avg_vol_20d / 1e6, 2),
+                ))
+                triggered_syms.add(sym)
+                continue  # don't also add to watchlist
+
+            # ══════════════════════════════════════════════════════════════════
+            # WATCHLIST CHECK — current base (as of today)
+            # ══════════════════════════════════════════════════════════════════
+            bs     = _base_scan(closes, n - 1)
+            b_days = n - bs
+            if b_days < 8:
+                continue
+
+            b_closes = closes[bs:]
+            b_high   = b_closes.max()
+            b_low    = b_closes.min()
+            b_range  = (b_high - b_low) / b_low
+            if b_range >= 0.20:
+                continue
+
+            pre      = closes[max(0, bs - 90) : bs]
+            if len(pre) < 5:
+                continue
+            pre_high = pre.max()
+            drawdown = (pre_high - closes[bs]) / pre_high
+            if drawdown < 0.30:
+                continue
+
+            # Volume contraction: last 5 bars overall
+            l5v  = volumes[-5:]
+            l5m  = vol_ma50[-5:]
+            ok   = l5m > 0
+            if ok.sum() < 3:
+                continue
+            l5r = np.where(ok, l5v / np.where(l5m > 0, l5m, 1.0), 1.0)
+            if not (l5r[ok].mean() < 0.50 and (l5r[ok] < 0.60).sum() >= 3):
+                continue
+
+            # Occasional activity in base
+            bv   = volumes[bs:]
+            bm50 = vol_ma50[bs:]
+            all_br = np.where(bm50 > 0, bv / bm50, 0.0)
+            if (all_br > 1.5).sum() < 2:
+                continue
+
+            cur_vr = volumes[-1] / vol_ma50[-1] if vol_ma50[-1] > 0 else 0.0
+
+            watchlist_rows.append(dict(
+                symbol          = sym,
+                sector          = sector,
+                close           = round(closes[-1], 2),
+                drawdown_pct    = round(drawdown * 100, 1),
+                base_days       = b_days,
+                base_range_pct  = round(b_range * 100, 1),
+                vol_ratio_today = round(cur_vr, 2),
+                base_high       = round(b_high, 2),
+                dist_pct        = round((b_high - closes[-1]) / closes[-1] * 100, 1),
+                avg_vol_m       = round(avg_vol_20d / 1e6, 2),
+            ))
+
+        watchlist_df = pd.DataFrame(watchlist_rows)
+        triggered_df = pd.DataFrame(triggered_rows)
+
+        if len(watchlist_df) > 0:
+            watchlist_df = watchlist_df.sort_values("base_range_pct").reset_index(drop=True)
+        if len(triggered_df) > 0:
+            triggered_df = triggered_df.sort_values(
+                ["fresh", "triggered_date"], ascending=[False, False]
+            ).reset_index(drop=True)
+
+        return watchlist_df, triggered_df, kse_regime_ok
+
+    # ── Page header ───────────────────────────────────────────────────────────
+    st.markdown("### 🔄 Recovery Bases")
     st.caption(
-        "Rejection candles at 200-MA uptrend support. "
-        "Recovery >75%, Wick >60%. Entry: high+1 point, SL: -6%, Target: trailing 2% stop (20d hold). "
-        "Expected: 5.21% expectancy, 30.5% win rate, 5.03x R:R"
+        "Post-capitulation VCP screener — stocks that declined ≥30%, formed a tight base "
+        "with volume drying up, then broke out on a surge. "
+        "**Watchlist** = currently basing, volume contracting. "
+        "**Triggered** = breakout fired in last 5 trading days."
     )
 
-    # Query pending and active support reversal setups
-    all_setups_list = get_trade_setups()
+    # ── Run screener ──────────────────────────────────────────────────────────
+    with st.spinner("Running Recovery Bases screener…"):
+        _wl, _tr, _regime_ok = _run_recovery_screener()
 
-    # Convert list to DataFrame if needed
-    if isinstance(all_setups_list, list):
-        all_setups = pd.DataFrame(all_setups_list) if all_setups_list else pd.DataFrame()
+    # ── Regime warning banner ─────────────────────────────────────────────────
+    if not _regime_ok:
+        st.warning(
+            "⚠️ **KSE-100 is below its close 10 trading days ago.** "
+            "Recovery breakouts carry higher failure risk in a declining market. "
+            "Reduce position size or wait for a second confirmation candle.",
+        )
+
+    # ── Refresh button ────────────────────────────────────────────────────────
+    _hcol, _bcol = st.columns([7, 1])
+    with _bcol:
+        if st.button("⚡ Refresh", key="rb_refresh"):
+            _run_recovery_screener.clear()
+            st.rerun()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # TRIGGERED SETUPS
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("#### 🔥 Triggered — Last 5 Trading Days")
+
+    if len(_tr) == 0:
+        st.info("No breakouts in the last 5 trading days matching all criteria.")
     else:
-        all_setups = all_setups_list
+        _tc1, _tc2, _tc3 = st.columns(3)
+        _tc1.metric("Triggers", len(_tr))
+        _fresh_n = int(_tr["fresh"].sum()) if "fresh" in _tr.columns else 0
+        _tc2.metric("Fresh Today", _fresh_n)
+        if "move_pct" in _tr.columns and len(_tr) > 0:
+            _tc3.metric("Avg Move Since Trigger", f"{_tr['move_pct'].mean():+.1f}%")
 
-    # Filter to Support Reversal source (for now, show all setups as placeholder)
-    if len(all_setups) > 0 and 'source' in all_setups.columns:
-        reversal_setups = all_setups[all_setups['source'] == 'Support Reversal'].copy()
-    else:
-        # Placeholder: show all setups with note that detection not yet active
-        reversal_setups = all_setups.copy() if len(all_setups) > 0 else pd.DataFrame()
+        _tr_disp = _tr.copy()
 
-    if len(reversal_setups) == 0:
-        st.info("No support reversal setups found. Run the daily screener (python main.py --update) to generate setups.")
-        st.stop()
+        def _fmt_trigger_date(row):
+            d = str(row["triggered_date"])
+            return f"🟢 {d}  FRESH" if row["fresh"] else d
 
-    # Separate by status
-    pending = reversal_setups[reversal_setups['status'] == 'Pending'].copy() if 'status' in reversal_setups.columns else pd.DataFrame()
-    active = reversal_setups[reversal_setups['status'] == 'Active'].copy() if 'status' in reversal_setups.columns else pd.DataFrame()
-    closed = reversal_setups[reversal_setups['status'] == 'Closed'].copy() if 'status' in reversal_setups.columns else pd.DataFrame()
+        _tr_disp["Triggered"]    = _tr_disp.apply(_fmt_trigger_date, axis=1)
+        _tr_disp["Move"]         = _tr_disp["move_pct"].apply(lambda v: f"{v:+.1f}%")
+        _tr_disp["Vol@Trigger"]  = _tr_disp["trigger_vol_x"].apply(lambda v: f"{v:.1f}×")
+        _tr_disp["Decline"]      = _tr_disp["drawdown_pct"].apply(lambda v: f"{v:.0f}%")
+        _tr_disp["Base Range"]   = _tr_disp["base_range_pct"].apply(lambda v: f"{v:.1f}%")
+        _tr_disp["Avg Vol (M)"]  = _tr_disp["avg_vol_m"]
 
-    # ── PENDING SETUPS ────────────────────────────────────────────────────────
-    st.markdown("#### Pending Setups")
-    if len(pending) > 0:
-        pending = pending.sort_values('created_date', ascending=False)
+        _tr_cols = {
+            "symbol":        "Symbol",
+            "sector":        "Sector",
+            "Triggered":     "Triggered",
+            "trigger_close": "Entry Close",
+            "Vol@Trigger":   "Vol × ma50",
+            "current_close": "Current",
+            "Move":          "Move",
+            "Decline":       "Prior Decline",
+            "base_days":     "Base Days",
+            "Base Range":    "Base Range",
+            "Avg Vol (M)":   "Avg Vol (M)",
+        }
+        _tr_out = _tr_disp[
+            [c for c in _tr_cols if c in _tr_disp.columns]
+        ].rename(columns=_tr_cols)
 
-        # Add ML prediction
-        pending['ml_prob'] = pending.apply(lambda row: extract_ml_features(row), axis=1)
+        def _style_tr(df):
+            s = pd.DataFrame("", index=df.index, columns=df.columns)
+            for col, test in [("Move", lambda v: float(str(v).replace("%","").replace("+",""))),
+                               ("Triggered", None)]:
+                if col not in df.columns:
+                    continue
+                ci = df.columns.get_loc(col)
+                for i, v in enumerate(df[col]):
+                    if col == "Move":
+                        try:
+                            val = test(v)
+                            s.iloc[i, ci] = "color:#22c55e;font-weight:bold" if val > 0 else "color:#ef4444"
+                        except Exception:
+                            pass
+                    elif col == "Triggered" and "FRESH" in str(v):
+                        s.iloc[i, ci] = "color:#22c55e;font-weight:bold"
+            return s
 
-        tab_pending, tab_criteria = st.tabs(["Table", "Criteria Reference"])
+        st.dataframe(
+            _tr_out.style.apply(_style_tr, axis=None),
+            use_container_width=True,
+            hide_index=True,
+        )
 
-        with tab_pending:
-            display_cols = ['symbol', 'entry_price', 'stop_loss', 'risk_pct', 'atr_pct',
-                           'stock_perf_30d', 'stock_perf_10d', 'ml_prob', 'created_date']
-            available_cols = [c for c in display_cols if c in pending.columns]
-
-            # Format ML probability as percentage and color
-            display_df = pending[available_cols].copy()
-            display_df.columns = [c.replace('ml_prob', 'ML %').replace('stock_perf_', 'Perf ')
-                                  for c in display_df.columns]
-
-            def style_ml(series):
-                return [
-                    f"color:#22c55e;font-weight:bold" if v is not None and v > 0.70
-                    else f"color:#fbbf24;font-weight:bold" if v is not None and v > 0.50
-                    else f"color:#ef4444;font-weight:bold" if v is not None
-                    else "color:#94a3b8"
-                    for v in series
-                ]
-
-            st.dataframe(
-                display_df.sort_values('created_date', ascending=False).style
-                    .apply(style_ml, subset=['ML %'])
-                    .format({'ML %': '{:.1%}', 'Perf 30d': '{:+.1f}%', 'Perf 10d': '{:+.1f}%',
-                            'risk_pct': '{:.2f}%', 'atr_pct': '{:.2f}%'}),
-                use_container_width=True,
-                hide_index=True
-            )
-
-        with tab_criteria:
-            st.markdown("""
-            **Entry Criteria:**
-            - 200-MA uptrend: Close > 200-SMA × 1.01
-            - Recovery >75%: (Close - Low) / (High - Low) > 0.75
-            - Lower Wick >60%: (min(O,C) - L) / (H - L) > 0.60
-            - Support: Pivot-based support level touched/penetrated
-
-            **Entry Price:** High of candle + 1 point
-            **Stop Loss:** -6% below entry (hard stop)
-            **Target:** Trailing 2% stop, 20-day hold minimum
-            **Expected:** +5.21% avg return, 30.5% win rate, 5.03x R:R
-            """)
-
-        if len(pending) > 0:
-            st.info("📋 Go to **Trade Log** → **✏️ I took this trade** to activate any of these setups")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("→ Go to Trade Log", key="goto_trade_log"):
-                    st.info("Trade Log will appear when you navigate to it")
-    else:
-        st.success("No pending setups")
-
-    # ── ACTIVE SETUPS ────────────────────────────────────────────────────────
-    st.markdown("#### Active Trades")
-    if len(active) > 0:
-        active = active.sort_values('created_date', ascending=False)
-
-        metrics_cols = []
-        for col in ['symbol', 'entry_price', 'stop_loss', 'latest_close', 'created_date', 'status']:
-            if col in active.columns:
-                metrics_cols.append(col)
-
-        st.dataframe(active[metrics_cols], use_container_width=True, hide_index=True)
-
-        # Quick stats
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Active Trades", len(active))
-        with col2:
-            avg_risk = active['risk_pct'].mean() if 'risk_pct' in active.columns else 0
-            st.metric("Avg Risk %", f"{avg_risk:.2f}%")
-        with col3:
-            st.metric("Capital at Risk", f"{len(active) * avg_risk:.1f}%")
-    else:
-        st.success("No active trades")
-
-    # ── CLOSED SETUPS ────────────────────────────────────────────────────────
-    st.markdown("#### Closed Trades")
-    if len(closed) > 0:
-        closed = closed.sort_values('created_date', ascending=False)
-
-        display_cols = [c for c in ['symbol', 'entry_price', 'stop_loss', 'latest_close', 'outcome', 'created_date']
-                       if c in closed.columns]
-
-        st.dataframe(closed[display_cols].head(20), use_container_width=True, hide_index=True)
-
-        # Performance summary
-        if 'outcome' in closed.columns:
-            outcomes = closed['outcome'].value_counts()
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                wins = outcomes.get('Win', 0)
-                st.metric("Wins", f"{wins}/{len(closed)} ({wins/len(closed)*100:.1f}%)")
-            with col2:
-                st.metric("Total Closed", len(closed))
-            with col3:
-                st.metric("Recent Return", "—")
-    else:
-        st.info("No closed trades yet")
-
-    # ── DOCUMENTATION ────────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════════
+    # WATCHLIST — BASING NOW
+    # ══════════════════════════════════════════════════════════════════════════
     st.divider()
-    st.markdown("""
-    ### 📖 Full Setup Documentation
-    See **SUPPORT_REVERSAL_CRITERIA.md** in repo for:
-    - Complete entry/exit rules
-    - Position sizing formula
-    - Trade management checklist
-    - Why this setup works
-    - Red flags to avoid
-    """)
+    st.markdown("#### 👁️ Basing Now — Watchlist")
+    st.caption("Volume contracting. Sorted by tightest base range (most coiled first). Watch for a vol surge above Trigger Level.")
+
+    if len(_wl) == 0:
+        st.info("No stocks currently in a qualifying base with volume contraction.")
+    else:
+        _wc1, _wc2, _wc3 = st.columns(3)
+        _wc1.metric("Candidates", len(_wl))
+        if "base_range_pct" in _wl.columns:
+            _wc2.metric("Tightest Base", f"{_wl['base_range_pct'].min():.1f}%")
+        if "base_days" in _wl.columns:
+            _wc3.metric("Avg Base Duration", f"{_wl['base_days'].mean():.0f}d")
+
+        _wl_disp = _wl.copy()
+        _wl_disp["Decline"]      = _wl_disp["drawdown_pct"].apply(lambda v: f"{v:.0f}%")
+        _wl_disp["Base Range"]   = _wl_disp["base_range_pct"].apply(lambda v: f"{v:.1f}%")
+        _wl_disp["Vol Today"]    = _wl_disp["vol_ratio_today"].apply(lambda v: f"{v:.2f}×")
+        _wl_disp["Dist Trigger"] = _wl_disp["dist_pct"].apply(lambda v: f"{v:.1f}%")
+        _wl_disp["Avg Vol (M)"]  = _wl_disp["avg_vol_m"]
+
+        _wl_cols = {
+            "symbol":        "Symbol",
+            "sector":        "Sector",
+            "close":         "Close",
+            "Decline":       "Prior Decline",
+            "base_days":     "Base Days",
+            "Base Range":    "Base Range",
+            "Vol Today":     "Vol Today",
+            "base_high":     "Trigger Level",
+            "Dist Trigger":  "Dist to Trigger",
+            "Avg Vol (M)":   "Avg Vol (M)",
+        }
+        _wl_out = _wl_disp[
+            [c for c in _wl_cols if c in _wl_disp.columns]
+        ].rename(columns=_wl_cols)
+
+        def _style_wl(df):
+            s = pd.DataFrame("", index=df.index, columns=df.columns)
+            for col, thresholds in [
+                ("Vol Today",  [(0.30, "color:#22c55e;font-weight:bold"), (0.50, "color:#86efac")]),
+                ("Base Range", [(8.0,  "color:#22c55e;font-weight:bold"), (13.0, "color:#86efac")]),
+            ]:
+                if col not in df.columns:
+                    continue
+                ci = df.columns.get_loc(col)
+                for i, v in enumerate(df[col]):
+                    try:
+                        val = float(str(v).replace("×", "").replace("%", ""))
+                        for threshold, style in thresholds:
+                            if val < threshold:
+                                s.iloc[i, ci] = style
+                                break
+                    except Exception:
+                        pass
+            return s
+
+        st.dataframe(
+            _wl_out.style.apply(_style_wl, axis=None),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # ── Screener parameters footnote ─────────────────────────────────────────
+    st.divider()
+    st.caption(
+        "**Parameters:** Decline ≥30% from pre-base high · Base 8–90 bars · Range <20% · "
+        "Volume baseline: vol_ma50 · Contraction: last-5d avg <0.50× ma50, ≥3 days <0.60× · "
+        "Trigger: vol ≥2.5× + close > base high + green candle + close in upper 40% of range · "
+        "Liquidity: 20d avg vol >800K · Min price ₨5 · "
+        "Regime: KSE-100 close vs 10 days ago"
+    )
 
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
 elif cur == PAGES[13]:  # Model Health (updated index)
@@ -5763,10 +6151,11 @@ elif cur == PAGES[16]:  # Flows
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE 17 — 🏹 Minervini Setup Screener
-# Read-only. Signals from Zeeshan's confirmed 8-trade entry pattern.
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 17 — 🏹 Minervini Setup Screener  v2
+# Read-only. Two signal types: Watchlist (pre-breakout) + Breakout (confirmed).
 # Writes ONLY to trade_setups (source="Minervini") via explicit Save button.
-# Does NOT modify any other page, table, or data source.
 # ══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[17]:  # Minervini Setup
 
@@ -5774,17 +6163,24 @@ elif cur == PAGES[17]:  # Minervini Setup
 
     with st.expander("📖 How this screener works — read before trading", expanded=False):
         st.markdown("""
-**Derived from systematic analysis of 8 confirmed real trades** (DGKC×2, FFC×3, UBL×2, TPLP×1 — 2021–2025).
-Every condition below was present in 7 or 8 of those entries.
+**Derived from 9 confirmed real trades** (DGKC×2, FFC×3, UBL×2, TPLP, POWER — 2021–2026).
 
 ---
-#### LONG Signal — all liquid stocks
+#### Two Signal Types
+
+**📋 WATCHLIST** — Base is tight, price coiling within 3% of pivot. Breakout has NOT happened yet.
+Use for morning prep. Watch intraday. Enter discretionarily on the break with volume confirmation.
+
+**✅ BREAKOUT** — Confirmed end-of-day breakout with volume. Breakout happened TODAY.
+Enter tomorrow's open if you missed the intraday move. Risk is slightly wider.
+
+---
+#### Shared Conditions (both signals)
 | Condition | Rule | Evidence |
 |---|---|---|
-| **Stage 2** | close > SMA20 > SMA50 > SMA200 | 7/8 entries in confirmed uptrend |
-| **Pivot Breakout** | close > 60-day highest close (prior day) | **8/8 entries** — THE core signal |
-| **Volume** | today ≥ 2× 20-day avg volume | Institutional participation on the break |
-| **Market** | KSE-100 close > 50 SMA | 8/8 entries in bull market |
+| **Stage 2** | close > EMA20 > EMA50 > EMA200 | Full uptrend stack — 9/10 entries. Uses EMA (matches charting platforms, reacts faster than SMA) |
+| **Tight Base** | BB width (prior day) ≤ 12% | Avg 8.3% across 9 entries. Formula: (Upper−Lower)/Middle×100 |
+| **No Overhead** | 200-day high ≤ 60-day pivot × 1.05 | Breakout into clear air — no heavy resistance above |
 | **RS Rating** | Cross-sectional percentile ≥ 60 | Avg 74 at entry, range 53–87 |
 | **Liquidity** | 20-day avg volume ≥ 100,000 shares | Filters untradeable names |
 | **Volatility** | ATR14 between 1% and 6% of price | Avg 2.85% — controlled breakouts only |
@@ -5836,7 +6232,7 @@ on recently ex-dated stocks until SMA200 normalises on adjusted prices.
         _mv_df   = _mv_build(_mv_prices, _mv_index)
 
     _mv_latest          = _mv_df["date"].max()
-    _mv_longs, _mv_shorts = _mv_get(_mv_df, _mv_latest)
+    _mv_watchlist, _mv_longs, _mv_shorts = _mv_get(_mv_df, _mv_latest)
 
     # ── Market regime banner ──────────────────────────────────────────────────
     _mv_idx_close = float(_mv_index[_mv_index["date"] <= _mv_latest].tail(1)["idx_close"].iloc[0])
@@ -5861,14 +6257,16 @@ on recently ex-dated stocks until SMA200 normalises on adjusted prices.
     _mv_bo       = int((_mv_day["stage2"] & _mv_day["bo_long"]).sum())
     _mv_nl       = len(_mv_longs)
     _mv_ns       = len(_mv_shorts)
+    _mv_nw       = len(_mv_watchlist)
 
-    _kc = st.columns(5)
+    _kc = st.columns(6)
     for _col, _lbl, _val, _clr in [
         (_kc[0], "Universe",      f"{_mv_total:,}",  "#1d4ed8"),
         (_kc[1], "Stage 2",       f"{_mv_s2:,}",     "#7c3aed"),
         (_kc[2], "Broke Pivot",   f"{_mv_bo:,}",     "#d97706"),
         (_kc[3], "LONG Signals",  f"{_mv_nl}",       "#16a34a"),
         (_kc[4], "SHORT (DFC)",   f"{_mv_ns}",       "#dc2626"),
+        (_kc[5], "Watchlist",     f"{_mv_nw}",       "#0891b2"),
     ]:
         _col.markdown(
             f'<div style="border:1px solid {_clr}33;border-top:3px solid {_clr};'
@@ -5881,9 +6279,10 @@ on recently ex-dated stocks until SMA200 normalises on adjusted prices.
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
-    _mv_tab_l, _mv_tab_s = st.tabs([
+    _mv_tab_l, _mv_tab_s, _mv_tab_w = st.tabs([
         f"📈 LONG Signals ({_mv_nl})",
-        f"📉 SHORT Signals — DFC only ({_mv_ns})"
+        f"📉 SHORT Signals — DFC only ({_mv_ns})",
+        f"🕐 Watchlist ({_mv_nw})"
     ])
 
     with _mv_tab_l:
@@ -5969,4 +6368,18 @@ on recently ex-dated stocks until SMA200 normalises on adjusted prices.
             st.dataframe(_sd[_sd_cols].rename(columns={
                 "symbol":"Symbol","close":"Close","sma20":"SMA20","sma50":"SMA50",
                 "sma200":"SMA200","pivot_low":"Pivot Low","rs_score":"RS Score%"
+            }), use_container_width=True, hide_index=True)
+
+    with _mv_tab_w:
+        if _mv_watchlist.empty:
+            st.info("No watchlist candidates today.")
+        else:
+            _wd = _mv_watchlist.copy()
+            _wd["% From Pivot"] = ((_wd["pivot_high"] - _wd["close"]) / _wd["pivot_high"] * 100).apply(lambda x: f"{x:.2f}%")
+            _wd["Vol/Avg"]      = _wd["vol_ratio"].apply(lambda x: f"{x:.1f}×")
+            _wd["RS Rating"]    = _wd["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
+            _wd["ATR%"]         = _wd["atr_pct"].apply(lambda x: f"{x:.2f}%")
+            _wdisp_cols         = ["symbol","close","% From Pivot","pivot_high","ATR%","Vol/Avg","RS Rating"]
+            st.dataframe(_wd[_wdisp_cols].rename(columns={
+                "symbol":"Symbol","close":"Close","pivot_high":"Pivot High"
             }), use_container_width=True, hide_index=True)

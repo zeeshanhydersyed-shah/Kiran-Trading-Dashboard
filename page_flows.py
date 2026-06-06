@@ -1518,3 +1518,479 @@ def _render_intelligence_section(available: list, n_dates: int):
                 _intel_load_flows_agg.clear()
                 _intel_load_prices.clear()
                 st.rerun()
+
+
+def render_flows_page():
+    """Entry point — called from dashboard.py."""
+
+    init_flows_table()
+
+    st.markdown("### 📡 Institutional Flows — FIPI / LIPI")
+    st.caption(
+        "Daily settlement data from NCCPL via khistocks.com. "
+        "Tracks where foreign and local institutional money is flowing "
+        "across PSX sectors. Regular market only — futures excluded from all signals."
+    )
+
+    available = get_available_dates()
+    n_dates   = len(available)
+
+    # ── Top stats ─────────────────────────────────────────────────────────────
+    sc1, sc2, sc3 = st.columns(3)
+    sc1.metric("Trading Days Stored",  n_dates)
+    sc2.metric("Latest Date",  available[0]  if available else "—")
+    sc3.metric("Earliest Date", available[-1] if available else "—")
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 1 — DATA COLLECTION
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("#### 🔄 Data Collection")
+
+    # Playwright check
+    playwright_ok = True
+    try:
+        import playwright  # noqa: F401
+    except ImportError:
+        playwright_ok = False
+        st.warning(
+            "⚠️ Playwright not installed.\n\n"
+            "```\npip install playwright\nplaywright install chromium\n```"
+        )
+
+    today_str = _date_cls.today().isoformat()
+
+    # Flow type selector — run FIPI, LIPI, or both independently
+    flow_choice = st.radio(
+        "Which flow to scrape?",
+        ["Both FIPI + LIPI", "FIPI only", "LIPI only"],
+        horizontal=True,
+        key="flows_choice",
+    )
+    FLOW_TARGETS = {
+        "Both FIPI + LIPI": [("FIPI", FIPI_URL), ("LIPI", LIPI_URL)],
+        "FIPI only":         [("FIPI", FIPI_URL)],
+        "LIPI only":         [("LIPI", LIPI_URL)],
+    }
+
+    tab_today, tab_hist = st.tabs(["📅 Scrape Today", "📚 Scrape Historical Range"])
+
+    with tab_today:
+        st.caption(
+            "Scrapes today's FIPI + LIPI data. Run after ~16:30 PKT once "
+            "NCCPL settlement data is published on khistocks."
+        )
+        col_btn, col_info = st.columns([1, 3])
+        with col_btn:
+            run_today = st.button(
+                "⬇️ Get Today's Flows",
+                type="primary",
+                disabled=not playwright_ok,
+                key="flows_today",
+            )
+        with col_info:
+            if today_str in available:
+                st.success(f"✅ Today ({today_str}) is already in the database.")
+            elif available:
+                st.info(f"Latest in DB: **{available[0]}**. Today not yet scraped.")
+            else:
+                st.info("No data yet.")
+
+        if run_today:
+            pb  = st.progress(0.0)
+            txt = st.empty()
+            res = scrape_bulk(today_str, today_str, pb, txt,
+                              targets=FLOW_TARGETS[flow_choice])
+            pb.progress(1.0)
+            if res["rows_saved"]:
+                st.success(f"✅ {res['rows_saved']} rows saved.")
+                st.rerun()
+            else:
+                st.warning(
+                    "No data returned — market may be closed or data not yet "
+                    "published. Try 🔬 Test Connection below."
+                )
+
+    with tab_hist:
+        st.caption(
+            "Scrape a historical date range in one pass. "
+            "The page accepts a date range filter — all matching days are "
+            "returned across paginated results. Already-saved dates are safely "
+            "overwritten (no duplicates created)."
+        )
+        hc1, hc2 = st.columns(2)
+        hist_start = hc1.date_input(
+            "From", value=_date_cls.today() - timedelta(days=90), key="fh_start"
+        )
+        hist_end = hc2.date_input(
+            "To", value=_date_cls.today(), key="fh_end"
+        )
+
+        n_days = (hist_end - hist_start).days + 1
+        n_weekdays = sum(
+            1 for i in range(n_days)
+            if (_date_cls.fromisoformat(str(hist_start)) + timedelta(days=i)).weekday() < 5
+        )
+        already = sum(
+            1 for i in range(n_days)
+            if (_date_cls.fromisoformat(str(hist_start)) + timedelta(days=i)).isoformat()
+            in set(available)
+        )
+        st.caption(
+            f"Range: **{n_weekdays}** weekdays · "
+            f"**{already}** already in DB · "
+            f"**{n_weekdays - already}** new days expected"
+        )
+
+        if st.button(
+            f"🚀 Scrape {flow_choice} · {str(hist_start)} → {str(hist_end)}",
+            type="primary",
+            disabled=not playwright_ok,
+            key="flows_hist",
+        ):
+            pb  = st.progress(0.0)
+            txt = st.empty()
+            res = scrape_bulk(str(hist_start), str(hist_end), pb, txt,
+                              targets=FLOW_TARGETS[flow_choice])
+            pb.progress(1.0)
+            if res["rows_saved"]:
+                st.success(
+                    f"✅ Done — **{res['rows_saved']:,} rows** saved "
+                    f"({res['dates_attempted']})."
+                )
+            else:
+                st.warning(
+                    f"No rows returned for {res['dates_attempted']}. "
+                    "Market may have been closed or page structure changed."
+                )
+            if res["failed"]:
+                st.caption(f"{res['failed']} flow type(s) returned no data.")
+            st.rerun()
+
+    # ── Diagnostic test ───────────────────────────────────────────────────────
+    with st.expander("🔬 Test Connection (diagnose scraper)", expanded=False):
+        st.caption(
+            "Navigates to the FIPI or LIPI page with a real browser, waits for the "
+            "AJAX table to load, then reports what was found — without saving anything. "
+            "Run this first if the bulk scraper returns no data."
+        )
+        diag_flow = st.radio("Test page", ["FIPI", "LIPI"], horizontal=True, key="flows_diag_type")
+        diag_url  = FIPI_URL if diag_flow == "FIPI" else LIPI_URL
+
+        if st.button("🔬 Run Connection Test", key="flows_diag_btn", disabled=not playwright_ok):
+            with st.spinner(f"Loading {diag_flow} page…"):
+                diag = debug_scrape_flow_page(diag_url, diag_flow)
+
+            if "error" in diag:
+                st.error(f"Error: {diag['error']}")
+            else:
+                st.write(f"**Landed URL:** `{diag.get('landed_url')}`")
+                st.write(f"**Page title:** {diag.get('page_title')}")
+                found = diag.get("table_found", False)
+                nrows = diag.get("table_row_count", 0)
+                if found and nrows > 1:
+                    st.success(f"✅ Table found with **{nrows} rows** (including header).")
+                    st.write(f"**Headers:** {diag.get('table_headers')}")
+                    st.write(f"**Sample row:** {diag.get('sample_row')}")
+                elif found:
+                    st.warning(f"Table element found but only {nrows} rows — data didn't load.")
+                else:
+                    st.error("No table found on the page.")
+
+                if diag.get("date_inputs"):
+                    st.write("**Date inputs found:**")
+                    st.json(diag["date_inputs"])
+                else:
+                    st.warning("No date input found — date filtering may not work.")
+
+                if diag.get("selects"):
+                    st.write("**Select dropdowns:**")
+                    st.json(diag["selects"])
+
+                if diag.get("buttons"):
+                    st.write("**Buttons:**")
+                    st.json(diag["buttons"])
+
+    if not available:
+        st.info("No data yet. Scrape at least one day to see charts and signals.")
+        return
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 2 — TODAY'S SNAPSHOT
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("#### 📊 Latest Day Snapshot")
+    st.caption(f"Data for **{available[0]}** · REGULAR market only")
+
+    day_df = get_flows_df(
+        date_from=available[0], date_to=available[0], market_type="REGULAR"
+    )
+
+    if day_df.empty:
+        st.info("No REGULAR market data for the latest date.")
+    else:
+        col_fipi, col_lipi = st.columns(2)
+
+        # ── FIPI by sector ────────────────────────────────────────────────────
+        with col_fipi:
+            st.markdown("**🌏 FIPI — Foreign Net by Sector**")
+            fipi = day_df[day_df["flow_type"] == "FIPI"].copy()
+            if not fipi.empty:
+                sec_net = (
+                    fipi.groupby("sector")["net_value"]
+                    .sum()
+                    .reset_index()
+                    .rename(columns={"net_value": "Net (USD Mn)"})
+                )
+                sec_net["Net (USD Mn)"]   = sec_net["Net (USD Mn)"].round(2)
+                sec_net["Flow"]          = sec_net["Net (USD Mn)"].apply(
+                    lambda v: "🟢 In" if v >= 0 else "🔴 Out"
+                )
+                sec_net = sec_net.sort_values("Net (USD Mn)")
+                st.dataframe(sec_net, hide_index=True, use_container_width=True)
+
+                total_fipi = fipi["net_value"].sum()
+                st.metric(
+                    "FIPI Grand Total",
+                    f"{total_fipi:+,.0f}",
+                    delta="Net Inflow" if total_fipi >= 0 else "Net Outflow",
+                    delta_color="normal" if total_fipi >= 0 else "inverse",
+                )
+
+        # ── LIPI by client type ───────────────────────────────────────────────
+        with col_lipi:
+            st.markdown("**🏦 LIPI — Local Institutional by Client**")
+            lipi = day_df[day_df["flow_type"] == "LIPI"].copy()
+            if not lipi.empty:
+                client_net = (
+                    lipi.groupby("client_type")["net_value"]
+                    .sum()
+                    .reset_index()
+                    .rename(columns={"net_value": "Net (USD Mn)"})
+                )
+                client_net["Net (USD Mn)"] = client_net["Net (USD Mn)"].round(2)
+                client_net["Money Type"]  = client_net["client_type"].apply(
+                    lambda c: "🧠 Institutional" if c.upper() in SMART_MONEY_CLIENTS
+                              else "👥 Retail/Funds" if c.upper() in RETAIL_MONEY_CLIENTS
+                              else "—"
+                )
+                client_net["Flow"] = client_net["Net (USD Mn)"].apply(
+                    lambda v: "🟢 Buying" if v >= 0 else "🔴 Selling"
+                )
+                client_net = client_net.sort_values("Net (USD Mn)", ascending=False)
+                st.dataframe(
+                    client_net[["client_type", "Money Type", "Net (USD Mn)", "Flow"]],
+                    hide_index=True, use_container_width=True
+                )
+
+                # Smart vs Retail divergence callout
+                smart_net  = lipi[lipi["client_type"].str.upper().isin(SMART_MONEY_CLIENTS)]["net_value"].sum()
+                retail_net = lipi[lipi["client_type"].str.upper().isin(RETAIL_MONEY_CLIENTS)]["net_value"].sum()
+                sm1, sm2   = st.columns(2)
+                sm1.metric("🧠 Institutional",  f"{smart_net:+,.0f}")
+                sm2.metric("👥 Retail/Funds",  f"{retail_net:+,.0f}")
+
+                if smart_net > 0 and retail_net < 0:
+                    st.success("Smart buying · Retail selling — **accumulation pattern**")
+                elif smart_net < 0 and retail_net > 0:
+                    st.warning("Smart selling · Retail buying — **distribution pattern**")
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 3 — TREND BOARD
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("#### 📅 Trend Board — Rolling Flows by Sector")
+
+    roll_days = st.radio(
+        "Window",
+        options=[5, 10, 20],
+        format_func=lambda x: f"{x}-day",
+        horizontal=True,
+        key="flows_window",
+    )
+
+    if n_dates < 2:
+        st.info("Need at least 2 days of data for the trend board.")
+    else:
+        # Daily totals for the heatmap (sector × date grid)
+        avail_for_window = available[:roll_days]
+        cutoff = avail_for_window[-1]
+
+        with _get_conn() as conn:
+            hm_rows = conn.execute("""
+                SELECT date, sector,
+                       SUM(CASE WHEN flow_type='FIPI' THEN net_value ELSE 0 END) AS fipi_net,
+                       SUM(CASE WHEN flow_type='LIPI' THEN net_value ELSE 0 END) AS lipi_net,
+                       SUM(net_value) AS total_net
+                FROM market_flows
+                WHERE date >= ? AND market_type = 'REGULAR'
+                GROUP BY date, sector
+                ORDER BY sector, date
+            """, (cutoff,)).fetchall()
+
+        if hm_rows:
+            hm_df = pd.DataFrame([dict(r) for r in hm_rows])
+
+            # ── Summary bar: sector × rolling total ──────────────────────────
+            sector_summary = (
+                hm_df.groupby("sector")[["fipi_net", "lipi_net", "total_net"]]
+                .sum()
+                .sort_values("total_net")
+            )
+            sector_summary.columns = ["FIPI Net", "LIPI Net", "Total Net"]
+
+            tb_col1, tb_col2 = st.columns(2)
+            with tb_col1:
+                st.caption(f"**Foreign (FIPI) Net — {roll_days}d rolling**")
+                st.bar_chart(sector_summary[["FIPI Net"]], height=280)
+            with tb_col2:
+                st.caption(f"**Local Institutional (LIPI) Net — {roll_days}d rolling**")
+                st.bar_chart(sector_summary[["LIPI Net"]], height=280)
+
+            # ── Heatmap: sector rows × date columns ───────────────────────────
+            st.markdown(f"**Daily Total Net — {roll_days}d grid** *(raw values from source — unit TBC)*")
+            pivot = (
+                hm_df.pivot_table(
+                    index="sector", columns="date",
+                    values="total_net", aggfunc="sum"
+                ).fillna(0)
+            )
+            # Sort sectors: biggest net seller at top, biggest buyer at bottom
+            pivot["_sort"] = pivot.sum(axis=1)
+            pivot = pivot.sort_values("_sort").drop(columns="_sort")
+
+            def _cell_color(v):
+                if pd.isna(v) or v == 0: return ""
+                if v > 0:  return "background-color:#dcfce7; color:#166534"
+                return             "background-color:#fee2e2; color:#991b1b"
+
+            st.caption("🟢 Green = net inflow · 🔴 Red = net outflow · Unit TBC (confirm via 🔬 diagnostic)")
+            st.dataframe(
+                pivot.style.map(_cell_color).format("{:+.1f}"),
+                use_container_width=True,
+            )
+
+            # ── FIPI vs LIPI divergence table ─────────────────────────────────
+            with st.expander("🔍 FIPI vs LIPI Divergence Detail", expanded=False):
+                div_df = sector_summary.copy()
+                div_df["Divergence"] = div_df.apply(
+                    lambda r: "🟢 Accumulation"
+                              if r["FIPI Net"] < 0 and r["LIPI Net"] > 0
+                              else ("🔴 Distribution"
+                                    if r["FIPI Net"] < 0 and r["LIPI Net"] < 0
+                                    else ("💰 Foreign Buying"
+                                          if r["FIPI Net"] > 0
+                                          else "—")),
+                    axis=1,
+                )
+                st.dataframe(div_df.reset_index(), hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 4 — DECISION SIGNALS
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("#### 🎯 Decision Signals")
+    st.caption(
+        "Auto-computed from rolling flows. Needs 5+ days to be reliable. "
+        "Exit Watch cross-references your currently Active trades (read-only)."
+    )
+
+    if n_dates < 5:
+        st.info(
+            f"Signals activate after **5 days** of data — "
+            f"you have **{n_dates}** so far. Keep scraping daily."
+        )
+    else:
+        roll5  = _rolling_sector_pivot(5)
+        roll10 = _rolling_sector_pivot(10)
+        roll20 = _rolling_sector_pivot(min(20, n_dates))
+
+        signals = compute_signals(roll10, roll5, roll20)
+
+        if not signals:
+            st.success("✅ No active signals. Flow picture looks neutral across all sectors.")
+        else:
+            bg_map = {
+                "strong":   "#bbf7d0",
+                "positive": "#dcfce7",
+                "neutral":  "#f0f9ff",
+                "warning":  "#fef9c3",
+                "negative": "#fee2e2",
+            }
+            border_map = {
+                "strong":   "#15803d",
+                "positive": "#16a34a",
+                "neutral":  "#0284c7",
+                "warning":  "#ca8a04",
+                "negative": "#dc2626",
+            }
+            # already sorted by tier inside compute_signals
+            for sig in signals:
+                sev  = sig.get("severity", "neutral")
+                bg   = bg_map.get(sev, "#f8fafc")
+                bdr  = border_map.get(sev, "#94a3b8")
+                detail_html = sig["detail"].replace("\n", "<br/>")
+                st.markdown(
+                    f"""<div style="background:{bg}; border-left:4px solid {bdr};
+                    border-radius:6px; padding:10px 14px; margin-bottom:10px;">
+                    <strong>{sig['type']}</strong>
+                    &nbsp;·&nbsp;
+                    <strong style="font-size:1rem">{sig['sector']}</strong><br/>
+                    <span style="font-size:0.82rem; color:#374151;">{detail_html}</span>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+
+    # ── Raw data inspector ────────────────────────────────────────────────────
+    with st.expander("🗃️ Raw Data Inspector", expanded=False):
+        if available:
+            inspect_date = st.selectbox(
+                "Select date", options=available[:60], key="flows_inspect_date"
+            )
+            mkt_filter = st.radio(
+                "Market", ["REGULAR", "OFF-MARKET", "All"],
+                horizontal=True, key="flows_inspect_mkt"
+            )
+            raw = get_flows_df(
+                date_from=inspect_date,
+                date_to=inspect_date,
+                market_type=None if mkt_filter == "All" else mkt_filter,
+            )
+            if not raw.empty:
+                show_cols = [
+                    "date", "flow_type", "client_type", "sector", "market_type",
+                    "buy_value", "sell_value", "net_value", "usd_net",
+                ]
+                show_cols = [c for c in show_cols if c in raw.columns]
+                st.dataframe(raw[show_cols], hide_index=True, use_container_width=True)
+                st.caption(f"Total rows: {len(raw)}")
+            else:
+                st.info("No data for selected date/market.")
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 5 — INTELLIGENCE ENGINE
+    # ══════════════════════════════════════════════════════════════════════════
+    _render_intelligence_section(available, n_dates)
+
+    st.divider()
+    st.caption(
+        "**Reading guide —** "
+        "FIPI = foreign money (Corps + Individuals + Overseas) · "
+        "LIPI = local institutions (Banks, Companies, Mutual Funds, Insurance, Broker Prop.) · "
+        "**Institutional** = principal-at-risk players (banks, corporates, insurance, broker prop.) · "
+        "**Retail/Funds** = mutual funds + individual investors · "
+        "🟢🟢 Strong Buy = FIPI + LIPI both net positive · "
+        "🟢 Accumulation = foreigners selling, local companies absorbing · "
+        "⚡ Flow Reversal = 20d net negative turning positive in 5d · "
+        "🔵 Foreign Buying = FIPI positive, locals neutral · "
+        "🟡 Local Accumulation = LIPI companies buying, FIPI out · "
+        "🔴 Distribution = both FIPI + LIPI net sellers · "
+        "⚠️ Exit Watch = institutions selling into your active position. "
+        "**Signals are observations only** — accumulate 4+ weeks of data before acting on them."
+    )
