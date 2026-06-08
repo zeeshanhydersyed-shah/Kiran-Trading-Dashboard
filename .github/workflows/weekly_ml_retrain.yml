@@ -23,10 +23,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Train ML model
         run: python phase4_train.py
@@ -41,4 +42,4 @@ jobs:
 
       - name: Notify on failure
         if: failure()
-        run: echo "::error::Weekly ML retrain FAILED on $(date -u '+%Y-%m-%d %H:%M UTC')."
+        run: echo "::error::Weekly ML retrain FAILED on $(date -u 
