@@ -350,6 +350,18 @@ def get_latest_scraped_date() -> str | None:
     return row["d"] if row else None
 
 
+def get_latest_stock_date() -> str | None:
+    """Return the most recent date in the prices (stock) table, or None."""
+    return get_latest_scraped_date()
+
+
+def get_latest_index_date() -> str | None:
+    """Return the most recent date in the index_prices table, or None."""
+    with get_conn() as conn:
+        row = _fetchone(conn, "SELECT MAX(date) AS d FROM index_prices")
+    return row["d"] if row else None
+
+
 def get_price_date_range() -> tuple[str | None, str | None]:
     with get_conn() as conn:
         row = _fetchone(conn, "SELECT MIN(date) AS mn, MAX(date) AS mx FROM prices")

@@ -269,6 +269,18 @@ def get_latest_scraped_date() -> str | None:
     return row["d"] if row else None
 
 
+def get_latest_stock_date() -> str | None:
+    """Return the most recent date in the prices (stock) table, or None."""
+    return get_latest_scraped_date()
+
+
+def get_latest_index_date() -> str | None:
+    """Return the most recent date in the index_prices table, or None."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT MAX(date) AS d FROM index_prices").fetchone()
+    return row["d"] if row else None
+
+
 def get_latest_prices() -> list[tuple]:
     """Return (symbol, date, high, low, close) rows for the most recent stored date."""
     with get_conn() as conn:
@@ -835,6 +847,8 @@ if _PG_URL:
         get_all_sectors_df,
         get_prices_df,
         get_latest_scraped_date,
+        get_latest_stock_date,
+        get_latest_index_date,
         get_price_date_range,
         get_sector_price_data,
         count_prices,
