@@ -25,12 +25,18 @@ Add "📡 Flows" to the PAGES list and at the bottom of dashboard.py:
 """
 
 import os
+import shutil
 import sqlite3
 import re
 import time
 import logging
 from contextlib import contextmanager
 from datetime import date as _date_cls, timedelta
+
+# Detect system Chromium (installed via packages.txt on Streamlit Cloud).
+# If found, playwright uses it. If not found, playwright falls back to its
+# own bundled Chromium (installed locally via `playwright install chromium`).
+_SYSTEM_CHROMIUM = shutil.which("chromium-browser") or shutil.which("chromium")
 
 import numpy as np
 import pandas as pd
@@ -87,13 +93,23 @@ FLOW_TO_PSX: dict[str, str | None] = {
 # "smart money" = institutions with principal capital at risk
 # "retail"      = funds acting on behalf of retail investors
 SMART_MONEY_CLIENTS = {
-    "FOREIGN CORPORATES", "OVERSEAS PAKISTANI",   # FIPI
-    "BANKS/DFIS", "BANKS", "COMPANIES",            # LIPI
-    "INSURANCE", "BROKER PROP.",
+    # FIPI: institutional foreign only (Overseas Pakistanis excluded -- diaspora/sentiment)
+    "FOREIGN CORPORATES",
+    # LIPI: principal-capital institutions
+    "BANKS / DFI", "COMPANIES", "INSURANCE COMPANIES",
+    "NBFC", "BROKER PROPRIETARY TRADING",
 }
 RETAIL_MONEY_CLIENTS = {
-    "FOREIGN INDIVIDUAL",                          # FIPI
-    "MUTUAL FUNDS", "INDIVIDUALS",                 # LIPI
+    "FOREIGN INDIVIDUAL", "OVERSEAS PAKISTANI",    # FIPI retail/sentiment
+    "INDIVIDUALS", "MUTUAL FUNDS", "OTHER ORGANIZATION",  # LIPI retail
+}
+
+# Smart LIPI client subset — principal capital at risk.
+# Used by compute_signals() to distinguish informed institutional flow
+# from retail/mutual-fund activity within the LIPI total.
+SMART_LIPI_CLIENTS = {
+    "BANKS / DFI", "COMPANIES", "INSURANCE COMPANIES",
+    "NBFC", "BROKER PROPRIETARY TRADING",
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -321,7 +337,8 @@ def _scrape_flow_page(url: str, flow_type: str, start_date: str, end_date: str) 
 
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+            _launch_kw = {"executable_path": _SYSTEM_CHROMIUM} if _SYSTEM_CHROMIUM else {}
+            browser = pw.chromium.launch(headless=True, **_launch_kw)
             context = browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -573,7 +590,8 @@ def debug_scrape_flow_page(url: str, flow_type: str) -> dict:
 
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+            _launch_kw = {"executable_path": _SYSTEM_CHROMIUM} if _SYSTEM_CHROMIUM else {}
+            browser = pw.chromium.launch(headless=True, **_launch_kw)
             context = browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -760,6 +778,13 @@ def compute_signals(roll10: pd.DataFrame, roll5: pd.DataFrame, roll20: pd.DataFr
         total_10  = float(roll10.loc[sector].get("total_net",  0) or 0)
         companies_10 = float(roll10.loc[sector].get("COMPANIES", 0) or 0)
         mf_10     = float(roll10.loc[sector].get("MUTUAL FUNDS", 0) or 0)
+        # Sum all smart LIPI client columns present in the pivot.
+        # Falls back to 0 for any client type not yet seen in scraped data.
+        smart_lipi_10 = sum(
+            float(roll10.loc[sector].get(c, 0) or 0)
+            for c in SMART_LIPI_CLIENTS
+            if c in roll10.columns
+        )
 
         fipi_5 = lipi_5 = total_5 = 0.0
         if not roll5.empty and sector in roll5.index:
@@ -772,25 +797,30 @@ def compute_signals(roll10: pd.DataFrame, roll5: pd.DataFrame, roll20: pd.DataFr
             fipi_20  = float(roll20.loc[sector].get("FIPI_total", 0) or 0)
             total_20 = float(roll20.loc[sector].get("total_net",  0) or 0)
 
-        # ── STRONG BUY: both FIPI and LIPI net positive (10d) ─────────────
-        if fipi_10 > 0 and lipi_10 > 0 and total_10 > 0:
+        # ── STRONG BUY: both FIPI and smart LIPI net positive (10d) ──────
+        # Uses smart_lipi_10 (Banks/DFI, Companies, Insurance, NBFC, Broker
+        # Prop) so retail/mutual-fund flows don't trigger false conviction.
+        if fipi_10 > 0 and smart_lipi_10 > 0 and total_10 > 0:
             signals.append({
                 "type": "🟢🟢 Strong Buy Interest",
                 "sector": sector,
                 "detail": (
-                    f"FIPI 10d: {_v(fipi_10)} · LIPI 10d: {_v(lipi_10)}\n"
-                    f"Foreign AND local institutions both net buyers — broad conviction."
+                    f"FIPI 10d: {_v(fipi_10)} · Smart LIPI 10d: {_v(smart_lipi_10)}\n"
+                    f"Foreign AND local smart money both net buyers — broad conviction."
                 ),
                 "severity": "strong", "tier": 1,
             })
 
-        # ── ACCUMULATION: foreigners selling but local companies buying ───
-        elif fipi_10 < 0 and companies_10 > 0:
+        # ── ACCUMULATION: foreigners selling, smart LIPI net buying ──────
+        # Previously checked companies_10 only; now uses the full smart
+        # LIPI set (Banks/DFI, Companies, Insurance, NBFC, Broker Prop)
+        # so accumulation by any principal-capital institution is captured.
+        elif fipi_10 < 0 and smart_lipi_10 > 0:
             signals.append({
                 "type": "🟢 Accumulation",
                 "sector": sector,
                 "detail": (
-                    f"FIPI 10d: {_v(fipi_10)} · Local Companies 10d: {_v(companies_10)}\n"
+                    f"FIPI 10d: {_v(fipi_10)} · Smart LIPI 10d: {_v(smart_lipi_10)}\n"
                     f"Foreigners selling, informed local capital absorbing — classic accumulation."
                 ),
                 "severity": "positive", "tier": 2,
@@ -820,14 +850,17 @@ def compute_signals(roll10: pd.DataFrame, roll5: pd.DataFrame, roll20: pd.DataFr
                 "severity": "positive", "tier": 3,
             })
 
-        # ── LOCAL BUYING ALONE (FIPI flat/negative) ───────────────────────
-        elif lipi_10 > 0 and companies_10 > 0 and fipi_10 <= 0:
+        # ── LOCAL SMART MONEY BUYING (FIPI flat/negative) ─────────────────
+        # Replaced lipi_10 + companies_10 double-check with smart_lipi_10
+        # alone — simpler and consistent: any net positive from the smart
+        # LIPI set while foreigners are absent qualifies.
+        elif smart_lipi_10 > 0 and fipi_10 <= 0:
             signals.append({
                 "type": "🟡 Local Accumulation",
                 "sector": sector,
                 "detail": (
-                    f"LIPI 10d: {_v(lipi_10)} · FIPI 10d: {_v(fipi_10)}\n"
-                    f"Local companies buying while foreigners stay out — less conviction but worth noting."
+                    f"Smart LIPI 10d: {_v(smart_lipi_10)} · FIPI 10d: {_v(fipi_10)}\n"
+                    f"Local smart money buying while foreigners stay out — less conviction but worth noting."
                 ),
                 "severity": "neutral", "tier": 3,
             })
@@ -935,8 +968,11 @@ _FLOW_SECTOR_MAP_INTEL = {
 }
 
 _SMART_CLIENTS_INTEL = {
-    "FOREIGN CORPORATES", "OVERSEAS PAKISTANI",
-    "BANKS / DFI", "COMPANIES", "INSURANCE COMPANIES", "BROKER PROPRIETARY TRADING",
+    # FIPI: Foreign Corporates only. Overseas Pakistanis excluded (diaspora/sentiment).
+    "FOREIGN CORPORATES",
+    # LIPI: principal-capital institutions
+    "BANKS / DFI", "COMPANIES", "INSURANCE COMPANIES",
+    "NBFC", "BROKER PROPRIETARY TRADING",
 }
 
 _INTEL_LOG_PATH = os.path.join(os.path.dirname(__file__), "sector_flows_log.csv")
@@ -1348,7 +1384,7 @@ def _render_intelligence_section(available: list, n_dates: int):
                 return "background-color:#fef9c3"
             return ""
 
-        styled = snap_df.style.applymap(_color_buyratio, subset=["BuyRatio", "3d Avg"])
+        styled = snap_df.style.map(_color_buyratio, subset=["BuyRatio", "3d Avg"])
         st.dataframe(styled, hide_index=True, use_container_width=True)
         st.caption(f"Data as of: **{latest.date()}** · 🟢 ≥65% · 🟡 55–65% · 🔴 ≤35%")
 
@@ -1460,7 +1496,7 @@ def _render_intelligence_section(available: list, n_dates: int):
                     return "background-color:#fef9c3"
                 return ""
 
-            styled_corr = corr_df.style.applymap(_corr_color, subset=["corr_full", "corr_30d"])
+            styled_corr = corr_df.style.map(_corr_color, subset=["corr_full", "corr_30d"])
             st.dataframe(styled_corr, hide_index=True, use_container_width=True)
 
             st.caption(
@@ -1511,13 +1547,259 @@ def _render_intelligence_section(available: list, n_dates: int):
                 if val == "PENDING":  return "background-color:#fef9c3"
                 return ""
 
-            styled_j = show.style.applymap(_outcome_color, subset=["outcome"])
+            styled_j = show.style.map(_outcome_color, subset=["outcome"])
             st.dataframe(styled_j, hide_index=True, use_container_width=True)
 
             if st.button("🔄 Force Re-validate Signals", key="intel_revalidate"):
                 _intel_load_flows_agg.clear()
                 _intel_load_prices.clear()
                 st.rerun()
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 6 — UIN SETTLEMENT ANALYSIS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _render_settlement_section():
+    try:
+        from settlement_scraper import (
+            init_settlement_table, get_available_dates_settlement,
+            get_settlement_df, get_rolling_summary, get_sector_settlement,
+            scrape_settlement_bulk, debug_scrape_settlement,
+        )
+    except ImportError as e:
+        st.error(f"settlement_scraper.py not found: {e}")
+        return
+
+    st.markdown("#### 🏦 UIN-Wise Settlement Analysis")
+    st.caption(
+        "Tracks UIN settlement % per symbol from NCCPL via khistocks.com. "
+        "Source publishes the **latest trading day only** — scrape daily to build history. "
+        "Signal: sett_value% **> 70%** AND **> own rolling avg** = potential accumulation."
+    )
+
+    init_settlement_table()
+    s_available = get_available_dates_settlement()
+    s_n = len(s_available)
+
+    ss1, ss2, ss3 = st.columns(3)
+    ss1.metric("Days of Data",  s_n)
+    ss2.metric("Latest Date",   s_available[0]  if s_available else "—")
+    ss3.metric("Earliest Date", s_available[-1] if s_available else "—")
+
+    tab_collect, tab_table, tab_accum, tab_chart, tab_sector = st.tabs([
+        "📥 Data Collection", "📋 Rolling Table",
+        "🎯 Accumulation Detector", "📈 Stock Chart", "🏭 Sector View",
+    ])
+
+    with tab_collect:
+        playwright_ok = True
+        try:
+            import playwright  # noqa: F401
+        except ImportError:
+            playwright_ok = False
+            st.warning("Playwright not installed: pip install playwright && playwright install chromium")
+
+        st.info(
+            "Scrapes **whatever date the site currently has published** — "
+            "typically 1–2 days behind (NCCPL posts settlement data post-market). "
+            "Scraper loops 8 company batches × 2 metrics (~3–5 min). "
+            "Run once daily after ~16:30 PKT."
+        )
+        col_btn, col_info = st.columns([1, 3])
+        with col_btn:
+            run_sett = st.button("⬇️ Get Latest Settlement", type="primary",
+                                 disabled=not playwright_ok, key="sett_today")
+        with col_info:
+            if s_available:
+                st.info(f"Latest in DB: **{s_available[0]}**. Site typically shows 1–2 days prior.")
+            else:
+                st.info("No settlement data yet.")
+
+        if run_sett:
+            pb = st.progress(0.0)
+            txt = st.empty()
+            res = scrape_settlement_bulk(pb, txt)
+            if res["rows_saved"]:
+                st.success(f"✅ {res['rows_saved']:,} rows saved for **{res['date_scraped']}**.")
+                st.rerun()
+            else:
+                st.warning("No data returned. Try Test Connection to diagnose.")
+
+        with st.expander("Test Connection (diagnose scraper)", expanded=False):
+            st.caption("Submits first company batch, shows headers + sample rows. No data saved.")
+            if st.button("Run Connection Test", key="sett_diag_btn", disabled=not playwright_ok):
+                with st.spinner("Loading settlement page..."):
+                    diag = debug_scrape_settlement()
+                if "error" in diag:
+                    st.error(f"Error: {diag['error']}")
+                else:
+                    st.write(f"cfrom after JS: `{diag.get('cfrom_after_js')}` | cto: `{diag.get('cto_after_js')}`")
+                    found = diag.get("table_found", False)
+                    nrows = diag.get("table_row_count", 0)
+                    if found and nrows > 1:
+                        st.success(f"{nrows} rows found after Submit.")
+                        st.write(f"Headers: {diag.get('table_headers')}")
+                        st.write(f"Row 1: {diag.get('sample_row')}")
+                        if diag.get("sample_row_2"):
+                            st.write(f"Row 2: {diag.get('sample_row_2')}")
+                    else:
+                        st.warning(f"Table found but {nrows} rows — data may not have loaded.")
+                    if diag.get("all_inputs"):
+                        with st.expander("All page inputs"):
+                            st.json(diag["all_inputs"])
+
+    if not s_available:
+        for _t in [tab_table, tab_accum, tab_chart, tab_sector]:
+            with _t:
+                st.info("No settlement data yet. Run the scraper in Data Collection.")
+        return
+
+    with tab_table:
+        st.caption("Red = sett_value% > 70% AND above own rolling avg | Amber = > 60%")
+        roll_window = st.radio("Window", [5, 10, 20],
+                               format_func=lambda x: f"{x}-day",
+                               horizontal=True, key="sett_roll_window")
+        cutoff = s_available[min(roll_window - 1, s_n - 1)]
+        df_roll = get_settlement_df(date_from=cutoff)
+        if df_roll.empty:
+            st.info("No data in this window.")
+        else:
+            sym_search = st.text_input("Filter symbol", key="sett_sym_search", placeholder="e.g. LUCK")
+            if sym_search:
+                df_roll = df_roll[df_roll["symbol"].str.upper().str.contains(sym_search.upper(), na=False)]
+            show_cols = [c for c in ["date","symbol","sett_pct_value","sett_pct_volume"] if c in df_roll.columns]
+            sym_avgs = df_roll.groupby("symbol")["sett_pct_value"].mean().to_dict()
+            def _hl(row):
+                pct = row.get("sett_pct_value")
+                avg = sym_avgs.get(row.get("symbol",""), 50)
+                if pd.notna(pct) and pct > 70 and pct > avg:
+                    return ["background-color:#fee2e2"] * len(row)
+                if pd.notna(pct) and pct > 60:
+                    return ["background-color:#fef9c3"] * len(row)
+                return [""] * len(row)
+            fmt = {c: "{:.1f}%" for c in ["sett_pct_value","sett_pct_volume"] if c in df_roll.columns}
+            st.dataframe(df_roll[show_cols].style.apply(_hl, axis=1).format(fmt),
+                         hide_index=True, use_container_width=True)
+            st.caption(f"{len(df_roll):,} rows | {roll_window}-day window | Red >70% & above avg | Amber >60%")
+
+    with tab_accum:
+        st.caption("Flags: sett_value% > 70% AND > own rolling avg. Baseline approx 50%.")
+        acc_window = st.radio("Look-back", [5, 10], format_func=lambda x: f"{x}-day",
+                              horizontal=True, key="sett_acc_window")
+        summary = get_rolling_summary(days=acc_window)
+        if summary.empty:
+            st.info("No data available.")
+        else:
+            flagged = summary[summary["flag"] != ""].copy()
+            ac1, ac2, ac3 = st.columns(3)
+            ac1.metric("Symbols Tracked", len(summary))
+            ac2.metric("High Settlement Flags", len(flagged))
+            mkt_avg = summary["latest_sett_pct_value"].mean()
+            ac3.metric("Market Avg", f"{mkt_avg:.1f}%" if pd.notna(mkt_avg) else "—")
+
+            if not flagged.empty:
+                st.markdown("##### Flagged Symbols — High Settlement")
+                flag_cols = [c for c in ["symbol","latest_sett_pct_value","avg_sett_pct_value",
+                                          "latest_sett_pct_volume","n_days","latest_date"] if c in flagged.columns]
+                fmt_f = {c: "{:.1f}%" for c in ["latest_sett_pct_value","avg_sett_pct_value",
+                                                  "latest_sett_pct_volume"] if c in flagged.columns}
+                st.dataframe(
+                    flagged[flag_cols].style
+                    .apply(lambda r: ["background-color:#fee2e2"]*len(r), axis=1)
+                    .format(fmt_f), hide_index=True, use_container_width=True)
+                try:
+                    syms = flagged["symbol"].tolist()
+                    ph = ",".join(["?"]*len(syms))
+                    with _get_conn() as conn:
+                        sec_rows = conn.execute(
+                            f"SELECT symbol, sector FROM sectors WHERE symbol IN ({ph})", syms
+                        ).fetchall()
+                    sec_map = {r["symbol"]: r["sector"] for r in sec_rows}
+                    if sec_map:
+                        flagged = flagged.copy()
+                        flagged["sector"] = flagged["symbol"].map(sec_map).fillna("Unknown")
+                        sec_cnt = (flagged.groupby("sector")["symbol"].count()
+                                   .reset_index().rename(columns={"symbol":"Flagged"})
+                                   .sort_values("Flagged", ascending=False))
+                        st.markdown("**Sector breakdown of flagged stocks:**")
+                        st.dataframe(sec_cnt, hide_index=True, use_container_width=True)
+                        st.caption("Multiple flags in one sector = possible sector-wide accumulation.")
+                except Exception:
+                    pass
+            else:
+                st.success(f"No stocks above 70% threshold in last {acc_window} days.")
+
+            with st.expander(f"Full {acc_window}-Day Summary (all symbols)"):
+                all_cols = [c for c in ["symbol","latest_sett_pct_value","avg_sett_pct_value",
+                                         "latest_sett_pct_volume","avg_sett_pct_volume","n_days","flag"]
+                            if c in summary.columns]
+                fmt_a = {c: "{:.1f}%" for c in ["latest_sett_pct_value","avg_sett_pct_value",
+                                                  "latest_sett_pct_volume","avg_sett_pct_volume"]
+                         if c in summary.columns}
+                def _ca(row):
+                    if row.get("flag"): return ["background-color:#fee2e2"]*len(row)
+                    if pd.notna(row.get("latest_sett_pct_value")) and row.get("latest_sett_pct_value",0) > 60:
+                        return ["background-color:#fef9c3"]*len(row)
+                    return [""]*len(row)
+                st.dataframe(summary[all_cols].style.apply(_ca,axis=1).format(fmt_a),
+                             hide_index=True, use_container_width=True)
+
+    with tab_chart:
+        st.caption("Rising sett_value% toward 70%+ above own avg = conviction delivery signal.")
+        all_syms = sorted(get_settlement_df(
+            date_from=s_available[min(29, s_n-1)])["symbol"].unique().tolist())
+        if not all_syms:
+            st.info("No symbols available.")
+        else:
+            chart_sym = st.selectbox("Symbol", all_syms, key="sett_chart_sym")
+            max_d = max(s_n, 2)
+            chart_days = st.slider("Days", 2, min(60, max_d), min(20, max_d), key="sett_chart_days")
+            sym_df = get_settlement_df(
+                date_from=s_available[min(chart_days-1, s_n-1)], symbol=chart_sym
+            ).sort_values("date")
+            if sym_df.empty:
+                st.info(f"No data for {chart_sym}.")
+            else:
+                latest_r = sym_df.iloc[-1]
+                avg_v = sym_df["sett_pct_value"].mean()
+                c1, c2 = st.columns(2)
+                c1.metric("Latest Sett. Val %",
+                          f"{latest_r['sett_pct_value']:.1f}%" if pd.notna(latest_r["sett_pct_value"]) else "—",
+                          delta=f"{latest_r['sett_pct_value']-avg_v:+.1f}% vs avg"
+                          if pd.notna(latest_r["sett_pct_value"]) else None)
+                c2.metric(f"{chart_days}d Avg", f"{avg_v:.1f}%" if pd.notna(avg_v) else "—")
+                chart_data = sym_df.set_index("date")[
+                    [c for c in ["sett_pct_value","sett_pct_volume"] if c in sym_df.columns]
+                ].copy()
+                chart_data.index = pd.to_datetime(chart_data.index)
+                st.line_chart(chart_data, height=260)
+                st.caption("Blue = Value % | Orange = Volume %")
+                with st.expander("Raw Data"):
+                    st.dataframe(sym_df, hide_index=True, use_container_width=True)
+
+    with tab_sector:
+        st.caption("Sector-level aggregation via JOIN with sectors table.")
+        sec_window = st.radio("Window", [5, 10, 20], format_func=lambda x: f"{x}-day",
+                              horizontal=True, key="sett_sec_window")
+        sec_df = get_sector_settlement(days=sec_window)
+        if sec_df.empty:
+            st.info("No sector data yet — populates once settlement symbols match sectors table.")
+        else:
+            def _sc(row):
+                avg = row.get("avg_sett_pct_value", 0)
+                if avg > 70: return ["background-color:#fee2e2"]*len(row)
+                if avg > 60: return ["background-color:#fef9c3"]*len(row)
+                return [""]*len(row)
+            sc_cols = [c for c in ["sector","symbol_count","avg_sett_pct_value",
+                                    "max_sett_pct_value","flagged_count"] if c in sec_df.columns]
+            fmt_s = {c: "{:.1f}%" for c in ["avg_sett_pct_value","max_sett_pct_value"] if c in sec_df.columns}
+            st.dataframe(sec_df[sc_cols].style.apply(_sc,axis=1).format(fmt_s),
+                         hide_index=True, use_container_width=True)
+            st.caption("Red = Avg > 70% | Amber = Avg > 60%")
+            bar = sec_df.set_index("sector")["avg_sett_pct_value"].sort_values(ascending=False)
+            st.bar_chart(bar, height=300)
 
 
 def render_flows_page():
@@ -1973,18 +2255,22 @@ def render_flows_page():
 
     st.divider()
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # SECTION 5 — INTELLIGENCE ENGINE
-    # ══════════════════════════════════════════════════════════════════════════
+    # Section 5: Intelligence Engine
     _render_intelligence_section(available, n_dates)
 
     st.divider()
+
+    # SECTION 6 — UIN SETTLEMENT ANALYSIS
+    _render_settlement_section()
+
     st.caption(
-        "**Reading guide —** "
-        "FIPI = foreign money (Corps + Individuals + Overseas) · "
-        "LIPI = local institutions (Banks, Companies, Mutual Funds, Insurance, Broker Prop.) · "
-        "**Institutional** = principal-at-risk players (banks, corporates, insurance, broker prop.) · "
-        "**Retail/Funds** = mutual funds + individual investors · "
+        "**Reading guide** | "
+        "FIPI = Foreign Corporates + Foreign Individuals + Overseas Pakistanis | "
+        "LIPI = Banks/DFI + Companies + Insurance + NBFC + Broker Prop + Mutual Funds + Individuals | "
+        "Smart Money = Foreign Corporates, Insurance, Banks/DFI, Companies, NBFC, Broker Prop "
+        "(principal capital / informed) | "
+        "Sentiment/Retail = Overseas Pakistanis, Foreign Individuals, Individuals, Mutual Funds "
+        "(diaspora/retail -- high volume, NOT informationally driven) | "
         "🟢🟢 Strong Buy = FIPI + LIPI both net positive · "
         "🟢 Accumulation = foreigners selling, local companies absorbing · "
         "⚡ Flow Reversal = 20d net negative turning positive in 5d · "
