@@ -1,10 +1,10 @@
 name: Daily PSX Scraper
 
-# PSX closes ~15:30 PKT.  Data appears on ksestocks.com by 16:15–16:30 PKT.
-# 16:30 PKT = 11:30 UTC.  We run at 11:35 UTC to give the site a few minutes.
+
+
 on:
   schedule:
-    - cron: "35 11 * * 1-5"   # Monday–Friday at 11:35 UTC (16:35 PKT)
+    - cron: "0 17 * * 1-5"   # Monday–Friday at 17:00 UTC (22:00 PKT)
   workflow_dispatch:            # allow manual trigger from GitHub UI
 
 jobs:
