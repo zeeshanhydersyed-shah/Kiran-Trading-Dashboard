@@ -373,6 +373,7 @@ def get_sector_price_data() -> list[dict]:
         rows = conn.execute(
             """
             SELECT s.symbol, s.sector, p.date,
+                   COALESCE(p.open, p.close)  AS open,
                    COALESCE(p.high, p.close) AS high,
                    COALESCE(p.low,  p.close) AS low,
                    p.close,
