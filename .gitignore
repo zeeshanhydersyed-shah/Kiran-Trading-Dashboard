@@ -43,3 +43,5 @@ exports/
 
 # Migration script output
 migrate_to_supabase.log
+features_dataset.csv 
+support_signals_20260521_130920.csv 

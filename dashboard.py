@@ -4955,8 +4955,9 @@ elif cur == PAGES[9]:  # Recovery Bases
                         s.iloc[i, ci] = "color:#22c55e;font-weight:bold"
             return s
 
+        _tr_fmt = {c: "{:.2f}" for c in ["Entry Close", "Current", "Avg Vol (M)"] if c in _tr_out.columns}
         st.dataframe(
-            _tr_out.style.apply(_style_tr, axis=None),
+            _tr_out.style.apply(_style_tr, axis=None).format(_tr_fmt),
             use_container_width=True,
             hide_index=True,
         )
@@ -5021,8 +5022,9 @@ elif cur == PAGES[9]:  # Recovery Bases
                         pass
             return s
 
+        _wl_fmt = {c: "{:.2f}" for c in ["Close", "Trigger Level", "Avg Vol (M)"] if c in _wl_out.columns}
         st.dataframe(
-            _wl_out.style.apply(_style_wl, axis=None),
+            _wl_out.style.apply(_style_wl, axis=None).format(_wl_fmt),
             use_container_width=True,
             hide_index=True,
         )
@@ -5098,9 +5100,13 @@ elif cur == PAGES[13]:  # Model Health (updated index)
                     capture_output=True, text=True)
         st.code(r.stdout or r.stderr)
     if c3.button("Force retrain now"):
-        r = _sp.run([_py, _os.path.join(_MODEL_DIR, "part4_monthly_retrain.py"), "--force"],
-                    capture_output=True, text=True, timeout=300)
-        st.code(r.stdout or r.stderr)
+        _retrain_script = _os.path.join(_MODEL_DIR, "part4_monthly_retrain.py")
+        if not _os.path.exists(_retrain_script):
+            st.warning("part4_monthly_retrain.py not found — local-only script, not deployed. Run `retrain.bat` on your local machine instead.")
+        else:
+            r = _sp.run([_py, _retrain_script, "--force"],
+                        capture_output=True, text=True, timeout=300)
+            st.code(r.stdout or r.stderr)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 11 — 🗂️ Portfolio  (Weinstein Stage 2 Portfolio Screener)
