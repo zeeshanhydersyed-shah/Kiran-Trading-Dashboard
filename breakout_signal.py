@@ -214,7 +214,10 @@ OUTPUT_COLS_SHORT = [
 
 def get_signals(df: pd.DataFrame, as_of_date=None):
     """
-    Returns (longs_df, shorts_df) for a given date.
+    Returns (watchlist_df, longs_df, shorts_df) for a given date.
+    - watchlist: Stage 2 stocks within 5% of pivot high, not yet broken out
+    - longs: stocks with signal_long == True
+    - shorts: stocks with signal_short == True
     If as_of_date is None, uses the latest date in the data.
     """
     if as_of_date is None:
@@ -227,6 +230,18 @@ def get_signals(df: pd.DataFrame, as_of_date=None):
     longs  = day[day["signal_long"] == True][OUTPUT_COLS_LONG].copy()
     shorts = day[day["signal_short"] == True][OUTPUT_COLS_SHORT].copy()
 
+    # Watchlist: Stage 2, not yet broken out, within 5% of pivot high, RS >= 50
+    _wl_mask = (
+        (day["stage2"] == True) &
+        (day["signal_long"] != True) &
+        (day["pivot_high"].notna()) &
+        (day["close"] < day["pivot_high"]) &
+        ((day["pivot_high"] - day["close"]) / day["pivot_high"] <= 0.05) &
+        (day["rs_rating"] >= 50)
+    )
+    _wl_cols = ["symbol", "date", "close", "pivot_high", "atr_pct", "vol_ratio", "rs_rating", "rs_score"]
+    watchlist = day[_wl_mask][[c for c in _wl_cols if c in day.columns]].copy()
+
     # Round for display
     for col in ["close","sma20","sma50","sma200","pivot_high","atr_pct","vol_ratio","rs_rating","rs_score"]:
         if col in longs.columns:
@@ -234,10 +249,14 @@ def get_signals(df: pd.DataFrame, as_of_date=None):
     for col in ["close","sma20","sma50","sma200","pivot_low","atr_pct","vol_ratio","rs_rating","rs_score"]:
         if col in shorts.columns:
             shorts[col] = shorts[col].round(2)
+    for col in ["close","pivot_high","atr_pct","vol_ratio","rs_rating","rs_score"]:
+        if col in watchlist.columns:
+            watchlist[col] = watchlist[col].round(2)
 
-    longs  = longs.sort_values("rs_rating", ascending=False).reset_index(drop=True)
-    shorts = shorts.sort_values("rs_rating", ascending=True).reset_index(drop=True)
-    return longs, shorts
+    longs     = longs.sort_values("rs_rating", ascending=False).reset_index(drop=True)
+    shorts    = shorts.sort_values("rs_rating", ascending=True).reset_index(drop=True)
+    watchlist = watchlist.sort_values("rs_rating", ascending=False).reset_index(drop=True)
+    return watchlist, longs, shorts
 
 
 def get_all_signals(df: pd.DataFrame):
