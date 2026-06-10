@@ -215,7 +215,7 @@ OUTPUT_COLS_SHORT = [
 def get_signals(df: pd.DataFrame, as_of_date=None):
     """
     Returns (watchlist_df, longs_df, shorts_df) for a given date.
-    - watchlist: Stage 2 stocks within 5% of pivot high, not yet broken out
+    - watchlist: Stage 2 stocks within 3% of pivot high, not yet broken out
     - longs: stocks with signal_long == True
     - shorts: stocks with signal_short == True
     If as_of_date is None, uses the latest date in the data.
@@ -230,7 +230,7 @@ def get_signals(df: pd.DataFrame, as_of_date=None):
     longs  = day[day["signal_long"] == True][OUTPUT_COLS_LONG].copy()
     shorts = day[day["signal_short"] == True][OUTPUT_COLS_SHORT].copy()
 
-    # Watchlist: Stage 2, not yet broken out, within 5% of pivot high, RS >= 50
+    # Watchlist: Stage 2, not yet broken out, within 3% of pivot high, RS >= 50
     _wl_mask = (
         (day["stage2"] == True) &
         (day["signal_long"] != True) &
@@ -349,7 +349,7 @@ def main():
         return
 
     target_date = args.date if args.date else None
-    longs, shorts = get_signals(df, target_date)
+    watchlist, longs, shorts = get_signals(df, target_date)
     date_used = target_date or df["date"].max().strftime("%Y-%m-%d")
 
     print(f"\n=== LONG SIGNALS  [{date_used}]  ({len(longs)} setups) ===")
@@ -363,6 +363,10 @@ def main():
                        "atr_pct","vol_ratio","rs_rating","rs_score"]].to_string(index=False))
     elif not longs.empty:
         print("  None")
+
+    print(f"\n=== WATCHLIST     [{date_used}]  ({len(watchlist)} candidates — within 3% of pivot) ===")
+    if not watchlist.empty:
+        print(watchlist[["symbol","close","pivot_high","atr_pct","vol_ratio","rs_rating"]].to_string(index=False))
 
     if not args.no_save:
         if not longs.empty:
