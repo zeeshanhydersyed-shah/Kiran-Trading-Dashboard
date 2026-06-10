@@ -155,6 +155,7 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
         idx[["date","ir21","ir63","ir126","ir252","market_up","idx_close","idx_sma50"]],
         on="date", how="left"
     )
+    df["market_up"] = df["market_up"].fillna(False).astype(bool)
     df["rs_score"] = df["rs_raw"] - (
         0.40*df["ir252"] + 0.30*df["ir126"] +
         0.20*df["ir63"]  + 0.10*df["ir21"]
