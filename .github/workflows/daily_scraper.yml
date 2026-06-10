@@ -10,7 +10,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -38,4 +38,4 @@ jobs:
         if: failure()
         run: |
           echo "::error::Daily scraper FAILED on $(date -u '+%Y-%m-%d %H:%M UTC'). Check logs above."
-          # Optional: add a curl call to a webhook
+          # Optional: add a curl ca
