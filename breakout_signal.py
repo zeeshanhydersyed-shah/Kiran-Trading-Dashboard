@@ -1,24 +1,28 @@
 """
-breakout_signal.py  —  Zeeshan Breakout Signal Engine
-======================================================
-Entry rules (confirmed from 8 real trades — DGKC, FFC, UBL, TPLP):
+breakout_signal.py  —  Zeeshan Breakout Signal Engine  v2
+==========================================================
+v2 (2026-06-10):  EMA trend stack | Tight Base (BB width) | No Overhead Supply
 
   LONG signal (all liquid stocks):
-    1. Stage 2  : close > SMA20 > SMA50 > SMA200
-    2. Pivot BO : close > 60-day highest close (prior day)
-    3. Volume   : today's volume >= 2x 20-day avg volume
-    4. Market   : KSE-100 close > SMA50
-    5. RS Rating: percentile rank >= 60  (stock outperforming at least 60% of market)
-    6. Liquidity: 20-day avg volume >= 100,000 shares
-    7. Volatility: ATR14 as % of close between 1.0% and 6.0%
+    1. Stage 2     : close > EMA20 > EMA50 > EMA200
+    2. Pivot BO    : close > 60-day highest close (first break — yesterday still below)
+    3. Tight Base  : Bollinger Band width (prior day) ≤ 12%
+    4. No Overhead : 200-day high ≤ 60-day pivot × 1.05
+    5. Volume      : today's volume >= 2x 20-day avg volume
+    6. Market      : KSE-100 close > SMA50
+    7. RS Rating   : cross-sectional percentile >= 60
+    8. Liquidity   : 20-day avg volume >= 100,000 shares
+    9. Volatility  : ATR14 between 1.0% and 6.0% of price
 
   SHORT signal (DFC counters only — inverse rules):
-    1. Stage 4  : close < SMA20 < SMA50 < SMA200
-    2. Pivot BD : close < 60-day lowest close (prior day)
-    3. Volume   : today's volume >= 2x 20-day avg volume
-    4. Market   : KSE-100 close < SMA50  (bear regime)
-    5. RS Rating: percentile rank <= 40  (stock underperforming 60%+ of market)
-    6. Liquidity: 20-day avg volume >= 100,000 shares
+    1. Stage 4     : close < EMA20 < EMA50 < EMA200
+    2. Pivot BD    : close < 60-day lowest close (first breakdown — yesterday still above)
+    3. Tight Base  : Bollinger Band width (prior day) ≤ 12%
+    4. Market      : KSE-100 close < SMA50  (bear regime)
+    5. RS Rating   : cross-sectional percentile <= 40
+    6. Liquidity   : 20-day avg volume >= 100,000 shares
+    7. Volatility  : ATR14 between 1.0% and 6.0% of price
+    NOTE: No volume spike requirement on shorts
 
 Usage:
     python breakout_signal.py                     # today's signals
@@ -41,14 +45,16 @@ OUT_DIR.mkdir(exist_ok=True)
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 PARAMS = dict(
-    min_avg_vol  = 100_000,   # 20-day avg vol floor
-    vol_mult     = 2.0,       # volume must be >= N x 20-day avg
-    rs_min_long  = 60,        # RS percentile floor for longs
-    rs_max_short = 40,        # RS percentile ceiling for shorts
-    atr_min_pct  = 1.0,       # min ATR% (filter ultra-flat stocks)
-    atr_max_pct  = 6.0,       # max ATR% (filter too volatile)
-    resist_win   = 60,        # lookback for pivot high/low
-    sma_trend    = 50,        # regime SMA for index
+    min_avg_vol   = 100_000,   # 20-day avg vol floor
+    vol_mult      = 2.0,       # volume must be >= N x 20-day avg
+    rs_min_long   = 60,        # RS percentile floor for longs
+    rs_max_short  = 40,        # RS percentile ceiling for shorts
+    atr_min_pct   = 1.0,       # min ATR% (filter ultra-flat stocks)
+    atr_max_pct   = 6.0,       # max ATR% (filter too volatile)
+    resist_win    = 60,        # lookback for pivot high/low (rolling max of close)
+    bb_max_width  = 12.0,      # Bollinger Band width ≤ 12% (tight base gate)
+    overhead_mult = 1.05,      # 200d HIGH must be ≤ pivot × 1.05 (5% max overhead)
+    sma_trend     = 50,        # regime SMA for index (intentionally SMA, not EMA)
 )
 
 # DFC counters — only these can be shorted on PSX
@@ -79,24 +85,24 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
     df = stocks.copy()
     g  = df.groupby("symbol", sort=False)
 
-    # ── Moving averages ───────────────────────────────────────────────────────
+    # ── EMA 20 / 50 / 200 (v2: replaces SMA) ────────────────────────────────
     for n in [20, 50, 200]:
-        df[f"sma{n}"] = g["close"].transform(
-            lambda s, n=n: s.rolling(n, min_periods=n).mean()
+        df[f"ema{n}"] = g["close"].transform(
+            lambda s, n=n: s.ewm(span=n, adjust=False).mean()
         )
 
-    # Stage 2: close > SMA20 > SMA50 > SMA200
+    # Stage 2: close > EMA20 > EMA50 > EMA200
     df["stage2"] = (
-        (df["close"] > df["sma20"]) &
-        (df["sma20"] > df["sma50"]) &
-        (df["sma50"] > df["sma200"])
+        (df["close"] > df["ema20"]) &
+        (df["ema20"] > df["ema50"]) &
+        (df["ema50"] > df["ema200"])
     )
 
-    # Stage 4: close < SMA20 < SMA50 < SMA200  (for DFC shorts)
+    # Stage 4: close < EMA20 < EMA50 < EMA200  (for DFC shorts)
     df["stage4"] = (
-        (df["close"] < df["sma20"]) &
-        (df["sma20"] < df["sma50"]) &
-        (df["sma50"] < df["sma200"])
+        (df["close"] < df["ema20"]) &
+        (df["ema20"] < df["ema50"]) &
+        (df["ema50"] < df["ema200"])
     )
 
     # ── ATR14 ─────────────────────────────────────────────────────────────────
@@ -111,18 +117,41 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
     )
     df["atr_pct"] = df["atr14"] / df["close"] * 100
 
-    # ── Pivot high / low (60-day, shift 1 to avoid fwd leakage) ──────────────
+    # ── Pivot high / low (60-day rolling max of close, shift 1) ───────────────
     rw = PARAMS["resist_win"]
     df["pivot_high"] = g["close"].transform(
         lambda s: s.rolling(rw, min_periods=rw).max().shift(1)
     )
-    df["pivot_low"]  = g["close"].transform(
+    df["pivot_low"] = g["close"].transform(
         lambda s: s.rolling(rw, min_periods=rw).min().shift(1)
     )
 
-    # Breakout / breakdown
-    df["bo_long"]  = df["close"] > df["pivot_high"]   # close above 60-day high
-    df["bo_short"] = df["close"] < df["pivot_low"]    # close below 60-day low
+    # Breakout / breakdown — FIRST break only (yesterday still on other side)
+    _prev_close    = g["close"].transform(lambda s: s.shift(1))
+    df["bo_long"]  = (df["close"] > df["pivot_high"]) & (_prev_close <= df["pivot_high"])
+    df["bo_short"] = (df["close"] < df["pivot_low"])  & (_prev_close >= df["pivot_low"])
+
+    # ── Tight Base — Bollinger Band width (prior day) ≤ 12% (v2 new gate) ────
+    # BB width = (Upper − Lower) / Middle × 100 = 4 × StdDev20 / SMA20 × 100
+    def _bb_width_shifted(s):
+        sma = s.rolling(20, min_periods=20).mean()
+        std = s.rolling(20, min_periods=20).std(ddof=1)
+        width = (4.0 * std / sma * 100)
+        return width.shift(1)   # prior day's width
+
+    df["bb_width"]   = g["close"].transform(_bb_width_shifted)
+    df["tight_base"] = df["bb_width"] <= PARAMS["bb_max_width"]
+
+    # ── No Overhead Supply (v2 new gate — LONG only) ─────────────────────────
+    # 200-day rolling max of HIGH (shifted 1) must be ≤ pivot × 1.05
+    df["high_200d"]   = g["high"].transform(
+        lambda s: s.rolling(200, min_periods=200).max().shift(1)
+    )
+    df["no_overhead"] = (
+        df["high_200d"].notna() &
+        df["pivot_high"].notna() &
+        (df["high_200d"] <= df["pivot_high"] * PARAMS["overhead_mult"])
+    )
 
     # ── Volume ────────────────────────────────────────────────────────────────
     df["vol_avg20"] = g["volume"].transform(
@@ -148,7 +177,9 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
     idx = index.copy()
     for w, c in [(21,"ir21"),(63,"ir63"),(126,"ir126"),(252,"ir252")]:
         idx[c] = idx["idx_close"] / idx["idx_close"].shift(w) - 1
-    idx["idx_sma50"] = idx["idx_close"].rolling(PARAMS["sma_trend"], min_periods=PARAMS["sma_trend"]).mean()
+    idx["idx_sma50"] = idx["idx_close"].rolling(
+        PARAMS["sma_trend"], min_periods=PARAMS["sma_trend"]
+    ).mean()
     idx["market_up"] = idx["idx_close"] > idx["idx_sma50"]
 
     df = df.merge(
@@ -174,6 +205,8 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
     df["signal_long"] = (
         df["stage2"]      &
         df["bo_long"]     &
+        df["tight_base"]  &   # v2: BB width ≤ 12%
+        df["no_overhead"] &   # v2: 200d high ≤ pivot × 1.05
         df["vol_ok"]      &
         df["liquid"]      &
         df["market_up"]   &
@@ -186,12 +219,12 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
         df["is_dfc"]      &
         df["stage4"]      &
         df["bo_short"]    &
-        df["vol_ok"]      &
+        df["tight_base"]  &
         df["liquid"]      &
-        (~df["market_up"])&          # bear market regime for shorts
+        (~df["market_up"])&
         df["vol_filter"]  &
         (df["rs_rating"] <= PARAMS["rs_max_short"])
-    )
+    )   # no vol_ok — spec: no volume requirement on shorts
 
     return df
 
@@ -201,13 +234,15 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
 # ══════════════════════════════════════════════════════════════════════════════
 
 OUTPUT_COLS_LONG = [
-    "symbol", "date", "close", "sma20", "sma50", "sma200",
-    "pivot_high", "atr_pct", "vol_ratio", "rs_rating", "rs_score",
+    "symbol", "date", "close", "ema20", "ema50", "ema200",
+    "pivot_high", "bb_width", "high_200d",
+    "atr_pct", "vol_ratio", "rs_rating", "rs_score",
     "vol_avg20", "market_up", "is_dfc",
 ]
 OUTPUT_COLS_SHORT = [
-    "symbol", "date", "close", "sma20", "sma50", "sma200",
-    "pivot_low", "atr_pct", "vol_ratio", "rs_rating", "rs_score",
+    "symbol", "date", "close", "ema20", "ema50", "ema200",
+    "pivot_low", "bb_width",
+    "atr_pct", "vol_ratio", "rs_rating", "rs_score",
     "vol_avg20", "market_up", "is_dfc",
 ]
 
@@ -215,8 +250,8 @@ OUTPUT_COLS_SHORT = [
 def get_signals(df: pd.DataFrame, as_of_date=None):
     """
     Returns (watchlist_df, longs_df, shorts_df) for a given date.
-    - watchlist: Stage 2 stocks within 3% of pivot high, not yet broken out
-    - longs: stocks with signal_long == True
+    - watchlist: all shared conditions + within 3% of pivot, not yet broken out
+    - longs: stocks with signal_long == True (all v2 gates passed)
     - shorts: stocks with signal_short == True
     If as_of_date is None, uses the latest date in the data.
     """
@@ -227,29 +262,44 @@ def get_signals(df: pd.DataFrame, as_of_date=None):
 
     day = df[df["date"] == as_of_date]
 
-    longs  = day[day["signal_long"] == True][OUTPUT_COLS_LONG].copy()
+    longs  = day[day["signal_long"]  == True][OUTPUT_COLS_LONG].copy()
     shorts = day[day["signal_short"] == True][OUTPUT_COLS_SHORT].copy()
 
-    # Watchlist: Stage 2, not yet broken out, within 3% of pivot high, RS >= 50
+    # Watchlist: all shared conditions + within 3% of pivot, not yet broken out
     _wl_mask = (
-        (day["stage2"] == True) &
+        (day["stage2"]      == True) &
+        (day["tight_base"]  == True) &
+        (day["no_overhead"] == True) &
+        (day["market_up"]   == True) &
+        (day["liquid"]      == True) &
+        (day["vol_filter"]  == True) &
         (day["signal_long"] != True) &
         (day["pivot_high"].notna()) &
         (day["close"] < day["pivot_high"]) &
         ((day["pivot_high"] - day["close"]) / day["pivot_high"] <= 0.03) &
-        (day["rs_rating"] >= 50)
+        (day["rs_rating"] >= 60)
     )
-    _wl_cols = ["symbol", "date", "close", "pivot_high", "atr_pct", "vol_ratio", "rs_rating", "rs_score"]
+    _wl_cols = [
+        "symbol", "date", "close", "pivot_high",
+        "bb_width", "atr_pct", "vol_ratio", "rs_rating", "rs_score",
+    ]
     watchlist = day[_wl_mask][[c for c in _wl_cols if c in day.columns]].copy()
 
     # Round for display
-    for col in ["close","sma20","sma50","sma200","pivot_high","atr_pct","vol_ratio","rs_rating","rs_score"]:
+    _long_round  = ["close","ema20","ema50","ema200","pivot_high","bb_width",
+                    "high_200d","atr_pct","vol_ratio","rs_rating","rs_score"]
+    _short_round = ["close","ema20","ema50","ema200","pivot_low","bb_width",
+                    "atr_pct","vol_ratio","rs_rating","rs_score"]
+    _wl_round    = ["close","pivot_high","bb_width","atr_pct","vol_ratio",
+                    "rs_rating","rs_score"]
+
+    for col in _long_round:
         if col in longs.columns:
             longs[col] = longs[col].round(2)
-    for col in ["close","sma20","sma50","sma200","pivot_low","atr_pct","vol_ratio","rs_rating","rs_score"]:
+    for col in _short_round:
         if col in shorts.columns:
             shorts[col] = shorts[col].round(2)
-    for col in ["close","pivot_high","atr_pct","vol_ratio","rs_rating","rs_score"]:
+    for col in _wl_round:
         if col in watchlist.columns:
             watchlist[col] = watchlist[col].round(2)
 
@@ -276,7 +326,7 @@ def get_all_signals(df: pd.DataFrame):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def verify_known_entries(df: pd.DataFrame):
-    """Check that the engine fires on the 8 confirmed trades."""
+    """Check that the engine fires on the confirmed trades."""
     known = [
         ("TPLP", "2021-05-27"),
         ("DGKC", "2025-02-19"),
@@ -288,9 +338,9 @@ def verify_known_entries(df: pd.DataFrame):
         ("UBL",  "2025-12-26"),
     ]
     print("\n=== VERIFICATION — known entries ===")
-    print("%-6s  %-12s  %-5s  %-5s  %-8s  %-8s  %-6s  %-6s  %-8s" % (
-        "Symbol","Date","Stage","BO","Vol_ok","Vol_flt","RS_rat","Market","Signal"))
-    print("-" * 85)
+    print("%-6s  %-12s  %-5s  %-5s  %-7s  %-8s  %-8s  %-6s  %-6s  %-8s" % (
+        "Symbol","Date","Stage","BO","TBase","NoOvhd","Vol_flt","RS_rat","Market","Signal"))
+    print("-" * 95)
     hits = 0
     for sym, date_str in known:
         date = pd.Timestamp(date_str)
@@ -302,14 +352,15 @@ def verify_known_entries(df: pd.DataFrame):
         sig = r["signal_long"]
         if sig:
             hits += 1
-        print("%-6s  %-12s  %-5s  %-5s  %-8s  %-8s  %5.1f%%  %-6s  %s" % (
+        print("%-6s  %-12s  %-5s  %-5s  %-7s  %-8s  %-8s  %5.1f%%  %-6s  %s" % (
             sym, date_str,
-            "YES" if r["stage2"]    else "no",
-            "YES" if r["bo_long"]   else "no",
-            "YES" if r["vol_ok"]    else "no",
-            "YES" if r["vol_filter"]else "no",
+            "YES" if r["stage2"]      else "no",
+            "YES" if r["bo_long"]     else "no",
+            "YES" if r["tight_base"]  else "no",
+            "YES" if r["no_overhead"] else "no",
+            "YES" if r["vol_filter"]  else "no",
             r["rs_rating"],
-            "UP"  if r["market_up"] else "DN",
+            "UP"  if r["market_up"]   else "DN",
             "FIRE" if sig else "miss",
         ))
     print(f"\n  Captured {hits}/{len(known)} known entries")
@@ -341,7 +392,9 @@ def main():
 
     if args.all_dates:
         all_sigs = get_all_signals(df)
-        print(f"\nTotal signals: {len(all_sigs)}  ({(all_sigs.direction=='LONG').sum()} long, {(all_sigs.direction=='SHORT').sum()} short)")
+        print(f"\nTotal signals: {len(all_sigs)}  "
+              f"({(all_sigs.direction=='LONG').sum()} long, "
+              f"{(all_sigs.direction=='SHORT').sum()} short)")
         if not args.no_save:
             path = OUT_DIR / "breakout_signals_history.csv"
             all_sigs.to_csv(path, index=False)
@@ -354,25 +407,29 @@ def main():
 
     print(f"\n=== LONG SIGNALS  [{date_used}]  ({len(longs)} setups) ===")
     if not longs.empty:
-        print(longs[["symbol","close","sma20","sma50","sma200","pivot_high",
-                      "atr_pct","vol_ratio","rs_rating","rs_score","is_dfc"]].to_string(index=False))
+        print(longs[["symbol","close","ema20","ema50","ema200","pivot_high",
+                      "bb_width","atr_pct","vol_ratio","rs_rating","rs_score","is_dfc"]
+                    ].to_string(index=False))
 
     print(f"\n=== SHORT SIGNALS [{date_used}]  ({len(shorts)} setups — DFC only) ===")
     if not shorts.empty:
-        print(shorts[["symbol","close","sma20","sma50","sma200","pivot_low",
-                       "atr_pct","vol_ratio","rs_rating","rs_score"]].to_string(index=False))
+        print(shorts[["symbol","close","ema20","ema50","ema200","pivot_low",
+                       "bb_width","atr_pct","vol_ratio","rs_rating","rs_score"]
+                     ].to_string(index=False))
     elif not longs.empty:
         print("  None")
 
     print(f"\n=== WATCHLIST     [{date_used}]  ({len(watchlist)} candidates — within 3% of pivot) ===")
     if not watchlist.empty:
-        print(watchlist[["symbol","close","pivot_high","atr_pct","vol_ratio","rs_rating"]].to_string(index=False))
+        print(watchlist[["symbol","close","pivot_high","bb_width",
+                          "atr_pct","vol_ratio","rs_rating"]].to_string(index=False))
 
     if not args.no_save:
         if not longs.empty:
             longs.to_csv(OUT_DIR / f"longs_{date_used}.csv", index=False)
         if not shorts.empty:
             shorts.to_csv(OUT_DIR / f"shorts_{date_used}.csv", index=False)
+
 
 if __name__ == "__main__":
     main()

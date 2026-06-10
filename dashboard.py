@@ -6187,13 +6187,14 @@ Enter tomorrow's open if you missed the intraday move. Risk is slightly wider.
 | **Stage 2** | close > EMA20 > EMA50 > EMA200 | Full uptrend stack — 9/10 entries. Uses EMA (matches charting platforms, reacts faster than SMA) |
 | **Tight Base** | BB width (prior day) ≤ 12% | Avg 8.3% across 9 entries. Formula: (Upper−Lower)/Middle×100 |
 | **No Overhead** | 200-day high ≤ 60-day pivot × 1.05 | Breakout into clear air — no heavy resistance above |
+| **Market** | KSE-100 close > 50 SMA | Bull market only — 9/9 entries in up regime |
 | **RS Rating** | Cross-sectional percentile ≥ 60 | Avg 74 at entry, range 53–87 |
 | **Liquidity** | 20-day avg volume ≥ 100,000 shares | Filters untradeable names |
 | **Volatility** | ATR14 between 1% and 6% of price | Avg 2.85% — controlled breakouts only |
 
 #### SHORT Signal — DFC counters only
-Inverse rules: Stage 4 (close < SMA20 < SMA50 < SMA200), close below 60-day low,
-volume ≥ 2×, KSE-100 below SMA50, RS Rating ≤ 40. Only PSX-shortable (DFC) stocks.
+Inverse rules: Stage 4 (close < EMA20 < EMA50 < EMA200), close below 60-day low,
+tight base (BB width ≤ 12%), volume ≥ 2×, KSE-100 below SMA50, RS Rating ≤ 40. Only PSX-shortable (DFC) stocks.
 
 #### RS Rating explained
 Cross-sectional **percentile rank** of multi-period momentum:
@@ -6201,8 +6202,8 @@ Cross-sectional **percentile rank** of multi-period momentum:
 Rating 75 = stock stronger than 75% of all PSX stocks on that day.
 
 #### Known limitation
-Stocks post-bonus-issue have distorted SMAs for ~200 days. Stage 2 may fail
-on recently ex-dated stocks until SMA200 normalises on adjusted prices.
+Stocks post-bonus-issue have distorted EMAs for ~200 days. Stage 2 may fail
+on recently ex-dated stocks until EMA200 normalises on adjusted prices.
 
 ---
 *Signals are read-only. Use **Save to Setup Perf** to track them over time.*
@@ -6301,11 +6302,12 @@ on recently ex-dated stocks until SMA200 normalises on adjusted prices.
             _ld["RS Rating"]= _ld["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
             _ld["ATR%"]     = _ld["atr_pct"].apply(lambda x: f"{x:.2f}%")
             _ld["DFC"]      = _ld["is_dfc"].map({True: "✓", False: ""})
-            _disp_cols      = ["symbol","close","sma20","sma50","sma200",
-                               "pivot_high","ATR%","Vol/Avg","RS Rating","rs_score","DFC"]
+            _ld["BB Width%"] = _ld["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
+            _disp_cols      = ["symbol","close","ema20","ema50","ema200",
+                               "pivot_high","BB Width%","ATR%","Vol/Avg","RS Rating","rs_score","DFC"]
             st.dataframe(_ld[_disp_cols].rename(columns={
-                "symbol":"Symbol","close":"Close","sma20":"SMA20","sma50":"SMA50",
-                "sma200":"SMA200","pivot_high":"Pivot High","rs_score":"RS Score%"
+                "symbol":"Symbol","close":"Close","ema20":"EMA20","ema50":"EMA50",
+                "ema200":"EMA200","pivot_high":"Pivot High","rs_score":"RS Score%"
             }), use_container_width=True, hide_index=True)
 
             st.markdown("---")
@@ -6369,11 +6371,12 @@ on recently ex-dated stocks until SMA200 normalises on adjusted prices.
             _sd["Vol/Avg"]  = _sd["vol_ratio"].apply(lambda x: f"{x:.1f}×")
             _sd["RS Rating"]= _sd["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
             _sd["ATR%"]     = _sd["atr_pct"].apply(lambda x: f"{x:.2f}%")
-            _sd_cols        = ["symbol","close","sma20","sma50","sma200",
-                               "pivot_low","ATR%","Vol/Avg","RS Rating","rs_score"]
+            _sd["BB Width%"] = _sd["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
+            _sd_cols        = ["symbol","close","ema20","ema50","ema200",
+                               "pivot_low","BB Width%","ATR%","Vol/Avg","RS Rating","rs_score"]
             st.dataframe(_sd[_sd_cols].rename(columns={
-                "symbol":"Symbol","close":"Close","sma20":"SMA20","sma50":"SMA50",
-                "sma200":"SMA200","pivot_low":"Pivot Low","rs_score":"RS Score%"
+                "symbol":"Symbol","close":"Close","ema20":"EMA20","ema50":"EMA50",
+                "ema200":"EMA200","pivot_low":"Pivot Low","rs_score":"RS Score%"
             }), use_container_width=True, hide_index=True)
 
     with _mv_tab_w:
@@ -6385,7 +6388,8 @@ on recently ex-dated stocks until SMA200 normalises on adjusted prices.
             _wd["Vol/Avg"]      = _wd["vol_ratio"].apply(lambda x: f"{x:.1f}×")
             _wd["RS Rating"]    = _wd["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
             _wd["ATR%"]         = _wd["atr_pct"].apply(lambda x: f"{x:.2f}%")
-            _wdisp_cols         = ["symbol","close","% From Pivot","pivot_high","ATR%","Vol/Avg","RS Rating"]
+            _wd["BB Width%"]    = _wd["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
+            _wdisp_cols         = ["symbol","close","% From Pivot","pivot_high","BB Width%","ATR%","Vol/Avg","RS Rating"]
             st.dataframe(_wd[_wdisp_cols].rename(columns={
                 "symbol":"Symbol","close":"Close","pivot_high":"Pivot High"
             }), use_container_width=True, hide_index=True)
