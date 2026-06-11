@@ -5604,10 +5604,10 @@ elif cur == PAGES[14]:  # Agent
                     expanded=_conf >= 65,
                 ):
                     _oc1, _oc2, _oc3, _oc4 = st.columns(4)
-                    _oc1.metric("Entry", f"{_opp.get('entry_price',0):.2f}")
-                    _oc2.metric("Stop Loss", f"{_opp.get('stop_loss',0):.2f}")
-                    _oc3.metric("Target 1R", f"{_opp.get('target_1r',0):.2f}")
-                    _oc4.metric("Target 2R", f"{_opp.get('target_2r',0):.2f}")
+                    _oc1.metric("Entry", f"{_opp.get('entry_price') or 0:.2f}")
+                    _oc2.metric("Stop Loss", f"{_opp.get('stop_loss') or 0:.2f}")
+                    _oc3.metric("Target 1R", f"{_opp.get('target_1r') or 0:.2f}")
+                    _oc4.metric("Target 2R", f"{_opp.get('target_2r') or 0:.2f}")
 
                     _meta_parts = []
                     if _opp.get("sector"):
