@@ -37,6 +37,7 @@ from scraper import (
 )
 from processor import run_analysis, print_sector_report
 import sector_signals
+import stock_signals
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -148,6 +149,12 @@ def cmd_update():
         sector_signals.append_latest_sector_signals()
     except Exception as exc:
         logger.warning("Sector signals hook failed: %s", exc)
+
+    # Append today's stock signals
+    try:
+        stock_signals.append_latest_stock_signals()
+    except Exception as exc:
+        logger.warning("Stock signals hook failed: %s", exc)
 
     # Auto-save today's system-generated and support reversal setups
     result = run_analysis()
