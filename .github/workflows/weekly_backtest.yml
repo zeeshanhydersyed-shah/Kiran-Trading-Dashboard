@@ -35,4 +35,4 @@ jobs:
 
       - name: Notify on failure
         if: failure()
-        run: echo "::error::Weekly backtest FAILED on $(date -u 
+        run: echo "::error::Weekly backtest FAILED on $(date -u '+%Y-%m-%d %H:%M UTC')."

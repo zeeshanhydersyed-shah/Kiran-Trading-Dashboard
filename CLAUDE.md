@@ -278,3 +278,30 @@ Outcome threshold: `pl_pct > 0 = Win`, `pl_pct < 0 = Loss`, `pl_pct == 0 = Break
 ### Verified state (May 2026)
 Analytics page matches Excel: **240 closed trades · 114 wins · 126 losses**
 Excel is always ground truth for P&L, status, and outcome.
+
+---
+
+## Breakout Signal Engine — Pivot Point Rules (`breakout_signal.py`)
+
+### Pivot Definition (matches Pine Script `ta.pivothigh` / `ta.pivotlow`)
+- **Pivot High** at bar `i`: `high[i]` is the strict maximum across bars `[i−left .. i+right]` (no ties)
+- **Pivot Low** at bar `i`: `low[i]` is the strict minimum across bars `[i−left .. i+right]` (no ties)
+- **Default**: `left=10, right=10` — 21-bar window; pivot confirmed 10 bars after the pivot bar
+- As of bar `t`, the most recently confirmed pivot high is the last one where `confirmed_bar < t`
+
+### Resistance Levels and Zones
+- **Single level**: one isolated pivot high
+- **Resistance zone**: 2+ pivot highs within 2% of each other → zone spans from lowest to highest of the cluster
+- Zones act the same as levels for breakout detection — breakout = close above the zone high
+
+### Overhead Supply Check
+- **Method:** 200-day rolling max of the HIGH column (`high_200d`), shifted 1 bar
+- **Rule:** `no_overhead = high_200d <= pivot_high * 1.15`
+- Allows up to 15% overhead — blocks large historical supply (e.g. stock at 12 with 200d high of 17+)
+- Stocks near or at their 200d high pass easily (overhead = 0%); stocks deep below prior range are blocked
+- `high_200d` column is shown in breakout output so you can see exactly how much overhead exists
+
+### Breakout Level
+- `pivot_high` column = zone_top of the most recent pivot cluster (replaces old 60-day rolling max)
+- Zone top = max of all pivots within 2% of the latest confirmed pivot (clusters nearby pivots into one level)
+- No fixed lookback window — pivot can be any number of bars old

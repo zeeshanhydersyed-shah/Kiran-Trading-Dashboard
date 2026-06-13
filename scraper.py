@@ -4,11 +4,25 @@ Scraper for ksestocks.com Market Summary.
 Strategy: POST to /MarketSummary with sdate=YYYY-MM-DD.
 One request returns ALL sectors and ALL stocks for that date.
 This is far more efficient than scraping individual stock pages.
+
+SOURCE-DATE INTEGRITY RULES
+----------------------------
+Rule 1 -- The trading date for every stored record must come from the source
+          page itself, never from the system clock. Use get_source_date() to
+          read what ksestocks.com is currently publishing.
+
+Rule 2 -- Before storing anything, check whether that source date is already
+          in the database.  If it is -> skip.  System clock may only be used
+          for logging/audit ("fetched at 14:32").
+
+Rule 3 -- find_db_gaps() detects missing weekdays inside the existing DB
+          range so historical gaps can be backfilled.
 """
 
 import logging
+import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup
@@ -41,14 +55,138 @@ def build_session() -> requests.Session:
 # ---------------------------------------------------------------------------
 
 def _is_weekday(d: date) -> bool:
-    return d.weekday() < 5  # Mon–Fri
+    return d.weekday() < 5  # Mon-Fri
+
+
+# ---------------------------------------------------------------------------
+# Source-date extraction  (Rule 1 -- never use the system clock to label data)
+# ---------------------------------------------------------------------------
+
+def get_source_date(session: requests.Session) -> date | None:
+    """
+    Fetch the MarketSummary landing page (GET, no sdate) and extract the
+    trading date that ksestocks.com is currently publishing.
+
+    The page contains the text:
+        "Latest update was on June 5, 2026."
+    which is the authoritative source date.  This function parses that text
+    and returns it as a date object.
+
+    Returns None if the page is unreachable or the pattern is not found.
+    The system clock is NOT used.  Fetch timestamp is logged for audit only.
+    """
+    fetched_at = datetime.now().strftime("%H:%M:%S on %Y-%m-%d")
+    try:
+        resp = session.get(MARKET_SUMMARY_URL, timeout=30)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.warning(
+            "get_source_date: could not fetch %s: %s (tried at %s)",
+            MARKET_SUMMARY_URL, exc, fetched_at,
+        )
+        return None
+
+    # Pattern: "Latest update was on Month D, YYYY" or "Month DD, YYYY"
+    match = re.search(
+        r"[Ll]atest update was on\s+([A-Za-z]+ \d{1,2},?\s*\d{4})",
+        resp.text,
+        re.IGNORECASE,
+    )
+    if match:
+        raw = match.group(1).strip().rstrip(".")
+        # Normalise punctuation/spacing: "June 5, 2026" -> "June 5 2026"
+        raw = re.sub(r",?\s+", " ", raw)
+        for fmt in ("%B %d %Y", "%b %d %Y"):
+            try:
+                parsed = datetime.strptime(raw, fmt).date()
+                logger.info(
+                    "Source date: %s  (parsed from %r, fetched at %s)",
+                    parsed, match.group(0).strip(), fetched_at,
+                )
+                return parsed
+            except ValueError:
+                continue
+        logger.warning(
+            "get_source_date: matched text %r but could not parse as date", raw
+        )
+        return None
+
+    # Build a useful debug snippet: find any mention of "update" first;
+    # if none, fall back to the first 1000 chars of the raw page.
+    _text = resp.text
+    _update_idx = _text.lower().find("update")
+    if _update_idx >= 0:
+        _snippet_start = max(0, _update_idx - 100)
+        _snippet = _text[_snippet_start : _update_idx + 400]
+    else:
+        _snippet = _text[:1000]
+
+    logger.error(
+        "get_source_date: 'Latest update was on' not found in page -- "
+        "site structure may have changed.  "
+        "Fetched at %s, page length %d chars.  "
+        "Debug snippet (+-context around 'update'): %r",
+        fetched_at, len(_text), _snippet,
+    )
+    return None
+
+
+def new_dates_to_scrape(last_db_date: date, source_date: date) -> list[date]:
+    """
+    Return weekday dates from last_db_date+1 to source_date (inclusive),
+    sorted oldest -> newest.
+
+    This replaces dates_since() for all new scrape runs.  It never touches
+    the system clock -- the upper bound comes from get_source_date().
+    """
+    if source_date <= last_db_date:
+        return []
+    result: list[date] = []
+    d = last_db_date + timedelta(days=1)
+    while d <= source_date:
+        if _is_weekday(d):
+            result.append(d)
+        d += timedelta(days=1)
+    return result
+
+
+def find_db_gaps(
+    existing_dates: set[str],
+    start: date,
+    end: date,
+    known_holidays: set[date] | None = None,
+) -> list[date]:
+    """
+    Return weekday dates in [start, end] that are absent from existing_dates.
+
+    existing_dates must be a set of 'YYYY-MM-DD' strings already in the DB.
+    Weekends are skipped automatically.
+
+    known_holidays: optional set of date objects to exclude from the gap list.
+    If provided, any missing weekday that falls on a known holiday is silently
+    ignored, preventing spurious backfill attempts and log warnings on every run.
+
+    Typical usage: detect missed days in the last 90 days of DB history.
+    """
+    _excluded = known_holidays or set()
+    gaps: list[date] = []
+    d = start
+    while d <= end:
+        if (
+            _is_weekday(d)
+            and d.strftime("%Y-%m-%d") not in existing_dates
+            and d not in _excluded
+        ):
+            gaps.append(d)
+        d += timedelta(days=1)
+    return gaps
 
 
 def trading_dates_to_scrape(calendar_days: int = CALENDAR_DAYS_BACK) -> list[date]:
     """
     Return weekday dates for the past `calendar_days` calendar days
     (excluding today, since today's session may not be closed yet).
-    Sorted oldest → newest.
+    Sorted oldest -> newest.
     """
     today = date.today()
     result = []
@@ -64,7 +202,7 @@ def dates_since(last_date: date) -> list[date]:
     """Return weekday dates from the day after `last_date` up to and including today.
 
     The scraper runs at 16:35 PKT, after PSX closes at 15:30 PKT and after
-    ksestocks.com publishes final data (~16:15–16:30 PKT), so today's date is
+    ksestocks.com publishes final data (~16:15-16:30 PKT), so today's date is
     safe to request.
     """
     today = date.today()
@@ -111,9 +249,9 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
         price_rows  : list of (symbol, date_str, close)
 
     Table structure (single large <table>):
-      - Section header row   : 2 TDs, second contains "(Number of traded…)"
+      - Section header row   : 2 TDs, second contains "(Number of traded...)"
       - Column header row    : first TD text == "Symbol"
-      - Stock data row       : 8 TDs → Symbol, Company, Open, High, Low, Close, Change, Vol
+      - Stock data row       : 8 TDs -> Symbol, Company, Open, High, Low, Close, Change, Vol
     """
     soup = BeautifulSoup(html, "html.parser")
     tables = soup.find_all("table")
@@ -186,7 +324,7 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
             try:
                 close = float(close_text)
             except ValueError:
-                logger.debug("Non-numeric close '%s' for %s on %s — skipping", close_text, symbol, date_str)
+                logger.debug("Non-numeric close '%s' for %s on %s -- skipping", close_text, symbol, date_str)
                 continue
 
             if close <= 0:
@@ -237,7 +375,7 @@ def _price_fingerprint(p_rows: list) -> dict:
 
 
 def _is_stale(curr: dict, prev: dict, threshold: float = 0.90) -> bool:
-    """Return True if >=threshold of common symbols have identical H/L/C — market was closed."""
+    """Return True if >=threshold of common symbols have identical H/L/C -- market was closed."""
     if not curr or not prev:
         return False
     common = set(curr) & set(prev)
@@ -270,14 +408,14 @@ def scrape_date_range(
 
     total = len(dates)
     for idx, d in enumerate(dates, 1):
-        logger.info("Scraping %s (%d/%d)…", d, idx, total)
+        logger.info("Scraping %s (%d/%d)...", d, idx, total)
         s_rows, p_rows, i_rows = scrape_date(d, session)
 
         if p_rows:
             curr_fp = _price_fingerprint(p_rows)
             if prev_fp is not None and _is_stale(curr_fp, prev_fp):
                 logger.warning(
-                    "Skipping %s — PSX returned identical data to previous session "
+                    "Skipping %s -- PSX returned identical data to previous session "
                     "(market closed / public holiday). No rows stored.", d
                 )
                 if idx < total:

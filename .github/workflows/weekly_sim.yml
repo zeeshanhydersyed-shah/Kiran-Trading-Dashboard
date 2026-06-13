@@ -36,4 +36,4 @@ jobs:
 
       - name: Notify on failure
         if: failure()
-        run: echo "::error::Weekly simulation FAILED on $(date -u 
+        run: echo "::error::Weekly simulation FAILED on $(date -u '+%Y-%m-%d %H:%M UTC')."

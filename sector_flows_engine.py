@@ -832,3 +832,11 @@ def run():
 
     # Also save brief to file
     brief_path = os.path.join(os.path.dirname(__file__), "sector_flows_brief.txt")
+    with open(brief_path, "w", encoding="utf-8") as f:
+        f.write(brief)
+    print(f"\n📁 Brief saved to: sector_flows_brief.txt")
+    print(f"📁 Signal journal: sector_flows_log.csv")
+
+
+if __name__ == "__main__":
+    run()

@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 import pandas as pd
 from database import get_conn, init_db
 
+# Guard: this script uses SQLite-only ? placeholders and must NOT run against PostgreSQL.
+# Running it with DATABASE_URL set would cause ProgrammingError on every row.
+if os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL"):
+    sys.exit(
+        "ERROR: import_actual_trades.py uses SQLite syntax and cannot run when "
+        "DATABASE_URL is set. Unset DATABASE_URL before running this script locally."
+    )
 
 SHEET_NAME = "JOURNAL-2"
 
