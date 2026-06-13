@@ -46,16 +46,64 @@ def _load_stock_prices_with_volume(conn, symbols, from_date, to_date):
     placeholders = ','.join('?' * len(symbols))
     cur = conn.cursor()
     cur.execute(
-        f"SELECT symbol, date, close, volume FROM prices_adjusted "
+        f"SELECT symbol, date, close, volume, high FROM prices_adjusted "
         f"WHERE symbol IN ({placeholders}) AND date BETWEEN ? AND ? ORDER BY symbol, date",
         list(symbols) + [from_date, to_date],
     )
     result = {}
-    for sym, date, close, volume in cur.fetchall():
+    for sym, date, close, volume, high in cur.fetchall():
         if sym not in result:
             result[sym] = []
-        result[sym].append((date, close, volume))
+        result[sym].append((date, close, volume, high))
     return result
+
+
+def _build_pivot_lookup(stock_prices_vol: dict) -> dict:
+    """Pre-compute pivot_high, pivot_distance_pct, bos_flag for every (symbol, date).
+
+    stock_prices_vol values: list of (date, close, volume, high) sorted by date ASC.
+    Returns: {symbol: {date: (pivot_high, pivot_distance_pct, bos_flag)}}
+    """
+    lookup = {}
+    for symbol, prices in stock_prices_vol.items():
+        n = len(prices)
+        confirmed_pivots = []  # (bar_index, high_value), appended in order → sorted by index
+        sym_lookup = {}
+
+        for pos in range(n):
+            # Confirm pivot at i = pos-10 once right side (10 bars) is available
+            i = pos - 10
+            if i >= 10:  # need 10 bars on the left side as well
+                hi = prices[i][3]
+                if hi is not None:
+                    left_ok = all(
+                        prices[j][3] is not None and prices[j][3] < hi
+                        for j in range(i - 10, i)
+                    )
+                    right_ok = all(
+                        prices[j][3] is not None and prices[j][3] < hi
+                        for j in range(i + 1, i + 11)
+                    )
+                    if left_ok and right_ok:
+                        confirmed_pivots.append((i, hi))
+
+            date = prices[pos][0]
+            close = prices[pos][1]
+            ph = pd_pct = bf = None
+
+            if confirmed_pivots and close is not None:
+                lower = pos - 50
+                for ci, ch in reversed(confirmed_pivots):
+                    if ci >= lower:
+                        ph = ch
+                        pd_pct = (ph - close) / ph * 100
+                        bf = 1 if pd_pct < 0 else 0
+                        break
+
+            sym_lookup[date] = (ph, pd_pct, bf)
+
+        lookup[symbol] = sym_lookup
+    return lookup
 
 
 def _compute_bt_vc(prices_vol, pos):
@@ -96,7 +144,7 @@ def _compute_bt_vc(prices_vol, pos):
 
 def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                             stock_prices, symbol_sector, prev_ranks,
-                            stock_prices_vol=None):
+                            stock_prices_vol=None, pivot_lookup=None):
     stock_date_lists = {sym: [p[0] for p in prices] for sym, prices in stock_prices.items()}
     vol_date_lists = (
         {sym: [p[0] for p in prices] for sym, prices in stock_prices_vol.items()}
@@ -147,6 +195,7 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
 
             bt = None
             vc = None
+            avv = None
             if stock_prices_vol:
                 vol_prices = stock_prices_vol.get(symbol)
                 if vol_prices:
@@ -154,6 +203,10 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                     vpos = bisect.bisect_left(vdl, date)
                     if vpos < len(vdl) and vdl[vpos] == date:
                         bt, vc, avv = _compute_bt_vc(vol_prices, vpos)
+
+            ph = pd_pct = bf = None
+            if pivot_lookup:
+                ph, pd_pct, bf = pivot_lookup.get(symbol, {}).get(date, (None, None, None))
 
             rows.append({
                 'symbol': symbol,
@@ -163,6 +216,9 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                 'base_tightness': bt,
                 'vol_contraction': vc,
                 'avg_vol_10d': avv,
+                'pivot_high': ph,
+                'pivot_distance_pct': pd_pct,
+                'bos_flag': bf,
             })
 
         if not rows:
@@ -189,12 +245,14 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
         cur.executemany(
             "INSERT OR REPLACE INTO stock_signals "
             "(date, symbol, rs_score_20, rs_score_50, rs_rank, rs_rank_prev, "
-            "rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+            "rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d, "
+            "pivot_high, pivot_distance_pct) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (date, r['symbol'], r['rs_score_20'], r['rs_score_50'],
                  r['rs_rank'], r['rs_rank_prev'], r['rank_change'], r['sector_rs_rank'],
-                 r.get('base_tightness'), r.get('vol_contraction'), r.get('avg_vol_10d'))
+                 r.get('base_tightness'), r.get('bos_flag'), r.get('vol_contraction'),
+                 r.get('avg_vol_10d'), r.get('pivot_high'), r.get('pivot_distance_pct'))
                 for r in rows
             ],
         )
@@ -281,11 +339,14 @@ def append_latest_stock_signals() -> None:
             conn, set(symbol_sector.keys()), '2015-01-01', end_date
         )
 
+        pivot_lookup = _build_pivot_lookup(stock_prices_vol)
+
         trading_dates = [row[0] for row in kse_list if row[0] > start_date]
         total = _process_trading_dates(
             conn, trading_dates, kse_list, kse_date_idx,
             stock_prices, symbol_sector, prev_ranks,
             stock_prices_vol=stock_prices_vol,
+            pivot_lookup=pivot_lookup,
         )
         logger.info(f"Append complete: {total} dates processed.")
     finally:
@@ -355,5 +416,106 @@ def update_base_tightness_vol_contraction() -> None:
         logger.info(f"  Total rows in stock_signals : {total_rows:,}")
         logger.info(f"  base_tightness  NULLs remaining: {bt_nulls:,}")
         logger.info(f"  vol_contraction NULLs remaining: {vc_nulls:,}")
+    finally:
+        conn.close()
+
+
+def update_pivot_signals() -> None:
+    """Backfill pivot_high, pivot_distance_pct, and bos_flag for all rows in stock_signals."""
+    logger.info("Starting pivot_high + pivot_distance_pct + bos_flag backfill...")
+    conn = sqlite3.connect(DB)
+    try:
+        symbol_sector = _load_universe(conn)
+        symbols = list(symbol_sector.keys())
+        placeholders = ','.join('?' * len(symbols))
+        cur = conn.cursor()
+
+        cur.execute(
+            f"SELECT symbol, date, close, high FROM prices_adjusted "
+            f"WHERE symbol IN ({placeholders}) ORDER BY symbol, date",
+            symbols,
+        )
+
+        price_data: dict[str, list] = {}
+        for sym, date, close, high in cur.fetchall():
+            if sym not in price_data:
+                price_data[sym] = []
+            price_data[sym].append((date, close, high))
+
+        updates = []
+        total_processed = 0
+
+        for symbol, prices in price_data.items():
+            n = len(prices)
+            confirmed_pivots = []  # (bar_index, high_value), appended in order
+
+            for pos in range(n):
+                # Confirm pivot at i = pos-10 once right side (10 bars) is available
+                i = pos - 10
+                if i >= 10:  # need 10 bars on the left side as well
+                    hi = prices[i][2]
+                    if hi is not None:
+                        left_ok = all(
+                            prices[j][2] is not None and prices[j][2] < hi
+                            for j in range(i - 10, i)
+                        )
+                        right_ok = all(
+                            prices[j][2] is not None and prices[j][2] < hi
+                            for j in range(i + 1, i + 11)
+                        )
+                        if left_ok and right_ok:
+                            confirmed_pivots.append((i, hi))
+
+                date = prices[pos][0]
+                close = prices[pos][1]
+                ph = pd_pct = bf = None
+
+                if confirmed_pivots and close is not None:
+                    lower = pos - 50
+                    for ci, ch in reversed(confirmed_pivots):
+                        if ci >= lower:
+                            ph = ch
+                            pd_pct = (ph - close) / ph * 100
+                            bf = 1 if pd_pct < 0 else 0
+                            break
+
+                updates.append((ph, pd_pct, bf, date, symbol))
+                total_processed += 1
+
+                if len(updates) >= 10_000:
+                    cur.executemany(
+                        "UPDATE stock_signals "
+                        "SET pivot_high = ?, pivot_distance_pct = ?, bos_flag = ? "
+                        "WHERE date = ? AND symbol = ?",
+                        updates,
+                    )
+                    conn.commit()
+                    updates = []
+
+                if total_processed > 0 and total_processed % 50_000 == 0:
+                    logger.info(f"  {total_processed:,} rows processed...")
+
+        if updates:
+            cur.executemany(
+                "UPDATE stock_signals "
+                "SET pivot_high = ?, pivot_distance_pct = ?, bos_flag = ? "
+                "WHERE date = ? AND symbol = ?",
+                updates,
+            )
+            conn.commit()
+
+        logger.info(f"Backfill complete. Total rows processed: {total_processed:,}")
+
+        cur.execute("SELECT COUNT(*) FROM stock_signals WHERE pivot_high IS NULL")
+        ph_nulls = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM stock_signals WHERE bos_flag = 1")
+        bos_count = cur.fetchone()[0]
+        cur.execute(
+            "SELECT COUNT(*) FROM stock_signals WHERE pivot_distance_pct BETWEEN 0 AND 3"
+        )
+        near_pivot = cur.fetchone()[0]
+        logger.info(f"  pivot_high NULLs remaining : {ph_nulls:,}")
+        logger.info(f"  bos_flag = 1 (breakouts)   : {bos_count:,}")
+        logger.info(f"  pivot_distance_pct 0–3%    : {near_pivot:,}")
     finally:
         conn.close()
