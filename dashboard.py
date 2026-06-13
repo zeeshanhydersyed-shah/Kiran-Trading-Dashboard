@@ -1,6 +1,7 @@
 """PSX Sector Performance Dashboard — KIRAN."""
 
 import json
+import sqlite3
 import sys
 import logging
 import warnings
@@ -1417,57 +1418,60 @@ if cur == PAGES[0]:  # Market Gates Dashboard
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[2]:  # Market
 
-    # Bar chart
-    if HAS_PLOTLY:
-        try:
-            chart_df = sector_df.sort_values("avg_perf_pct")
-            fig = px.bar(
-                chart_df, x="avg_perf_pct", y="sector", orientation="h",
-                color="avg_perf_pct",
-                color_continuous_scale=["#ef4444", "#fbbf24", "#22c55e"],
-                color_continuous_midpoint=0,
-                labels={"avg_perf_pct": "30d Perf (%)", "sector": ""},
-                text=chart_df["avg_perf_pct"].apply(lambda v: f"{v:+.2f}%"),
-            )
-            fig.update_traces(textposition="outside", textfont_size=11)
-            fig.update_layout(
-                height=max(340, len(sector_df) * 24),
-                showlegend=False, coloraxis_showscale=False,
-                yaxis={"categoryorder": "total ascending", "tickfont": {"size": 11}},
-                xaxis={"tickfont": {"size": 10}},
-                margin={"l": 4, "r": 70, "t": 8, "b": 8},
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.warning("Market chart visualization failed.")
-    else:
-        st.info("⚠️ Plotly not available. Install: pip install plotly")
+    tab1, tab2 = st.tabs(["📊 Sector Performance", "🔄 Rotation Radar"])
 
-    st.divider()
+    with tab1:
+        # Bar chart
+        if HAS_PLOTLY:
+            try:
+                chart_df = sector_df.sort_values("avg_perf_pct")
+                fig = px.bar(
+                    chart_df, x="avg_perf_pct", y="sector", orientation="h",
+                    color="avg_perf_pct",
+                    color_continuous_scale=["#ef4444", "#fbbf24", "#22c55e"],
+                    color_continuous_midpoint=0,
+                    labels={"avg_perf_pct": "30d Perf (%)", "sector": ""},
+                    text=chart_df["avg_perf_pct"].apply(lambda v: f"{v:+.2f}%"),
+                )
+                fig.update_traces(textposition="outside", textfont_size=11)
+                fig.update_layout(
+                    height=max(340, len(sector_df) * 24),
+                    showlegend=False, coloraxis_showscale=False,
+                    yaxis={"categoryorder": "total ascending", "tickfont": {"size": 11}},
+                    xaxis={"tickfont": {"size": 10}},
+                    margin={"l": 4, "r": 70, "t": 8, "b": 8},
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.warning("Market chart visualization failed.")
+        else:
+            st.info("⚠️ Plotly not available. Install: pip install plotly")
 
-    # Sector table
-    st.markdown("**Sector Rankings**")
-    disp = sector_df[[
-        "rank", "sector", "avg_perf_pct", "avg_10d_pct",
-        "momentum", "stock_count", "best_stock", "best_perf_pct",
-        "worst_stock", "worst_perf_pct",
-    ]].copy()
-    disp.columns = [
-        "#", "Sector", "30d %", "10d %",
-        "Momentum", "N", "Best", "Best %", "Worst", "Worst %",
-    ]
-    st.dataframe(
-        disp.style
-        .apply(style_pct_cols, subset=["30d %", "10d %", "Best %", "Worst %"])
-        .apply(style_momentum,  subset=["Momentum"])
-        .format({"30d %": "{:.2f}", "10d %": "{:.2f}", "Best %": "{:.2f}", "Worst %": "{:.2f}"}),
-        use_container_width=True, hide_index=True,
-        height=max(880, (len(disp) + 1) * 38),
-    )
+        st.divider()
 
-    st.markdown(
-        """<div style="font-size:0.7rem; color:#64748b; line-height:2;">
+        # Sector table
+        st.markdown("**Sector Rankings**")
+        disp = sector_df[[
+            "rank", "sector", "avg_perf_pct", "avg_10d_pct",
+            "momentum", "stock_count", "best_stock", "best_perf_pct",
+            "worst_stock", "worst_perf_pct",
+        ]].copy()
+        disp.columns = [
+            "#", "Sector", "30d %", "10d %",
+            "Momentum", "N", "Best", "Best %", "Worst", "Worst %",
+        ]
+        st.dataframe(
+            disp.style
+            .apply(style_pct_cols, subset=["30d %", "10d %", "Best %", "Worst %"])
+            .apply(style_momentum,  subset=["Momentum"])
+            .format({"30d %": "{:.2f}", "10d %": "{:.2f}", "Best %": "{:.2f}", "Worst %": "{:.2f}"}),
+            use_container_width=True, hide_index=True,
+            height=max(880, (len(disp) + 1) * 38),
+        )
+
+        st.markdown(
+            """<div style="font-size:0.7rem; color:#64748b; line-height:2;">
         <b>Momentum</b> &nbsp;
         <span style="color:#22c55e">■ Heating Up</span> both +, 10d &gt; 30d &nbsp;
         <span style="color:#fbbf24">■ Cooling Down</span> both +, 10d &lt; 30d &nbsp;
@@ -1476,8 +1480,173 @@ elif cur == PAGES[2]:  # Market
         <span style="color:#ef4444">■ Falling</span> both −, worsening &nbsp;
         <span style="color:#fbbf24">■ Stabilising</span> both −, improving
         </div>""",
-        unsafe_allow_html=True,
-    )
+            unsafe_allow_html=True,
+        )
+
+    with tab2:
+        # ── Rotation Radar ──────────────────────────────────────────
+        try:
+            from config import DB_PATH
+
+            con_rr = sqlite3.connect(DB_PATH)
+
+            # Latest date available in sector_signals
+            latest_rr = pd.read_sql_query(
+                "SELECT MAX(date) as d FROM sector_signals", con_rr
+            ).iloc[0]["d"]
+
+            # Load latest sector signals
+            rr_df = pd.read_sql_query("""
+                SELECT sector, rs_score_20, rs_score_50, rs_rank,
+                       breadth_score, adv_dec_ratio, vol_ratio,
+                       rs_inflection, composite_score, regime
+                FROM sector_signals
+                WHERE date = ?
+                ORDER BY rs_rank
+            """, con_rr, params=(latest_rr,))
+
+            # Load 20-day RS trend per sector (sparkline data)
+            rr_hist = pd.read_sql_query("""
+                SELECT date, sector, rs_score_20, rs_rank
+                FROM sector_signals
+                WHERE date >= date(?, '-30 days')
+                ORDER BY sector, date
+            """, con_rr, params=(latest_rr,))
+
+            # RS Trend: compare rs_rank now vs 10 days ago (con_rr still open)
+            rank_10d_ago = pd.read_sql_query("""
+                SELECT sector, rs_rank as rank_10d
+                FROM sector_signals
+                WHERE date = (
+                    SELECT date FROM sector_signals
+                    WHERE date <= date(?, '-10 days')
+                    ORDER BY date DESC LIMIT 1
+                )
+            """, con_rr, params=(latest_rr,))
+
+            con_rr.close()
+
+            # ── Header ──────────────────────────────────────────────
+            regime_val = rr_df["regime"].iloc[0] if not rr_df.empty else "—"
+            regime_colors = {
+                "TRENDING_UP":   "#22c55e",
+                "TRENDING_DOWN": "#ef4444",
+                "VOLATILE":      "#fbbf24",
+                "RANGING":       "#94a3b8",
+            }
+            rc = regime_colors.get(regime_val, "#94a3b8")
+
+            st.markdown(
+                f"**Rotation Radar** &nbsp;&nbsp;"
+                f"<span style='font-size:0.8rem; color:{rc}; "
+                f"background:#1e293b; padding:2px 8px; border-radius:4px;'>"
+                f"● {regime_val}</span>"
+                f"<span style='font-size:0.75rem; color:#64748b;'>"
+                f" &nbsp; as of {latest_rr}</span>",
+                unsafe_allow_html=True,
+            )
+
+            st.divider()
+
+            # ── Composite Score Bar Chart ────────────────────────────
+            if HAS_PLOTLY:
+                rr_chart = rr_df.sort_values("composite_score")
+                fig_rr = px.bar(
+                    rr_chart,
+                    x="composite_score",
+                    y="sector",
+                    orientation="h",
+                    color="composite_score",
+                    color_continuous_scale=["#ef4444", "#fbbf24", "#22c55e"],
+                    color_continuous_midpoint=0.5,
+                    labels={"composite_score": "Composite Score", "sector": ""},
+                    text=rr_chart["composite_score"].apply(
+                        lambda v: f"{v:.2f}" if v is not None else ""
+                    ),
+                )
+                fig_rr.update_traces(textposition="outside", textfont_size=11)
+                fig_rr.update_layout(
+                    height=max(340, len(rr_chart) * 24),
+                    showlegend=False, coloraxis_showscale=False,
+                    yaxis={
+                        "categoryorder": "total ascending",
+                        "tickfont": {"size": 11},
+                    },
+                    xaxis={"tickfont": {"size": 10}, "range": [0, 1.15]},
+                    margin={"l": 4, "r": 70, "t": 8, "b": 8},
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_rr, use_container_width=True)
+
+            st.divider()
+
+            # ── Rotation Radar Table ─────────────────────────────────
+            st.markdown("**Sector Signal Table**")
+
+            rr_display = rr_df.copy()
+
+            rr_display = rr_display.merge(rank_10d_ago, on="sector", how="left")
+            rr_display["trend"] = rr_display.apply(
+                lambda r: "▲" if (
+                    pd.notna(r["rank_10d"]) and r["rs_rank"] < r["rank_10d"]
+                ) else ("▼" if (
+                    pd.notna(r["rank_10d"]) and r["rs_rank"] > r["rank_10d"]
+                ) else "─"),
+                axis=1,
+            )
+
+            # Inflection flag display
+            rr_display["signal"] = rr_display["rs_inflection"].apply(
+                lambda v: "🔥" if v == 1 else ""
+            )
+
+            # Format columns
+            rr_display["rs_score_20"] = rr_display["rs_score_20"].apply(
+                lambda v: f"{v:+.2f}" if pd.notna(v) else "—"
+            )
+            rr_display["breadth_score"] = rr_display["breadth_score"].apply(
+                lambda v: f"{v:.1f}%" if pd.notna(v) else "—"
+            )
+            rr_display["vol_ratio"] = rr_display["vol_ratio"].apply(
+                lambda v: f"{v:.2f}x" if pd.notna(v) else "—"
+            )
+            rr_display["composite_score"] = rr_display["composite_score"].apply(
+                lambda v: f"{v:.3f}" if pd.notna(v) else "—"
+            )
+
+            table_cols = {
+                "rs_rank":         "#",
+                "sector":          "Sector",
+                "signal":          "🔥",
+                "trend":           "RS Trend",
+                "rs_score_20":     "RS-20",
+                "breadth_score":   "Breadth",
+                "vol_ratio":       "Vol Ratio",
+                "composite_score": "Score",
+            }
+
+            st.dataframe(
+                rr_display[list(table_cols.keys())].rename(columns=table_cols),
+                use_container_width=True,
+                hide_index=True,
+                height=max(600, (len(rr_display) + 1) * 38),
+            )
+
+            # ── Legend ───────────────────────────────────────────────
+            st.markdown(
+                """<div style="font-size:0.7rem; color:#64748b; line-height:2;">
+                <b>RS-20</b> sector return vs KSE-100 over 20 days (%) &nbsp;|&nbsp;
+                <b>Breadth</b> % stocks above 20d EMA &nbsp;|&nbsp;
+                <b>Vol Ratio</b> today vs 20d avg volume &nbsp;|&nbsp;
+                <b>Score</b> composite (RS 50% + Breadth 30% + Vol 20%) &nbsp;|&nbsp;
+                <b>🔥</b> RS inflection — sector turning up
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+        except Exception as e:
+            st.warning(f"Rotation Radar unavailable: {e}")
 
 
 
