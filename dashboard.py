@@ -864,7 +864,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏹 Minervini Setup"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏹 Minervini Setup", "🏆 Leaders"]
 
 
 def fmt_date(d) -> str:
@@ -6562,3 +6562,204 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
             st.dataframe(_wd[_wdisp_cols].rename(columns={
                 "symbol":"Symbol","close":"Close","pivot_high":"Pivot High"
             }), use_container_width=True, hide_index=True)
+
+elif cur == PAGES[18]:  # Leaders
+    import sqlite3
+    from config import DB_PATH as _ld_db
+
+    st.markdown("### 🏆 Leaders — Stock Signal Board")
+
+    _ld_tab_rs, _ld_tab_pre, _ld_tab_bos = st.tabs([
+        "🏆 RS Leaders",
+        "🎯 Pre-Breakout",
+        "🚀 Breakouts"
+    ])
+
+    # ── shared query: latest date ──────────────────────────────────────────
+    _ld_conn = sqlite3.connect(_ld_db)
+    _ld_latest = _ld_conn.execute(
+        "SELECT MAX(date) FROM stock_signals"
+    ).fetchone()[0]
+
+    # ── Tab 1: RS Leaders ──────────────────────────────────────────────────
+    with _ld_tab_rs:
+        st.markdown(f"**Latest date:** {_ld_latest} &nbsp;|&nbsp; Liquid stocks only (Avg Vol 10d > 200K)")
+
+        _ld_rs_df = pd.read_sql_query("""
+            SELECT ss.symbol, sm.sector,
+                   ss.rs_score_20, ss.rs_score_50,
+                   ss.rs_rank, ss.rank_change, ss.sector_rs_rank,
+                   ss.avg_vol_10d
+            FROM stock_signals ss
+            JOIN stock_metadata sm ON ss.symbol = sm.symbol
+            WHERE ss.date = ?
+              AND ss.avg_vol_10d > 200000
+              AND ss.rs_rank IS NOT NULL
+            ORDER BY ss.rs_rank ASC
+        """, _ld_conn, params=(_ld_latest,))
+
+        st.markdown("#### 🌍 Top 20 — Market-Wide RS Leaders")
+        if _ld_rs_df.empty:
+            st.info("No data available.")
+        else:
+            _ld_top20 = _ld_rs_df.head(20).copy()
+            _ld_top20["rank_change"] = _ld_top20["rank_change"].apply(
+                lambda x: f"+{int(x)}" if pd.notna(x) and x > 0
+                else (f"{int(x)}" if pd.notna(x) and x < 0
+                else ("▬" if pd.notna(x) else "—"))
+            )
+            _ld_top20["rs_score_20"] = _ld_top20["rs_score_20"].apply(
+                lambda x: f"{x:.2f}%" if pd.notna(x) else "—"
+            )
+            _ld_top20["rs_score_50"] = _ld_top20["rs_score_50"].apply(
+                lambda x: f"{x:.2f}%" if pd.notna(x) else "—"
+            )
+            _ld_top20["avg_vol_10d"] = _ld_top20["avg_vol_10d"].apply(
+                lambda x: f"{int(x):,}" if pd.notna(x) else "—"
+            )
+            st.dataframe(
+                _ld_top20.rename(columns={
+                    "symbol": "Symbol", "sector": "Sector",
+                    "rs_score_20": "RS 20d", "rs_score_50": "RS 50d",
+                    "rs_rank": "Rank", "rank_change": "Rank Chg",
+                    "sector_rs_rank": "Sector Rank",
+                    "avg_vol_10d": "Avg Vol 10d"
+                }),
+                use_container_width=True, hide_index=True
+            )
+
+        st.markdown("#### 🏭 Top 3 Per Sector")
+        if not _ld_rs_df.empty:
+            _ld_sec = (
+                _ld_rs_df.sort_values("sector_rs_rank")
+                .groupby("sector")
+                .head(3)
+                .copy()
+            )
+            _ld_sec["rs_score_20"] = _ld_sec["rs_score_20"].apply(
+                lambda x: f"{x:.2f}%" if pd.notna(x) else "—"
+            )
+            _ld_sec["avg_vol_10d"] = _ld_sec["avg_vol_10d"].apply(
+                lambda x: f"{int(x):,}" if pd.notna(x) else "—"
+            )
+            st.dataframe(
+                _ld_sec[["sector", "symbol", "sector_rs_rank",
+                          "rs_score_20", "avg_vol_10d"]].rename(columns={
+                    "sector": "Sector", "symbol": "Symbol",
+                    "sector_rs_rank": "Sector Rank",
+                    "rs_score_20": "RS 20d",
+                    "avg_vol_10d": "Avg Vol 10d"
+                }),
+                use_container_width=True, hide_index=True
+            )
+
+    # ── Tab 2: Pre-Breakout ────────────────────────────────────────────────
+    with _ld_tab_pre:
+        st.markdown(f"**Latest date:** {_ld_latest} &nbsp;|&nbsp; Tight base + near pivot + liquid")
+
+        _ld_pre_df = pd.read_sql_query("""
+            SELECT ss.symbol, sm.sector,
+                   ss.rs_rank, ss.sector_rs_rank,
+                   ss.pivot_distance_pct, ss.pivot_high,
+                   ss.base_tightness, ss.vol_contraction,
+                   ss.avg_vol_10d,
+                   pa.close
+            FROM stock_signals ss
+            JOIN stock_metadata sm ON ss.symbol = sm.symbol
+            JOIN prices_adjusted pa
+                ON ss.symbol = pa.symbol AND ss.date = pa.date
+            WHERE ss.date = ?
+              AND ss.pivot_distance_pct BETWEEN 0 AND 3
+              AND ss.base_tightness < 8
+              AND ss.avg_vol_10d > 200000
+            ORDER BY ss.pivot_distance_pct ASC
+        """, _ld_conn, params=(_ld_latest,))
+
+        if _ld_pre_df.empty:
+            st.info("No pre-breakout candidates today.")
+        else:
+            st.success(f"**{len(_ld_pre_df)} candidate(s)** within 3% of pivot with tight base")
+            _ld_pre_disp = _ld_pre_df.copy()
+            _ld_pre_disp["pivot_distance_pct"] = _ld_pre_disp["pivot_distance_pct"].apply(
+                lambda x: f"{x:.2f}%"
+            )
+            _ld_pre_disp["base_tightness"] = _ld_pre_disp["base_tightness"].apply(
+                lambda x: f"{x:.2f}%"
+            )
+            _ld_pre_disp["vol_contraction"] = _ld_pre_disp["vol_contraction"].apply(
+                lambda x: f"{x:.1f}%" if pd.notna(x) else "—"
+            )
+            _ld_pre_disp["avg_vol_10d"] = _ld_pre_disp["avg_vol_10d"].apply(
+                lambda x: f"{int(x):,}"
+            )
+            _ld_pre_disp["close"] = _ld_pre_disp["close"].apply(
+                lambda x: f"{x:.2f}"
+            )
+            _ld_pre_disp["pivot_high"] = _ld_pre_disp["pivot_high"].apply(
+                lambda x: f"{x:.2f}"
+            )
+            st.dataframe(
+                _ld_pre_disp.rename(columns={
+                    "symbol": "Symbol", "sector": "Sector",
+                    "rs_rank": "RS Rank", "sector_rs_rank": "Sector Rank",
+                    "pivot_distance_pct": "Dist to Pivot",
+                    "pivot_high": "Pivot High", "close": "Close",
+                    "base_tightness": "BBW%", "vol_contraction": "Vol Ratio%",
+                    "avg_vol_10d": "Avg Vol 10d"
+                }),
+                use_container_width=True, hide_index=True
+            )
+
+    # ── Tab 3: Breakouts ───────────────────────────────────────────────────
+    with _ld_tab_bos:
+        st.markdown(f"**Latest date:** {_ld_latest} &nbsp;|&nbsp; Price cleared pivot today — sorted freshest first")
+
+        _ld_bos_df = pd.read_sql_query("""
+            SELECT ss.symbol, sm.sector,
+                   ss.rs_rank, ss.sector_rs_rank,
+                   ss.pivot_distance_pct, ss.pivot_high,
+                   ss.base_tightness, ss.avg_vol_10d,
+                   pa.close
+            FROM stock_signals ss
+            JOIN stock_metadata sm ON ss.symbol = sm.symbol
+            JOIN prices_adjusted pa
+                ON ss.symbol = pa.symbol AND ss.date = pa.date
+            WHERE ss.date = ?
+              AND ss.bos_flag = 1
+              AND ss.avg_vol_10d > 200000
+            ORDER BY ss.pivot_distance_pct DESC
+        """, _ld_conn, params=(_ld_latest,))
+
+        if _ld_bos_df.empty:
+            st.info("No liquid breakouts today.")
+        else:
+            st.success(f"**{len(_ld_bos_df)} breakout(s)** cleared pivot with liquid volume")
+            _ld_bos_disp = _ld_bos_df.copy()
+            _ld_bos_disp["pivot_distance_pct"] = _ld_bos_disp["pivot_distance_pct"].apply(
+                lambda x: f"{x:.2f}%"
+            )
+            _ld_bos_disp["base_tightness"] = _ld_bos_disp["base_tightness"].apply(
+                lambda x: f"{x:.2f}%" if pd.notna(x) else "—"
+            )
+            _ld_bos_disp["avg_vol_10d"] = _ld_bos_disp["avg_vol_10d"].apply(
+                lambda x: f"{int(x):,}"
+            )
+            _ld_bos_disp["close"] = _ld_bos_disp["close"].apply(
+                lambda x: f"{x:.2f}"
+            )
+            _ld_bos_disp["pivot_high"] = _ld_bos_disp["pivot_high"].apply(
+                lambda x: f"{x:.2f}"
+            )
+            st.dataframe(
+                _ld_bos_disp.rename(columns={
+                    "symbol": "Symbol", "sector": "Sector",
+                    "rs_rank": "RS Rank", "sector_rs_rank": "Sector Rank",
+                    "pivot_distance_pct": "Above Pivot%",
+                    "pivot_high": "Pivot High", "close": "Close",
+                    "base_tightness": "BBW%",
+                    "avg_vol_10d": "Avg Vol 10d"
+                }),
+                use_container_width=True, hide_index=True
+            )
+
+    _ld_conn.close()
