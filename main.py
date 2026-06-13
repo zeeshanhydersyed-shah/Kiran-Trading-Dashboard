@@ -135,6 +135,13 @@ def cmd_update():
         count_sectors(), count_prices(), mn, mx,
     )
 
+    # Append today's regime row to market_regime
+    try:
+        from regime import append_latest_regime
+        append_latest_regime()
+    except Exception as exc:
+        logger.warning("Regime hook failed: %s", exc)
+
     # Auto-save today's system-generated and support reversal setups
     result = run_analysis()
     if result:
