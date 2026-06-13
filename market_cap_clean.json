@@ -1,0 +1,1937 @@
+{
+  "BOP": {
+    "name": "The Bank of Punjab",
+    "shares_m": 3272.0,
+    "market_cap_m": 113229.0
+  },
+  "SPSL": {
+    "name": "Sitara Petroleum Service Limited",
+    "shares_m": 1680.0,
+    "market_cap_m": 37143.0
+  },
+  "WTL": {
+    "name": "Worldcall Telecom Limited",
+    "shares_m": 4982.0,
+    "market_cap_m": 6328.0
+  },
+  "MLCF": {
+    "name": "Maple Leaf Cement Factory Limited",
+    "shares_m": 1048.0,
+    "market_cap_m": 94825.0
+  },
+  "OBOY": {
+    "name": "Oilboy Energy Limited",
+    "shares_m": 50.0,
+    "market_cap_m": 1021.0
+  },
+  "FNEL": {
+    "name": "First National Equities Limited",
+    "shares_m": 2673.0,
+    "market_cap_m": 3555.0
+  },
+  "TPL": {
+    "name": "TPL Corp Limited",
+    "shares_m": 267.0,
+    "market_cap_m": 3766.0
+  },
+  "PIBTL": {
+    "name": "Pakistan International Bulk Terminal",
+    "shares_m": 1786.0,
+    "market_cap_m": 31274.0
+  },
+  "WAVESAPP": {
+    "name": "Waves Home Appliances Limited",
+    "shares_m": 268.0,
+    "market_cap_m": 2615.0
+  },
+  "TPLP": {
+    "name": "TPL Properties Limited",
+    "shares_m": 561.0,
+    "market_cap_m": 6116.0
+  },
+  "KEL": {
+    "name": "K-Electric Limited",
+    "shares_m": 27615.0,
+    "market_cap_m": 222302.0
+  },
+  "LOADS": {
+    "name": "Loads Limited",
+    "shares_m": 371.0,
+    "market_cap_m": 5587.0
+  },
+  "PAEL": {
+    "name": "Pak Elektron Limited",
+    "shares_m": 924.0,
+    "market_cap_m": 37934.0
+  },
+  "FCCL": {
+    "name": "Fauji Cement Company Limited",
+    "shares_m": 2453.0,
+    "market_cap_m": 133435.0
+  },
+  "DGKC": {
+    "name": "D.G. Khan Cement Company Limited",
+    "shares_m": 438.0,
+    "market_cap_m": 90393.0
+  },
+  "DSLNC": {
+    "name": "Dost Steels Limited",
+    "shares_m": 445.0,
+    "market_cap_m": 2432.0
+  },
+  "DCL": {
+    "name": "Dewan Cement Limited",
+    "shares_m": 484.0,
+    "market_cap_m": 5834.0
+  },
+  "TELE": {
+    "name": "Telecard Limited",
+    "shares_m": 339.0,
+    "market_cap_m": 3024.0
+  },
+  "ITANZ": {
+    "name": "Itanz Technologies Limited",
+    "shares_m": 108.0,
+    "market_cap_m": 5151.0
+  },
+  "PTC": {
+    "name": "Pakistan Telecommunication Company Ltd",
+    "shares_m": 3774.0,
+    "market_cap_m": 243876.0
+  },
+  "SPEL": {
+    "name": "SPEL Limited",
+    "shares_m": 200.0,
+    "market_cap_m": 9805.0
+  },
+  "POWER": {
+    "name": "Power Cement Limited",
+    "shares_m": 1291.0,
+    "market_cap_m": 27746.0
+  },
+  "CNERGY": {
+    "name": "Cnergyico PK Limited",
+    "shares_m": 5493.0,
+    "market_cap_m": 44387.0
+  },
+  "HASCOLNC": {
+    "name": "Hascol Petroleum Limited",
+    "shares_m": 999.0,
+    "market_cap_m": 21491.0
+  },
+  "PAKQATAR": {
+    "name": "Pak Qatar Family Takaful Limited",
+    "shares_m": 231.0,
+    "market_cap_m": 5120.0
+  },
+  "NBP": {
+    "name": "National Bank of Pakistan",
+    "shares_m": 2128.0,
+    "market_cap_m": 404589.0
+  },
+  "WAVES": {
+    "name": "Waves Corporation Limited",
+    "shares_m": 281.0,
+    "market_cap_m": 3140.0
+  },
+  "TRG": {
+    "name": "TRG Pakistan Limited",
+    "shares_m": 545.0,
+    "market_cap_m": 38057.0
+  },
+  "JVDC": {
+    "name": "Javedan Corporation Limited",
+    "shares_m": 381.0,
+    "market_cap_m": 58333.0
+  },
+  "PACE": {
+    "name": "Pace (Pakistan) Limited",
+    "shares_m": 310.0,
+    "market_cap_m": 3573.0
+  },
+  "CSIL": {
+    "name": "Crescent Star Insurance Limited",
+    "shares_m": 149.0,
+    "market_cap_m": 899.0
+  },
+  "MDTL": {
+    "name": "Media Times Limited",
+    "shares_m": 179.0,
+    "market_cap_m": 1077.0
+  },
+  "STPL": {
+    "name": "Siddiqsons Tin Plate Limited",
+    "shares_m": 229.0,
+    "market_cap_m": 1935.0
+  },
+  "HUBC": {
+    "name": "The Hub Power Company Limited",
+    "shares_m": 1297.0,
+    "market_cap_m": 284842.0
+  },
+  "BECO": {
+    "name": "Beco Steel Limited",
+    "shares_m": 1250.0,
+    "market_cap_m": 7023.0
+  },
+  "LUCK": {
+    "name": "Lucky Cement Limited",
+    "shares_m": 1465.0,
+    "market_cap_m": 657946.0
+  },
+  "NCPL": {
+    "name": "Nishat Chunian Power Limited",
+    "shares_m": 367.0,
+    "market_cap_m": 23716.0
+  },
+  "TOMCL": {
+    "name": "The Organic Meat Company Limited",
+    "shares_m": 196.0,
+    "market_cap_m": 7477.0
+  },
+  "THCCL": {
+    "name": "Thatta Cement Company Limited",
+    "shares_m": 499.0,
+    "market_cap_m": 34483.0
+  },
+  "TBL": {
+    "name": "Treet Battery Limited.",
+    "shares_m": 1083.0,
+    "market_cap_m": 11421.0
+  },
+  "ASTL": {
+    "name": "Amreli Steels Limited",
+    "shares_m": 337.0,
+    "market_cap_m": 5635.0
+  },
+  "DSIL": {
+    "name": "D.S. Industries Limited",
+    "shares_m": 84.0,
+    "market_cap_m": 949.0
+  },
+  "FFL": {
+    "name": "Fauji Foods Limited",
+    "shares_m": 2520.0,
+    "market_cap_m": 45485.0
+  },
+  "ALAC": {
+    "name": "Askari Life Assurance Company Limited",
+    "shares_m": 150.0,
+    "market_cap_m": 3835.0
+  },
+  "SSGC": {
+    "name": "Sui Southern Gas Company Limited",
+    "shares_m": 881.0,
+    "market_cap_m": 23758.0
+  },
+  "TSBL": {
+    "name": "Trust Securities & Brokerage Limited",
+    "shares_m": 750.0,
+    "market_cap_m": 1350.0
+  },
+  "MFL": {
+    "name": "Matco Foods Limited",
+    "shares_m": 122.0,
+    "market_cap_m": 5628.0
+  },
+  "MUGHAL": {
+    "name": "Mughal Iron & Steel Industries Limited",
+    "shares_m": 336.0,
+    "market_cap_m": 27817.0
+  },
+  "PRL": {
+    "name": "Pakistan Refinery Limited",
+    "shares_m": 630.0,
+    "market_cap_m": 21817.0
+  },
+  "PIAHCLA": {
+    "name": "PIA Holding Company Limited",
+    "shares_m": 5234.0,
+    "market_cap_m": 135240.0
+  },
+  "PREMA": {
+    "name": "At-Tahur Limited",
+    "shares_m": 219.0,
+    "market_cap_m": 7744.0
+  },
+  "SYM": {
+    "name": "Symmetry Group Limited",
+    "shares_m": 285.0,
+    "market_cap_m": 2989.0
+  },
+  "YOUW": {
+    "name": "Yousaf Weaving Mills Limited",
+    "shares_m": 172.0,
+    "market_cap_m": 1012.0
+  },
+  "UNITY": {
+    "name": "Unity Foods Limited",
+    "shares_m": 1194.0,
+    "market_cap_m": 13755.0
+  },
+  "PQGTL": {
+    "name": "Pak Qatar General Takaful Limited",
+    "shares_m": 101.0,
+    "market_cap_m": 1559.0
+  },
+  "PPL": {
+    "name": "Pakistan Petroleum Limited",
+    "shares_m": 2721.0,
+    "market_cap_m": 614503.0
+  },
+  "ZTL": {
+    "name": "Zephyr Textiles Limited",
+    "shares_m": 59.0,
+    "market_cap_m": 1215.0
+  },
+  "OGDC": {
+    "name": "Oil & Gas Development Company Limited",
+    "shares_m": 4301.0,
+    "market_cap_m": 1367652.0
+  },
+  "ASL": {
+    "name": "Aisha Steel Mills Limited",
+    "shares_m": 931.0,
+    "market_cap_m": 12379.0
+  },
+  "AGHA": {
+    "name": "Agha Steel Ind.Ltd",
+    "shares_m": 605.0,
+    "market_cap_m": 5002.0
+  },
+  "ENGROH": {
+    "name": "Engro Holdings Limited",
+    "shares_m": 1204.0,
+    "market_cap_m": 320362.0
+  },
+  "GTYR": {
+    "name": "Ghandhara Tyre & Rubber Company Limited",
+    "shares_m": 122.0,
+    "market_cap_m": 3809.0
+  },
+  "AIRLINK": {
+    "name": "Air Link Communication Limited",
+    "shares_m": 395.0,
+    "market_cap_m": 61381.0
+  },
+  "BNL": {
+    "name": "Bunnys Limited",
+    "shares_m": 668.0,
+    "market_cap_m": 4676.0
+  },
+  "NPL": {
+    "name": "Nishat Power Limited",
+    "shares_m": 354.0,
+    "market_cap_m": 25349.0
+  },
+  "AKBL": {
+    "name": "Askari Bank Limited",
+    "shares_m": 1449.0,
+    "market_cap_m": 142321.0
+  },
+  "FCSC": {
+    "name": "First Capital Securities Corporation",
+    "shares_m": 317.0,
+    "market_cap_m": 1748.0
+  },
+  "CTM": {
+    "name": "Colony Textile Mills Limited",
+    "shares_m": 498.0,
+    "market_cap_m": 3979.0
+  },
+  "SEARL": {
+    "name": "The Searle Company Limited",
+    "shares_m": 588.0,
+    "market_cap_m": 53751.0
+  },
+  "ILP": {
+    "name": "Interloop Limited",
+    "shares_m": 1402.0,
+    "market_cap_m": 122397.0
+  },
+  "AHCL": {
+    "name": "Arif Habib Corporation Limited",
+    "shares_m": 4217.0,
+    "market_cap_m": 63128.0
+  },
+  "BBFL": {
+    "name": "Big Bird Foods Limited",
+    "shares_m": 299.0,
+    "market_cap_m": 13699.0
+  },
+  "PSO": {
+    "name": "Pakistan State Oil Company Limited",
+    "shares_m": 469.0,
+    "market_cap_m": 164790.0
+  },
+  "KOHC": {
+    "name": "Kohat Cement Company Limited",
+    "shares_m": 919.0,
+    "market_cap_m": 87564.0
+  },
+  "SGPL": {
+    "name": "S.G. Power Limited",
+    "shares_m": 18.0,
+    "market_cap_m": 933.0
+  },
+  "SYS": {
+    "name": "Systems Limited",
+    "shares_m": 1473.0,
+    "market_cap_m": 217784.0
+  },
+  "MEBL": {
+    "name": "Meezan Bank Limited",
+    "shares_m": 1801.0,
+    "market_cap_m": 918661.0
+  },
+  "TPLT": {
+    "name": "TPL Trakker Limited",
+    "shares_m": 187.0,
+    "market_cap_m": 4234.0
+  },
+  "PSX": {
+    "name": "Pakistan Stock Exchange Limited",
+    "shares_m": 801.0,
+    "market_cap_m": 34904.0
+  },
+  "TREET": {
+    "name": "Treet Corporation Limited",
+    "shares_m": 371.0,
+    "market_cap_m": 9142.0
+  },
+  "BAFL": {
+    "name": "Bank Alfalah Limited",
+    "shares_m": 3154.0,
+    "market_cap_m": 186074.0
+  },
+  "NML": {
+    "name": "Nishat Mills Limited",
+    "shares_m": 352.0,
+    "market_cap_m": 51453.0
+  },
+  "PAKRI": {
+    "name": "Pakistan Reinsurance Company Limited",
+    "shares_m": 900.0,
+    "market_cap_m": 14688.0
+  },
+  "UBL": {
+    "name": "United Bank Limited",
+    "shares_m": 2504.0,
+    "market_cap_m": 1014145.0
+  },
+  "IBLHL": {
+    "name": "IBL HealthCare Limited",
+    "shares_m": 99.0,
+    "market_cap_m": 5435.0
+  },
+  "LSECL": {
+    "name": "LSE Capital Limited.",
+    "shares_m": 387.0,
+    "market_cap_m": 2125.0
+  },
+  "KOHTM": {
+    "name": "Kohat Textile Mills Limited",
+    "shares_m": 21.0,
+    "market_cap_m": 2526.0
+  },
+  "FCL": {
+    "name": "Fast Cables Limited",
+    "shares_m": 645.0,
+    "market_cap_m": 15476.0
+  },
+  "STCL": {
+    "name": "Shabbir Tiles & Ceramics Limited",
+    "shares_m": 239.0,
+    "market_cap_m": 2893.0
+  },
+  "HUMNL": {
+    "name": "Hum Network Limited",
+    "shares_m": 1134.0,
+    "market_cap_m": 12553.0
+  },
+  "FABL": {
+    "name": "Faysal Bank Limited",
+    "shares_m": 1518.0,
+    "market_cap_m": 138217.0
+  },
+  "AKDSL": {
+    "name": "AKD Securities Limited",
+    "shares_m": 558.0,
+    "market_cap_m": 22068.0
+  },
+  "LOTCHEM": {
+    "name": "Lotte Chemical Pakistan Limited",
+    "shares_m": 1514.0,
+    "market_cap_m": 43564.0
+  },
+  "AVN": {
+    "name": "Avanceon Limited",
+    "shares_m": 430.0,
+    "market_cap_m": 14626.0
+  },
+  "CPHL": {
+    "name": "Citi Pharma Ltd.",
+    "shares_m": 228.0,
+    "market_cap_m": 17923.0
+  },
+  "EFERT": {
+    "name": "Engro Fertilizers Limited",
+    "shares_m": 1335.0,
+    "market_cap_m": 264750.0
+  },
+  "SNGP": {
+    "name": "Sui Northern Gas Pipelines Limited",
+    "shares_m": 634.0,
+    "market_cap_m": 63688.0
+  },
+  "ISL": {
+    "name": "International Steels Limited",
+    "shares_m": 435.0,
+    "market_cap_m": 37906.0
+  },
+  "FDPL": {
+    "name": "First Dawood Properties Limited",
+    "shares_m": 148.0,
+    "market_cap_m": 785.0
+  },
+  "PASLNC": {
+    "name": "Pervez Ahmed Consultancy Services Ltd.",
+    "shares_m": 187.0,
+    "market_cap_m": 524.0
+  },
+  "ZUMA": {
+    "name": "Zuma Resources Limited",
+    "shares_m": 14.0,
+    "market_cap_m": 1212.0
+  },
+  "DFML": {
+    "name": "Dewan Farooque Motors Limited",
+    "shares_m": 300.0,
+    "market_cap_m": 5724.0
+  },
+  "FCEPL": {
+    "name": "Frieslandcampina Engro Pakistan Limited",
+    "shares_m": 767.0,
+    "market_cap_m": 83475.0
+  },
+  "NETSOL": {
+    "name": "NetSol Technologies Limited",
+    "shares_m": 90.0,
+    "market_cap_m": 11861.0
+  },
+  "HCAR": {
+    "name": "Honda Atlas Cars (Pakistan) Limited",
+    "shares_m": 143.0,
+    "market_cap_m": 38596.0
+  },
+  "GDL": {
+    "name": "Ghani Dairies Limited",
+    "shares_m": 429.0,
+    "market_cap_m": 8799.0
+  },
+  "FFC": {
+    "name": "Fauji Fertilizer Company Limited",
+    "shares_m": 1439.0,
+    "market_cap_m": 800744.0
+  },
+  "GGL": {
+    "name": "Ghani Global Holdings Limited",
+    "shares_m": 354.0,
+    "market_cap_m": 7366.0
+  },
+  "QTECH": {
+    "name": "Quantum Data Technologies Limited",
+    "shares_m": 122.0,
+    "market_cap_m": 4272.0
+  },
+  "GRR": {
+    "name": "Globe Residency REIT",
+    "shares_m": 140.0,
+    "market_cap_m": 2752.0
+  },
+  "MARI": {
+    "name": "Mari Energies Limited",
+    "shares_m": 1201.0,
+    "market_cap_m": 794596.0
+  },
+  "GCIL": {
+    "name": "Ghani Chemical Industries Limited",
+    "shares_m": 570.0,
+    "market_cap_m": 17096.0
+  },
+  "HBL": {
+    "name": "Habib Bank Limited",
+    "shares_m": 1467.0,
+    "market_cap_m": 422967.0
+  },
+  "GATM": {
+    "name": "Gul Ahmed Textile Mills Limited",
+    "shares_m": 740.0,
+    "market_cap_m": 18279.0
+  },
+  "CLOV": {
+    "name": "Clover Pakistan Limited",
+    "shares_m": 389.0,
+    "market_cap_m": 3270.0
+  },
+  "GAL": {
+    "name": "Ghandhara Automobiles Limited",
+    "shares_m": 57.0,
+    "market_cap_m": 27665.0
+  },
+  "QUICE": {
+    "name": "Quice Food Industries Limited",
+    "shares_m": 98.0,
+    "market_cap_m": 3667.0
+  },
+  "KTML": {
+    "name": "Kohinoor Textile Mills Limited",
+    "shares_m": 1346.0,
+    "market_cap_m": 66961.0
+  },
+  "AGP": {
+    "name": "AGP Limited",
+    "shares_m": 280.0,
+    "market_cap_m": 52772.0
+  },
+  "SGF": {
+    "name": "Service GlobalFootwear Limited",
+    "shares_m": 206.0,
+    "market_cap_m": 26554.0
+  },
+  "GHGL": {
+    "name": "Ghani Glass Limited",
+    "shares_m": 1000.0,
+    "market_cap_m": 36070.0
+  },
+  "BAPL": {
+    "name": "Bawany Air Products Limited",
+    "shares_m": 8.0,
+    "market_cap_m": 225.0
+  },
+  "GCWLXR": {
+    "name": "Ghani Chemworld Limited",
+    "shares_m": 250.0,
+    "market_cap_m": 4205.0
+  },
+  "CHCC": {
+    "name": "Cherat Cement Company Limited",
+    "shares_m": 194.0,
+    "market_cap_m": 57544.0
+  },
+  "IGIHL": {
+    "name": "IGI Holdings Limited",
+    "shares_m": 143.0,
+    "market_cap_m": 40528.0
+  },
+  "GWLC": {
+    "name": "Gharibwal Cement Limited",
+    "shares_m": 400.0,
+    "market_cap_m": 21295.0
+  },
+  "ECOP": {
+    "name": "Ecopack Limited",
+    "shares_m": 48.0,
+    "market_cap_m": 2455.0
+  },
+  "EPCL": {
+    "name": "Engro Polymer & Chemicals Limited",
+    "shares_m": 909.0,
+    "market_cap_m": 30104.0
+  },
+  "ZAL": {
+    "name": "Zarea Limited",
+    "shares_m": 263.0,
+    "market_cap_m": 11986.0
+  },
+  "ITTEFAQ": {
+    "name": "Ittefaq Iron Industries Limited",
+    "shares_m": 144.0,
+    "market_cap_m": 1240.0
+  },
+  "BML": {
+    "name": "Bank Makramah Limited",
+    "shares_m": 1000.0,
+    "market_cap_m": 59510.0
+  },
+  "SLGL": {
+    "name": "Secure Logistics-Trax Group Limited",
+    "shares_m": 422.0,
+    "market_cap_m": 6534.0
+  },
+  "HIRATNC": {
+    "name": "Hira Textile Mills Limited",
+    "shares_m": 87.0,
+    "market_cap_m": 595.0
+  },
+  "ANL": {
+    "name": "Azgard Nine Limited",
+    "shares_m": 485.0,
+    "market_cap_m": 5048.0
+  },
+  "JSBL": {
+    "name": "JS Bank Limited",
+    "shares_m": 2051.0,
+    "market_cap_m": 25838.0
+  },
+  "CPPL": {
+    "name": "Cherat Packaging Limited",
+    "shares_m": 49.0,
+    "market_cap_m": 4893.0
+  },
+  "TSPL": {
+    "name": "Tri-Star Power Limited",
+    "shares_m": 15.0,
+    "market_cap_m": 215.0
+  },
+  "NRL": {
+    "name": "National Refinery Limited",
+    "shares_m": 80.0,
+    "market_cap_m": 28654.0
+  },
+  "FATIMA": {
+    "name": "Fatima Fertilizer Company Limited",
+    "shares_m": 2100.0,
+    "market_cap_m": 297696.0
+  },
+  "INIL": {
+    "name": "International Industries Limited",
+    "shares_m": 132.0,
+    "market_cap_m": 22053.0
+  },
+  "FECTC": {
+    "name": "Fecto Cement Limited",
+    "shares_m": 50.0,
+    "market_cap_m": 5132.0
+  },
+  "LSEVL": {
+    "name": "LSE Ventures Limited",
+    "shares_m": 399.0,
+    "market_cap_m": 3920.0
+  },
+  "ARCTM": {
+    "name": "Arctic Textile Mills Limited",
+    "shares_m": 13.0,
+    "market_cap_m": 445.0
+  },
+  "EPQL": {
+    "name": "Engro Powergen Qadirpur Limited",
+    "shares_m": 324.0,
+    "market_cap_m": 8033.0
+  },
+  "JSCL": {
+    "name": "Jahangir Siddiqui & Co. Ltd.",
+    "shares_m": 916.0,
+    "market_cap_m": 19711.0
+  },
+  "IDRT": {
+    "name": "Idrees Textile Mills Limited",
+    "shares_m": 20.0,
+    "market_cap_m": 995.0
+  },
+  "DBCINC": {
+    "name": "Dadabhoy Cement Industries Limited",
+    "shares_m": 98.0,
+    "market_cap_m": 740.0
+  },
+  "HTL": {
+    "name": "Hi-Tech Lubricants Limited",
+    "shares_m": 139.0,
+    "market_cap_m": 6029.0
+  },
+  "HMB": {
+    "name": "Habib Metropolitan Bank Limited",
+    "shares_m": 1048.0,
+    "market_cap_m": 121643.0
+  },
+  "BIPL": {
+    "name": "BankIslami Pakistan Limited",
+    "shares_m": 1109.0,
+    "market_cap_m": 28427.0
+  },
+  "FCELNC": {
+    "name": "First Capital Equities Limited",
+    "shares_m": 141.0,
+    "market_cap_m": 801.0
+  },
+  "WAHDAT": {
+    "name": "Wahdat Poultry Farm Limited",
+    "shares_m": 335.0,
+    "market_cap_m": 6215.0
+  },
+  "POL": {
+    "name": "Pakistan Oilfields Limited",
+    "shares_m": 284.0,
+    "market_cap_m": 197932.0
+  },
+  "GGGL": {
+    "name": "Ghani Global Glass Limited",
+    "shares_m": 240.0,
+    "market_cap_m": 2047.0
+  },
+  "NICL": {
+    "name": "Nimir Industrial Chemicals Limited",
+    "shares_m": 111.0,
+    "market_cap_m": 22786.0
+  },
+  "GHNI": {
+    "name": "Ghandhara Industries Limited",
+    "shares_m": 43.0,
+    "market_cap_m": 40105.0
+  },
+  "OCTOPUS": {
+    "name": "Octopus Digital Limited",
+    "shares_m": 157.0,
+    "market_cap_m": 5229.0
+  },
+  "SZTM": {
+    "name": "Shahzad Textile Mills Limited",
+    "shares_m": 18.0,
+    "market_cap_m": 1166.0
+  },
+  "MCB": {
+    "name": "MCB Bank Limited",
+    "shares_m": 1185.0,
+    "market_cap_m": 473965.0
+  },
+  "HRPL": {
+    "name": "Habib Rice Product Limited.",
+    "shares_m": 40.0,
+    "market_cap_m": 790.0
+  },
+  "KML": {
+    "name": "Kohinoor Mills Limited",
+    "shares_m": 509.0,
+    "market_cap_m": 4399.0
+  },
+  "ASCNC": {
+    "name": "Al Shaheer Corporation Limited",
+    "shares_m": 375.0,
+    "market_cap_m": 4075.0
+  },
+  "CHBL": {
+    "name": "Chenab Limited",
+    "shares_m": 115.0,
+    "market_cap_m": 1121.0
+  },
+  "IMS": {
+    "name": "Intermarket Securities Limited",
+    "shares_m": 1288.0,
+    "market_cap_m": 22132.0
+  },
+  "AICL": {
+    "name": "Adamjee Insurance Company Limited",
+    "shares_m": 350.0,
+    "market_cap_m": 26110.0
+  },
+  "IMAGE": {
+    "name": "Image Pakistan Limited",
+    "shares_m": 230.0,
+    "market_cap_m": 5787.0
+  },
+  "SNBL": {
+    "name": "Soneri Bank Limited",
+    "shares_m": 1102.0,
+    "market_cap_m": 21752.0
+  },
+  "KAPCO": {
+    "name": "Kot Addu Power Company Limited",
+    "shares_m": 880.0,
+    "market_cap_m": 24357.0
+  },
+  "TGL": {
+    "name": "Tariq Glass Industries Limited",
+    "shares_m": 172.0,
+    "market_cap_m": 30957.0
+  },
+  "SBL": {
+    "name": "Samba Bank Limited",
+    "shares_m": 1008.0,
+    "market_cap_m": 9740.0
+  },
+  "STL": {
+    "name": "Supernet Technologies Limited",
+    "shares_m": 108.0,
+    "market_cap_m": 5511.0
+  },
+  "GFIL": {
+    "name": "Ghazi Fabrics International Limited",
+    "shares_m": 33.0,
+    "market_cap_m": 975.0
+  },
+  "BFAGRO": {
+    "name": "Barkat Frisian Agro Limited",
+    "shares_m": 310.0,
+    "market_cap_m": 10605.0
+  },
+  "CSAP": {
+    "name": "Crescent Steel & Allied Products Limited",
+    "shares_m": 78.0,
+    "market_cap_m": 7496.0
+  },
+  "CEPB": {
+    "name": "Century Paper & Board Mills Limited",
+    "shares_m": 402.0,
+    "market_cap_m": 12104.0
+  },
+  "IREIT": {
+    "name": "Image Reit",
+    "shares_m": 276.0,
+    "market_cap_m": 2245.0
+  },
+  "AMTEXNC": {
+    "name": "Amtex Limited",
+    "shares_m": 259.0,
+    "market_cap_m": 1245.0
+  },
+  "DCR": {
+    "name": "Dolmen City REIT",
+    "shares_m": 2224.0,
+    "market_cap_m": 80876.0
+  },
+  "MERIT": {
+    "name": "Merit Packaging Limited",
+    "shares_m": 200.0,
+    "market_cap_m": 2064.0
+  },
+  "JSRR": {
+    "name": "JS Rental REIT",
+    "shares_m": 215.0,
+    "market_cap_m": 2309.0
+  },
+  "NCL": {
+    "name": "Nishat Chunian Limited",
+    "shares_m": 240.0,
+    "market_cap_m": 9101.0
+  },
+  "NATF": {
+    "name": "National Foods Limited",
+    "shares_m": 233.0,
+    "market_cap_m": 83166.0
+  },
+  "RPL": {
+    "name": "Roshan Packages Limited",
+    "shares_m": 142.0,
+    "market_cap_m": 2303.0
+  },
+  "SHDT": {
+    "name": "Shadab Textile Mills Limited",
+    "shares_m": 23.0,
+    "market_cap_m": 1258.0
+  },
+  "JUBSNC": {
+    "name": "Jubilee Spinning & Weaving Mills Ltd.",
+    "shares_m": 32.0,
+    "market_cap_m": 1722.0
+  },
+  "BGL": {
+    "name": "Baluchistan Glass Limited",
+    "shares_m": 639.0,
+    "market_cap_m": 6755.0
+  },
+  "BFBIO": {
+    "name": "BF Biosciences Limited",
+    "shares_m": 88.0,
+    "market_cap_m": 12349.0
+  },
+  "MTL": {
+    "name": "Millat Tractors Limited",
+    "shares_m": 200.0,
+    "market_cap_m": 112944.0
+  },
+  "SPWL": {
+    "name": "Saif Power Limited",
+    "shares_m": 386.0,
+    "market_cap_m": 3575.0
+  },
+  "HGFA": {
+    "name": "HBL Growth Fund",
+    "shares_m": 284.0,
+    "market_cap_m": 4944.0
+  },
+  "ALTN": {
+    "name": "Altern Energy Limited",
+    "shares_m": 363.0,
+    "market_cap_m": 3183.0
+  },
+  "SPLNC": {
+    "name": "Sitara Peroxide Limited",
+    "shares_m": 55.0,
+    "market_cap_m": 3670.0
+  },
+  "DNCC": {
+    "name": "Dandot Cement Company Limited",
+    "shares_m": 316.0,
+    "market_cap_m": 6349.0
+  },
+  "PIOC": {
+    "name": "Pioneer Cement Limited",
+    "shares_m": 227.0,
+    "market_cap_m": 63370.0
+  },
+  "GLAXO": {
+    "name": "GlaxoSmithKline Pakistan Limited",
+    "shares_m": 318.0,
+    "market_cap_m": 112540.0
+  },
+  "BPL": {
+    "name": "Burshane LPG (Pakistan) Limited",
+    "shares_m": 22.0,
+    "market_cap_m": 1334.0
+  },
+  "KOIL": {
+    "name": "Kohinoor Industries Limited",
+    "shares_m": 30.0,
+    "market_cap_m": 1398.0
+  },
+  "UDLI": {
+    "name": "UDL International Limited",
+    "shares_m": 35.0,
+    "market_cap_m": 673.0
+  },
+  "786": {
+    "name": "786 Investments Limited",
+    "shares_m": 20.0,
+    "market_cap_m": 518.0
+  },
+  "KOHE": {
+    "name": "Kohinoor Energy Limited",
+    "shares_m": 169.0,
+    "market_cap_m": 2608.0
+  },
+  "IPAKXB": {
+    "name": "International Packaging Films Limited",
+    "shares_m": 735.0,
+    "market_cap_m": 24262.0
+  },
+  "ADMM": {
+    "name": "Artistic Denim Mills Limited",
+    "shares_m": 84.0,
+    "market_cap_m": 5635.0
+  },
+  "SAZEW": {
+    "name": "Sazgar Engineering Works Limited",
+    "shares_m": 60.0,
+    "market_cap_m": 126542.0
+  },
+  "AGL": {
+    "name": "Agritech Limited",
+    "shares_m": 599.0,
+    "market_cap_m": 28145.0
+  },
+  "ATRL": {
+    "name": "Attock Refinery Limited",
+    "shares_m": 107.0,
+    "market_cap_m": 91371.0
+  },
+  "EMCO": {
+    "name": "Emco Industries Limited",
+    "shares_m": 35.0,
+    "market_cap_m": 1754.0
+  },
+  "MSOT": {
+    "name": "Masood Textile Mills Limited",
+    "shares_m": 68.0,
+    "market_cap_m": 5737.0
+  },
+  "PINL": {
+    "name": "Premier Insurance Limited",
+    "shares_m": 51.0,
+    "market_cap_m": 495.0
+  },
+  "DEL": {
+    "name": "Dawood Equities Limited",
+    "shares_m": 28.0,
+    "market_cap_m": 499.0
+  },
+  "ACPL": {
+    "name": "Attock Cement Pakistan Limited",
+    "shares_m": 137.0,
+    "market_cap_m": 32190.0
+  },
+  "MWMP": {
+    "name": "Mandviwala Mauser Plastic Industries",
+    "shares_m": 29.0,
+    "market_cap_m": 1963.0
+  },
+  "LEUL": {
+    "name": "Leather Up Limited",
+    "shares_m": 6.0,
+    "market_cap_m": 298.0
+  },
+  "GEMPAPL": {
+    "name": "Pak Agro Packaging Limited(GEM)",
+    "shares_m": 20.0,
+    "market_cap_m": 189.0
+  },
+  "CJPLNC": {
+    "name": "Crescent Jute Products Limited",
+    "shares_m": 24.0,
+    "market_cap_m": 312.0
+  },
+  "BAHL": {
+    "name": "Bank AL Habib Limited",
+    "shares_m": 1111.0,
+    "market_cap_m": 188520.0
+  },
+  "DOL": {
+    "name": "Descon Oxychem Limited",
+    "shares_m": 175.0,
+    "market_cap_m": 5573.0
+  },
+  "ANTM": {
+    "name": "AN Textile Mills Limited",
+    "shares_m": 10.0,
+    "market_cap_m": 358.0
+  },
+  "FML": {
+    "name": "Feroze1888 Mills Limited",
+    "shares_m": 399.0,
+    "market_cap_m": 20765.0
+  },
+  "PAKL": {
+    "name": "Pak Leather Crafts Limited",
+    "shares_m": 3.0,
+    "market_cap_m": 158.0
+  },
+  "MACFL": {
+    "name": "MACPAC Films Limited",
+    "shares_m": 59.0,
+    "market_cap_m": 3565.0
+  },
+  "DWAENC": {
+    "name": "Dewan Automotive Engineering Limited",
+    "shares_m": 21.0,
+    "market_cap_m": 537.0
+  },
+  "AHL": {
+    "name": "Arif Habib Limited",
+    "shares_m": 65.0,
+    "market_cap_m": 7310.0
+  },
+  "PILNC": {
+    "name": "PICIC Insurance Limited",
+    "shares_m": 35.0,
+    "market_cap_m": 191.0
+  },
+  "BLUEX": {
+    "name": "Blue-Ex Limited",
+    "shares_m": 284.0,
+    "market_cap_m": 1782.0
+  },
+  "ICCI": {
+    "name": "ICC Industries Limited",
+    "shares_m": 30.0,
+    "market_cap_m": 416.0
+  },
+  "UVIC": {
+    "name": "The Universal Insurance Company Limited",
+    "shares_m": 50.0,
+    "market_cap_m": 1244.0
+  },
+  "APL": {
+    "name": "Attock Petroleum Limited",
+    "shares_m": 124.0,
+    "market_cap_m": 66400.0
+  },
+  "TRIPF": {
+    "name": "Tri-Pack Films Limited",
+    "shares_m": 39.0,
+    "market_cap_m": 5680.0
+  },
+  "LIVEN": {
+    "name": "Liven Pharma Limited",
+    "shares_m": 113.0,
+    "market_cap_m": 4411.0
+  },
+  "EFUL": {
+    "name": "EFU Life Assurance Limited",
+    "shares_m": 105.0,
+    "market_cap_m": 16188.0
+  },
+  "PICT": {
+    "name": "Pakistan International Container",
+    "shares_m": 109.0,
+    "market_cap_m": 4136.0
+  },
+  "BIFO": {
+    "name": "Biafo Industries Limited",
+    "shares_m": 46.0,
+    "market_cap_m": 6077.0
+  },
+  "TATM": {
+    "name": "Tata Textile Mills Limited",
+    "shares_m": 56.0,
+    "market_cap_m": 7638.0
+  },
+  "DAAG": {
+    "name": "Data Agro Limited",
+    "shares_m": 4.0,
+    "market_cap_m": 392.0
+  },
+  "TCORP": {
+    "name": "Tariq Corporation Limited",
+    "shares_m": 66.0,
+    "market_cap_m": 1543.0
+  },
+  "PKGS": {
+    "name": "Packages Limited",
+    "shares_m": 89.0,
+    "market_cap_m": 68104.0
+  },
+  "ICL": {
+    "name": "Ittehad Chemicals Limted",
+    "shares_m": 100.0,
+    "market_cap_m": 13987.0
+  },
+  "SURC": {
+    "name": "Suraj Cotton Mills Limited",
+    "shares_m": 49.0,
+    "market_cap_m": 6833.0
+  },
+  "PTL": {
+    "name": "Panther Tyres Ltd.",
+    "shares_m": 168.0,
+    "market_cap_m": 8891.0
+  },
+  "HINOON": {
+    "name": "Highnoon Laboratories Limited",
+    "shares_m": 53.0,
+    "market_cap_m": 51001.0
+  },
+  "SAIF": {
+    "name": "Saif Textile Mills Limited",
+    "shares_m": 26.0,
+    "market_cap_m": 902.0
+  },
+  "SEL": {
+    "name": "Sitara Energy Limited",
+    "shares_m": 19.0,
+    "market_cap_m": 627.0
+  },
+  "HAEL": {
+    "name": "Hala Enterprises Limited",
+    "shares_m": 13.0,
+    "market_cap_m": 349.0
+  },
+  "IGIL": {
+    "name": "IGI Life Insurance Limited",
+    "shares_m": 171.0,
+    "market_cap_m": 3498.0
+  },
+  "GATI": {
+    "name": "Gatron (Industries) Limited",
+    "shares_m": 109.0,
+    "market_cap_m": 9299.0
+  },
+  "BWHL": {
+    "name": "Baluchistan Wheels Limited",
+    "shares_m": 13.0,
+    "market_cap_m": 2892.0
+  },
+  "HIFA": {
+    "name": "HBL Investment Fund",
+    "shares_m": 284.0,
+    "market_cap_m": 1500.0
+  },
+  "MSCL": {
+    "name": "Metropolitan Steel Corporation Limited",
+    "shares_m": 31.0,
+    "market_cap_m": 895.0
+  },
+  "ABL": {
+    "name": "Allied Bank Limited",
+    "shares_m": 1145.0,
+    "market_cap_m": 208300.0
+  },
+  "AGTL": {
+    "name": "Al-Ghazi Tractors Limited",
+    "shares_m": 58.0,
+    "market_cap_m": 21582.0
+  },
+  "DLL": {
+    "name": "Dawood Lawrencepur Limited",
+    "shares_m": 801.0,
+    "market_cap_m": 44947.0
+  },
+  "SMCPL": {
+    "name": "Safe Mix Concrete Limited",
+    "shares_m": 25.0,
+    "market_cap_m": 1114.0
+  },
+  "UBDL": {
+    "name": "United Brands Limited",
+    "shares_m": 92.0,
+    "market_cap_m": 2478.0
+  },
+  "BNWM": {
+    "name": "Bannu Woollen Mills Limited",
+    "shares_m": 10.0,
+    "market_cap_m": 659.0
+  },
+  "LPGL": {
+    "name": "Leiner Pak Gelatine Limited",
+    "shares_m": 8.0,
+    "market_cap_m": 752.0
+  },
+  "PPVCNC": {
+    "name": "Pakistan PVC Limited",
+    "shares_m": 15.0,
+    "market_cap_m": 428.0
+  },
+  "INKL": {
+    "name": "International Knitwear Limited",
+    "shares_m": 10.0,
+    "market_cap_m": 892.0
+  },
+  "LCI": {
+    "name": "Lucky Core Industries Limited",
+    "shares_m": 462.0,
+    "market_cap_m": 105700.0
+  },
+  "KSBP": {
+    "name": "KSB Pumps Company Limited",
+    "shares_m": 31.0,
+    "market_cap_m": 6262.0
+  },
+  "KOHP": {
+    "name": "Kohinoor Power Company Limited",
+    "shares_m": 13.0,
+    "market_cap_m": 334.0
+  },
+  "HALEON": {
+    "name": "Haleon Pakistan Limited",
+    "shares_m": 117.0,
+    "market_cap_m": 90495.0
+  },
+  "CRTM": {
+    "name": "The Crescent Textile Mills Limited",
+    "shares_m": 100.0,
+    "market_cap_m": 6983.0
+  },
+  "DIIL": {
+    "name": "Diamond Industries Limited",
+    "shares_m": 9.0,
+    "market_cap_m": 564.0
+  },
+  "FLYNG": {
+    "name": "Flying Cement Company Limited",
+    "shares_m": 695.0,
+    "market_cap_m": 30092.0
+  },
+  "LSEFSL": {
+    "name": "LSE Financial Services Limited.",
+    "shares_m": 27.0,
+    "market_cap_m": 652.0
+  },
+  "SRR": {
+    "name": "Signature Residency Reit",
+    "shares_m": 33.0,
+    "market_cap_m": 532.0
+  },
+  "REDCO": {
+    "name": "Redco Textiles Limited",
+    "shares_m": 49.0,
+    "market_cap_m": 1533.0
+  },
+  "PAKT": {
+    "name": "Pakistan Tobacco Company Limited",
+    "shares_m": 255.0,
+    "market_cap_m": 339945.0
+  },
+  "NRSL": {
+    "name": "Nimir Resins Limited",
+    "shares_m": 141.0,
+    "market_cap_m": 4795.0
+  },
+  "PCAL": {
+    "name": "Pakistan Cables Limited",
+    "shares_m": 54.0,
+    "market_cap_m": 8324.0
+  },
+  "ATBA": {
+    "name": "Atlas Battery Limited",
+    "shares_m": 35.0,
+    "market_cap_m": 7587.0
+  },
+  "PABC": {
+    "name": "Pakistan Aluminium Beverage Cans Limited",
+    "shares_m": 361.0,
+    "market_cap_m": 38075.0
+  },
+  "SITC": {
+    "name": "Sitara Chemical Industries Limited",
+    "shares_m": 21.0,
+    "market_cap_m": 18805.0
+  },
+  "WAFI": {
+    "name": "Wafi Energy Pakistan Limited",
+    "shares_m": 214.0,
+    "market_cap_m": 42687.0
+  },
+  "PAKD": {
+    "name": "Pak Datacom Limited",
+    "shares_m": 12.0,
+    "market_cap_m": 1647.0
+  },
+  "SHNI": {
+    "name": "Shaheen Insurance Company Limited",
+    "shares_m": 105.0,
+    "market_cap_m": 755.0
+  },
+  "BWCL": {
+    "name": "Bestway Cement Limited",
+    "shares_m": 596.0,
+    "market_cap_m": 272249.0
+  },
+  "AGIL": {
+    "name": "Agriauto Industries Limited",
+    "shares_m": 36.0,
+    "market_cap_m": 5955.0
+  },
+  "ORM": {
+    "name": "Orient Rental Mod",
+    "shares_m": 75.0,
+    "market_cap_m": 765.0
+  },
+  "ZAHID": {
+    "name": "Zahidjee Textile Mills Limited",
+    "shares_m": 191.0,
+    "market_cap_m": 12065.0
+  },
+  "GADT": {
+    "name": "Gadoon Textile Mills Limited",
+    "shares_m": 28.0,
+    "market_cap_m": 8531.0
+  },
+  "RUBYNC": {
+    "name": "Ruby Textile Mills Limited",
+    "shares_m": 52.0,
+    "market_cap_m": 895.0
+  },
+  "SEPL": {
+    "name": "Security Papers Limited",
+    "shares_m": 59.0,
+    "market_cap_m": 8664.0
+  },
+  "ASTM": {
+    "name": "Asim Textile Mills Limited",
+    "shares_m": 15.0,
+    "market_cap_m": 289.0
+  },
+  "LPL": {
+    "name": "Lalpir Power Limited",
+    "shares_m": 280.0,
+    "market_cap_m": 5518.0
+  },
+  "IDYM": {
+    "name": "Indus Dyeing & Manufacturing Co. Limited",
+    "shares_m": 54.0,
+    "market_cap_m": 7654.0
+  },
+  "SUTM": {
+    "name": "Sunrays Textile Mills Limited",
+    "shares_m": 21.0,
+    "market_cap_m": 2429.0
+  },
+  "GVGL": {
+    "name": "Ghani Value Glass Limited",
+    "shares_m": 150.0,
+    "market_cap_m": 8332.0
+  },
+  "TOWL": {
+    "name": "Towellers Limited",
+    "shares_m": 17.0,
+    "market_cap_m": 1989.0
+  },
+  "OLPL": {
+    "name": "OLP Financial Services Pakistan Limited",
+    "shares_m": 175.0,
+    "market_cap_m": 8595.0
+  },
+  "BCL": {
+    "name": "Bolan Castings Limited",
+    "shares_m": 11.0,
+    "market_cap_m": 881.0
+  },
+  "DWTMNC": {
+    "name": "Dewan Textile Mills Limited",
+    "shares_m": 46.0,
+    "market_cap_m": 450.0
+  },
+  "AGIC": {
+    "name": "Askari General Insurance Company Limited",
+    "shares_m": 101.0,
+    "market_cap_m": 4222.0
+  },
+  "KHTC": {
+    "name": "Khyber Tobacco Company Limited",
+    "shares_m": 7.0,
+    "market_cap_m": 2185.0
+  },
+  "STYLERS": {
+    "name": "Stylers International Limited",
+    "shares_m": 489.0,
+    "market_cap_m": 23263.0
+  },
+  "JGICL": {
+    "name": "Jubilee General Insurance Company Ltd.",
+    "shares_m": 198.0,
+    "market_cap_m": 15709.0
+  },
+  "TPLI": {
+    "name": "TPL Insurance Limited",
+    "shares_m": 199.0,
+    "market_cap_m": 4970.0
+  },
+  "PKGI": {
+    "name": "The Pakistan General Insurance Co. Ltd.",
+    "shares_m": 50.0,
+    "market_cap_m": 900.0
+  },
+  "MACTER": {
+    "name": "Macter International Limited",
+    "shares_m": 46.0,
+    "market_cap_m": 12374.0
+  },
+  "BERG": {
+    "name": "Berger Paints Pakistan Limited",
+    "shares_m": 25.0,
+    "market_cap_m": 2364.0
+  },
+  "SHFA": {
+    "name": "Shifa International Hospitals Limited",
+    "shares_m": 63.0,
+    "market_cap_m": 30416.0
+  },
+  "SCBPL": {
+    "name": "Standard Chartered Bank (Pak) Ltd",
+    "shares_m": 3872.0,
+    "market_cap_m": 252350.0
+  },
+  "NAGC": {
+    "name": "Nagina Cotton Mills Limited",
+    "shares_m": 19.0,
+    "market_cap_m": 1422.0
+  },
+  "SERT": {
+    "name": "Service Industries Textiles Limited",
+    "shares_m": 14.0,
+    "market_cap_m": 488.0
+  },
+  "BOK": {
+    "name": "The Bank of Khyber",
+    "shares_m": 1158.0,
+    "market_cap_m": 37984.0
+  },
+  "HICL": {
+    "name": "Habib Insurance Company Limited",
+    "shares_m": 124.0,
+    "market_cap_m": 1302.0
+  },
+  "AMBL": {
+    "name": "Apna Microfinance Bank Limited",
+    "shares_m": 429.0,
+    "market_cap_m": 10090.0
+  },
+  "SSOM": {
+    "name": "S.S.Oil Mills Limited",
+    "shares_m": 6.0,
+    "market_cap_m": 2323.0
+  },
+  "ATLH": {
+    "name": "Atlas Honda Limited",
+    "shares_m": 124.0,
+    "market_cap_m": 222840.0
+  },
+  "POML": {
+    "name": "Punjab Oil Mills Limited",
+    "shares_m": 8.0,
+    "market_cap_m": 1210.0
+  },
+  "JATM": {
+    "name": "J.A. Textile Mills Limited",
+    "shares_m": 13.0,
+    "market_cap_m": 319.0
+  },
+  "ARPL": {
+    "name": "Archroma Pakistan Limited",
+    "shares_m": 35.0,
+    "market_cap_m": 13312.0
+  },
+  "PRWM": {
+    "name": "Prosperity Weaving Mills Limited",
+    "shares_m": 18.0,
+    "market_cap_m": 1136.0
+  },
+  "QUETNC": {
+    "name": "Quetta Textile Mills Limited",
+    "shares_m": 13.0,
+    "market_cap_m": 198.0
+  },
+  "KSTMNC": {
+    "name": "Khalid Siraj Textile Mills Limited",
+    "shares_m": 11.0,
+    "market_cap_m": 133.0
+  },
+  "ARUJNC": {
+    "name": "Aruj Industries Limited",
+    "shares_m": 10.0,
+    "market_cap_m": 119.0
+  },
+  "ASHT": {
+    "name": "Ashfaq Textile Mills Limited",
+    "shares_m": 47.0,
+    "market_cap_m": 1588.0
+  },
+  "PNSC": {
+    "name": "Pakistan National Shipping Corporation",
+    "shares_m": 198.0,
+    "market_cap_m": 99563.0
+  },
+  "MEHT": {
+    "name": "Mehmood Textile Mills Limited",
+    "shares_m": 30.0,
+    "market_cap_m": 6717.0
+  },
+  "DADX": {
+    "name": "Dadex Eternit Limited",
+    "shares_m": 11.0,
+    "market_cap_m": 1142.0
+  },
+  "HINO": {
+    "name": "Hinopak Motors Limited",
+    "shares_m": 25.0,
+    "market_cap_m": 8928.0
+  },
+  "SRVI": {
+    "name": "Service Industries Limited",
+    "shares_m": 47.0,
+    "market_cap_m": 96061.0
+  },
+  "RICL": {
+    "name": "Reliance Insurance Company Limited",
+    "shares_m": 131.0,
+    "market_cap_m": 1518.0
+  },
+  "EXIDE": {
+    "name": "Exide Pakistan Limited",
+    "shares_m": 8.0,
+    "market_cap_m": 4191.0
+  },
+  "UNIC": {
+    "name": "The United Insurance Company",
+    "shares_m": 416.0,
+    "market_cap_m": 5172.0
+  },
+  "INDUXD": {
+    "name": "Indus Motor Company Limited",
+    "shares_m": 79.0,
+    "market_cap_m": 158180.0
+  },
+  "JSIL": {
+    "name": "JS Investments Limited",
+    "shares_m": 62.0,
+    "market_cap_m": 2679.0
+  },
+  "COLG": {
+    "name": "Colgate-Palmolive (Pakistan) Limited",
+    "shares_m": 243.0,
+    "market_cap_m": 282610.0
+  },
+  "IMLNC": {
+    "name": "Imperial Limited",
+    "shares_m": 99.0,
+    "market_cap_m": 2589.0
+  },
+  "UDPL": {
+    "name": "United Distributors Pakistan Limited",
+    "shares_m": 35.0,
+    "market_cap_m": 4022.0
+  },
+  "CLVL": {
+    "name": "Cordoba Logistics & Ventures Limited",
+    "shares_m": 72.0,
+    "market_cap_m": 937.0
+  },
+  "PSYL": {
+    "name": "Pakistan Synthetics Limited",
+    "shares_m": 139.0,
+    "market_cap_m": 18164.0
+  },
+  "ABOT": {
+    "name": "Abbott Laboratories (Pakistan) Limited",
+    "shares_m": 98.0,
+    "market_cap_m": 87022.0
+  },
+  "SHEZ": {
+    "name": "Shezan International Limited",
+    "shares_m": 10.0,
+    "market_cap_m": 2223.0
+  },
+  "DYNO": {
+    "name": "Dynea Pakistan Limited",
+    "shares_m": 19.0,
+    "market_cap_m": 6262.0
+  },
+  "NEXT": {
+    "name": "Next Capital Limited",
+    "shares_m": 57.0,
+    "market_cap_m": 665.0
+  },
+  "THALL": {
+    "name": "Thal Limited",
+    "shares_m": 81.0,
+    "market_cap_m": 50482.0
+  },
+  "MUREB": {
+    "name": "Murree Brewery Company Limited",
+    "shares_m": 28.0,
+    "market_cap_m": 25444.0
+  },
+  "AKDHL": {
+    "name": "AKD Hospitality Limited",
+    "shares_m": 3.0,
+    "market_cap_m": 419.0
+  },
+  "TPLL": {
+    "name": "TPL Life Insurance Limited",
+    "shares_m": 225.0,
+    "market_cap_m": 4591.0
+  },
+  "MQTM": {
+    "name": "Maqbool Textile Mills Limited",
+    "shares_m": 18.0,
+    "market_cap_m": 401.0
+  },
+  "JDMT": {
+    "name": "Janana De Malucho Textile Mills Limited",
+    "shares_m": 7.0,
+    "market_cap_m": 768.0
+  },
+  "RUPL": {
+    "name": "Rupali Polyester Limited",
+    "shares_m": 34.0,
+    "market_cap_m": 903.0
+  },
+  "AATM": {
+    "name": "Ali Asghar Textile Mills Limited",
+    "shares_m": 44.0,
+    "market_cap_m": 2202.0
+  },
+  "OTSU": {
+    "name": "Otsuka Pakistan Limited",
+    "shares_m": 12.0,
+    "market_cap_m": 3570.0
+  },
+  "ARPAK": {
+    "name": "Arpak International Investments Ltd.",
+    "shares_m": 4.0,
+    "market_cap_m": 487.0
+  },
+  "GOC": {
+    "name": "GOC (Pak) Limited.",
+    "shares_m": 7.0,
+    "market_cap_m": 904.0
+  },
+  "PAKOXY": {
+    "name": "Pakistan Oxygen Limited",
+    "shares_m": 87.0,
+    "market_cap_m": 24395.0
+  },
+  "CCM": {
+    "name": "Crescent Cotton Mills Limited",
+    "shares_m": 23.0,
+    "market_cap_m": 872.0
+  },
+  "FEROZ": {
+    "name": "Ferozsons Laboratories Limited",
+    "shares_m": 43.0,
+    "market_cap_m": 16706.0
+  },
+  "PKGP": {
+    "name": "Pakgen Power Limited",
+    "shares_m": 372.0,
+    "market_cap_m": 14727.0
+  },
+  "PPP": {
+    "name": "Pakistan Paper Products Limited",
+    "shares_m": 8.0,
+    "market_cap_m": 1040.0
+  },
+  "PRET": {
+    "name": "Premium Textile Mills Limited",
+    "shares_m": 6.0,
+    "market_cap_m": 3051.0
+  },
+  "PRICNC": {
+    "name": "Progressive Insurance Company Limited",
+    "shares_m": 9.0,
+    "market_cap_m": 10.0
+  },
+  "PSEL": {
+    "name": "Pakistan Services Limited",
+    "shares_m": 33.0,
+    "market_cap_m": 29755.0
+  },
+  "REGALNC": {
+    "name": "Regal Ceramics Limited",
+    "shares_m": 7.0,
+    "market_cap_m": 28.0
+  },
+  "REWM": {
+    "name": "Reliance Weaving Mills Limited",
+    "shares_m": 31.0,
+    "market_cap_m": 5350.0
+  },
+  "RMPL": {
+    "name": "Rafhan Maize Products Company Limited",
+    "shares_m": 9.0,
+    "market_cap_m": 88215.0
+  },
+  "SANENC": {
+    "name": "Salman Noman Enterprises Limited",
+    "shares_m": 4.0,
+    "market_cap_m": 36.0
+  },
+  "SAPT": {
+    "name": "Sapphire Textile Mills Limited",
+    "shares_m": 22.0,
+    "market_cap_m": 32255.0
+  },
+  "SARC": {
+    "name": "Sardar Chemical Industries Limited",
+    "shares_m": 6.0,
+    "market_cap_m": 429.0
+  },
+  "SCHTNC": {
+    "name": "Schon Textiles Limited",
+    "shares_m": 12.0,
+    "market_cap_m": 8.0
+  },
+  "SCL": {
+    "name": "Shield Corporation Limited",
+    "shares_m": 4.0,
+    "market_cap_m": 2986.0
+  },
+  "SDOTNC": {
+    "name": "Sadoon Textile Industries Limited",
+    "shares_m": 3.0,
+    "market_cap_m": 3.0
+  },
+  "SFATNC": {
+    "name": "Safa Textiles Limited",
+    "shares_m": 4.0,
+    "market_cap_m": 8.0
+  },
+  "SFL": {
+    "name": "Sapphire Fibres Limited",
+    "shares_m": 21.0,
+    "market_cap_m": 23717.0
+  },
+  "SGABLNC": {
+    "name": "SG.Allied Businesses Limited",
+    "shares_m": 15.0,
+    "market_cap_m": 1890.0
+  },
+  "SHCINC": {
+    "name": "Shaffi Chemical Industries Limited",
+    "shares_m": 12.0,
+    "market_cap_m": 78.0
+  },
+  "SHCM": {
+    "name": "Shadman Cotton Mills Limited",
+    "shares_m": 18.0,
+    "market_cap_m": 909.0
+  },
+  "SIEM": {
+    "name": "Siemens (Pakistan) Engineering",
+    "shares_m": 8.0,
+    "market_cap_m": 12865.0
+  },
+  "SLYTNC": {
+    "name": "Sally Textile Mills Limited",
+    "shares_m": 9.0,
+    "market_cap_m": 132.0
+  },
+  "SMLNC": {
+    "name": "Shakarganj Limited",
+    "shares_m": 125.0,
+    "market_cap_m": 14333.0
+  },
+  "SNAI": {
+    "name": "Sana Industries Limited",
+    "shares_m": 20.0,
+    "market_cap_m": 797.0
+  },
+  "SPCLNC": {
+    "name": "Saudi Pak Consultancy Company Limited",
+    "shares_m": 45.0,
+    "market_cap_m": 41.0
+  },
+  "SSICNC": {
+    "name": "Silver Star Insurance Company Limited",
+    "shares_m": 31.0,
+    "market_cap_m": 194.0
+  },
+  "STJT": {
+    "name": "Shahtaj Textile Limited",
+    "shares_m": 10.0,
+    "market_cap_m": 1328.0
+  },
+  "STML": {
+    "name": "Shams Textile Mills Limited",
+    "shares_m": 9.0,
+    "market_cap_m": 362.0
+  },
+  "SUHJNC": {
+    "name": "Suhail Jute Mills Limited",
+    "shares_m": 4.0,
+    "market_cap_m": 416.0
+  },
+  "SURAJNC": {
+    "name": "Suraj Ghee Industries Limited",
+    "shares_m": 1.0,
+    "market_cap_m": 10.0
+  },
+  "SWLNC": {
+    "name": "Standard Worldwide Limited",
+    "shares_m": 1.0,
+    "market_cap_m": 33.0
+  },
+  "TAJTNC": {
+    "name": "Taj Textile Mills Limited",
+    "shares_m": 33.0,
+    "market_cap_m": 14.0
+  },
+  "TICL": {
+    "name": "The Thal Industries Corporation Limited",
+    "shares_m": 15.0,
+    "market_cap_m": 13671.0
+  },
+  "UPFL": {
+    "name": "Unilever Pakistan Foods Limited",
+    "shares_m": 6.0,
+    "market_cap_m": 164777.0
+  },
+  "USMTNC": {
+    "name": "Usman Textile Mills Limited",
+    "shares_m": 4.0,
+    "market_cap_m": 2.0
+  },
+  "WAHN": {
+    "name": "Wah Noble Chemicals Limited",
+    "shares_m": 9.0,
+    "market_cap_m": 2549.0
+  },
+  "ZELPNC": {
+    "name": "Zeal Pak Cement Factory Limited",
+    "shares_m": 428.0,
+    "market_cap_m": 188.0
+  },
+  "ZIL": {
+    "name": "ZIL Limited",
+    "shares_m": 6.0,
+    "market_cap_m": 2133.0
+  }
+}
