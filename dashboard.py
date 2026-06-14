@@ -1220,6 +1220,100 @@ try:
 except Exception:
     pass
 
+# ── Kiran's Voice panel ───────────────────────────────────────────────────────
+try:
+    import sqlite3 as _kv_sq
+    from config import DB_PATH as _kv_db
+
+    def _kv_latest():
+        con = _kv_sq.connect(_kv_db)
+        con.row_factory = _kv_sq.Row
+        row = con.execute(
+            "SELECT ts, market_date, trigger_type, stance, response "
+            "FROM agent_memory ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        con.close()
+        return dict(row) if row else None
+
+    _kv_row = _kv_latest()
+
+    with st.expander(
+        "\U0001f9e0 Kiran's Voice"
+        + (f"  ·  {_kv_row['stance'][:80] if _kv_row and _kv_row['stance'] else 'No entry yet'}" if _kv_row else "  ·  No entry yet"),
+        expanded=False,
+    ):
+        if _kv_row:
+            _kv_ts   = _kv_row["ts"][:16] if _kv_row["ts"] else ""
+            _kv_date = _kv_row["market_date"] or ""
+            _kv_trig = _kv_row["trigger_type"] or ""
+            st.markdown(
+                f"<div style='font-size:0.7rem; color:#94a3b8; margin-bottom:6px;'>"
+                f"{_kv_ts} &nbsp;·&nbsp; {_kv_date} &nbsp;·&nbsp; {_kv_trig}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
+                f" background:#1e293b; border-left:3px solid #6366f1;"
+                f" padding:10px 14px; border-radius:4px;'>"
+                f"{_kv_row['response']}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("Kiran hasn't spoken yet. Run: `python kiran_voice.py scheduled`")
+
+        st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+
+        _kv_input = st.text_input(
+            "Ask Kiran",
+            placeholder="What do you see in ASTL? Is this market worth trading?",
+            key="kiran_voice_input",
+            label_visibility="collapsed",
+        )
+        _kv_col1, _kv_col2 = st.columns([1, 4])
+        with _kv_col1:
+            _kv_send = st.button("Ask", key="kiran_voice_send", type="primary")
+        with _kv_col2:
+            _kv_brief = st.button("Morning Brief", key="kiran_voice_brief")
+
+        if _kv_send and _kv_input and _kv_input.strip():
+            with st.spinner("Kiran is thinking..."):
+                try:
+                    from kiran_voice import run_kiran as _kv_run
+                    _kv_reply = _kv_run("conversational", _kv_input.strip())
+                    st.markdown(
+                        f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
+                        f" background:#1e293b; border-left:3px solid #22c55e;"
+                        f" padding:10px 14px; border-radius:4px; margin-top:8px;'>"
+                        f"{_kv_reply}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.rerun()
+                except Exception as _kv_err:
+                    st.error(f"Kiran error: {_kv_err}")
+
+        if _kv_brief:
+            with st.spinner("Building morning brief..."):
+                try:
+                    from kiran_voice import run_kiran as _kv_run
+                    _kv_reply = _kv_run("morning_open")
+                    st.markdown(
+                        f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
+                        f" background:#1e293b; border-left:3px solid #fbbf24;"
+                        f" padding:10px 14px; border-radius:4px; margin-top:8px;'>"
+                        f"{_kv_reply}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.rerun()
+                except Exception as _kv_err:
+                    st.error(f"Kiran error: {_kv_err}")
+
+except Exception as _kv_panel_err:
+    pass  # panel never crashes the dashboard
+
 cur = st.session_state.page
 
 
