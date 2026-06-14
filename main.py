@@ -176,6 +176,13 @@ def cmd_update():
     except Exception as exc:
         logger.warning("Stock signals hook failed: %s", exc)
 
+    # Append today's setups to setup_log and label outcomes
+    try:
+        from backfill_setup_log import append_setup_log_today
+        append_setup_log_today()
+    except Exception as exc:
+        logger.warning("setup_log hook failed: %s", exc)
+
     # Auto-save today's system-generated and support reversal setups
     result = run_analysis()
     if result:
