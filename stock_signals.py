@@ -420,6 +420,60 @@ def update_base_tightness_vol_contraction() -> None:
         conn.close()
 
 
+def recompute_symbol_signals(symbol: str) -> int:
+    """Deletes and recomputes all stock_signals rows for a single symbol."""
+    conn = sqlite3.connect(DB)
+    try:
+        cur = conn.cursor()
+
+        cur.execute("SELECT sector FROM stock_metadata WHERE symbol = ?", (symbol,))
+        row = cur.fetchone()
+        if not row:
+            logger.warning(f"recompute_symbol_signals: {symbol} not in stock_metadata")
+            return 0
+        sector = row[0]
+
+        cur.execute("DELETE FROM stock_signals WHERE symbol = ?", (symbol,))
+        conn.commit()
+
+        cur.execute(
+            "SELECT MIN(date), MAX(date) FROM prices_adjusted WHERE symbol = ?",
+            (symbol,)
+        )
+        date_range = cur.fetchone()
+        if not date_range or not date_range[0]:
+            logger.warning(f"recompute_symbol_signals: no price data for {symbol}")
+            return 0
+
+        from_date = (
+            datetime.strptime(date_range[0], '%Y-%m-%d') - timedelta(days=120)
+        ).strftime('%Y-%m-%d')
+        to_date = date_range[1]
+
+        kse_list = _load_kse100(conn, from_date, to_date)
+        kse_date_idx = {row[0]: i for i, row in enumerate(kse_list)}
+
+        stock_prices = _load_stock_prices(conn, {symbol}, from_date, to_date)
+        stock_prices_vol = _load_stock_prices_with_volume(conn, {symbol}, '2015-01-01', to_date)
+        pivot_lookup = _build_pivot_lookup(stock_prices_vol)
+
+        trading_dates = [r[0] for r in kse_list if r[0] >= date_range[0]]
+
+        _process_trading_dates(
+            conn, trading_dates, kse_list, kse_date_idx,
+            stock_prices, {symbol: sector}, {},
+            stock_prices_vol=stock_prices_vol,
+            pivot_lookup=pivot_lookup,
+        )
+
+        cur.execute("SELECT COUNT(*) FROM stock_signals WHERE symbol = ?", (symbol,))
+        n = cur.fetchone()[0]
+        print(f"{symbol} — stock_signals recomputed ({n} rows)")
+        return n
+    finally:
+        conn.close()
+
+
 def update_pivot_signals() -> None:
     """Backfill pivot_high, pivot_distance_pct, and bos_flag for all rows in stock_signals."""
     logger.info("Starting pivot_high + pivot_distance_pct + bos_flag backfill...")

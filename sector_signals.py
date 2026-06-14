@@ -108,6 +108,15 @@ def append_latest_sector_signals() -> None:
             conn,
             params=(target_date,),
         )
+        if active_df.empty:
+            logger.warning(
+                "active_stocks_on_date has no rows for %s — "
+                "falling back to full stock_metadata universe", target_date
+            )
+            active_df = pd.read_sql_query(
+                "SELECT symbol FROM stock_metadata WHERE is_active = 1",
+                conn,
+            )
         active_symbols = set(active_df["symbol"])
 
         # ------------------------------------------------------------------

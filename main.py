@@ -14,7 +14,7 @@ import logging
 import sys
 from datetime import date, datetime
 
-from config import CALENDAR_DAYS_BACK, SCHEDULER_HOUR, SCHEDULER_MINUTE, SCHEDULER_TIMEZONE
+from config import CALENDAR_DAYS_BACK, DB_PATH, SCHEDULER_HOUR, SCHEDULER_MINUTE, SCHEDULER_TIMEZONE
 from database import (
     init_db,
     upsert_sectors,
@@ -136,6 +136,26 @@ def cmd_update():
         "Update complete -- %d symbols, %d price records, date range %s to %s",
         count_sectors(), count_prices(), mn, mx,
     )
+
+    # Append new prices to prices_adjusted and flag corporate action suspects
+    try:
+        import sqlite3
+        from apply_price_adjustments import (
+            ensure_suspects_table,
+            append_new_prices_adjusted,
+            auto_detect_suspects,
+        )
+        con = sqlite3.connect(DB_PATH)
+        ensure_suspects_table(con)
+        append_new_prices_adjusted(con)
+        n_suspects = auto_detect_suspects(con)
+        con.close()
+        if n_suspects > 0:
+            logger.warning("Corporate action suspects flagged: %d — review required.", n_suspects)
+        else:
+            logger.info("No new corporate action suspects detected.")
+    except Exception as exc:
+        logger.warning("prices_adjusted hook failed: %s", exc)
 
     # Append today's regime row to market_regime
     try:

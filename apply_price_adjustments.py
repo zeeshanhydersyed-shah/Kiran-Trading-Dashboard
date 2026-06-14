@@ -169,3 +169,165 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FUNCTION 1
+# ─────────────────────────────────────────────────────────────────────────────
+def ensure_suspects_table(con) -> None:
+    """Creates corporate_action_suspects table if it doesn't already exist."""
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS corporate_action_suspects (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol            TEXT NOT NULL,
+            suspect_date      TEXT NOT NULL,
+            close_before      REAL,
+            close_after       REAL,
+            drop_pct          REAL,
+            likely_category   TEXT,
+            status            TEXT DEFAULT 'PENDING',
+            confirmed_action  TEXT,
+            adjustment_factor REAL,
+            confirmed_at      TEXT,
+            notes             TEXT,
+            UNIQUE(symbol, suspect_date)
+        )
+    """)
+    con.commit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FUNCTION 2
+# ─────────────────────────────────────────────────────────────────────────────
+def append_new_prices_adjusted(con) -> int:
+    """Copies new raw rows from prices into prices_adjusted. No adjustments applied."""
+    cur = con.cursor()
+
+    last_adjusted = cur.execute(
+        "SELECT MAX(date) FROM prices_adjusted"
+    ).fetchone()[0]
+
+    count = cur.execute(
+        "SELECT COUNT(*) FROM prices WHERE date > ?", (last_adjusted,)
+    ).fetchone()[0]
+
+    if count == 0:
+        print("prices_adjusted is up to date")
+        return 0
+
+    row = cur.execute(
+        "SELECT MIN(date), MAX(date) FROM prices WHERE date > ?", (last_adjusted,)
+    ).fetchone()
+    min_date, max_date = row
+
+    cur.execute(
+        "INSERT INTO prices_adjusted SELECT * FROM prices WHERE date > ?",
+        (last_adjusted,)
+    )
+    con.commit()
+
+    print(f"Appended {count:,} rows for dates {min_date} to {max_date}")
+    return count
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FUNCTION 3
+# ─────────────────────────────────────────────────────────────────────────────
+def auto_detect_suspects(con) -> int:
+    """Scans newly appended prices_adjusted rows for corporate action suspects."""
+    cur = con.cursor()
+
+    last_flagged = cur.execute(
+        "SELECT MAX(suspect_date) FROM corporate_action_suspects"
+    ).fetchone()[0]
+
+    if last_flagged is None:
+        # Safety net: scan last 5 trading days worth of data
+        scan_from = cur.execute("""
+            SELECT date FROM (
+                SELECT DISTINCT date FROM prices_adjusted ORDER BY date DESC LIMIT 5
+            ) ORDER BY date ASC LIMIT 1
+        """).fetchone()
+        scan_from = scan_from[0] if scan_from else None
+    else:
+        scan_from = last_flagged
+
+    if scan_from is None:
+        print("No data in prices_adjusted to scan.")
+        return 0
+
+    candidates = cur.execute("""
+        SELECT pa.symbol, pa.date, pa.close
+        FROM prices_adjusted pa
+        JOIN stock_metadata sm ON pa.symbol = sm.symbol
+        WHERE pa.date > ?
+        ORDER BY pa.symbol, pa.date
+    """, (scan_from,)).fetchall()
+
+    new_suspects = 0
+
+    for symbol, date, close_after in candidates:
+        row = cur.execute("""
+            SELECT close FROM prices_adjusted
+            WHERE symbol = ? AND date < ?
+            ORDER BY date DESC LIMIT 1
+        """, (symbol, date)).fetchone()
+
+        if row is None:
+            continue
+
+        close_before = row[0]
+        if close_before == 0:
+            continue
+
+        drop_pct = (close_after - close_before) / close_before * 100
+
+        if drop_pct < -12.0:
+            if drop_pct < -40.0:
+                category = "DROP_50"
+            elif drop_pct < -28.0:
+                category = "DROP_33"
+            elif drop_pct < -20.0:
+                category = "DROP_25"
+            else:
+                category = "DROP_OTHER"
+
+            cur.execute("""
+                INSERT INTO corporate_action_suspects
+                    (symbol, suspect_date, close_before, close_after, drop_pct,
+                     likely_category, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
+                ON CONFLICT(symbol, suspect_date) DO NOTHING
+            """, (symbol, date, close_before, close_after, drop_pct, category))
+
+            if cur.rowcount > 0:
+                new_suspects += 1
+
+    con.commit()
+    print(f"auto_detect_suspects: {new_suspects} new suspect(s) flagged")
+    return new_suspects
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FUNCTION 4
+# ─────────────────────────────────────────────────────────────────────────────
+def rebuild_symbol_adjusted(con, symbol: str, ex_date: str, adjustment_factor: float) -> int:
+    """Applies a single corporate action factor to one symbol's pre-event rows."""
+    cur = con.cursor()
+
+    cur.execute("""
+        UPDATE prices_adjusted
+        SET open  = ROUND(open  * ?, 4),
+            high  = ROUND(high  * ?, 4),
+            low   = ROUND(low   * ?, 4),
+            close = ROUND(close * ?, 4)
+        WHERE symbol = ? AND date < ?
+    """, (adjustment_factor, adjustment_factor, adjustment_factor, adjustment_factor,
+          symbol, ex_date))
+
+    rows_updated = cur.rowcount
+    con.commit()
+
+    print(f"{symbol} — {rows_updated:,} rows adjusted "
+          f"(factor={adjustment_factor:.4f}, ex_date={ex_date})")
+    return rows_updated
