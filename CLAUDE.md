@@ -30,6 +30,11 @@ Local edits alone **never** update the live app.
 | `backtest.py` | Backtesting engine |
 | `kiran_sim.py` | Portfolio simulation — buy-on-strength rules, 1% risk, 6% max SL |
 | `load_bi_history.py` | Loads merged BI CSVs into psx_data.db (run after DB restore or BI refresh) |
+| `apply_price_adjustments.py` | Corporate action price adjustments — full rebuild + incremental hooks |
+| `stock_signals.py` | Daily RS ranks, base tightness, pivot signals per symbol |
+| `sector_signals.py` | Daily sector RS scores, breadth, composite scores |
+| `backfill_setup_log.py` | Historical + daily setup_log population (all 4 setup types) |
+| `compute_forward_returns.py` | Fills fwd_return_5d/10d/20d for setup_log rows once window closes |
 
 ## Supabase tables
 | Table | Contents |
@@ -48,16 +53,27 @@ Local edits alone **never** update the live app.
 | `weekly_ml_retrain.yml` | Sunday 10:00 UTC | Retrains kiran_model.pkl via phase4_train.py |
 
 ## Dashboard pages (PAGES list in dashboard.py)
-0. 🧭 Regime
-1. 📊 Market
-2. 🔍 Explorer
-3. 📈 History
-4. 📋 Trade Log
-5. 🎖️ The Audit
+0. 🎯 Market Gates Dashboard
+1. 🧭 Regime
+2. 📊 Market
+3. 🔍 Explorer
+4. 📈 History
+5. 📋 Trade Log
 6. 📉 Analytics
 7. 💡 Setups
 8. 🔎 STM
-9. 🔄 Support Reversals
+9. 🔄 Recovery Bases
+10. 🎯 Setup Perf
+11. 🤖 Backtest
+12. 🗂️ Portfolio
+13. 🏥 Model Health
+14. 🤖 Agent
+15. 💰 Valuation
+16. 📡 Flows
+17. 🏹 Minervini Setup
+18. 🏆 Leaders
+19. 📋 Setup History
+20. 🏥 Data Health ← NEW (Phase 7.2)
 10. 🎯 Setup Perf
 11. 🤖 Backtest
 12. 🗂️ Portfolio
@@ -136,6 +152,76 @@ Do NOT import these in dashboard.py — they are not available on Streamlit Clou
 2. 5d range ≤ 5%
 3. 0% < dist above 21 MA ≤ 5%
 4. Risk ≤ 3%
+
+---
+
+## Recent Changes (June 2026)
+
+### Phase 7.2 — Data Health + Pipeline Integrity (2026-06-14)
+
+**`apply_price_adjustments.py` — four new functions appended:**
+- `ensure_suspects_table(con)` — creates `corporate_action_suspects` table (idempotent)
+- `append_new_prices_adjusted(con)` — incremental append: copies new rows from `prices` into `prices_adjusted` without touching pre-existing rows or applying any adjustment factor
+- `auto_detect_suspects(con)` — scans newly appended dates for drops > 12%; categorises as DROP_50/33/25/OTHER; skips non-universe symbols via `JOIN stock_metadata`; never overwrites confirmed rows
+- `rebuild_symbol_adjusted(con, symbol, ex_date, factor)` — applies a single corporate action factor to one symbol's pre-event rows in `prices_adjusted` only
+
+**`main.py` — new hook in `cmd_update()` (runs after `cleanup_ghost_dates`, before regime hook):**
+```
+ensure_suspects_table → append_new_prices_adjusted → auto_detect_suspects
+```
+Logs warning if suspects > 0. Wrapped in try/except — never blocks the pipeline.
+
+**`dashboard.py` — two changes:**
+- Banner: warning pill appears if `corporate_action_suspects` has any PENDING rows
+- PAGES[20] `🏥 Data Health`: summary metrics, Pending Review tab (confirm/dismiss per suspect), History tab. On Confirm: calls `rebuild_symbol_adjusted` + `recompute_symbol_signals`, updates status to CONFIRMED.
+
+**`stock_signals.py` — new function:**
+- `recompute_symbol_signals(symbol)` — deletes and recomputes all `stock_signals` rows for a single symbol using corrected `prices_adjusted` data. Called from Data Health page on confirmation.
+
+**`sector_signals.py` — fallback fix:**
+- `active_stocks_on_date` missing for a date no longer silently produces zero rows. Falls back to full `stock_metadata WHERE is_active = 1` universe and logs a warning.
+
+**`corporate_action_suspects` table schema:**
+`id, symbol, suspect_date, close_before, close_after, drop_pct, likely_category, status (PENDING/CONFIRMED/FALSE_POSITIVE), confirmed_action, adjustment_factor, confirmed_at, notes` — UNIQUE(symbol, suspect_date)
+
+**Outcome labelling rule (discovered from data):**
+`outcome_label` in `setup_log` is set from `fwd_return_10d` sign:
+- `> 0` → WINNER, `< 0` → LOSER, `NULL or 0` → BREAKEVEN (default at insert)
+- NOT from `fwd_return_20d`, NOT from ±6% threshold
+
+### Phase 7.3 — setup_log Daily Hook (2026-06-14)
+
+**`backfill_setup_log.py` — new function `append_setup_log_today()`:**
+
+Three steps in order:
+1. **Insert** — runs all 4 setup type queries for `MAX(date) FROM stock_signals`, inserts with `outcome_label = 'BREAKEVEN'` as default. Skips if already done for that date.
+2. **Forward returns** — calls `compute_forward_returns.main()` directly (opens its own connection). Fills `fwd_return_5d/10d/20d` for rows whose 20-day window has closed.
+3. **Label outcomes** — `UPDATE setup_log SET outcome_label = CASE WHEN fwd_return_10d > 0 THEN 'WINNER' WHEN fwd_return_10d < 0 THEN 'LOSER' ELSE 'BREAKEVEN' END WHERE fwd_return_10d IS NOT NULL AND outcome_label = 'BREAKEVEN'`
+
+**`main.py` — hook added after stock_signals hook:**
+```python
+from backfill_setup_log import append_setup_log_today
+append_setup_log_today()
+```
+
+**Setup detection conditions (exact, must match backfill for consistency):**
+| Type | Conditions |
+|---|---|
+| BREAKOUT | `bos_flag = 1` AND `avg_vol_10d > 200000` |
+| PRE_BREAKOUT | `pivot_distance_pct BETWEEN 0 AND 3` AND `base_tightness < 8` AND `avg_vol_10d > 200000` |
+| RS_LEADER_MARKET | `avg_vol_10d > 200000` ORDER BY `rs_score_20 DESC` LIMIT 20 |
+| RS_LEADER_SECTOR | `avg_vol_10d > 200000` AND `sector_rs_rank <= 3` |
+
+**cmd_update() hook order (as of 2026-06-14):**
+1. Scrape + upsert prices
+2. `cleanup_ghost_dates()`
+3. `ensure_suspects_table` → `append_new_prices_adjusted` → `auto_detect_suspects`
+4. `append_latest_regime()`
+5. `sector_signals.append_latest_sector_signals()`
+6. `stock_signals.append_latest_stock_signals()`
+7. `append_setup_log_today()`
+8. `auto_save_setups()` + `auto_save_setups_with_source()`
+9. Market breadth oscillator subprocess
 
 ---
 
