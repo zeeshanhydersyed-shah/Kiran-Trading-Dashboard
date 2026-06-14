@@ -6655,60 +6655,125 @@ elif cur == PAGES[18]:  # Leaders
 
     # ── Tab 2: Pre-Breakout ────────────────────────────────────────────────
     with _ld_tab_pre:
-        st.markdown(f"**Latest date:** {_ld_latest} &nbsp;|&nbsp; Tight base + near pivot + liquid")
+        # Conviction-scored pre-breakout radar (5-factor scoring from diagnostic analysis)
+        _ld_pre_sql = """
+            WITH sector_latest AS (
+                SELECT MAX(date) AS max_date FROM sector_signals
+            ),
+            scored AS (
+                SELECT
+                    ss.symbol,
+                    sm.sector,
+                    ss.rs_rank,
+                    ss.sector_rs_rank,
+                    ss.rs_score_20,
+                    ss.avg_vol_10d,
+                    ss.base_tightness,
+                    ss.pivot_distance_pct,
+                    sec.composite_score AS sector_score,
+                    -- Factor 1: RS rank sweet spot 101-150 (peak win rate from diagnostics)
+                    CASE WHEN ss.rs_rank BETWEEN 101 AND 150 THEN 3
+                         WHEN ss.rs_rank BETWEEN 51  AND 100 THEN 2
+                         WHEN ss.rs_rank BETWEEN 151 AND 200 THEN 1
+                         ELSE 0 END AS score_rs_rank,
+                    -- Factor 2: RS20 cooling (winners avg -1.23 vs losers +0.82)
+                    CASE WHEN ss.rs_score_20 < -2   THEN 3
+                         WHEN ss.rs_score_20 < 0    THEN 2
+                         WHEN ss.rs_score_20 < 2    THEN 1
+                         ELSE 0 END AS score_rs20,
+                    -- Factor 3: Volume (liquidity floor)
+                    CASE WHEN ss.avg_vol_10d > 3000000 THEN 3
+                         WHEN ss.avg_vol_10d > 1500000 THEN 2
+                         WHEN ss.avg_vol_10d > 500000  THEN 1
+                         ELSE 0 END AS score_vol,
+                    -- Factor 4: Sector RS rank >10 best win rate (21.7% from diagnostics)
+                    CASE WHEN ss.sector_rs_rank > 10 THEN 3
+                         WHEN ss.sector_rs_rank > 5  THEN 2
+                         WHEN ss.sector_rs_rank > 0  THEN 1
+                         ELSE 0 END AS score_sec_rank,
+                    -- Factor 5: Sector momentum (composite_score threshold 0.47)
+                    CASE WHEN sec.composite_score >= 0.60 THEN 3
+                         WHEN sec.composite_score >= 0.47 THEN 2
+                         WHEN sec.composite_score >= 0.30 THEN 1
+                         ELSE 0 END AS score_sec_momentum
+                FROM stock_signals ss
+                JOIN stock_metadata sm ON ss.symbol = sm.symbol
+                JOIN sector_signals sec
+                    ON sm.sector = sec.sector
+                    AND sec.date = (SELECT max_date FROM sector_latest)
+                WHERE ss.date = ?
+                  AND ss.pivot_distance_pct BETWEEN 0 AND 5
+                  AND ss.base_tightness < 10
+                  AND ss.avg_vol_10d > 200000
+            )
+            SELECT
+                symbol, sector, rs_rank, sector_rs_rank, rs_score_20,
+                avg_vol_10d, base_tightness, pivot_distance_pct, sector_score,
+                (score_rs_rank + score_rs20 + score_vol + score_sec_rank + score_sec_momentum)
+                    AS conviction_score
+            FROM scored
+            ORDER BY conviction_score DESC, pivot_distance_pct ASC
+            LIMIT 20
+        """
+        _ld_pre_df = pd.read_sql_query(_ld_pre_sql, _ld_conn, params=(_ld_latest,))
 
-        _ld_pre_df = pd.read_sql_query("""
-            SELECT ss.symbol, sm.sector,
-                   ss.rs_rank, ss.sector_rs_rank,
-                   ss.pivot_distance_pct, ss.pivot_high,
-                   ss.base_tightness, ss.vol_contraction,
-                   ss.avg_vol_10d,
-                   pa.close
-            FROM stock_signals ss
-            JOIN stock_metadata sm ON ss.symbol = sm.symbol
-            JOIN prices_adjusted pa
-                ON ss.symbol = pa.symbol AND ss.date = pa.date
-            WHERE ss.date = ?
-              AND ss.pivot_distance_pct BETWEEN 0 AND 3
-              AND ss.base_tightness < 8
-              AND ss.avg_vol_10d > 200000
-            ORDER BY ss.pivot_distance_pct ASC
-        """, _ld_conn, params=(_ld_latest,))
+        st.markdown(f"**Pre-Breakout Radar — {_ld_latest}** &nbsp;|&nbsp; 5-factor conviction scoring")
+        st.caption("RS rank 101–150 · RS20 cooling · volume >1.5M · sector rank >10 · sector momentum ≥0.47")
 
         if _ld_pre_df.empty:
             st.info("No pre-breakout candidates today.")
         else:
-            st.success(f"**{len(_ld_pre_df)} candidate(s)** within 3% of pivot with tight base")
+            _ld_pre_strong = (_ld_pre_df["conviction_score"] >= 11).sum()
+            _ld_pre_watch  = ((_ld_pre_df["conviction_score"] >= 8) & (_ld_pre_df["conviction_score"] < 11)).sum()
+            st.success(
+                f"**{len(_ld_pre_df)} candidate(s)** — "
+                f"{_ld_pre_strong} strong (≥11) · {_ld_pre_watch} watch (8–10)"
+            )
+
+            def _ld_pre_color(row):
+                if row["conviction_score"] >= 11:
+                    return ["background-color: #1a472a"] * len(row)
+                elif row["conviction_score"] >= 8:
+                    return ["background-color: #3d3000"] * len(row)
+                return [""] * len(row)
+
             _ld_pre_disp = _ld_pre_df.copy()
-            _ld_pre_disp["pivot_distance_pct"] = _ld_pre_disp["pivot_distance_pct"].apply(
-                lambda x: f"{x:.2f}%"
-            )
-            _ld_pre_disp["base_tightness"] = _ld_pre_disp["base_tightness"].apply(
-                lambda x: f"{x:.2f}%"
-            )
-            _ld_pre_disp["vol_contraction"] = _ld_pre_disp["vol_contraction"].apply(
-                lambda x: f"{x:.1f}%" if pd.notna(x) else "—"
-            )
-            _ld_pre_disp["avg_vol_10d"] = _ld_pre_disp["avg_vol_10d"].apply(
-                lambda x: f"{int(x):,}"
-            )
-            _ld_pre_disp["close"] = _ld_pre_disp["close"].apply(
-                lambda x: f"{x:.2f}"
-            )
-            _ld_pre_disp["pivot_high"] = _ld_pre_disp["pivot_high"].apply(
-                lambda x: f"{x:.2f}"
-            )
+            _ld_pre_disp["pivot_distance_pct"] = _ld_pre_disp["pivot_distance_pct"].apply(lambda x: f"{x:.2f}%")
+            _ld_pre_disp["base_tightness"]      = _ld_pre_disp["base_tightness"].apply(lambda x: f"{x:.2f}%")
+            _ld_pre_disp["rs_score_20"]         = _ld_pre_disp["rs_score_20"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "—")
+            _ld_pre_disp["avg_vol_10d"]         = _ld_pre_disp["avg_vol_10d"].apply(lambda x: f"{int(x):,}")
+            _ld_pre_disp["sector_score"]        = _ld_pre_disp["sector_score"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "—")
+
             st.dataframe(
                 _ld_pre_disp.rename(columns={
-                    "symbol": "Symbol", "sector": "Sector",
-                    "rs_rank": "RS Rank", "sector_rs_rank": "Sector Rank",
-                    "pivot_distance_pct": "Dist to Pivot",
-                    "pivot_high": "Pivot High", "close": "Close",
-                    "base_tightness": "BBW%", "vol_contraction": "Vol Ratio%",
-                    "avg_vol_10d": "Avg Vol 10d"
-                }),
+                    "symbol":              "Symbol",
+                    "sector":              "Sector",
+                    "rs_rank":             "RS Rank",
+                    "sector_rs_rank":      "Sec Rank",
+                    "rs_score_20":         "RS20",
+                    "pivot_distance_pct":  "Pivot Dist%",
+                    "base_tightness":      "BBW%",
+                    "avg_vol_10d":         "Avg Vol",
+                    "sector_score":        "Sector Score",
+                    "conviction_score":    "Conviction",
+                }).style.apply(_ld_pre_color, axis=1),
                 use_container_width=True, hide_index=True
             )
+
+            with st.expander("How is conviction scored?"):
+                st.markdown("""
+| Factor | 3 pts | 2 pts | 1 pt | 0 pts |
+|--------|-------|-------|------|-------|
+| **RS Rank** | 101–150 | 51–100 | 151–200 | Outside |
+| **RS20 (momentum cooling)** | < −2 | 0 to −2 | 0 to +2 | > +2 |
+| **Avg Vol 10d** | > 3M | > 1.5M | > 500K | ≤ 500K |
+| **Sector RS Rank** | > 10 | > 5 | > 0 | 0 |
+| **Sector Composite** | ≥ 0.60 | ≥ 0.47 | ≥ 0.30 | < 0.30 |
+
+**Max score: 15** · Green ≥ 11 · Yellow 8–10 · No highlight < 8
+
+_Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.82; rank 101–150 peaks at 18% win rate; sector rank > 10 yields 21.7% win rate._
+                """)
 
     # ── Tab 3: Breakouts ───────────────────────────────────────────────────
     with _ld_tab_bos:
