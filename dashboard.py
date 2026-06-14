@@ -6730,13 +6730,6 @@ elif cur == PAGES[18]:  # Leaders
                 f"{_ld_pre_strong} strong (≥11) · {_ld_pre_watch} watch (8–10)"
             )
 
-            def _ld_pre_color(row):
-                if row["conviction_score"] >= 11:
-                    return ["background-color: #1a472a"] * len(row)
-                elif row["conviction_score"] >= 8:
-                    return ["background-color: #3d3000"] * len(row)
-                return [""] * len(row)
-
             _ld_pre_disp = _ld_pre_df.copy()
             _ld_pre_disp["pivot_distance_pct"] = _ld_pre_disp["pivot_distance_pct"].apply(lambda x: f"{x:.2f}%")
             _ld_pre_disp["base_tightness"]      = _ld_pre_disp["base_tightness"].apply(lambda x: f"{x:.2f}%")
@@ -6744,21 +6737,29 @@ elif cur == PAGES[18]:  # Leaders
             _ld_pre_disp["avg_vol_10d"]         = _ld_pre_disp["avg_vol_10d"].apply(lambda x: f"{int(x):,}")
             _ld_pre_disp["sector_score"]        = _ld_pre_disp["sector_score"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "—")
 
-            st.dataframe(
-                _ld_pre_disp.rename(columns={
-                    "symbol":              "Symbol",
-                    "sector":              "Sector",
-                    "rs_rank":             "RS Rank",
-                    "sector_rs_rank":      "Sec Rank",
-                    "rs_score_20":         "RS20",
-                    "pivot_distance_pct":  "Pivot Dist%",
-                    "base_tightness":      "BBW%",
-                    "avg_vol_10d":         "Avg Vol",
-                    "sector_score":        "Sector Score",
-                    "conviction_score":    "Conviction",
-                }).style.apply(_ld_pre_color, axis=1),
-                use_container_width=True, hide_index=True
-            )
+            _ld_pre_disp = _ld_pre_disp.rename(columns={
+                "symbol":              "Symbol",
+                "sector":              "Sector",
+                "rs_rank":             "RS Rank",
+                "sector_rs_rank":      "Sec Rank",
+                "rs_score_20":         "RS20",
+                "pivot_distance_pct":  "Pivot Dist%",
+                "base_tightness":      "BBW%",
+                "avg_vol_10d":         "Avg Vol",
+                "sector_score":        "Sector Score",
+                "conviction_score":    "Conviction",
+            })
+
+            def _color_conviction(val):
+                if val >= 11:
+                    return "background-color: #1a472a; color: white; font-weight: bold"
+                elif val >= 8:
+                    return "background-color: #7d6608; color: white"
+                else:
+                    return ""
+
+            styled = _ld_pre_disp.style.map(_color_conviction, subset=["Conviction"])
+            st.dataframe(styled, use_container_width=True, hide_index=True)
 
             with st.expander("How is conviction scored?"):
                 st.markdown("""
