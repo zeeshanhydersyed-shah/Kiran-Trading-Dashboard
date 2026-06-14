@@ -864,7 +864,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏹 Minervini Setup", "🏆 Leaders"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏹 Minervini Setup", "🏆 Leaders", "📋 Setup History"]
 
 
 def fmt_date(d) -> str:
@@ -6763,3 +6763,273 @@ elif cur == PAGES[18]:  # Leaders
             )
 
     _ld_conn.close()
+
+elif cur == PAGES[19]:  # Setup History
+    import sqlite3 as _sh_sqlite3
+    from config import DB_PATH as _sh_db
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _sh_load_filter_opts():
+        conn = _sh_sqlite3.connect(_sh_db)
+        regimes = [r[0] for r in conn.execute(
+            "SELECT DISTINCT regime FROM setup_log "
+            "WHERE regime IS NOT NULL ORDER BY regime"
+        ).fetchall()]
+        sectors = [s[0] for s in conn.execute(
+            "SELECT DISTINCT sector FROM setup_log "
+            "WHERE sector IS NOT NULL ORDER BY sector"
+        ).fetchall()]
+        conn.close()
+        return regimes, sectors
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _sh_load_perf(regime, sector, setup_type):
+        q = """
+            SELECT
+                setup_type, regime, sector,
+                COUNT(*) AS total,
+                SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END) AS winners,
+                SUM(CASE WHEN outcome_label='LOSER'  THEN 1 ELSE 0 END) AS losers,
+                SUM(CASE WHEN outcome_label='BREAKEVEN' THEN 1 ELSE 0 END) AS breakevens,
+                ROUND(AVG(fwd_return_5d), 2)  AS avg_5d,
+                ROUND(AVG(fwd_return_10d), 2) AS avg_10d,
+                ROUND(AVG(fwd_return_20d), 2) AS avg_20d,
+                ROUND(
+                    SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END)
+                    * 100.0 / COUNT(*), 1
+                ) AS win_pct
+            FROM setup_log
+            WHERE outcome_label IS NOT NULL
+        """
+        params = []
+        if regime != 'All':
+            q += " AND regime = ?"
+            params.append(regime)
+        if sector != 'All':
+            q += " AND sector = ?"
+            params.append(sector)
+        if setup_type != 'All':
+            q += " AND setup_type = ?"
+            params.append(setup_type)
+        q += " GROUP BY setup_type, regime, sector ORDER BY win_pct DESC"
+        conn = _sh_sqlite3.connect(_sh_db)
+        rows = conn.execute(q, params).fetchall()
+        conn.close()
+        return rows
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _sh_load_symbol(symbol):
+        conn = _sh_sqlite3.connect(_sh_db)
+        summary = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total_appearances,
+                SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END) AS winners,
+                SUM(CASE WHEN outcome_label='LOSER'  THEN 1 ELSE 0 END) AS losers,
+                SUM(CASE WHEN outcome_label='BREAKEVEN' THEN 1 ELSE 0 END) AS breakevens,
+                ROUND(AVG(fwd_return_10d), 2) AS avg_10d,
+                ROUND(
+                    SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END)
+                    * 100.0 /
+                    NULLIF(COUNT(CASE WHEN outcome_label IS NOT NULL THEN 1 END), 0),
+                    1
+                ) AS win_pct
+            FROM setup_log
+            WHERE symbol = ? AND outcome_label IS NOT NULL
+            """,
+            (symbol,)
+        ).fetchone()
+        rows = conn.execute(
+            """
+            SELECT
+                setup_date, setup_type, regime, sector,
+                rs_rank, sector_rs_rank, rank_change,
+                rs_score_20, base_tightness, pivot_distance_pct,
+                bos_flag, fwd_return_5d, fwd_return_10d,
+                fwd_return_20d, outcome_label
+            FROM setup_log
+            WHERE symbol = ?
+            ORDER BY setup_date DESC
+            LIMIT 500
+            """,
+            (symbol,)
+        ).fetchall()
+        conn.close()
+        return summary, rows
+
+    st.header('📋 Setup History')
+    tab1, tab2 = st.tabs(['📊 Screen Performance', '🔍 Stock Lookup'])
+
+    # ── SUB-TAB 1: SCREEN PERFORMANCE ─────────────────────────────────────────
+    with tab1:
+        st.subheader('📊 Screen Performance')
+        st.caption(
+            'Historical win rates and average returns by setup type. '
+            'Filter by regime to match current market context.'
+        )
+
+        _sp_regimes, _sp_sectors = _sh_load_filter_opts()
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            _sp_regime = st.selectbox(
+                'Regime', ['All'] + _sp_regimes, key='sp_regime'
+            )
+        with col2:
+            _sp_sector = st.selectbox(
+                'Sector', ['All'] + _sp_sectors, key='sp_sector'
+            )
+        with col3:
+            _sp_type = st.selectbox(
+                'Setup Type',
+                ['All', 'BREAKOUT', 'PRE_BREAKOUT',
+                 'RS_LEADER_MARKET', 'RS_LEADER_SECTOR'],
+                key='sp_type'
+            )
+
+        _sp_rows = _sh_load_perf(_sp_regime, _sp_sector, _sp_type)
+
+        if not _sp_rows:
+            st.info('No setups match the selected filters.')
+        else:
+            _sp_df = pd.DataFrame(
+                _sp_rows,
+                columns=[
+                    'setup_type', 'regime', 'sector', 'total',
+                    'winners', 'losers', 'breakevens',
+                    'avg_5d', 'avg_10d', 'avg_20d', 'win_pct'
+                ]
+            )
+
+            def _sp_color_win(val):
+                try:
+                    v = float(val)
+                    if v >= 50:
+                        return 'background-color: #1a4a1a; color: #6fcf6f'
+                    elif v < 35:
+                        return 'background-color: #4a1a1a; color: #cf6f6f'
+                except Exception:
+                    pass
+                return ''
+
+            def _sp_color_return(val):
+                try:
+                    v = float(val)
+                    if v > 0:
+                        return 'color: #6fcf6f'
+                    elif v < 0:
+                        return 'color: #cf6f6f'
+                except Exception:
+                    pass
+                return ''
+
+            _sp_display = _sp_df[[
+                'setup_type', 'regime', 'sector',
+                'total', 'win_pct', 'avg_10d', 'avg_20d'
+            ]].rename(columns={
+                'setup_type': 'Setup Type', 'regime': 'Regime',
+                'sector': 'Sector', 'total': 'n',
+                'win_pct': 'Win %', 'avg_10d': 'Avg 10d %',
+                'avg_20d': 'Avg 20d %'
+            })
+
+            st.dataframe(
+                _sp_display.style
+                    .map(_sp_color_win, subset=['Win %'])
+                    .map(_sp_color_return, subset=['Avg 10d %', 'Avg 20d %']),
+                use_container_width=True,
+                hide_index=True
+            )
+            if _sp_df['total'].min() < 30:
+                st.caption(
+                    '⚠️ Rows with n < 30 have low statistical confidence'
+                )
+
+    # ── SUB-TAB 2: STOCK LOOKUP ────────────────────────────────────────────────
+    with tab2:
+        st.subheader('🔍 Stock Lookup')
+        st.caption(
+            'Full setup history for a single stock — '
+            'every screen appearance and its outcome.'
+        )
+
+        _sl_symbol = st.text_input(
+            'Enter symbol', placeholder='e.g. MEBL', key='sl_symbol'
+        ).upper().strip()
+
+        if _sl_symbol:
+            _sl_summary, _sl_rows = _sh_load_symbol(_sl_symbol)
+
+            if not _sl_rows:
+                st.warning(
+                    f'No history found for {_sl_symbol}. '
+                    'Check symbol is correct.'
+                )
+            else:
+                _sl_total, _sl_wins, _sl_losses, _sl_be, _sl_avg10d, _sl_winpct = _sl_summary
+
+                mc1, mc2, mc3, mc4 = st.columns(4)
+                mc1.metric('Total Appearances', _sl_total or 0)
+                mc2.metric('Win Rate %', f'{_sl_winpct or 0:.1f}%')
+                mc3.metric('Avg 10d Return', f'{_sl_avg10d or 0:.2f}%')
+                mc4.metric(
+                    'W / L / BE',
+                    f'{_sl_wins or 0} / {_sl_losses or 0} / {_sl_be or 0}'
+                )
+
+                _sl_df = pd.DataFrame(
+                    _sl_rows,
+                    columns=[
+                        'setup_date', 'setup_type', 'regime', 'sector',
+                        'rs_rank', 'sector_rs_rank', 'rank_change',
+                        'rs_score_20', 'base_tightness', 'pivot_distance_pct',
+                        'bos_flag', 'fwd_return_5d', 'fwd_return_10d',
+                        'fwd_return_20d', 'outcome_label'
+                    ]
+                )
+
+                _sl_all_null = _sl_df['outcome_label'].isna().all()
+                if _sl_all_null:
+                    st.info(
+                        'Setup logged but outcome window not yet closed.'
+                    )
+
+                def _sl_color_outcome(val):
+                    if val == 'WINNER':
+                        return 'background-color: #1a4a1a; color: #6fcf6f'
+                    elif val == 'LOSER':
+                        return 'background-color: #4a1a1a; color: #cf6f6f'
+                    elif val == 'BREAKEVEN':
+                        return 'color: #aaaaaa'
+                    return ''
+
+                def _sl_color_ret(val):
+                    try:
+                        v = float(val)
+                        if v > 0:
+                            return 'color: #6fcf6f'
+                        elif v < 0:
+                            return 'color: #cf6f6f'
+                    except Exception:
+                        pass
+                    return ''
+
+                _sl_disp = _sl_df.rename(columns={
+                    'setup_date': 'Date', 'setup_type': 'Setup Type',
+                    'regime': 'Regime', 'sector': 'Sector',
+                    'rs_rank': 'RS Rank', 'sector_rs_rank': 'Sector Rank',
+                    'rank_change': 'Rank Δ', 'rs_score_20': 'RS Score',
+                    'base_tightness': 'BBW%',
+                    'pivot_distance_pct': 'Pivot Dist%',
+                    'bos_flag': 'BOS', 'fwd_return_5d': '5d %',
+                    'fwd_return_10d': '10d %', 'fwd_return_20d': '20d %',
+                    'outcome_label': 'Outcome'
+                })
+
+                st.dataframe(
+                    _sl_disp.style
+                        .map(_sl_color_outcome, subset=['Outcome'])
+                        .map(_sl_color_ret, subset=['10d %']),
+                    use_container_width=True,
+                    hide_index=True
+                )
