@@ -1995,7 +1995,10 @@ def render_flows_page():
                     st.json(diag["buttons"])
 
     if not available:
-        st.info("No data yet. Scrape at least one day to see charts and signals.")
+        st.info("No data yet. Scrape at least one day to see FIPI/LIPI charts and signals.")
+        st.divider()
+        # UIN Settlement is independent — render it even with no FIPI/LIPI data
+        _render_settlement_section()
         return
 
     st.divider()
@@ -2256,7 +2259,10 @@ def render_flows_page():
     st.divider()
 
     # Section 5: Intelligence Engine
-    _render_intelligence_section(available, n_dates)
+    if n_dates >= 3:
+        _render_intelligence_section(available, n_dates)
+    else:
+        st.info(f"🧠 Intelligence Engine requires at least 3 days of FIPI/LIPI data (you have {n_dates}). Keep scraping daily.")
 
     st.divider()
 
