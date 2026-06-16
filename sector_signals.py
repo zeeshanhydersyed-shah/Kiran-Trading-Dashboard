@@ -348,5 +348,200 @@ def append_latest_sector_signals() -> None:
             "Sector signals appended: %s — %d sectors written", target_date, rows_written
         )
 
+        # ------------------------------------------------------------------
+        # Step 12 — enrich sector_signals rows with flow signal data
+        # ------------------------------------------------------------------
+        try:
+            compute_flow_signals(conn, target_date)
+        except Exception as _fe:
+            logger.warning("compute_flow_signals failed for %s: %s", target_date, _fe)
+
     finally:
         conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FLOW SIGNAL INTEGRATION
+# Reads market_flows → computes smart/retail rolling nets → writes to sector_signals
+# Smart Money  : Foreign Corporates (FIPI) | Banks/DFI, NBFC, Insurance (LIPI)
+# Not Smart    : Foreign Individuals, Overseas Pakistanis (FIPI) | Individuals,
+#                Broker Proprietary Trading (LIPI)
+# Unknown      : Mutual Funds, Companies, Other Organizations (LIPI) — tracked,
+#                not weighted in signals until patterns are established
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_FLOW_TO_PSX = {
+    "CEMENT":                   "CEMENT",
+    "FERTILIZER":               "FERTILIZER",
+    "FERTILISERS":              "FERTILIZER",
+    "FERTILIZERS":              "FERTILIZER",
+    "FOOD":                     "FOOD & PERSONAL CARE PRODUCTS",
+    "FOOD & PERSONAL CARE":     "FOOD & PERSONAL CARE PRODUCTS",
+    "FOOD AND PERSONAL CARE":   "FOOD & PERSONAL CARE PRODUCTS",
+    "E&PS":                     "OIL & GAS EXPLORATION COMPANIES",
+    "E&P":                      "OIL & GAS EXPLORATION COMPANIES",
+    "E & PS":                   "OIL & GAS EXPLORATION COMPANIES",
+    "OIL & GAS EXPLORATION":    "OIL & GAS EXPLORATION COMPANIES",
+    "OMCS":                     "OIL & GAS MARKETING COMPANIES",
+    "OMC":                      "OIL & GAS MARKETING COMPANIES",
+    "OIL MARKETING":            "OIL & GAS MARKETING COMPANIES",
+    "OIL & GAS MARKETING":      "OIL & GAS MARKETING COMPANIES",
+    "IPPS":                     "POWER GENERATION & DISTRIBUTION",
+    "IPP":                      "POWER GENERATION & DISTRIBUTION",
+    "POWER":                    "POWER GENERATION & DISTRIBUTION",
+    "POWER GEN":                "POWER GENERATION & DISTRIBUTION",
+    "BANKS":                    "COMMERCIAL BANKS",
+    "BANK":                     "COMMERCIAL BANKS",
+    "COMM. BANKS":              "COMMERCIAL BANKS",
+    "TECH":                     "TECHNOLOGY & COMMUNICATION",
+    "TECHNOLOGY":               "TECHNOLOGY & COMMUNICATION",
+    "TECH. & COMM.":            "TECHNOLOGY & COMMUNICATION",
+    "TEXTILE":                  "TEXTILE COMPOSITE",
+    "TEXTILE COMP.":            "TEXTILE COMPOSITE",
+    "TEXTILE COMPOSITE":        "TEXTILE COMPOSITE",
+    "AUTO":                     "AUTOMOBILE ASSEMBLER",
+    "AUTOMOBILE":               "AUTOMOBILE ASSEMBLER",
+    "PHARMA":                   "PHARMACEUTICALS",
+    "STEEL":                    "STEEL & ALLIED PRODUCTS",
+    "CHEMICALS":                "CHEMICALS",
+}
+
+# Smart money — institutional capital with informational edge
+_FLOW_SMART = {
+    "FOREIGN CORPORATES",       # FIPI — informed foreign institutional
+    "BANKS / DFI",              # LIPI — principal capital, balance sheet buyers
+    "NBFC",                     # LIPI — principal capital
+    "INSURANCE COMPANIES",      # LIPI — long-horizon institutional
+}
+
+# Retail / noise — high volume, not informationally driven
+_FLOW_RETAIL = {
+    "FOREIGN INDIVIDUALS",      # FIPI — diaspora/speculative
+    "OVERSEAS PAKISTANI",       # FIPI — diaspora/sentiment
+    "INDIVIDUALS",              # LIPI — retail
+    "BROKER PROPRIETARY TRADING",  # LIPI — short-term, noise
+}
+
+# Unknown — tracked raw, not classified until patterns emerge
+_FLOW_UNKNOWN = {
+    "MUTUAL FUNDS",
+    "COMPANIES",
+    "OTHER ORGANIZATIONS",
+}
+
+
+def compute_flow_signals(conn, date_str: str) -> None:
+    """
+    Reads market_flows for all REGULAR market dates up to date_str.
+    Computes 5d and 20d rolling smart-money and retail nets per sector.
+    Writes flow_smart_net_5d, flow_smart_net_20d, flow_retail_net_5d,
+    flow_retail_net_20d, flow_direction into sector_signals for date_str.
+
+    Safe to call when market_flows is empty — silently returns, no crash.
+    Skips sectors that cannot be mapped to a PSX sector name.
+    """
+    try:
+        df = pd.read_sql("""
+            SELECT date, sector, client_type, net_value
+            FROM market_flows
+            WHERE market_type = 'REGULAR'
+              AND date <= ?
+            ORDER BY date
+        """, conn, params=(date_str,))
+    except Exception:
+        return  # market_flows not yet populated — silent skip
+
+    if df.empty:
+        return
+
+    # Normalise and map sector names
+    df["sector_upper"] = df["sector"].str.strip().str.upper()
+    df["psx_sector"]   = df["sector_upper"].map(_FLOW_TO_PSX)
+    df = df.dropna(subset=["psx_sector"])
+
+    if df.empty:
+        return
+
+    # Classify client types
+    df["client_upper"] = df["client_type"].str.strip().str.upper()
+    df["bucket"] = df["client_upper"].apply(
+        lambda c: "SMART"   if c in _FLOW_SMART
+             else "RETAIL"  if c in _FLOW_RETAIL
+             else "UNKNOWN"
+    )
+
+    # Daily net per sector per bucket
+    daily = (
+        df.groupby(["date", "psx_sector", "bucket"])["net_value"]
+        .sum()
+        .reset_index()
+    )
+    daily["date"] = pd.to_datetime(daily["date"])
+    daily = daily.sort_values(["psx_sector", "bucket", "date"])
+
+    # Pivot so each bucket is a column
+    pivot = daily.pivot_table(
+        index=["date", "psx_sector"],
+        columns="bucket",
+        values="net_value",
+        aggfunc="sum",
+        fill_value=0,
+    ).reset_index()
+    pivot.columns.name = None
+    for col in ["SMART", "RETAIL", "UNKNOWN"]:
+        if col not in pivot.columns:
+            pivot[col] = 0.0
+
+    pivot = pivot.sort_values(["psx_sector", "date"])
+
+    # Rolling 5d and 20d per sector
+    for bucket, col_5d, col_20d in [
+        ("SMART",  "flow_smart_net_5d",  "flow_smart_net_20d"),
+        ("RETAIL", "flow_retail_net_5d", "flow_retail_net_20d"),
+    ]:
+        pivot[col_5d]  = (pivot.groupby("psx_sector")[bucket]
+                               .transform(lambda x: x.rolling(5,  min_periods=1).sum()))
+        pivot[col_20d] = (pivot.groupby("psx_sector")[bucket]
+                               .transform(lambda x: x.rolling(20, min_periods=1).sum()))
+
+    # Flow direction — based on smart money only
+    def _direction(row):
+        s5  = row["flow_smart_net_5d"]
+        s20 = row["flow_smart_net_20d"]
+        if s5 > 0 and s20 > 0:
+            return "ACCUMULATING"
+        elif s5 < 0 and s20 < 0:
+            return "DISTRIBUTING"
+        elif s5 > 0 and s20 < 0:
+            return "RECOVERING"
+        elif s5 < 0 and s20 > 0:
+            return "FADING"
+        else:
+            return "NEUTRAL"
+
+    pivot["flow_direction"] = pivot.apply(_direction, axis=1)
+
+    # Write only today's rows into sector_signals
+    pivot["date_str"] = pivot["date"].dt.date.astype(str)
+    today_rows = pivot[pivot["date_str"] == date_str]
+
+    for _, row in today_rows.iterrows():
+        conn.execute("""
+            UPDATE sector_signals
+            SET flow_smart_net_5d   = ?,
+                flow_smart_net_20d  = ?,
+                flow_retail_net_5d  = ?,
+                flow_retail_net_20d = ?,
+                flow_direction      = ?
+            WHERE date   = ?
+              AND sector = ?
+        """, (
+            row["flow_smart_net_5d"],
+            row["flow_smart_net_20d"],
+            row["flow_retail_net_5d"],
+            row["flow_retail_net_20d"],
+            row["flow_direction"],
+            date_str,
+            row["psx_sector"],
+        ))
+    conn.commit()

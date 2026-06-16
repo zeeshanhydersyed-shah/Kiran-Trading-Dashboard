@@ -1751,7 +1751,8 @@ elif cur == PAGES[2]:  # Market
             rr_df = pd.read_sql_query("""
                 SELECT sector, rs_score_20, rs_score_50, rs_rank,
                        breadth_score, adv_dec_ratio, vol_ratio,
-                       rs_inflection, composite_score, regime
+                       rs_inflection, composite_score, regime,
+                       flow_direction, flow_smart_net_5d, flow_smart_net_20d
                 FROM sector_signals
                 WHERE date = ?
                 ORDER BY rs_rank
@@ -1848,6 +1849,15 @@ elif cur == PAGES[2]:  # Market
                 axis=1,
             )
 
+            # Flow direction display
+            rr_display["Flow"] = rr_display["flow_direction"].map({
+                "ACCUMULATING": "🟢 Accumulating",
+                "DISTRIBUTING": "🔴 Distributing",
+                "RECOVERING":   "🔵 Recovering",
+                "FADING":       "🟡 Fading",
+                "NEUTRAL":      "➖ Neutral",
+            }).fillna("— no data")
+
             # Inflection flag display
             rr_display["signal"] = rr_display["rs_inflection"].apply(
                 lambda v: "🔥" if v == 1 else ""
@@ -1870,6 +1880,7 @@ elif cur == PAGES[2]:  # Market
             table_cols = {
                 "rs_rank":         "#",
                 "sector":          "Sector",
+                "Flow":            "Flow",
                 "signal":          "🔥",
                 "trend":           "RS Trend",
                 "rs_score_20":     "RS-20",
