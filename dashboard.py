@@ -1747,16 +1747,29 @@ elif cur == PAGES[2]:  # Market
                 "SELECT MAX(date) as d FROM sector_signals", con_rr
             ).iloc[0]["d"]
 
+            # Latest date that has flow data (may lag price data by 1 day)
+            latest_flow = pd.read_sql_query(
+                "SELECT MAX(date) as d FROM sector_signals WHERE flow_direction IS NOT NULL",
+                con_rr
+            ).iloc[0]["d"]
+
             # Load latest sector signals
             rr_df = pd.read_sql_query("""
-                SELECT sector, rs_score_20, rs_score_50, rs_rank,
-                       breadth_score, adv_dec_ratio, vol_ratio,
-                       rs_inflection, composite_score, regime,
-                       flow_direction, flow_smart_net_5d, flow_smart_net_20d
-                FROM sector_signals
-                WHERE date = ?
-                ORDER BY rs_rank
-            """, con_rr, params=(latest_rr,))
+                SELECT
+                    ss.sector,
+                    ss.rs_score_20, ss.rs_score_50, ss.rs_rank,
+                    ss.breadth_score, ss.adv_dec_ratio, ss.vol_ratio,
+                    ss.rs_inflection, ss.composite_score, ss.regime,
+                    COALESCE(sf.flow_direction,     NULL) AS flow_direction,
+                    COALESCE(sf.flow_smart_net_5d,  NULL) AS flow_smart_net_5d,
+                    COALESCE(sf.flow_smart_net_20d, NULL) AS flow_smart_net_20d
+                FROM sector_signals ss
+                LEFT JOIN sector_signals sf
+                    ON sf.sector = ss.sector
+                   AND sf.date   = :flow_date
+                WHERE ss.date = :price_date
+                ORDER BY ss.rs_rank
+            """, con_rr, params={"price_date": latest_rr, "flow_date": latest_flow or latest_rr})
 
             # Load 20-day RS trend per sector (sparkline data)
             rr_hist = pd.read_sql_query("""
