@@ -61,6 +61,7 @@ from database import (
 )
 from processor import run_analysis
 from stm_sr_integration import enrich_stm_with_sr_zones
+from config import DB_PATH
 
 # Gracefully handle missing optional imports
 try:
@@ -329,8 +330,8 @@ def calculate_irr(cash_flows: list, dates: list) -> float:
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_sector_history(symbols: tuple) -> pd.DataFrame:
-    from database import get_sector_price_data
-    raw = get_sector_price_data()
+    from database import get_sector_price_data_1y
+    raw = get_sector_price_data_1y()
     if not raw:
         return pd.DataFrame()
     df = pd.DataFrame(raw)
@@ -486,8 +487,8 @@ def load_breadth_oscillator_data() -> pd.DataFrame:
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_stm_prices() -> pd.DataFrame:
-    from database import get_sector_price_data
-    raw = get_sector_price_data()
+    from database import get_sector_price_data_60d
+    raw = get_sector_price_data_60d()
     if not raw:
         return pd.DataFrame()
     df = pd.DataFrame(raw)
@@ -633,8 +634,37 @@ def _run_stm_screener(data: dict, w_data: dict) -> dict:
             short_qual_sectors=weak_sec, short_result=pd.DataFrame(),
         )
 
-    prices_raw = load_stm_prices()
-    if prices_raw.empty:
+    # ── Read pre-computed STM base signals ────────────────────────
+    import sqlite3 as _stm_sq
+    from config import DB_PATH as _stm_db
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_stm_signals():
+        conn = _stm_sq.connect(_stm_db)
+        conn.execute("PRAGMA cache_size=-32000")
+        latest = conn.execute(
+            "SELECT MAX(as_of_date) FROM stm_signals"
+        ).fetchone()[0]
+        rows = conn.execute(
+            """SELECT * FROM stm_signals
+               WHERE as_of_date = ?""",
+            (latest,)
+        ).fetchall()
+        cols = [d[0] for d in conn.execute(
+            "SELECT * FROM stm_signals LIMIT 0"
+        ).description]
+        conn.close()
+        df = pd.DataFrame(rows, columns=cols)
+        df["as_of_date"] = pd.to_datetime(df["as_of_date"])
+        for col in ("latest_close","day_low","ma21","ma50",
+                    "avg_vol_10d","range_5d_pct","atr_pct"):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        return df, latest
+
+    _stm_base, _stm_date = _load_stm_signals()
+
+    if _stm_base.empty:
         return dict(
             all_pass=all_pass, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d,
             result=pd.DataFrame(),
@@ -642,7 +672,7 @@ def _run_stm_screener(data: dict, w_data: dict) -> dict:
             short_qual_sectors=weak_sec, short_result=pd.DataFrame(),
         )
 
-    signals_df = _compute_stm_signals(prices_raw)
+    signals_df = _stm_base.copy()
     if signals_df.empty:
         return dict(
             all_pass=all_pass, gates=gates, qual_sectors=qual_sec, kse_30d=kse_30d,
@@ -1207,14 +1237,20 @@ st.markdown(
 )
 
 # ── Corporate action suspects warning pill ────────────────────────────────
-try:
+@st.cache_data(ttl=300)
+def _get_corporate_action_count():
     import sqlite3 as _sq
     from config import DB_PATH as _banner_db
-    _banner_con = _sq.connect(_banner_db)
-    _pending_count = _banner_con.execute(
+    conn = _sq.connect(_banner_db)
+    conn.execute("PRAGMA cache_size=-32000")
+    count = conn.execute(
         "SELECT COUNT(*) FROM corporate_action_suspects WHERE status = 'PENDING'"
     ).fetchone()[0]
-    _banner_con.close()
+    conn.close()
+    return count
+
+try:
+    _pending_count = _get_corporate_action_count()
     if _pending_count > 0:
         st.warning(f"⚠️ {_pending_count} corporate action(s) need review — see 🏥 Data Health page.")
 except Exception:
@@ -1222,19 +1258,6 @@ except Exception:
 
 # ── Kiran's Voice panel ───────────────────────────────────────────────────────
 try:
-    import sqlite3 as _kv_sq
-    from config import DB_PATH as _kv_db
-
-    def _kv_latest():
-        con = _kv_sq.connect(_kv_db)
-        con.row_factory = _kv_sq.Row
-        row = con.execute(
-            "SELECT ts, market_date, trigger_type, stance, response "
-            "FROM agent_memory ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-        con.close()
-        return dict(row) if row else None
-
     _kv_row = _kv_latest()
 
     with st.expander(
@@ -1315,6 +1338,127 @@ except Exception as _kv_panel_err:
     pass  # panel never crashes the dashboard
 
 cur = st.session_state.page
+
+
+# ── Module-level cached functions (moved from page blocks) ────────────────────
+
+@st.cache_data(ttl=300)
+def _kv_latest():
+    con = sqlite3.connect(DB_PATH)
+    con.row_factory = sqlite3.Row
+    row = con.execute(
+        "SELECT ts, market_date, trigger_type, stance, response "
+        "FROM agent_memory ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    con.close()
+    return dict(row) if row else None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_mv_index():
+    from database import get_index_prices
+    rows = get_index_prices("KSE-100")
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    df["date"]  = pd.to_datetime(df["date"])
+    df["idx_close"] = pd.to_numeric(df["close"], errors="coerce")
+    return df[["date","idx_close"]].sort_values("date")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sh_load_filter_opts():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA cache_size=-32000")
+    regimes = [r[0] for r in conn.execute(
+        "SELECT DISTINCT regime FROM setup_log "
+        "WHERE regime IS NOT NULL ORDER BY regime"
+    ).fetchall()]
+    sectors = [s[0] for s in conn.execute(
+        "SELECT DISTINCT sector FROM setup_log "
+        "WHERE sector IS NOT NULL ORDER BY sector"
+    ).fetchall()]
+    conn.close()
+    return regimes, sectors
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sh_load_perf(regime, sector, setup_type):
+    q = """
+        SELECT
+            setup_type, regime, sector,
+            COUNT(*) AS total,
+            SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END) AS winners,
+            SUM(CASE WHEN outcome_label='LOSER'  THEN 1 ELSE 0 END) AS losers,
+            SUM(CASE WHEN outcome_label='BREAKEVEN' THEN 1 ELSE 0 END) AS breakevens,
+            ROUND(AVG(fwd_return_5d), 2)  AS avg_5d,
+            ROUND(AVG(fwd_return_10d), 2) AS avg_10d,
+            ROUND(AVG(fwd_return_20d), 2) AS avg_20d,
+            ROUND(
+                SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END)
+                * 100.0 / COUNT(*), 1
+            ) AS win_pct
+        FROM setup_log
+        WHERE outcome_label IS NOT NULL
+    """
+    params = []
+    if regime != 'All':
+        q += " AND regime = ?"
+        params.append(regime)
+    if sector != 'All':
+        q += " AND sector = ?"
+        params.append(sector)
+    if setup_type != 'All':
+        q += " AND setup_type = ?"
+        params.append(setup_type)
+    q += " GROUP BY setup_type, regime, sector ORDER BY win_pct DESC"
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA cache_size=-32000")
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return rows
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sh_load_symbol(symbol):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA cache_size=-32000")
+    summary = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS total_appearances,
+            SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END) AS winners,
+            SUM(CASE WHEN outcome_label='LOSER'  THEN 1 ELSE 0 END) AS losers,
+            SUM(CASE WHEN outcome_label='BREAKEVEN' THEN 1 ELSE 0 END) AS breakevens,
+            ROUND(AVG(fwd_return_10d), 2) AS avg_10d,
+            ROUND(
+                SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END)
+                * 100.0 /
+                NULLIF(COUNT(CASE WHEN outcome_label IS NOT NULL THEN 1 END), 0),
+                1
+            ) AS win_pct
+        FROM setup_log
+        WHERE symbol = ? AND outcome_label IS NOT NULL
+        """,
+        (symbol,)
+    ).fetchone()
+    rows = conn.execute(
+        """
+        SELECT
+            setup_date, setup_type, regime, sector,
+            rs_rank, sector_rs_rank, rank_change,
+            rs_score_20, base_tightness, pivot_distance_pct,
+            bos_flag, fwd_return_5d, fwd_return_10d,
+            fwd_return_20d, outcome_label
+        FROM setup_log
+        WHERE symbol = ?
+        ORDER BY setup_date DESC
+        LIMIT 500
+        """,
+        (symbol,)
+    ).fetchall()
+    conn.close()
+    return summary, rows
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -4579,6 +4723,23 @@ elif cur == PAGES[8]:  # STM
     with st.spinner("Running STM screener…"):
         stm = _run_stm_screener(data, w_data_stm)
 
+    # ── Stale data warning ────────────────────────────────────────
+    import datetime as _stm_dt
+    _stm_today = _stm_dt.date.today().isoformat()
+    try:
+        import sqlite3 as _stm_sq2
+        from config import DB_PATH as _stm_db2
+        _stm_date2 = sqlite3.connect(_stm_db2).execute(
+            "SELECT MAX(as_of_date) FROM stm_signals"
+        ).fetchone()[0]
+        if _stm_date2 and _stm_date2 != _stm_today:
+            st.warning(
+                f"⚠️ STM signals last computed: "
+                f"**{_stm_date2}** — run signal_engine.py to refresh."
+            )
+    except Exception:
+        pass
+
     def _gate_card(label, passed, detail=""):
         col  = "#22c55e" if passed else "#ef4444"
         bg   = "#f0fdf4" if passed else "#fff5f5"
@@ -4879,267 +5040,6 @@ elif cur == PAGES[8]:  # STM
 # ══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[9]:  # Recovery Bases
 
-    @st.cache_data(ttl=3600, show_spinner=False)
-    def _run_recovery_screener():
-        """
-        Post-capitulation VCP screener.
-        Decline ≥30% → tight base (backward scan) → volume contraction → breakout trigger.
-        Returns (watchlist_df, triggered_df, kse_regime_ok).
-        """
-        import numpy as np
-        from database import get_sector_price_data, get_index_prices
-        from config import EXCLUDED_SECTORS
-
-        # ── Load price data ───────────────────────────────────────────────────
-        raw = get_sector_price_data()
-        if not raw:
-            return pd.DataFrame(), pd.DataFrame(), True
-
-        all_df = pd.DataFrame(raw)
-        all_df["date"] = pd.to_datetime(all_df["date"])
-        for col in ("open", "high", "low", "close"):
-            all_df[col] = pd.to_numeric(all_df[col], errors="coerce")
-        all_df["volume"] = pd.to_numeric(all_df["volume"], errors="coerce").fillna(0)
-
-        # Keep last ~420 calendar days — enough for vol_ma50 + 90-day pre-base window
-        cutoff = all_df["date"].max() - pd.Timedelta(days=420)
-        all_df = all_df[all_df["date"] >= cutoff]
-        all_df = all_df.sort_values(["symbol", "date"]).reset_index(drop=True)
-
-        # ── KSE-100 regime: latest close vs 10 trading days ago ───────────────
-        kse_regime_ok = True
-        try:
-            kse_rows = get_index_prices("KSE-100")
-            if kse_rows:
-                kse_df = pd.DataFrame(kse_rows)
-                kse_df["date"]  = pd.to_datetime(kse_df["date"])
-                kse_df["close"] = pd.to_numeric(kse_df["close"], errors="coerce")
-                kse_df = kse_df.sort_values("date")
-                if len(kse_df) >= 12:
-                    kse_regime_ok = float(kse_df["close"].iloc[-1]) >= float(kse_df["close"].iloc[-11])
-        except Exception:
-            pass
-
-        # ── Sector + derivative filters ───────────────────────────────────────
-        all_df = all_df[~all_df["sector"].isin(EXCLUDED_SECTORS)]
-        all_df = all_df[~all_df["symbol"].str.match(r"^P\d", na=False)]
-        all_df = all_df[all_df["close"] >= 5.0]
-
-        # ── Trading date universe ─────────────────────────────────────────────
-        all_dates  = sorted(all_df["date"].unique())
-        if not all_dates:
-            return pd.DataFrame(), pd.DataFrame(), kse_regime_ok
-        latest_date  = all_dates[-1]
-        last_5_dates = set(all_dates[-5:]) if len(all_dates) >= 5 else set(all_dates)
-        today_dt     = pd.Timestamp(latest_date).date()
-
-        # ── Backward-scan helper ──────────────────────────────────────────────
-        def _base_scan(c, from_idx, thr=0.20, max_lb=90):
-            """Extend window backward while range stays < thr. Returns base_start_idx."""
-            hi = lo = c[from_idx]
-            start = from_idx
-            for i in range(from_idx - 1, max(from_idx - max_lb, 0) - 1, -1):
-                nh = max(hi, c[i])
-                nl = min(lo, c[i])
-                if (nh - nl) / nl >= thr:
-                    break
-                hi, lo, start = nh, nl, i
-            return start
-
-        watchlist_rows = []
-        triggered_rows = []
-        triggered_syms = set()
-
-        for sym, grp in all_df.groupby("symbol", sort=False):
-            grp = grp.reset_index(drop=True)
-            n   = len(grp)
-            if n < 60:
-                continue
-
-            closes  = grp["close"].values.astype(float)
-            opens   = grp["open"].values.astype(float)
-            highs   = grp["high"].values.astype(float)
-            lows    = grp["low"].values.astype(float)
-            volumes = grp["volume"].values.astype(float)
-            dates   = grp["date"].values
-            sector  = grp["sector"].iloc[0]
-
-            # ── Liquidity filter: avg vol last 20d > 800K ─────────────────────
-            avg_vol_20d = volumes[-20:].mean() if n >= 20 else volumes.mean()
-            if avg_vol_20d < 800_000:
-                continue
-
-            # ── vol_ma50 (min 30 periods so early bars still get a value) ─────
-            vol_s    = pd.Series(volumes)
-            vol_ma50 = vol_s.rolling(50, min_periods=30).mean().values
-            if np.isnan(vol_ma50[-1]) or vol_ma50[-1] <= 0:
-                continue
-
-            # ══════════════════════════════════════════════════════════════════
-            # TRIGGERED CHECK — last 5 trading days
-            # For each candidate trigger day T, compute the base as of T-1,
-            # then verify trigger conditions on day T.
-            # ══════════════════════════════════════════════════════════════════
-            trigger_hit = None
-            for t in range(max(1, n - 5), n):
-                if dates[t] not in last_5_dates:
-                    continue
-                prev = t - 1
-                if prev < 15:
-                    continue
-
-                # Base as of the day before the trigger
-                bs     = _base_scan(closes, prev)
-                b_days = prev - bs + 1
-                if b_days < 8:
-                    continue
-
-                b_closes = closes[bs : prev + 1]
-                b_high   = b_closes.max()
-                b_low    = b_closes.min()
-                b_range  = (b_high - b_low) / b_low
-                if b_range >= 0.20:
-                    continue
-
-                # Pre-base drawdown: 90-bar high before base start
-                pre      = closes[max(0, bs - 90) : bs]
-                if len(pre) < 5:
-                    continue
-                pre_high = pre.max()
-                drawdown = (pre_high - closes[bs]) / pre_high
-                if drawdown < 0.30:
-                    continue
-
-                # Volume contraction: last 5 bars of base
-                bv   = volumes[bs : prev + 1]
-                bm50 = vol_ma50[bs : prev + 1]
-                l5v  = bv[-5:]
-                l5m  = bm50[-5:]
-                ok   = l5m > 0
-                if ok.sum() < 3:
-                    continue
-                l5r = np.where(ok, l5v / np.where(l5m > 0, l5m, 1.0), 1.0)
-                if not (l5r[ok].mean() < 0.50 and (l5r[ok] < 0.60).sum() >= 3):
-                    continue
-
-                # Occasional buy activity in base (≥2 days vol_ratio > 1.5)
-                all_br = np.where(bm50 > 0, bv / bm50, 0.0)
-                if (all_br > 1.5).sum() < 2:
-                    continue
-
-                # Trigger conditions on day T
-                if vol_ma50[t] <= 0:
-                    continue
-                vr     = volumes[t] / vol_ma50[t]
-                day_rng = highs[t] - lows[t]
-                if not (
-                    vr >= 2.5
-                    and closes[t] > b_high
-                    and closes[t] > opens[t]
-                    and day_rng > 0
-                    and (closes[t] - lows[t]) / day_rng >= 0.40
-                ):
-                    continue
-
-                trigger_hit = dict(
-                    t_date       = pd.Timestamp(dates[t]).date(),
-                    t_close      = round(closes[t], 2),
-                    t_vol_ratio  = round(vr, 2),
-                    b_days       = b_days,
-                    b_range_pct  = round(b_range * 100, 1),
-                    drawdown_pct = round(drawdown * 100, 1),
-                    pre_high     = round(pre_high, 2),
-                    current      = round(closes[-1], 2),
-                )
-                break  # most recent trigger only
-
-            if trigger_hit:
-                triggered_rows.append(dict(
-                    symbol         = sym,
-                    sector         = sector,
-                    triggered_date = trigger_hit["t_date"],
-                    fresh          = trigger_hit["t_date"] == today_dt,
-                    trigger_close  = trigger_hit["t_close"],
-                    trigger_vol_x  = trigger_hit["t_vol_ratio"],
-                    current_close  = trigger_hit["current"],
-                    move_pct       = round(
-                        (trigger_hit["current"] - trigger_hit["t_close"])
-                        / trigger_hit["t_close"] * 100, 1
-                    ),
-                    drawdown_pct   = trigger_hit["drawdown_pct"],
-                    base_days      = trigger_hit["b_days"],
-                    base_range_pct = trigger_hit["b_range_pct"],
-                    avg_vol_m      = round(avg_vol_20d / 1e6, 2),
-                ))
-                triggered_syms.add(sym)
-                continue  # don't also add to watchlist
-
-            # ══════════════════════════════════════════════════════════════════
-            # WATCHLIST CHECK — current base (as of today)
-            # ══════════════════════════════════════════════════════════════════
-            bs     = _base_scan(closes, n - 1)
-            b_days = n - bs
-            if b_days < 8:
-                continue
-
-            b_closes = closes[bs:]
-            b_high   = b_closes.max()
-            b_low    = b_closes.min()
-            b_range  = (b_high - b_low) / b_low
-            if b_range >= 0.20:
-                continue
-
-            pre      = closes[max(0, bs - 90) : bs]
-            if len(pre) < 5:
-                continue
-            pre_high = pre.max()
-            drawdown = (pre_high - closes[bs]) / pre_high
-            if drawdown < 0.30:
-                continue
-
-            # Volume contraction: last 5 bars overall
-            l5v  = volumes[-5:]
-            l5m  = vol_ma50[-5:]
-            ok   = l5m > 0
-            if ok.sum() < 3:
-                continue
-            l5r = np.where(ok, l5v / np.where(l5m > 0, l5m, 1.0), 1.0)
-            if not (l5r[ok].mean() < 0.50 and (l5r[ok] < 0.60).sum() >= 3):
-                continue
-
-            # Occasional activity in base
-            bv   = volumes[bs:]
-            bm50 = vol_ma50[bs:]
-            all_br = np.where(bm50 > 0, bv / bm50, 0.0)
-            if (all_br > 1.5).sum() < 2:
-                continue
-
-            cur_vr = volumes[-1] / vol_ma50[-1] if vol_ma50[-1] > 0 else 0.0
-
-            watchlist_rows.append(dict(
-                symbol          = sym,
-                sector          = sector,
-                close           = round(closes[-1], 2),
-                drawdown_pct    = round(drawdown * 100, 1),
-                base_days       = b_days,
-                base_range_pct  = round(b_range * 100, 1),
-                vol_ratio_today = round(cur_vr, 2),
-                base_high       = round(b_high, 2),
-                dist_pct        = round((b_high - closes[-1]) / closes[-1] * 100, 1),
-                avg_vol_m       = round(avg_vol_20d / 1e6, 2),
-            ))
-
-        watchlist_df = pd.DataFrame(watchlist_rows)
-        triggered_df = pd.DataFrame(triggered_rows)
-
-        if len(watchlist_df) > 0:
-            watchlist_df = watchlist_df.sort_values("base_range_pct").reset_index(drop=True)
-        if len(triggered_df) > 0:
-            triggered_df = triggered_df.sort_values(
-                ["fresh", "triggered_date"], ascending=[False, False]
-            ).reset_index(drop=True)
-
-        return watchlist_df, triggered_df, kse_regime_ok
 
     # ── Page header ───────────────────────────────────────────────────────────
     st.markdown("### 🔄 Recovery Bases")
@@ -5150,9 +5050,55 @@ elif cur == PAGES[9]:  # Recovery Bases
         "**Triggered** = breakout fired in last 5 trading days."
     )
 
-    # ── Run screener ──────────────────────────────────────────────────────────
-    with st.spinner("Running Recovery Bases screener…"):
-        _wl, _tr, _regime_ok = _run_recovery_screener()
+    # ── Read pre-computed recovery signals ───────────────────────
+    import sqlite3 as _rec_sq
+    from config import DB_PATH as _rec_db
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_recovery_signals():
+        conn = _rec_sq.connect(_rec_db)
+        conn.execute("PRAGMA cache_size=-32000")
+        latest = conn.execute(
+            "SELECT MAX(as_of_date) FROM recovery_signals"
+        ).fetchone()[0]
+        rows = conn.execute(
+            """SELECT * FROM recovery_signals
+               WHERE as_of_date = ?""",
+            (latest,)
+        ).fetchall()
+        cols = [d[0] for d in conn.execute(
+            "SELECT * FROM recovery_signals LIMIT 0"
+        ).description]
+        conn.close()
+        df = pd.DataFrame(rows, columns=cols)
+        return df, latest
+
+    _rec_df, _rec_date = _load_recovery_signals()
+
+    # ── Stale data warning ────────────────────────────────────────
+    import datetime as _rec_dt
+    _rec_today = _rec_dt.date.today().isoformat()
+    if _rec_date != _rec_today:
+        st.warning(
+            f"⚠️ Recovery signals last computed: "
+            f"**{_rec_date}** — run signal_engine.py to refresh."
+        )
+
+    if _rec_df.empty:
+        st.info("No recovery signals found. Run signal_engine.py first.")
+        st.stop()
+
+    # Split into triggered and watchlist — match original variable names
+    _wl, _tr = (
+        _rec_df[_rec_df["list_type"] == "WATCHLIST"].copy(),
+        _rec_df[_rec_df["list_type"] == "TRIGGERED"].copy(),
+    )
+    kse_regime_ok = bool(
+        _rec_df["kse_regime_ok"].iloc[0]
+        if "kse_regime_ok" in _rec_df.columns
+        and len(_rec_df) > 0 else True
+    )
+    _regime_ok = kse_regime_ok
 
     # ── Regime warning banner ─────────────────────────────────────────────────
     if not _regime_ok:
@@ -5396,18 +5342,46 @@ elif st.session_state.page == PAGES[12]:
         "Hold until weekly close breaks below the 30-week MA."
     )
 
-    from portfolio import compute_portfolio_candidates
+    # ── Read pre-computed portfolio signals ──────────────────────
+    import sqlite3 as _port_sq
+    from config import DB_PATH as _port_db
 
-    @st.cache_data(ttl=1800, show_spinner=False)
-    def _load_portfolio():
-        return compute_portfolio_candidates(sector_df=sector_df)
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_portfolio_signals():
+        conn = _port_sq.connect(_port_db)
+        conn.execute("PRAGMA cache_size=-32000")
+        latest = conn.execute(
+            "SELECT MAX(as_of_date) FROM portfolio_signals"
+        ).fetchone()[0]
+        rows = conn.execute(
+            """SELECT * FROM portfolio_signals
+               WHERE as_of_date = ?
+               ORDER BY rank""",
+            (latest,)
+        ).fetchall()
+        cols = [d[0] for d in conn.execute(
+            "SELECT * FROM portfolio_signals LIMIT 0"
+        ).description]
+        conn.close()
+        df = pd.DataFrame(rows, columns=cols)
+        return df, latest
 
-    with st.spinner("Computing stage analysis…"):
-        port_df = _load_portfolio()
+    _port_df, _port_date = _load_portfolio_signals()
 
-    if port_df.empty:
-        st.warning("Insufficient price history to compute stage analysis. Need at least 170 trading days per symbol.")
+    # ── Stale data warning ────────────────────────────────────────
+    import datetime as _port_dt
+    _port_today = _port_dt.date.today().isoformat()
+    if _port_date != _port_today:
+        st.warning(
+            f"⚠️ Portfolio signals last computed: "
+            f"**{_port_date}** — run signal_engine.py to refresh."
+        )
+
+    if _port_df.empty:
+        st.info("No portfolio signals found. Run signal_engine.py first.")
         st.stop()
+
+    port_df = _port_df
 
     # ── Summary KPIs ─────────────────────────────────────────────────────────
     n_stage2 = len(port_df[port_df["stage"] == 2])
@@ -6486,62 +6460,90 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
 *Signals are read-only. Use **Save to Setup Perf** to track them over time.*
         """)
 
-    # ── Load prices ───────────────────────────────────────────────────────────
-    with st.spinner("Loading price data…"):
-        _mv_prices = load_stm_prices()
+    # ── Read pre-computed Minervini signals ───────────────────────
+    import sqlite3 as _mv_sq
+    from config import DB_PATH as _mv_db
 
-    if _mv_prices.empty:
-        st.error("No price data available. Run a data update first.")
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_mv_signals():
+        conn = _mv_sq.connect(_mv_db)
+        conn.execute("PRAGMA cache_size=-32000")
+        latest = conn.execute(
+            "SELECT MAX(as_of_date) FROM mv_signals"
+        ).fetchone()[0]
+        rows = conn.execute(
+            """SELECT * FROM mv_signals
+               WHERE as_of_date = ?""",
+            (latest,)
+        ).fetchall()
+        cols = [d[0] for d in conn.execute(
+            "SELECT * FROM mv_signals LIMIT 0"
+        ).description]
+        conn.close()
+        df = pd.DataFrame(rows, columns=cols)
+        for col in ("close","ema20","ema50","ema200","pivot_high",
+                    "pivot_low","bb_width","high_200d","atr_pct",
+                    "vol_ratio","rs_rating","rs_score","vol_avg20"):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        return df, latest
+
+    _mv_all, _mv_date = _load_mv_signals()
+
+    # ── Stale data warning ────────────────────────────────────────
+    import datetime as _mv_dt
+    _mv_today = _mv_dt.date.today().isoformat()
+    if _mv_date != _mv_today:
+        st.warning(
+            f"⚠️ Minervini signals last computed: "
+            f"**{_mv_date}** — run signal_engine.py to refresh."
+        )
+
+    if _mv_all.empty:
+        st.info("No Minervini signals found. Run signal_engine.py first.")
         st.stop()
 
-    @st.cache_data(ttl=3600, show_spinner=False)
-    def _load_mv_index():
-        from database import get_index_prices
-        rows = get_index_prices("KSE-100")
-        if not rows:
-            return pd.DataFrame()
-        df = pd.DataFrame(rows)
-        df["date"]  = pd.to_datetime(df["date"])
-        df["idx_close"] = pd.to_numeric(df["close"], errors="coerce")
-        return df[["date","idx_close"]].sort_values("date")
+    # Split by signal_type — match original variable names exactly
+    _mv_longs     = _mv_all[_mv_all["signal_type"] == "LONG"].copy()
+    _mv_shorts    = _mv_all[_mv_all["signal_type"] == "SHORT"].copy()
+    _mv_watchlist = _mv_all[_mv_all["signal_type"] == "WATCHLIST"].copy()
 
-    _mv_index = _load_mv_index()
-    if _mv_index.empty:
-        st.error("No index data available.")
-        st.stop()
+    # Add display columns expected by render code
+    for _df in [_mv_longs, _mv_shorts]:
+        _df["BB Width%"] = _df["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
+        _df["ATR%"]      = _df["atr_pct"].apply(lambda x: f"{x:.2f}%")
+        _df["Vol/Avg"]   = _df["vol_ratio"].apply(lambda x: f"{x:.1f}×")
+        _df["RS Rating"] = _df["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
+        _df["DFC"]       = _df["is_dfc"].map({1: "✓", 0: ""})
+    for _df in [_mv_watchlist]:
+        _df["BB Width%"]    = _df["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
+        _df["ATR%"]         = _df["atr_pct"].apply(lambda x: f"{x:.2f}%")
+        _df["Vol/Avg"]      = _df["vol_ratio"].apply(lambda x: f"{x:.1f}×")
+        _df["RS Rating"]    = _df["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
+        _df["% From Pivot"] = (
+            (_df["pivot_high"] - _df["close"]) / _df["pivot_high"] * 100
+        ).apply(lambda x: f"{x:.2f}%")
 
-    # ── Run signal engine ─────────────────────────────────────────────────────
-    with st.spinner("Computing Minervini signals across full universe…"):
-        from breakout_signal import build_features as _mv_build, get_signals as _mv_get
-        _mv_df   = _mv_build(_mv_prices, _mv_index)
+    _mv_nl = len(_mv_longs)
+    _mv_ns = len(_mv_shorts)
+    _mv_nw = len(_mv_watchlist)
 
-    _mv_latest          = _mv_df["date"].max()
-    _mv_watchlist, _mv_longs, _mv_shorts = _mv_get(_mv_df, _mv_latest)
-
-    # ── Market regime banner ──────────────────────────────────────────────────
-    _mv_idx_close = float(_mv_index[_mv_index["date"] <= _mv_latest].tail(1)["idx_close"].iloc[0])
-    _mv_idx_sma50 = float(_mv_index["idx_close"].rolling(50).mean().iloc[-1])
-    _mv_mkt_up    = _mv_idx_close > _mv_idx_sma50
-    _mv_mkt_col   = "#16a34a" if _mv_mkt_up else "#dc2626"
-    _mv_mkt_txt   = "BULL — KSE-100 above 50 SMA" if _mv_mkt_up else "BEAR — KSE-100 below 50 SMA"
+    # ── Market regime banner (from stored market_up flag) ─────────
+    _mv_mkt_up  = bool(_mv_all["market_up"].iloc[0]) if len(_mv_all) > 0 else True
+    _mv_mkt_col = "#16a34a" if _mv_mkt_up else "#dc2626"
+    _mv_mkt_txt = "BULL — KSE-100 above 50 SMA" if _mv_mkt_up else "BEAR — KSE-100 below 50 SMA"
     st.markdown(
         f'<div style="background:{"#f0fdf4" if _mv_mkt_up else "#fff5f5"};'
         f'border-left:4px solid {_mv_mkt_col};padding:8px 14px;border-radius:6px;margin-bottom:10px;">'
         f'<b style="color:{_mv_mkt_col};">Market: {_mv_mkt_txt}</b>'
-        f' &nbsp;·&nbsp; KSE-100: <b>{_mv_idx_close:,.0f}</b>'
-        f' &nbsp;·&nbsp; SMA50: <b>{_mv_idx_sma50:,.0f}</b>'
-        f' &nbsp;·&nbsp; As of: {_mv_latest.strftime("%d %b %Y")}'
+        f' &nbsp;·&nbsp; As of: <b>{_mv_date}</b>'
         f'</div>', unsafe_allow_html=True
     )
 
     # ── Gate funnel KPIs ──────────────────────────────────────────────────────
-    _mv_day      = _mv_df[_mv_df["date"] == _mv_latest]
-    _mv_total    = _mv_day["symbol"].nunique()
-    _mv_s2       = int(_mv_day["stage2"].sum())
-    _mv_bo       = int((_mv_day["stage2"] & _mv_day["bo_long"]).sum())
-    _mv_nl       = len(_mv_longs)
-    _mv_ns       = len(_mv_shorts)
-    _mv_nw       = len(_mv_watchlist)
+    _mv_total = len(_mv_all["symbol"].unique())
+    _mv_s2    = 0   # not available from pre-computed table
+    _mv_bo    = 0   # not available from pre-computed table
 
     _kc = st.columns(6)
     for _col, _lbl, _val, _clr in [
@@ -6575,13 +6577,9 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
                     "⚠ Market in BEAR regime — LONG signals require KSE-100 above SMA50.")
         else:
             _ld = _mv_longs.copy()
-            _ld["Vol/Avg"]  = _ld["vol_ratio"].apply(lambda x: f"{x:.1f}×")
-            _ld["RS Rating"]= _ld["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
-            _ld["ATR%"]     = _ld["atr_pct"].apply(lambda x: f"{x:.2f}%")
-            _ld["DFC"]      = _ld["is_dfc"].map({True: "✓", False: ""})
-            _ld["BB Width%"] = _ld["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
             _disp_cols      = ["symbol","close","ema20","ema50","ema200",
                                "pivot_high","BB Width%","ATR%","Vol/Avg","RS Rating","rs_score","DFC"]
+            _disp_cols = [c for c in _disp_cols if c in _ld.columns]
             st.dataframe(_ld[_disp_cols].rename(columns={
                 "symbol":"Symbol","close":"Close","ema20":"EMA20","ema50":"EMA50",
                 "ema200":"EMA200","pivot_high":"Pivot High","rs_score":"RS Score%"
@@ -6603,7 +6601,7 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
                 )
 
             if _mv_save_btn:
-                _date_str  = _mv_latest.strftime("%Y-%m-%d")
+                _date_str  = str(_mv_date)[:10]
                 _existing  = get_trade_setups()
                 _ex_keys   = {
                     (r.get("symbol",""), str(r.get("created_date",""))[:10], r.get("source",""))
@@ -6645,12 +6643,9 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
                     "⚠ Market in BULL regime — SHORT signals require KSE-100 below SMA50.")
         else:
             _sd = _mv_shorts.copy()
-            _sd["Vol/Avg"]  = _sd["vol_ratio"].apply(lambda x: f"{x:.1f}×")
-            _sd["RS Rating"]= _sd["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
-            _sd["ATR%"]     = _sd["atr_pct"].apply(lambda x: f"{x:.2f}%")
-            _sd["BB Width%"] = _sd["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
             _sd_cols        = ["symbol","close","ema20","ema50","ema200",
                                "pivot_low","BB Width%","ATR%","Vol/Avg","RS Rating","rs_score"]
+            _sd_cols = [c for c in _sd_cols if c in _sd.columns]
             st.dataframe(_sd[_sd_cols].rename(columns={
                 "symbol":"Symbol","close":"Close","ema20":"EMA20","ema50":"EMA50",
                 "ema200":"EMA200","pivot_low":"Pivot Low","rs_score":"RS Score%"
@@ -6661,12 +6656,8 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
             st.info("No watchlist candidates today.")
         else:
             _wd = _mv_watchlist.copy()
-            _wd["% From Pivot"] = ((_wd["pivot_high"] - _wd["close"]) / _wd["pivot_high"] * 100).apply(lambda x: f"{x:.2f}%")
-            _wd["Vol/Avg"]      = _wd["vol_ratio"].apply(lambda x: f"{x:.1f}×")
-            _wd["RS Rating"]    = _wd["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
-            _wd["ATR%"]         = _wd["atr_pct"].apply(lambda x: f"{x:.2f}%")
-            _wd["BB Width%"]    = _wd["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
-            _wdisp_cols         = ["symbol","close","% From Pivot","pivot_high","BB Width%","ATR%","Vol/Avg","RS Rating"]
+            _wdisp_cols = ["symbol","close","% From Pivot","pivot_high","BB Width%","ATR%","Vol/Avg","RS Rating"]
+            _wdisp_cols = [c for c in _wdisp_cols if c in _wd.columns]
             st.dataframe(_wd[_wdisp_cols].rename(columns={
                 "symbol":"Symbol","close":"Close","pivot_high":"Pivot High"
             }), use_container_width=True, hide_index=True)
@@ -6939,98 +6930,6 @@ _Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.8
     _ld_conn.close()
 
 elif cur == PAGES[19]:  # Setup History
-    import sqlite3 as _sh_sqlite3
-    from config import DB_PATH as _sh_db
-
-    @st.cache_data(ttl=3600, show_spinner=False)
-    def _sh_load_filter_opts():
-        conn = _sh_sqlite3.connect(_sh_db)
-        regimes = [r[0] for r in conn.execute(
-            "SELECT DISTINCT regime FROM setup_log "
-            "WHERE regime IS NOT NULL ORDER BY regime"
-        ).fetchall()]
-        sectors = [s[0] for s in conn.execute(
-            "SELECT DISTINCT sector FROM setup_log "
-            "WHERE sector IS NOT NULL ORDER BY sector"
-        ).fetchall()]
-        conn.close()
-        return regimes, sectors
-
-    @st.cache_data(ttl=3600, show_spinner=False)
-    def _sh_load_perf(regime, sector, setup_type):
-        q = """
-            SELECT
-                setup_type, regime, sector,
-                COUNT(*) AS total,
-                SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END) AS winners,
-                SUM(CASE WHEN outcome_label='LOSER'  THEN 1 ELSE 0 END) AS losers,
-                SUM(CASE WHEN outcome_label='BREAKEVEN' THEN 1 ELSE 0 END) AS breakevens,
-                ROUND(AVG(fwd_return_5d), 2)  AS avg_5d,
-                ROUND(AVG(fwd_return_10d), 2) AS avg_10d,
-                ROUND(AVG(fwd_return_20d), 2) AS avg_20d,
-                ROUND(
-                    SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END)
-                    * 100.0 / COUNT(*), 1
-                ) AS win_pct
-            FROM setup_log
-            WHERE outcome_label IS NOT NULL
-        """
-        params = []
-        if regime != 'All':
-            q += " AND regime = ?"
-            params.append(regime)
-        if sector != 'All':
-            q += " AND sector = ?"
-            params.append(sector)
-        if setup_type != 'All':
-            q += " AND setup_type = ?"
-            params.append(setup_type)
-        q += " GROUP BY setup_type, regime, sector ORDER BY win_pct DESC"
-        conn = _sh_sqlite3.connect(_sh_db)
-        rows = conn.execute(q, params).fetchall()
-        conn.close()
-        return rows
-
-    @st.cache_data(ttl=3600, show_spinner=False)
-    def _sh_load_symbol(symbol):
-        conn = _sh_sqlite3.connect(_sh_db)
-        summary = conn.execute(
-            """
-            SELECT
-                COUNT(*) AS total_appearances,
-                SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END) AS winners,
-                SUM(CASE WHEN outcome_label='LOSER'  THEN 1 ELSE 0 END) AS losers,
-                SUM(CASE WHEN outcome_label='BREAKEVEN' THEN 1 ELSE 0 END) AS breakevens,
-                ROUND(AVG(fwd_return_10d), 2) AS avg_10d,
-                ROUND(
-                    SUM(CASE WHEN outcome_label='WINNER' THEN 1 ELSE 0 END)
-                    * 100.0 /
-                    NULLIF(COUNT(CASE WHEN outcome_label IS NOT NULL THEN 1 END), 0),
-                    1
-                ) AS win_pct
-            FROM setup_log
-            WHERE symbol = ? AND outcome_label IS NOT NULL
-            """,
-            (symbol,)
-        ).fetchone()
-        rows = conn.execute(
-            """
-            SELECT
-                setup_date, setup_type, regime, sector,
-                rs_rank, sector_rs_rank, rank_change,
-                rs_score_20, base_tightness, pivot_distance_pct,
-                bos_flag, fwd_return_5d, fwd_return_10d,
-                fwd_return_20d, outcome_label
-            FROM setup_log
-            WHERE symbol = ?
-            ORDER BY setup_date DESC
-            LIMIT 500
-            """,
-            (symbol,)
-        ).fetchall()
-        conn.close()
-        return summary, rows
-
     st.header('📋 Setup History')
     tab1, tab2 = st.tabs(['📊 Screen Performance', '🔍 Stock Lookup'])
 

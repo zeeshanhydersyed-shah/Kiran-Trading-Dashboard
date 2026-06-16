@@ -386,6 +386,127 @@ def get_sector_price_data() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_sector_price_data_1y() -> list[dict]:
+    """
+    Sector × prices for the last 365 calendar days (≈252 trading days).
+    Used by load_sector_history() for the History page display window.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.symbol, s.sector, p.date,
+                   COALESCE(p.open, p.close)  AS open,
+                   COALESCE(p.high, p.close)  AS high,
+                   COALESCE(p.low,  p.close)  AS low,
+                   p.close,
+                   COALESCE(p.volume, 0)      AS volume
+            FROM sectors s
+            JOIN prices p ON p.symbol = s.symbol
+            WHERE p.date >= date('now', '-365 days')
+            ORDER BY s.symbol, p.date
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_sector_price_data_300d() -> list[dict]:
+    """
+    Sector × prices for the last 420 calendar days (≈300 trading days).
+    Used by _run_recovery_screener() — matches its internal cutoff.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.symbol, s.sector, p.date,
+                   COALESCE(p.open, p.close)  AS open,
+                   COALESCE(p.high, p.close)  AS high,
+                   COALESCE(p.low,  p.close)  AS low,
+                   p.close,
+                   COALESCE(p.volume, 0)      AS volume
+            FROM sectors s
+            JOIN prices p ON p.symbol = s.symbol
+            WHERE p.date >= date('now', '-420 days')
+            ORDER BY s.symbol, p.date
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_sector_price_data_60d() -> list[dict]:
+    """
+    Sector × prices for the last 90 calendar days (≈60 trading days).
+    Used by load_stm_prices() — matches its internal tail(60) truncation.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.symbol, s.sector, p.date,
+                   COALESCE(p.open, p.close)  AS open,
+                   COALESCE(p.high, p.close)  AS high,
+                   COALESCE(p.low,  p.close)  AS low,
+                   p.close,
+                   COALESCE(p.volume, 0)      AS volume
+            FROM sectors s
+            JOIN prices p ON p.symbol = s.symbol
+            WHERE p.date >= date('now', '-90 days')
+            ORDER BY s.symbol, p.date
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_sector_price_data_300d_active() -> list[dict]:
+    """
+    Sector × prices for active symbols only,
+    last 420 calendar days (≈300 trading days).
+    Used by signal_engine.run_recovery_signals().
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.symbol, s.sector, p.date,
+                   COALESCE(p.open, p.close)  AS open,
+                   COALESCE(p.high, p.close)  AS high,
+                   COALESCE(p.low,  p.close)  AS low,
+                   p.close,
+                   COALESCE(p.volume, 0)      AS volume
+            FROM sectors s
+            JOIN prices p  ON p.symbol  = s.symbol
+            JOIN stock_metadata sm ON sm.symbol = s.symbol
+            WHERE sm.is_active = 1
+            AND p.date >= date('now', '-420 days')
+            ORDER BY s.symbol, p.date
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_sector_price_data_60d_active() -> list[dict]:
+    """
+    Sector × prices for active symbols only,
+    last 90 calendar days (≈60 trading days).
+    Used by signal_engine.run_stm_signals().
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.symbol, s.sector, p.date,
+                   COALESCE(p.open, p.close)  AS open,
+                   COALESCE(p.high, p.close)  AS high,
+                   COALESCE(p.low,  p.close)  AS low,
+                   p.close,
+                   COALESCE(p.volume, 0)      AS volume
+            FROM sectors s
+            JOIN prices p  ON p.symbol  = s.symbol
+            JOIN stock_metadata sm ON sm.symbol = s.symbol
+            WHERE sm.is_active = 1
+            AND p.date >= date('now', '-90 days')
+            ORDER BY s.symbol, p.date
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_prices_for_breadth() -> list[dict]:
     """Return all symbol/date/close rows for Weinstein breadth computation."""
     with get_conn() as conn:

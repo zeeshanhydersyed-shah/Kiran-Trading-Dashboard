@@ -39,8 +39,10 @@ def _get_price_history() -> pd.DataFrame:
         rows = conn.execute(
             f"""SELECT p.symbol, s.sector, p.date, p.close
                 FROM prices p
-                JOIN sectors s ON s.symbol = p.symbol
-                WHERE s.sector NOT IN ({excl_ph})
+                JOIN sectors s  ON s.symbol  = p.symbol
+                JOIN stock_metadata sm ON sm.symbol = p.symbol
+                WHERE sm.is_active = 1
+                  AND s.sector NOT IN ({excl_ph})
                   AND p.close IS NOT NULL AND p.close > 0
                 ORDER BY p.symbol, p.date""",
             list(EXCLUDED_SECTORS),
