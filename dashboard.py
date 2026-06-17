@@ -6692,10 +6692,12 @@ elif cur == PAGES[18]:  # Leaders
 
     st.markdown("### 🏆 Leaders — Stock Signal Board")
 
-    _ld_tab_rs, _ld_tab_pre, _ld_tab_bos = st.tabs([
+    _ld_tab_rs, _ld_tab_pre, _ld_tab_bos, _ld_tab_scan, _ld_tab_radar = st.tabs([
         "🏆 RS Leaders",
         "🎯 Pre-Breakout",
-        "🚀 Breakouts"
+        "🚀 Breakouts",
+        "🔬 Deep Scan",
+        "📡 Radar"
     ])
 
     # ── shared query: latest date ──────────────────────────────────────────
@@ -6950,6 +6952,600 @@ _Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.8
                 }),
                 use_container_width=True, hide_index=True
             )
+
+    # ── Tab 4: Deep Scan ──────────────────────────────────────────────────────
+    with _ld_tab_scan:
+        _ds_scan_date = _ld_conn.execute(
+            "SELECT MAX(scan_date) FROM leaders_scan"
+        ).fetchone()[0]
+
+        if not _ds_scan_date:
+            st.info("No deep scan data yet — will populate after next pipeline run.")
+        else:
+            st.markdown(f"**Deep Scan — {_ds_scan_date}** &nbsp;|&nbsp; "
+                        f"Coiled bases · SL ≤ 7% · Penalty-adjusted scoring · "
+                        f"Min score 8 to appear")
+
+            _ds_picks_tab, _ds_audit_tab = st.tabs(["📌 Today's Picks", "📋 Audit Trail"])
+
+            # ── helper: render one pick card ──────────────────────────────────
+            def _ds_render_pick(row, setup_type):
+                sym         = row['symbol']
+                sector      = row['sector']
+                sec_rank    = row['sector_rank']
+                entry       = row['entry_trigger']
+                sl          = row['stop_loss']
+                sl_pct      = row['sl_pct']
+                vr          = row['vol_ratio_today']
+                rank        = int(row['rank'])
+                flag_txt    = row['flag'] if pd.notna(row.get('flag','')) and row.get('flag') else None
+
+                rs_infl     = int(row.get('rs_inflection', 0) or 0)
+                rs20        = row.get('rs_score_20')
+                rs50        = row.get('rs_score_50')
+                rank_chg    = row.get('rank_change')
+                bt          = row.get('base_tightness')
+                overhead    = row.get('nearest_overhead_pct')
+                avg_vol     = row.get('avg_vol_10d')
+                vol_rej     = int(row.get('vol_rejection_flag', 0) or 0)
+                breadth     = row.get('breadth_score')
+                pivot_dist  = row.get('pivot_distance_pct')
+                final_score = row.get('final_score')
+
+                # ── rank badge colours ────────────────────────────────────────
+                _badge_colours = {1: ('#EAF3DE','#3B6D11'),
+                                  2: ('#E6F1FB','#185FA5'),
+                                  3: ('#FAEEDA','#854F0B')}
+                bg, fg = _badge_colours.get(rank, ('#F1EFE8','#5F5E5A'))
+
+                # ── subtitle line ─────────────────────────────────────────────
+                if setup_type == 'PRE_BREAKOUT':
+                    subtitle = (f"{sector} &nbsp;·&nbsp; pivot `{entry:.2f}` &nbsp;·&nbsp; "
+                                f"close `{entry*(1-pivot_dist/100):.2f}` (−{pivot_dist:.2f}%)")
+                else:
+                    subtitle = (f"{sector} &nbsp;·&nbsp; breakout above `{sl:.2f}` &nbsp;·&nbsp; "
+                                f"close `{entry:.2f}` (+{pivot_dist:.2f}%)")
+
+                # ── factor descriptions ───────────────────────────────────────
+                _infl_txt = ", **rs_inflection today**" if rs_infl else ""
+                _bread_txt = f", {breadth:.0f}% breadth" if pd.notna(breadth or float('nan')) else ""
+                fA = f"Rank {sec_rank}/23{_infl_txt}{_bread_txt}"
+
+                _rc_txt  = f"rank_change {rank_chg:+d}" if pd.notna(rank_chg or float('nan')) else "—"
+                _r50_txt = f"RS50 {rs50:+.1f}" if pd.notna(rs50 or float('nan')) else ""
+                fB = f"{_rc_txt}" + (f", {_r50_txt}" if _r50_txt else "")
+
+                _bt_txt = f"{bt:.2f}% BBW" if pd.notna(bt or float('nan')) else "—"
+                fC = _bt_txt
+
+                _vr_txt = f"{vr:.1f}× today" if pd.notna(vr or float('nan')) else "—"
+                _rej_txt = " — **vol rejection**" if vol_rej else ""
+                fD = f"{_vr_txt}{_rej_txt}"
+
+                if overhead is None or not pd.notna(overhead):
+                    fE, grade_E = "Clean — no supply above pivot", "ok"
+                elif overhead < 3:
+                    fE, grade_E = f"**{overhead:.1f}% above pivot** — tight ceiling", "warn"
+                else:
+                    fE, grade_E = f"{overhead:.1f}% above pivot", "mid"
+
+                if pd.notna(avg_vol or float('nan')):
+                    if avg_vol >= 1_500_000:
+                        fF, grade_F = f"{avg_vol/1e6:.1f}M avg — full size", "ok"
+                    elif avg_vol >= 500_000:
+                        fF, grade_F = f"{avg_vol/1e3:.0f}K avg — half size", "mid"
+                    else:
+                        fF, grade_F = f"{avg_vol/1e3:.0f}K avg — thin", "warn"
+                else:
+                    fF, grade_F = "—", "mid"
+
+                # ── entry note ────────────────────────────────────────────────
+                if setup_type == 'PRE_BREAKOUT':
+                    _entry_note = (
+                        f"**Entry trigger:** daily close above `{entry:.2f}` on volume. "
+                        f"SL `{sl:.2f}` ({sl_pct:.1f}%). "
+                        + (f"*{flag_txt}*" if flag_txt else "")
+                    )
+                else:
+                    _entry_note = (
+                        f"**Breakout confirmed.** Buy at market or limit near `{entry:.2f}`. "
+                        f"SL at pivot `{sl:.2f}` ({sl_pct:.1f}% risk). "
+                        + (f"*{flag_txt}*" if flag_txt else "")
+                    )
+
+                # ── render ────────────────────────────────────────────────────
+                _border = "2px solid #1D9E75" if not flag_txt else "2px solid #EF9F27"
+                st.markdown(
+                    f'<div style="border-left:{_border}; padding:4px 0 4px 12px; margin-bottom:4px;">'
+                    f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+                    f'width:24px;height:24px;border-radius:50%;background:{bg};color:{fg};'
+                    f'font-size:13px;font-weight:500;margin-right:8px;">#{rank}</span>'
+                    f'<span style="font-size:18px;font-weight:500;">{sym}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                st.markdown(subtitle, unsafe_allow_html=True)
+
+                # metric chips
+                _mc1, _mc2, _mc3, _mc4, _mc5, _mc6 = st.columns(6)
+                _mc1.metric("Sector rank", f"{sec_rank}/23")
+                _mc2.metric("RS inflection", "Yes" if rs_infl else "No")
+                _mc3.metric("BBW", f"{bt:.2f}%" if pd.notna(bt or float('nan')) else "—")
+                _mc4.metric("RS50", f"{rs50:+.1f}" if pd.notna(rs50 or float('nan')) else "—")
+                _mc5.metric("Vol today", f"{vr:.1f}×" if pd.notna(vr or float('nan')) else "—")
+                _mc6.metric("Score", f"{int(final_score)}" if pd.notna(final_score or float('nan')) else "—")
+
+                # factor grid — 2 rows × 3 cols
+                def _fbox(label, text, grade):
+                    _colours = {'ok':'#EAF3DE','warn':'#FCEBEB','mid':'#FAEEDA'}
+                    _borders = {'ok':'#1D9E75','warn':'#E24B4A','mid':'#EF9F27'}
+                    bg_ = _colours.get(grade,'#F1EFE8')
+                    bd_ = _borders.get(grade,'#888780')
+                    return (
+                        f'<div style="background:{bg_};border-left:3px solid {bd_};'
+                        f'border-radius:4px;padding:6px 8px;font-size:12px;">'
+                        f'<div style="color:#5F5E5A;font-size:10px;text-transform:uppercase;'
+                        f'letter-spacing:.04em;margin-bottom:2px;">{label}</div>'
+                        f'<div>{text}</div></div>'
+                    )
+
+                _grade_A = 'ok' if sec_rank and sec_rank <= 8 else ('warn' if sec_rank and sec_rank > 12 else 'mid')
+                _grade_B = 'ok' if (rank_chg or 0) > 0 and (rs50 or 0) < 10 else ('warn' if (rank_chg or 0) < -20 else 'mid')
+                _grade_C = 'ok' if (bt or 10) < 6 else 'mid'
+                _grade_D = 'warn' if vol_rej else ('ok' if (vr or 0) > 2 else 'mid')
+
+                _gc1, _gc2, _gc3 = st.columns(3)
+                _gc1.markdown(_fbox("A. Sector", fA, _grade_A), unsafe_allow_html=True)
+                _gc2.markdown(_fbox("B. RS trajectory", fB, _grade_B), unsafe_allow_html=True)
+                _gc3.markdown(_fbox("C. Base", fC, _grade_C), unsafe_allow_html=True)
+
+                _gc4, _gc5, _gc6 = st.columns(3)
+                _gc4.markdown(_fbox("D. Volume", fD, _grade_D), unsafe_allow_html=True)
+                _gc5.markdown(_fbox("E. Overhead", fE, grade_E), unsafe_allow_html=True)
+                _gc6.markdown(_fbox("F. Liquidity", fF, grade_F), unsafe_allow_html=True)
+
+                st.markdown(_entry_note)
+                st.divider()
+
+            # ── Today's Picks ─────────────────────────────────────────────────
+            with _ds_picks_tab:
+                # Join top_picks with scan detail + sector breadth
+                _ds_all_picks = pd.read_sql_query("""
+                    SELECT lp.rank, lp.setup_type, lp.symbol, lp.sector, lp.sector_rank,
+                           lp.entry_trigger, lp.stop_loss, lp.sl_pct,
+                           lp.vol_ratio_today, lp.key_reason, lp.flag,
+                           ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+                           ls.base_tightness, ls.rs_inflection, ls.vol_rejection_flag,
+                           ls.nearest_overhead_pct, ls.avg_vol_10d,
+                           ls.pivot_distance_pct, ls.final_score,
+                           sec.breadth_score
+                    FROM leaders_top_picks lp
+                    JOIN leaders_scan ls
+                        ON ls.scan_date = lp.scan_date
+                       AND ls.setup_type = lp.setup_type
+                       AND ls.symbol = lp.symbol
+                    LEFT JOIN sector_signals sec
+                        ON sec.sector = lp.sector AND sec.date = lp.scan_date
+                    WHERE lp.scan_date = ?
+                    ORDER BY lp.setup_type DESC, lp.rank ASC
+                """, _ld_conn, params=(_ds_scan_date,))
+
+                for _ds_type, _ds_label, _ds_icon in [
+                    ("PRE_BREAKOUT", "Pre-Breakout", "🎯"),
+                    ("BREAKOUT",     "Breakout",     "🚀"),
+                ]:
+                    st.markdown(f"#### {_ds_icon} {_ds_label} Picks")
+                    _ds_subset = _ds_all_picks[_ds_all_picks['setup_type'] == _ds_type]
+                    if _ds_subset.empty:
+                        st.info(f"No qualifying {_ds_label.lower()} picks today.")
+                    else:
+                        for _, _r in _ds_subset.iterrows():
+                            _ds_render_pick(_r.to_dict(), _ds_type)
+
+            # ── Audit Trail ───────────────────────────────────────────────────
+            with _ds_audit_tab:
+                st.caption("Picks from ≥10 days ago with outcomes filled. "
+                           "'NOT_TRIGGERED' = pre-breakout pivot was never hit in 20 sessions.")
+
+                _ds_audit = pd.read_sql_query("""
+                    SELECT scan_date, setup_type, rank, symbol, sector,
+                           entry_trigger, sl_pct,
+                           triggered, trigger_date,
+                           fwd_return_5d, fwd_return_10d, fwd_return_20d,
+                           outcome_label, key_reason, flag
+                    FROM leaders_top_picks
+                    WHERE scan_date <= date('now', '-10 days')
+                    ORDER BY scan_date DESC, setup_type, rank
+                """, _ld_conn)
+
+                if _ds_audit.empty:
+                    st.info("Audit data builds up after 10 days. Check back then.")
+                else:
+                    _ds_audit_disp = _ds_audit.copy()
+
+                    def _ds_color_outcome(val):
+                        if val == 'WINNER':
+                            return 'background-color:#1a472a; color:white; font-weight:bold'
+                        if val == 'LOSER':
+                            return 'background-color:#6b1c1c; color:white'
+                        if val == 'NOT_TRIGGERED':
+                            return 'color:#888'
+                        return ''
+
+                    _ds_audit_disp['entry_trigger'] = _ds_audit_disp['entry_trigger'].apply(
+                        lambda x: f"{x:.2f}")
+                    _ds_audit_disp['sl_pct'] = _ds_audit_disp['sl_pct'].apply(
+                        lambda x: f"{x:.1f}%")
+                    _ds_audit_disp['fwd_return_5d'] = _ds_audit_disp['fwd_return_5d'].apply(
+                        lambda x: f"{x:+.1f}%" if pd.notna(x) else "—")
+                    _ds_audit_disp['fwd_return_10d'] = _ds_audit_disp['fwd_return_10d'].apply(
+                        lambda x: f"{x:+.1f}%" if pd.notna(x) else "—")
+                    _ds_audit_disp['fwd_return_20d'] = _ds_audit_disp['fwd_return_20d'].apply(
+                        lambda x: f"{x:+.1f}%" if pd.notna(x) else "—")
+                    _ds_audit_disp['triggered'] = _ds_audit_disp['triggered'].apply(
+                        lambda x: "Yes" if x == 1 else ("No" if x == 0 else "—"))
+
+                    _ds_styled = _ds_audit_disp.style.map(
+                        _ds_color_outcome, subset=["outcome_label"]
+                    )
+                    st.dataframe(
+                        _ds_styled[[
+                            'scan_date', 'setup_type', 'rank', 'symbol', 'sector',
+                            'entry_trigger', 'sl_pct', 'triggered', 'trigger_date',
+                            'fwd_return_5d', 'fwd_return_10d', 'fwd_return_20d',
+                            'outcome_label'
+                        ]].rename(columns={
+                            'scan_date':      'Date',
+                            'setup_type':     'Type',
+                            'rank':           'Rank',
+                            'symbol':         'Symbol',
+                            'sector':         'Sector',
+                            'entry_trigger':  'Entry',
+                            'sl_pct':         'SL%',
+                            'triggered':      'Triggered',
+                            'trigger_date':   'Trigger Date',
+                            'fwd_return_5d':  'Ret 5d',
+                            'fwd_return_10d': 'Ret 10d',
+                            'fwd_return_20d': 'Ret 20d',
+                            'outcome_label':  'Outcome',
+                        }),
+                        use_container_width=True, hide_index=True
+                    )
+
+                    # Summary stats — only rows that triggered
+                    _ds_triggered = _ds_audit[_ds_audit['triggered'] == 1].copy()
+                    if not _ds_triggered.empty and _ds_triggered['outcome_label'].isin(
+                            ['WINNER', 'LOSER', 'BREAKEVEN']).any():
+                        _ds_closed = _ds_triggered[
+                            _ds_triggered['outcome_label'].isin(['WINNER', 'LOSER', 'BREAKEVEN'])
+                        ]
+                        _ds_wins  = (_ds_closed['outcome_label'] == 'WINNER').sum()
+                        _ds_total = len(_ds_closed)
+                        _ds_wr    = _ds_wins / _ds_total * 100 if _ds_total else 0
+                        _ds_avg10 = _ds_closed['fwd_return_10d'].mean()
+                        _ds_c1, _ds_c2, _ds_c3 = st.columns(3)
+                        _ds_c1.metric("Picks closed", _ds_total)
+                        _ds_c2.metric("Win rate (10d)", f"{_ds_wr:.0f}%")
+                        _ds_c3.metric("Avg 10d return",
+                                      f"{_ds_avg10:+.1f}%" if pd.notna(_ds_avg10) else "—")
+
+    # ── Tab 5: Pre-Breakout Radar ─────────────────────────────────────────────
+    with _ld_tab_radar:
+        _rd_date = _ld_conn.execute(
+            "SELECT MAX(scan_date) FROM leaders_scan"
+        ).fetchone()[0]
+
+        if not _rd_date:
+            st.info("No radar data yet — run the pipeline first.")
+        else:
+            # ── Load all PRE_BREAKOUT candidates ──────────────────────────────
+            _rd_cands = pd.read_sql_query("""
+                SELECT ls.symbol, ls.sector, ls.sector_rank, ls.rs_rank,
+                       ls.sector_rs_rank, ls.rs_score_20, ls.rs_score_50,
+                       ls.rank_change, ls.avg_vol_10d, ls.base_tightness,
+                       ls.pivot_distance_pct, ls.pivot_high, ls.vol_ratio_today,
+                       ls.vol_rejection_flag, ls.rs_inflection, ls.nearest_overhead_pct,
+                       ls.sector_composite, ls.raw_score, ls.penalty, ls.final_score,
+                       ls.flag, ls.entry_trigger, ls.stop_loss, ls.sl_pct,
+                       sec.breadth_score, sec.regime
+                FROM leaders_scan ls
+                LEFT JOIN sector_signals sec
+                    ON sec.sector = ls.sector AND sec.date = ls.scan_date
+                WHERE ls.scan_date = ? AND ls.setup_type = 'PRE_BREAKOUT'
+                ORDER BY ls.final_score DESC
+            """, _ld_conn, params=(_rd_date,))
+
+            # ── Load BREAKOUT candidates ──────────────────────────────────────
+            _rd_bos = pd.read_sql_query("""
+                SELECT ls.symbol, ls.sector, ls.sector_rank, ls.rs_rank,
+                       ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+                       ls.avg_vol_10d, ls.base_tightness, ls.pivot_distance_pct,
+                       ls.pivot_high, ls.vol_ratio_today, ls.vol_rejection_flag,
+                       ls.rs_inflection, ls.nearest_overhead_pct,
+                       ls.sector_composite, ls.final_score, ls.flag,
+                       ls.entry_trigger, ls.stop_loss, ls.sl_pct,
+                       sec.breadth_score, sec.regime
+                FROM leaders_scan ls
+                LEFT JOIN sector_signals sec
+                    ON sec.sector = ls.sector AND sec.date = ls.scan_date
+                WHERE ls.scan_date = ? AND ls.setup_type = 'BREAKOUT'
+                ORDER BY ls.final_score DESC
+            """, _ld_conn, params=(_rd_date,))
+
+            _rd_n = len(_rd_cands) + len(_rd_bos)
+            _rd_regime = _rd_cands['regime'].iloc[0] if not _rd_cands.empty and pd.notna(_rd_cands['regime'].iloc[0]) else "—"
+
+            st.markdown(
+                f"**Pre-Breakout Radar — {_rd_date}** &nbsp;|&nbsp; "
+                f"{_rd_n} candidates · 5-factor conviction scoring · "
+                f"data pulled from psx_data.db &nbsp;&nbsp;"
+                f"<span style='float:right;background:#EAF3DE;color:#1D6B3E;padding:2px 8px;"
+                f"border-radius:4px;font-size:12px;'>{_rd_regime}</span>",
+                unsafe_allow_html=True
+            )
+            st.divider()
+
+            # ── STEP 1: Full candidate list ───────────────────────────────────
+            st.markdown("#### Step 1 — Full Candidate List")
+
+            def _rd_score_color(val):
+                if val >= 10: return "background-color:#C6E8C2"
+                if val >= 8:  return "background-color:#FFF3C4"
+                if val >= 5:  return "background-color:#FFE0B2"
+                return "background-color:#FECDD3"
+
+            if not _rd_cands.empty:
+                _rd_step1 = _rd_cands[['symbol','sector','rs_rank','sector_rank',
+                                        'rs_score_20','avg_vol_10d','base_tightness',
+                                        'pivot_distance_pct','sector_composite','final_score']].copy()
+                _rd_step1.columns = ['Symbol','Sector','RS Rank','Sec Rank',
+                                      'RS20','Avg Vol 10d','BBW%','Pivot Dist%',
+                                      'Sector Score','Conviction']
+                _rd_step1['Avg Vol 10d'] = (_rd_step1['Avg Vol 10d'] / 1e3).round(0).astype(int).astype(str) + 'K'
+                _rd_step1['BBW%']        = _rd_step1['BBW%'].round(2)
+                _rd_step1['Pivot Dist%'] = _rd_step1['Pivot Dist%'].round(2)
+                _rd_step1['RS20']        = _rd_step1['RS20'].round(2)
+                _rd_step1['Sector Score']= _rd_step1['Sector Score'].round(2)
+                st.dataframe(
+                    _rd_step1.style.map(
+                        _rd_score_color, subset=['Conviction']
+                    ),
+                    use_container_width=True, hide_index=True
+                )
+            else:
+                st.info("No PRE_BREAKOUT candidates today.")
+
+            if not _rd_bos.empty:
+                st.markdown("**Breakout candidates**")
+                _rd_step1b = _rd_bos[['symbol','sector','rs_rank','sector_rank',
+                                       'rs_score_20','avg_vol_10d','base_tightness',
+                                       'pivot_distance_pct','sector_composite','final_score']].copy()
+                _rd_step1b.columns = ['Symbol','Sector','RS Rank','Sec Rank',
+                                       'RS20','Avg Vol 10d','BBW%','Pivot Dist%',
+                                       'Sector Score','Conviction']
+                _rd_step1b['Avg Vol 10d'] = (_rd_step1b['Avg Vol 10d'] / 1e3).round(0).astype(int).astype(str) + 'K'
+                st.dataframe(
+                    _rd_step1b.style.map(
+                        _rd_score_color, subset=['Conviction']
+                    ),
+                    use_container_width=True, hide_index=True
+                )
+
+            st.divider()
+
+            # ── STEP 2: Sector health snapshot ───────────────────────────────
+            st.markdown("#### Step 2 — Sector Health Snapshot (all candidate sectors, today)")
+
+            _rd_all_sectors = list(_rd_cands['sector'].unique()) + list(_rd_bos['sector'].unique())
+            _rd_all_sectors = list(dict.fromkeys(_rd_all_sectors))
+
+            if _rd_all_sectors:
+                _rd_sec_rows = pd.read_sql_query("""
+                    SELECT ss.sector, ss.composite_score AS composite, ss.breadth_score, ss.rs_rank,
+                           ss.rs_inflection, ss.regime,
+                           RANK() OVER (ORDER BY ss.composite_score DESC) AS rank_today
+                    FROM sector_signals ss
+                    WHERE ss.date = ?
+                    ORDER BY rank_today
+                """, _ld_conn, params=(_rd_date,))
+                _rd_sec_rows = _rd_sec_rows[_rd_sec_rows['sector'].isin(_rd_all_sectors)]
+
+                # Generate trajectory text from 30-day sector history
+                def _rd_trajectory(sector, composite_today):
+                    hist = _ld_conn.execute("""
+                        SELECT composite_score FROM sector_signals
+                        WHERE sector=? AND date < ?
+                        ORDER BY date DESC LIMIT 30
+                    """, (sector, _rd_date)).fetchall()
+                    if not hist: return "—"
+                    vals = [r[0] for r in hist if r[0] is not None]
+                    if not vals: return "—"
+                    avg30 = sum(vals) / len(vals)
+                    trend = composite_today - vals[0] if vals else 0
+                    days_top5 = sum(1 for v in vals if v > 0.55)
+                    if days_top5 >= 20:    return f"Sustained leader {days_top5}+ days"
+                    if trend > 0.05:       return "Sharp re-acceleration today"
+                    if trend > 0.02:       return "Advancing steadily"
+                    if composite_today > avg30 and trend > 0: return "Building momentum"
+                    if composite_today < avg30 and trend < 0: return "Declining trend"
+                    if abs(trend) < 0.01:  return "Consolidating"
+                    return "Mixed — monitor"
+
+                _rd_sec_display = _rd_sec_rows.copy()
+                _rd_sec_display['Trajectory (30d)'] = _rd_sec_display.apply(
+                    lambda r: _rd_trajectory(r['sector'], r['composite']), axis=1
+                )
+                _rd_sec_display['RS Inflection'] = _rd_sec_display['rs_inflection'].apply(
+                    lambda x: "YES" if x == 1 else "No"
+                )
+                _rd_sec_display = _rd_sec_display.rename(columns={
+                    'rank_today': 'Rank', 'sector': 'Sector',
+                    'composite': 'Composite', 'breadth_score': 'Breadth%',
+                    'rs_rank': 'RS Rank', 'regime': 'Regime'
+                })[['Rank','Sector','Composite','Breadth%','RS Rank','RS Inflection','Regime','Trajectory (30d)']]
+                _rd_sec_display['Composite'] = _rd_sec_display['Composite'].round(3)
+                st.dataframe(_rd_sec_display, use_container_width=True, hide_index=True)
+
+            st.divider()
+
+            # ── STEP 4: Honest factor scores ─────────────────────────────────
+            st.markdown("#### Step 4 — Honest Factor Scores (A–F) per Candidate")
+
+            def _rd_factor_row(r):
+                sym = r['symbol']
+
+                # A. Sector
+                sr = r['sector_rank']
+                ri = int(r['rs_inflection'] or 0)
+                br = r['breadth_score']
+                a_parts = [f"Rank {sr}/23"]
+                if ri: a_parts.append("rs_inflection today")
+                if pd.notna(br): a_parts.append(f"{br:.0f}% breadth")
+                fA = ", ".join(a_parts)
+                gA = "ok" if sr <= 8 else ("warn" if sr > 12 else "mid")
+
+                # B. RS trajectory
+                rc = r['rank_change']
+                r50 = r['rs_score_50']
+                if pd.notna(rc) and pd.notna(r50):
+                    fB = f"{rc:+d} rank, RS50 {r50:+.1f}"
+                    gB = "ok" if rc > 0 and r50 < 10 else ("warn" if rc < -20 else "mid")
+                elif pd.notna(rc):
+                    fB, gB = f"{rc:+d} rank", ("ok" if rc > 0 else "warn")
+                else:
+                    fB, gB = "—", "mid"
+
+                # C. Base
+                bt = r['base_tightness']
+                fC = f"{bt:.2f}% BBW" if pd.notna(bt) else "—"
+                gC = "ok" if (bt or 10) < 6 else "mid"
+
+                # D. Volume
+                vr = r['vol_ratio_today']
+                vrej = int(r['vol_rejection_flag'] or 0)
+                fD = (f"{vr:.1f}x today" if pd.notna(vr) else "—") + (" — REJECTION" if vrej else "")
+                gD = "warn" if vrej else ("ok" if (vr or 0) > 2 else "mid")
+
+                # E. Overhead
+                oh = r['nearest_overhead_pct']
+                if not pd.notna(oh):
+                    fE, gE = "Clean above pivot", "ok"
+                elif oh < 3:
+                    fE, gE = f"{oh:.1f}% above pivot", "warn"
+                else:
+                    fE, gE = f"{oh:.1f}% above pivot", "mid"
+
+                # F. Liquidity
+                av = r['avg_vol_10d']
+                if pd.notna(av):
+                    if av >= 1_500_000:   fF, gF = f"{av/1e6:.1f}M — full size", "ok"
+                    elif av >= 500_000:   fF, gF = f"{av/1e3:.0f}K — half size", "mid"
+                    else:                 fF, gF = f"{av/1e3:.0f}K — thin", "warn"
+                else:
+                    fF, gF = "—", "mid"
+
+                # Verdict
+                fs = r['final_score']
+                flag = r['flag'] if pd.notna(r.get('flag','')) and r.get('flag') else None
+                if fs >= 11 and not flag:      verdict, vg = "STRONG BUY", "ok"
+                elif fs >= 8 and not flag:     verdict, vg = "BUY", "ok"
+                elif fs >= 8 and flag:         verdict, vg = f"WATCH — {flag[:30]}", "mid"
+                elif fs >= 5:                  verdict, vg = "SKIP — marginal", "mid"
+                else:                          verdict, vg = "AVOID", "warn"
+
+                return sym, fA, gA, fB, gB, fC, gC, fD, gD, fE, gE, fF, gF, verdict, vg
+
+            _rd_grade_css = {'ok':'#EAF3DE','mid':'#FAEEDA','warn':'#FCEBEB'}
+
+            def _rd_cell(text, grade):
+                bg = _rd_grade_css.get(grade,'#F5F5F5')
+                return (f'<td style="background:{bg};padding:5px 8px;font-size:12px;'
+                        f'border:1px solid #E0E0E0;">{text}</td>')
+
+            _rd_all_cands = pd.concat([_rd_cands, _rd_bos], ignore_index=True) if not _rd_bos.empty else _rd_cands
+            if not _rd_all_cands.empty:
+                _rd_tbl = ('<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+                           '<tr style="background:#F0F0F0;">'
+                           '<th style="padding:5px 8px;text-align:left;">Symbol</th>'
+                           '<th style="padding:5px 8px;text-align:left;">A. Sector</th>'
+                           '<th style="padding:5px 8px;text-align:left;">B. RS Traj.</th>'
+                           '<th style="padding:5px 8px;text-align:left;">C. Base</th>'
+                           '<th style="padding:5px 8px;text-align:left;">D. Volume</th>'
+                           '<th style="padding:5px 8px;text-align:left;">E. Overhead</th>'
+                           '<th style="padding:5px 8px;text-align:left;">F. Liquidity</th>'
+                           '<th style="padding:5px 8px;text-align:left;">Verdict</th>'
+                           '</tr>')
+                for _, _rr in _rd_all_cands.iterrows():
+                    sym, fA,gA, fB,gB, fC,gC, fD,gD, fE,gE, fF,gF, verdict,vg = _rd_factor_row(_rr.to_dict())
+                    _rd_tbl += ('<tr>'
+                                f'<td style="padding:5px 8px;font-weight:500;border:1px solid #E0E0E0;">{sym}</td>'
+                                + _rd_cell(fA,gA) + _rd_cell(fB,gB) + _rd_cell(fC,gC)
+                                + _rd_cell(fD,gD) + _rd_cell(fE,gE) + _rd_cell(fF,gF)
+                                + _rd_cell(verdict,vg) + '</tr>')
+                _rd_tbl += '</table>'
+                st.markdown(_rd_tbl, unsafe_allow_html=True)
+
+            st.divider()
+
+            # ── STEP 5: Top 3 picks ───────────────────────────────────────────
+            st.markdown("#### Step 5 — Top 3 Picks")
+
+            _rd_top_picks = pd.read_sql_query("""
+                SELECT lp.rank, lp.setup_type, lp.symbol, lp.sector, lp.sector_rank,
+                       lp.entry_trigger, lp.stop_loss, lp.sl_pct,
+                       lp.vol_ratio_today, lp.key_reason, lp.flag,
+                       ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+                       ls.base_tightness, ls.rs_inflection, ls.vol_rejection_flag,
+                       ls.nearest_overhead_pct, ls.avg_vol_10d,
+                       ls.pivot_distance_pct, ls.final_score,
+                       sec.breadth_score
+                FROM leaders_top_picks lp
+                JOIN leaders_scan ls
+                    ON ls.scan_date = lp.scan_date
+                   AND ls.setup_type = lp.setup_type
+                   AND ls.symbol = lp.symbol
+                LEFT JOIN sector_signals sec
+                    ON sec.sector = lp.sector AND sec.date = lp.scan_date
+                WHERE lp.scan_date = ?
+                ORDER BY lp.setup_type DESC, lp.rank ASC
+            """, _ld_conn, params=(_rd_date,))
+
+            if _rd_top_picks.empty:
+                st.info("No picks met the minimum score threshold today.")
+            else:
+                for _rd_stype, _rd_slabel, _rd_sicon in [
+                    ("PRE_BREAKOUT", "Pre-Breakout", "🎯"),
+                    ("BREAKOUT",     "Breakout",     "🚀"),
+                ]:
+                    _rd_subset = _rd_top_picks[_rd_top_picks['setup_type'] == _rd_stype]
+                    if not _rd_subset.empty:
+                        st.markdown(f"**{_rd_sicon} {_rd_slabel}**")
+                        for _, _rr in _rd_subset.iterrows():
+                            _ds_render_pick(_rr.to_dict(), _rd_stype)
+
+            # ── Distribution warnings ────────────────────────────────────────
+            _rd_flagged = _rd_all_cands[
+                _rd_all_cands['flag'].notna() & (_rd_all_cands['flag'] != '') &
+                (_rd_all_cands['final_score'] >= 5)
+            ] if not _rd_all_cands.empty else pd.DataFrame()
+
+            if not _rd_flagged.empty:
+                st.divider()
+                st.markdown("#### Distribution Warnings — Conviction score is misleading for these stocks")
+                for _, _rr in _rd_flagged.iterrows():
+                    _rd_sym = _rr['symbol']
+                    _rd_flag = _rr['flag']
+                    _rd_fs = int(_rr['final_score'])
+                    _rd_penalty = int(_rr['penalty'] or 0)
+                    _rd_raw = int(_rr['raw_score'] or 0)
+                    st.markdown(
+                        f'<div style="background:#FFF8F0;border-left:3px solid #EF9F27;'
+                        f'padding:8px 12px;margin-bottom:8px;border-radius:4px;">'
+                        f'<strong>{_rd_sym}</strong> — conviction {_rd_fs} '
+                        f'(raw {_rd_raw} − penalty {_rd_penalty}): '
+                        f'<em>{_rd_flag}</em></div>',
+                        unsafe_allow_html=True
+                    )
 
     _ld_conn.close()
 

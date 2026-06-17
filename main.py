@@ -118,6 +118,13 @@ def cmd_update():
                 result.get("support_reversal_setups", []),
                 source="Support Reversal"
             )
+        # Still refresh leaders scan (idempotent — safe to re-run)
+        try:
+            from leaders_scan import run_all as leaders_run_all
+            leaders_run_all()
+            logger.info("Leaders deep scan updated.")
+        except Exception as exc:
+            logger.warning("Leaders deep scan hook failed: %s", exc)
         return
 
     logger.info("Update: scraping %d new date(s) since %s…", len(new_dates), latest_str)
@@ -182,6 +189,14 @@ def cmd_update():
         append_setup_log_today()
     except Exception as exc:
         logger.warning("setup_log hook failed: %s", exc)
+
+    # Pre-compute Leaders deep scan (filtered picks + audit trail)
+    try:
+        from leaders_scan import run_all as leaders_run_all
+        leaders_run_all()
+        logger.info("Leaders deep scan updated.")
+    except Exception as exc:
+        logger.warning("Leaders deep scan hook failed: %s", exc)
 
     # Auto-save today's system-generated and support reversal setups
     result = run_analysis()
