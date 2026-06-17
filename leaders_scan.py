@@ -287,8 +287,7 @@ def append_leaders_scan(db_path=None):
 
     # Sector snapshot for today
     sec_df = pd.read_sql_query("""
-        SELECT sector, composite_score, rs_inflection,
-               RANK() OVER (ORDER BY composite_score DESC) AS sector_rank_today
+        SELECT sector, composite_score, rs_inflection, rs_rank AS sector_rank_today
         FROM sector_signals WHERE date = ?
     """, con, params=(scan_date,))
     sec_composite  = dict(zip(sec_df['sector'], sec_df['composite_score']))
