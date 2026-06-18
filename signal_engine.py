@@ -93,16 +93,70 @@ def run_mv_signals() -> dict:
         from breakout_signal import get_signals as _mv_get
 
         features_df = _mv_build(stocks_df, index_df)
-        watchlist_df, longs_df, shorts_df = _mv_get(features_df)
+        as_of_date  = features_df["date"].max().strftime("%Y-%m-%d")
 
-        as_of_date = features_df["date"].max().strftime("%Y-%m-%d")
+        # ── Market breadth: % of all stocks with close > 20-day EMA ─────────
+        _day_all    = features_df[features_df["date"] == features_df["date"].max()]
+        _valid      = _day_all["ema20"].notna()
+        _above      = (_day_all.loc[_valid, "close"] > _day_all.loc[_valid, "ema20"]).sum()
+        mkt_breadth = float(_above / _valid.sum() * 100) if _valid.sum() > 0 else 0.0
+        log.info(f"run_mv_signals: mkt_breadth={mkt_breadth:.1f}%")
+
+        # ── Load sector signals (rs_rank, breadth_score per sector) ─────────
+        _conn2 = get_conn()
+        _latest_sec = _conn2.execute(
+            "SELECT MAX(date) FROM sector_signals"
+        ).fetchone()[0]
+        sector_df_mv = pd.DataFrame()
+        if _latest_sec:
+            _sec_rows = _conn2.execute(
+                "SELECT sector, rs_rank, breadth_score FROM sector_signals WHERE date = ?",
+                (_latest_sec,)
+            ).fetchall()
+            sector_df_mv = pd.DataFrame([dict(r) for r in _sec_rows])
+        log.info(f"run_mv_signals: sector_signals date={_latest_sec} "
+                 f"rows={len(sector_df_mv)}")
+
+        # ── Load stock ranks (rs_rank, sector_rs_rank per symbol) ───────────
+        _latest_ss = _conn2.execute(
+            "SELECT MAX(date) FROM stock_signals"
+        ).fetchone()[0]
+        stock_ranks_df = pd.DataFrame()
+        if _latest_ss:
+            _ss_rows = _conn2.execute(
+                "SELECT symbol, rs_rank, sector_rs_rank FROM stock_signals WHERE date = ?",
+                (_latest_ss,)
+            ).fetchall()
+            stock_ranks_df = pd.DataFrame([dict(r) for r in _ss_rows])
+        _conn2.close()
+        log.info(f"run_mv_signals: stock_signals date={_latest_ss} "
+                 f"rows={len(stock_ranks_df)}")
+
+        watchlist_df, longs_df, shorts_df = _mv_get(
+            features_df,
+            mkt_breadth=mkt_breadth,
+            sector_df=sector_df_mv,
+            stock_ranks_df=stock_ranks_df,
+        )
+
         log.info(f"run_mv_signals: as_of_date={as_of_date} "
                  f"longs={len(longs_df)} shorts={len(shorts_df)} "
                  f"watchlist={len(watchlist_df)}")
 
         # STEP D: Write to mv_signals table
-        # Delete existing rows for this date first (idempotent)
+        # Idempotent schema migration — add new columns if not present
         conn = get_conn()
+        for _col_def in [
+            "ALTER TABLE mv_signals ADD COLUMN rs_rank        INTEGER",
+            "ALTER TABLE mv_signals ADD COLUMN sector_rs_rank INTEGER",
+            "ALTER TABLE mv_signals ADD COLUMN sector_breadth REAL",
+            "ALTER TABLE mv_signals ADD COLUMN mkt_breadth    REAL",
+        ]:
+            try:
+                conn.execute(_col_def)
+            except Exception:
+                pass  # column already exists
+
         conn.execute(
             "DELETE FROM mv_signals WHERE as_of_date = ?", (as_of_date,))
 
@@ -116,8 +170,9 @@ def run_mv_signals() -> dict:
                     close, ema20, ema50, ema200,
                     pivot_high, pivot_low, bb_width, high_200d,
                     atr_pct, vol_ratio, rs_rating, rs_score,
-                    vol_avg20, market_up, is_dfc
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    vol_avg20, market_up, is_dfc,
+                    rs_rank, sector_rs_rank, sector_breadth, mkt_breadth
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 as_of_date,
                 str(row.get("symbol", "")),
@@ -138,6 +193,10 @@ def run_mv_signals() -> dict:
                 float(row["vol_avg20"])  if pd.notna(row.get("vol_avg20"))  else None,
                 int(bool(row.get("market_up", False))),
                 int(bool(row.get("is_dfc", False))),
+                int(row["rs_rank"])           if pd.notna(row.get("rs_rank"))          else None,
+                int(row["sector_rs_rank"])     if pd.notna(row.get("sector_rs_rank"))   else None,
+                float(row["sector_breadth"])   if pd.notna(row.get("sector_breadth"))   else None,
+                float(row.get("mkt_breadth", mkt_breadth)),
             ))
             rows_written += 1
 
@@ -149,8 +208,9 @@ def run_mv_signals() -> dict:
                     close, ema20, ema50, ema200,
                     pivot_high, pivot_low, bb_width, high_200d,
                     atr_pct, vol_ratio, rs_rating, rs_score,
-                    vol_avg20, market_up, is_dfc
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    vol_avg20, market_up, is_dfc,
+                    mkt_breadth
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 as_of_date,
                 str(row.get("symbol", "")),
@@ -171,6 +231,7 @@ def run_mv_signals() -> dict:
                 float(row["vol_avg20"])  if pd.notna(row.get("vol_avg20"))  else None,
                 int(bool(row.get("market_up", False))),
                 int(bool(row.get("is_dfc", False))),
+                float(mkt_breadth),
             ))
             rows_written += 1
 
@@ -180,8 +241,9 @@ def run_mv_signals() -> dict:
                 INSERT INTO mv_signals (
                     as_of_date, symbol, sector, signal_type,
                     close, pivot_high, bb_width,
-                    atr_pct, vol_ratio, rs_rating, rs_score
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    atr_pct, vol_ratio, rs_rating, rs_score,
+                    vol_avg20, rs_rank, sector_rs_rank, sector_breadth, mkt_breadth
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 as_of_date,
                 str(row.get("symbol", "")),
@@ -194,13 +256,27 @@ def run_mv_signals() -> dict:
                 float(row["vol_ratio"])  if pd.notna(row.get("vol_ratio"))  else None,
                 float(row["rs_rating"])  if pd.notna(row.get("rs_rating"))  else None,
                 float(row["rs_score"])   if pd.notna(row.get("rs_score"))   else None,
+                float(row["vol_avg20"])  if pd.notna(row.get("vol_avg20"))  else None,
+                int(row["rs_rank"])         if pd.notna(row.get("rs_rank"))         else None,
+                int(row["sector_rs_rank"])  if pd.notna(row.get("sector_rs_rank"))  else None,
+                float(row["sector_breadth"]) if pd.notna(row.get("sector_breadth")) else None,
+                float(row.get("mkt_breadth", mkt_breadth)),
             ))
             rows_written += 1
+
+        # Always write a GATE_STATUS sentinel row so the dashboard can display
+        # correct gate state even when 0 signal rows are written for the date.
+        _latest_day   = features_df[features_df["date"] == features_df["date"].max()]
+        _market_up_val = bool(_latest_day["market_up"].iloc[0]) if len(_latest_day) > 0 else False
+        conn.execute("""
+            INSERT OR REPLACE INTO mv_signals (as_of_date, symbol, signal_type, market_up, mkt_breadth)
+            VALUES (?, '__GATE__', 'GATE_STATUS', ?, ?)
+        """, (as_of_date, int(_market_up_val), float(mkt_breadth)))
 
         conn.commit()
         conn.close()
 
-        log.info(f"run_mv_signals: wrote {rows_written} rows to mv_signals")
+        log.info(f"run_mv_signals: wrote {rows_written} signal rows + 1 GATE_STATUS row")
         log.info("=== run_mv_signals COMPLETE ===")
         return {
             "status":       "ok",

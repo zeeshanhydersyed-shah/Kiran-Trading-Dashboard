@@ -1,28 +1,33 @@
 """
-breakout_signal.py  —  Zeeshan Breakout Signal Engine  v2
+breakout_signal.py  —  Zeeshan Breakout Signal Engine  v3
 ==========================================================
-v2 (2026-06-10):  EMA trend stack | Tight Base (BB width) | No Overhead Supply
+v3 (2026-06-18):  Tighter market gates | Sector & stock rank filters
 
   LONG signal (all liquid stocks):
-    1. Stage 2     : close > EMA20 > EMA50 > EMA200
-    2. Pivot BO    : close > 60-day highest close (first break — yesterday still below)
-    3. Tight Base  : Bollinger Band width (prior day) ≤ 12%
-    4. No Overhead : 200-day high ≤ 60-day pivot × 1.05
-    5. Volume      : today's volume >= 2x 20-day avg volume
-    6. Market      : KSE-100 close > SMA50
-    7. RS Rating   : cross-sectional percentile >= 60
-    8. Liquidity   : 20-day avg volume >= 100,000 shares
-    9. Volatility  : ATR14 between 1.0% and 6.0% of price
+    1.  Stage 2          : close > EMA20 > EMA50 > EMA200
+    2.  Pivot BO         : close > 60-day highest close (first break — yesterday still below)
+    3.  Tight Base       : Bollinger Band width (prior day) ≤ 12%
+    4.  No Overhead      : 200-day high ≤ 60-day pivot × 1.05
+    5.  Volume           : today's volume >= 2x 20-day avg volume
+    6.  Market trend     : KSE-100 close > EMA50
+    7.  Market breadth   : ≥ 60% of all PSX stocks above their 20-day EMA
+    8.  RS Rating        : cross-sectional percentile >= 60
+    9.  Stock RS Rank    : market-wide rank <= 50
+    10. Liquidity        : 20-day avg volume >= 100,000 shares
+    11. Volatility       : ATR14 between 1.0% and 6.0% of price
+    12. Sector RS rank   : sector ranks in top 6 by RS-20
+    13. Sector breadth   : >= 70% of stocks in that sector above their EMA-20
+    14. Stock sector rank: stock ranks <= 5 within its sector
 
   SHORT signal (DFC counters only — inverse rules):
     1. Stage 4     : close < EMA20 < EMA50 < EMA200
     2. Pivot BD    : close < 60-day lowest close (first breakdown — yesterday still above)
     3. Tight Base  : Bollinger Band width (prior day) ≤ 12%
-    4. Market      : KSE-100 close < SMA50  (bear regime)
+    4. Market      : KSE-100 close < EMA50  (bear regime)
     5. RS Rating   : cross-sectional percentile <= 40
     6. Liquidity   : 20-day avg volume >= 100,000 shares
     7. Volatility  : ATR14 between 1.0% and 6.0% of price
-    NOTE: No volume spike requirement on shorts
+    NOTE: No volume spike, no breadth/sector/rank gates on shorts
 
 Usage:
     python breakout_signal.py                     # today's signals
@@ -45,16 +50,21 @@ OUT_DIR.mkdir(exist_ok=True)
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 PARAMS = dict(
-    min_avg_vol   = 100_000,   # 20-day avg vol floor
-    vol_mult      = 2.0,       # volume must be >= N x 20-day avg
-    rs_min_long   = 60,        # RS percentile floor for longs
-    rs_max_short  = 40,        # RS percentile ceiling for shorts
-    atr_min_pct   = 1.0,       # min ATR% (filter ultra-flat stocks)
-    atr_max_pct   = 6.0,       # max ATR% (filter too volatile)
-    resist_win    = 60,        # lookback for pivot high/low (rolling max of close)
-    bb_max_width  = 12.0,      # Bollinger Band width ≤ 12% (tight base gate)
-    overhead_mult = 1.05,      # 200d HIGH must be ≤ pivot × 1.05 (5% max overhead)
-    sma_trend     = 50,        # regime SMA for index (intentionally SMA, not EMA)
+    min_avg_vol            = 100_000,  # 20-day avg vol floor
+    vol_mult               = 2.0,      # volume must be >= N x 20-day avg
+    rs_min_long            = 60,       # RS percentile floor for longs
+    rs_max_short           = 40,       # RS percentile ceiling for shorts
+    atr_min_pct            = 1.0,      # min ATR% (filter ultra-flat stocks)
+    atr_max_pct            = 6.0,      # max ATR% (filter too volatile)
+    resist_win             = 60,       # lookback for pivot high/low (rolling max of close)
+    bb_max_width           = 12.0,     # Bollinger Band width ≤ 12% (tight base gate)
+    overhead_mult          = 1.05,     # 200d HIGH must be ≤ pivot × 1.05 (5% max overhead)
+    ema_trend              = 50,       # regime EMA for index (v3: EMA not SMA)
+    mkt_breadth_min        = 60.0,     # % of all PSX stocks above 20-EMA (market gate)
+    sector_rs_rank_max     = 6,        # top N sectors by RS-20
+    sector_breadth_min     = 70.0,     # % of sector stocks above EMA-20
+    stock_rs_rank_max      = 50,       # market-wide stock rank ceiling
+    stock_sector_rank_max  = 5,        # stock rank within its sector ceiling
 )
 
 # DFC counters — only these can be shorted on PSX
@@ -177,13 +187,13 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
     idx = index.copy()
     for w, c in [(21,"ir21"),(63,"ir63"),(126,"ir126"),(252,"ir252")]:
         idx[c] = idx["idx_close"] / idx["idx_close"].shift(w) - 1
-    idx["idx_sma50"] = idx["idx_close"].rolling(
-        PARAMS["sma_trend"], min_periods=PARAMS["sma_trend"]
+    idx["idx_ema50"] = idx["idx_close"].ewm(
+        span=PARAMS["ema_trend"], adjust=False
     ).mean()
-    idx["market_up"] = idx["idx_close"] > idx["idx_sma50"]
+    idx["market_up"] = idx["idx_close"] > idx["idx_ema50"]
 
     df = df.merge(
-        idx[["date","ir21","ir63","ir126","ir252","market_up","idx_close","idx_sma50"]],
+        idx[["date","ir21","ir63","ir126","ir252","market_up","idx_close","idx_ema50"]],
         on="date", how="left"
     )
     df["market_up"] = df["market_up"].fillna(False).astype(bool)
@@ -234,39 +244,96 @@ def build_features(stocks: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
 # ══════════════════════════════════════════════════════════════════════════════
 
 OUTPUT_COLS_LONG = [
-    "symbol", "date", "close", "ema20", "ema50", "ema200",
+    "symbol", "sector", "date", "close", "ema20", "ema50", "ema200",
     "pivot_high", "bb_width", "high_200d",
     "atr_pct", "vol_ratio", "rs_rating", "rs_score",
-    "vol_avg20", "market_up", "is_dfc",
+    "vol_avg20", "rs_rank", "sector_rs_rank", "sector_breadth",
+    "market_up", "is_dfc",
 ]
 OUTPUT_COLS_SHORT = [
-    "symbol", "date", "close", "ema20", "ema50", "ema200",
+    "symbol", "sector", "date", "close", "ema20", "ema50", "ema200",
     "pivot_low", "bb_width",
     "atr_pct", "vol_ratio", "rs_rating", "rs_score",
     "vol_avg20", "market_up", "is_dfc",
 ]
 
 
-def get_signals(df: pd.DataFrame, as_of_date=None):
+def get_signals(df: pd.DataFrame, as_of_date=None,
+                mkt_breadth=None, sector_df=None, stock_ranks_df=None):
     """
     Returns (watchlist_df, longs_df, shorts_df) for a given date.
-    - watchlist: all shared conditions + within 3% of pivot, not yet broken out
-    - longs: stocks with signal_long == True (all v2 gates passed)
-    - shorts: stocks with signal_short == True
-    If as_of_date is None, uses the latest date in the data.
+
+    Optional v3 gate arguments (all default to None = gate skipped):
+      mkt_breadth    : float — % of all PSX stocks above 20-EMA (gate ≥ 60)
+      sector_df      : DataFrame[sector, rs_rank, breadth_score] from sector_signals
+      stock_ranks_df : DataFrame[symbol, rs_rank, sector_rs_rank] from stock_signals
     """
     if as_of_date is None:
         as_of_date = df["date"].max()
     else:
         as_of_date = pd.Timestamp(as_of_date)
 
-    day = df[df["date"] == as_of_date]
+    day = df[df["date"] == as_of_date].copy()
 
-    longs  = day[day["signal_long"]  == True][OUTPUT_COLS_LONG].copy()
-    shorts = day[day["signal_short"] == True][OUTPUT_COLS_SHORT].copy()
+    # ── Merge sector-level data ───────────────────────────────────────────────
+    if sector_df is not None and not sector_df.empty:
+        _sec = sector_df.rename(columns={
+            "rs_rank":      "_sec_rs_rank",
+            "breadth_score": "sector_breadth",
+        })[["sector", "_sec_rs_rank", "sector_breadth"]]
+        day = day.merge(_sec, on="sector", how="left")
+    else:
+        day["_sec_rs_rank"]  = np.nan
+        day["sector_breadth"] = np.nan
 
-    # Watchlist: all shared conditions + within 3% of pivot, not yet broken out
+    # ── Merge stock-level rank data ───────────────────────────────────────────
+    if stock_ranks_df is not None and not stock_ranks_df.empty:
+        day = day.merge(
+            stock_ranks_df[["symbol", "rs_rank", "sector_rs_rank"]],
+            on="symbol", how="left"
+        )
+    else:
+        day["rs_rank"]        = np.nan
+        day["sector_rs_rank"] = np.nan
+
+    # ── Market breadth gate ───────────────────────────────────────────────────
+    mkt_ok = (mkt_breadth is not None and mkt_breadth >= PARAMS["mkt_breadth_min"])
+
+    # ── Sector gates (boolean Series) ────────────────────────────────────────
+    if sector_df is not None and not sector_df.empty:
+        _sec_rank_ok    = day["_sec_rs_rank"].notna()   & (day["_sec_rs_rank"]   <= PARAMS["sector_rs_rank_max"])
+        _sec_breadth_ok = day["sector_breadth"].notna() & (day["sector_breadth"] >= PARAMS["sector_breadth_min"])
+    else:
+        _sec_rank_ok    = pd.Series(True, index=day.index)
+        _sec_breadth_ok = pd.Series(True, index=day.index)
+
+    # ── Stock rank gates (boolean Series) ────────────────────────────────────
+    if stock_ranks_df is not None and not stock_ranks_df.empty:
+        _stk_rank_ok     = day["rs_rank"].notna()        & (day["rs_rank"]        <= PARAMS["stock_rs_rank_max"])
+        _stk_sec_rank_ok = day["sector_rs_rank"].notna() & (day["sector_rs_rank"] <= PARAMS["stock_sector_rank_max"])
+    else:
+        _stk_rank_ok     = pd.Series(True, index=day.index)
+        _stk_sec_rank_ok = pd.Series(True, index=day.index)
+
+    _new_gates = _sec_rank_ok & _sec_breadth_ok & _stk_rank_ok & _stk_sec_rank_ok
+
+    # ── LONG signals ──────────────────────────────────────────────────────────
+    if not mkt_ok:
+        longs = pd.DataFrame()
+    else:
+        _long_mask = (day["signal_long"] == True) & _new_gates
+        longs = day[_long_mask][[c for c in OUTPUT_COLS_LONG if c in day.columns]].copy()
+        if not longs.empty and mkt_breadth is not None:
+            longs["mkt_breadth"] = round(mkt_breadth, 1)
+
+    # ── SHORT signals — no breadth/sector/rank gates ──────────────────────────
+    shorts = day[day["signal_short"] == True][
+        [c for c in OUTPUT_COLS_SHORT if c in day.columns]
+    ].copy()
+
+    # ── WATCHLIST — coiling under pivot, all gates including new ones ─────────
     _wl_mask = (
+        (mkt_ok) &
         (day["stage2"]      == True) &
         (day["tight_base"]  == True) &
         (day["no_overhead"] == True) &
@@ -277,21 +344,26 @@ def get_signals(df: pd.DataFrame, as_of_date=None):
         (day["pivot_high"].notna()) &
         (day["close"] < day["pivot_high"]) &
         ((day["pivot_high"] - day["close"]) / day["pivot_high"] <= 0.03) &
-        (day["rs_rating"] >= 60)
+        (day["rs_rating"] >= PARAMS["rs_min_long"]) &
+        _new_gates
     )
     _wl_cols = [
-        "symbol", "date", "close", "pivot_high",
+        "symbol", "sector", "date", "close", "pivot_high",
         "bb_width", "atr_pct", "vol_ratio", "rs_rating", "rs_score",
+        "vol_avg20", "rs_rank", "sector_rs_rank", "sector_breadth",
     ]
     watchlist = day[_wl_mask][[c for c in _wl_cols if c in day.columns]].copy()
+    if not watchlist.empty and mkt_breadth is not None:
+        watchlist["mkt_breadth"] = round(mkt_breadth, 1)
 
-    # Round for display
-    _long_round  = ["close","ema20","ema50","ema200","pivot_high","bb_width",
-                    "high_200d","atr_pct","vol_ratio","rs_rating","rs_score"]
+    # ── Round for display ─────────────────────────────────────────────────────
+    _long_round = ["close","ema20","ema50","ema200","pivot_high","bb_width",
+                   "high_200d","atr_pct","vol_ratio","rs_rating","rs_score",
+                   "vol_avg20","sector_breadth","mkt_breadth"]
     _short_round = ["close","ema20","ema50","ema200","pivot_low","bb_width",
                     "atr_pct","vol_ratio","rs_rating","rs_score"]
-    _wl_round    = ["close","pivot_high","bb_width","atr_pct","vol_ratio",
-                    "rs_rating","rs_score"]
+    _wl_round   = ["close","pivot_high","bb_width","atr_pct","vol_ratio",
+                   "rs_rating","rs_score","vol_avg20","sector_breadth","mkt_breadth"]
 
     for col in _long_round:
         if col in longs.columns:
@@ -303,7 +375,8 @@ def get_signals(df: pd.DataFrame, as_of_date=None):
         if col in watchlist.columns:
             watchlist[col] = watchlist[col].round(2)
 
-    longs     = longs.sort_values("rs_rating", ascending=False).reset_index(drop=True)
+    if not longs.empty:
+        longs = longs.sort_values("rs_rating", ascending=False).reset_index(drop=True)
     shorts    = shorts.sort_values("rs_rating", ascending=True).reset_index(drop=True)
     watchlist = watchlist.sort_values("rs_rating", ascending=False).reset_index(drop=True)
     return watchlist, longs, shorts

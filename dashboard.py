@@ -1768,7 +1768,7 @@ elif cur == PAGES[2]:  # Market
                     ON sf.sector = ss.sector
                    AND sf.date   = :flow_date
                 WHERE ss.date = :price_date
-                ORDER BY ss.rs_rank
+                ORDER BY ss.composite_score DESC
             """, con_rr, params={"price_date": latest_rr, "flow_date": latest_flow or latest_rr})
 
             # Load 20-day RS trend per sector (sparkline data)
@@ -5136,7 +5136,7 @@ elif cur == PAGES[9]:  # Recovery Bases
     _hcol, _bcol = st.columns([7, 1])
     with _bcol:
         if st.button("⚡ Refresh", key="rb_refresh"):
-            _run_recovery_screener.clear()
+            _load_recovery_signals.clear()
             st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -6444,7 +6444,7 @@ elif cur == PAGES[17]:  # Minervini Setup
 
     with st.expander("📖 How this screener works — read before trading", expanded=False):
         st.markdown("""
-**Derived from 9 confirmed real trades** (DGKC×2, FFC×3, UBL×2, TPLP, POWER — 2021–2026).
+**Find stocks in a confirmed uptrend that have coiled tightly under a resistance level — and either just broke out or are about to.** Sector must be strong, stock must be a market leader. Singles and doubles only — no speculative names.
 
 ---
 #### Two Signal Types
@@ -6456,29 +6456,32 @@ Use for morning prep. Watch intraday. Enter discretionarily on the break with vo
 Enter tomorrow's open if you missed the intraday move. Risk is slightly wider.
 
 ---
-#### Shared Conditions (both signals)
-| Condition | Rule | Evidence |
-|---|---|---|
-| **Stage 2** | close > EMA20 > EMA50 > EMA200 | Full uptrend stack — 9/10 entries. Uses EMA (matches charting platforms, reacts faster than SMA) |
-| **Tight Base** | BB width (prior day) ≤ 12% | Avg 8.3% across 9 entries. Formula: (Upper−Lower)/Middle×100 |
-| **No Overhead** | 200-day high ≤ 60-day pivot × 1.05 | Breakout into clear air — no heavy resistance above |
-| **Market** | KSE-100 close > 50 SMA | Bull market only — 9/9 entries in up regime |
-| **RS Rating** | Cross-sectional percentile ≥ 60 | Avg 74 at entry, range 53–87 |
-| **Liquidity** | 20-day avg volume ≥ 100,000 shares | Filters untradeable names |
-| **Volatility** | ATR14 between 1% and 6% of price | Avg 2.85% — controlled breakouts only |
+#### All Gates (applied to both WATCHLIST and BREAKOUT)
+| Gate | Rule |
+|---|---|
+| **Stage 2 uptrend** | close > EMA20 > EMA50 > EMA200 — full bull stack |
+| **Tight base** | Bollinger Band width (prior day) ≤ 12% — stock is coiling, not extended |
+| **No overhead supply** | 200-day high ≤ pivot × 1.05 — breakout into clear air |
+| **Market trend** | KSE-100 above EMA50 — bull regime only |
+| **Market breadth** | ≥ 60% of all PSX stocks above their 20-EMA — broad participation |
+| **Sector rank** | Sector in top 6 by RS-20 — strong sector tailwind |
+| **Sector breadth** | ≥ 70% of sector stocks above their 20-EMA — sector is healthy |
+| **Stock RS Rank** | Market-wide rank ≤ 50 — stock is among the top leaders in PSX |
+| **Stock sector rank** | Rank ≤ 5 within its own sector — leader within the sector |
+| **RS Rating** | Cross-sectional percentile ≥ 60 — multi-period momentum (40%×1yr + 30%×6m + 20%×3m + 10%×1m) |
+| **Liquidity** | 20-day avg volume ≥ 100,000 shares |
+| **Volatility** | ATR14 between 1% and 6% of price — controlled move, not erratic |
+| **Volume (BO only)** | Today's volume ≥ 2× 20-day avg — institutional conviction on the break |
 
 #### SHORT Signal — DFC counters only
-Inverse rules: Stage 4 (close < EMA20 < EMA50 < EMA200), close below 60-day low,
-tight base (BB width ≤ 12%), volume ≥ 2×, KSE-100 below SMA50, RS Rating ≤ 40. Only PSX-shortable (DFC) stocks.
+Inverse rules: Stage 4 (close < EMA20 < EMA50 < EMA200), breakdown below 60-day low,
+tight base (BB ≤ 12%), KSE-100 below EMA50, RS Rating ≤ 40. Only PSX-shortable (DFC) stocks. No breadth/sector/rank gates on shorts.
 
-#### RS Rating explained
-Cross-sectional **percentile rank** of multi-period momentum:
-40% × 1yr return + 30% × 6m + 20% × 3m + 10% × 1m.
-Rating 75 = stock stronger than 75% of all PSX stocks on that day.
+#### Zero results = discipline working
+If no stocks appear, no setup qualifies today. The screener is intentionally strict — a leader breaking out from a top sector in a healthy market. Forcing trades from a weak list is where losses come from.
 
 #### Known limitation
-Stocks post-bonus-issue have distorted EMAs for ~200 days. Stage 2 may fail
-on recently ex-dated stocks until EMA200 normalises on adjusted prices.
+Stocks post-bonus-issue have distorted EMAs for ~200 days. Stage 2 may fail on recently ex-dated stocks until EMA200 normalises on adjusted prices.
 
 ---
 *Signals are read-only. Use **Save to Setup Perf** to track them over time.*
@@ -6507,12 +6510,17 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
         df = pd.DataFrame(rows, columns=cols)
         for col in ("close","ema20","ema50","ema200","pivot_high",
                     "pivot_low","bb_width","high_200d","atr_pct",
-                    "vol_ratio","rs_rating","rs_score","vol_avg20"):
+                    "vol_ratio","rs_rating","rs_score","vol_avg20",
+                    "rs_rank","sector_rs_rank","sector_breadth","mkt_breadth"):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
         return df, latest
 
     _mv_all, _mv_date = _load_mv_signals()
+
+    # ── Extract gate-status sentinel row, then remove it from signal data ─────
+    _mv_gate = _mv_all[_mv_all["signal_type"] == "GATE_STATUS"].copy()
+    _mv_all  = _mv_all[_mv_all["signal_type"] != "GATE_STATUS"].copy()
 
     # ── Stale data warning ────────────────────────────────────────
     import datetime as _mv_dt
@@ -6523,7 +6531,7 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
             f"**{_mv_date}** — run signal_engine.py to refresh."
         )
 
-    if _mv_all.empty:
+    if _mv_gate.empty and _mv_all.empty:
         st.info("No Minervini signals found. Run signal_engine.py first.")
         st.stop()
 
@@ -6535,32 +6543,52 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
     # Add display columns expected by render code
     for _df in [_mv_longs, _mv_shorts]:
         _df["BB Width%"] = _df["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
-        _df["ATR%"]      = _df["atr_pct"].apply(lambda x: f"{x:.2f}%")
-        _df["Vol/Avg"]   = _df["vol_ratio"].apply(lambda x: f"{x:.1f}×")
-        _df["RS Rating"] = _df["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
-        _df["DFC"]       = _df["is_dfc"].map({1: "✓", 0: ""})
+        _df["ATR%"]      = _df["atr_pct"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
+        _df["Vol/Avg"]   = _df["vol_ratio"].apply(lambda x: f"{x:.1f}×" if pd.notna(x) else "—")
+        _df["RS Rating"] = _df["rs_rating"].apply(lambda x: f"{x:.0f}%ile" if pd.notna(x) else "—")
+        _df["DFC"]       = _df["is_dfc"].map({1: "✓", 0: ""}) if "is_dfc" in _df.columns else "—"
     for _df in [_mv_watchlist]:
         _df["BB Width%"]    = _df["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
-        _df["ATR%"]         = _df["atr_pct"].apply(lambda x: f"{x:.2f}%")
-        _df["Vol/Avg"]      = _df["vol_ratio"].apply(lambda x: f"{x:.1f}×")
-        _df["RS Rating"]    = _df["rs_rating"].apply(lambda x: f"{x:.0f}%ile")
+        _df["ATR%"]         = _df["atr_pct"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
+        _df["Vol/Avg"]      = _df["vol_ratio"].apply(lambda x: f"{x:.1f}×" if pd.notna(x) else "—")
+        _df["RS Rating"]    = _df["rs_rating"].apply(lambda x: f"{x:.0f}%ile" if pd.notna(x) else "—")
         _df["% From Pivot"] = (
             (_df["pivot_high"] - _df["close"]) / _df["pivot_high"] * 100
-        ).apply(lambda x: f"{x:.2f}%")
+        ).apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
 
     _mv_nl = len(_mv_longs)
     _mv_ns = len(_mv_shorts)
     _mv_nw = len(_mv_watchlist)
 
-    # ── Market regime banner (from stored market_up flag) ─────────
-    _mv_mkt_up  = bool(_mv_all["market_up"].iloc[0]) if len(_mv_all) > 0 else True
+    # ── Market regime banner — Gate 1: KSE EMA50 | Gate 2: Market breadth ──
+    # Prefer gate-status sentinel row (always current); fall back to signal rows.
+    _mv_gate_src = _mv_gate if not _mv_gate.empty else _mv_all
+    _mv_mkt_up  = bool(_mv_gate_src["market_up"].iloc[0]) if len(_mv_gate_src) > 0 else True
     _mv_mkt_col = "#16a34a" if _mv_mkt_up else "#dc2626"
-    _mv_mkt_txt = "BULL — KSE-100 above 50 SMA" if _mv_mkt_up else "BEAR — KSE-100 below 50 SMA"
+    _mv_mkt_txt = "BULL — KSE-100 above EMA50" if _mv_mkt_up else "BEAR — KSE-100 below EMA50"
+
+    _mv_mkt_breadth = None
+    if "mkt_breadth" in _mv_gate_src.columns and len(_mv_gate_src) > 0:
+        _mbv = _mv_gate_src["mkt_breadth"].iloc[0]
+        if pd.notna(_mbv):
+            _mv_mkt_breadth = float(_mbv)
+    _mv_br_ok  = _mv_mkt_breadth is not None and _mv_mkt_breadth >= 60
+    _mv_br_col = "#16a34a" if _mv_br_ok else "#dc2626"
+    _mv_br_txt = (f"{_mv_mkt_breadth:.1f}% of PSX stocks above 20-EMA"
+                  if _mv_mkt_breadth is not None else "unavailable")
+
     st.markdown(
         f'<div style="background:{"#f0fdf4" if _mv_mkt_up else "#fff5f5"};'
-        f'border-left:4px solid {_mv_mkt_col};padding:8px 14px;border-radius:6px;margin-bottom:10px;">'
-        f'<b style="color:{_mv_mkt_col};">Market: {_mv_mkt_txt}</b>'
+        f'border-left:4px solid {_mv_mkt_col};padding:8px 14px;border-radius:6px;margin-bottom:4px;">'
+        f'<b style="color:{_mv_mkt_col};">Gate 1 — Trend: {_mv_mkt_txt}</b>'
         f' &nbsp;·&nbsp; As of: <b>{_mv_date}</b>'
+        f'</div>', unsafe_allow_html=True
+    )
+    st.markdown(
+        f'<div style="background:{"#f0fdf4" if _mv_br_ok else "#fff5f5"};'
+        f'border-left:4px solid {_mv_br_col};padding:8px 14px;border-radius:6px;margin-bottom:10px;">'
+        f'<b style="color:{_mv_br_col};">Gate 2 — Breadth: {_mv_br_txt}</b>'
+        f' &nbsp;(gate: ≥ 60%)'
         f'</div>', unsafe_allow_html=True
     )
 
@@ -6598,15 +6626,24 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
     with _mv_tab_l:
         if _mv_longs.empty:
             st.info("No LONG signals today." if _mv_mkt_up else
-                    "⚠ Market in BEAR regime — LONG signals require KSE-100 above SMA50.")
+                    "⚠ Market in BEAR regime — LONG signals require KSE-100 above EMA50.")
         else:
             _ld = _mv_longs.copy()
-            _disp_cols      = ["symbol","close","ema20","ema50","ema200",
-                               "pivot_high","BB Width%","ATR%","Vol/Avg","RS Rating","rs_score","DFC"]
+            _disp_cols = ["symbol","sector","close","pivot_high",
+                          "BB Width%","ATR%","Vol/Avg","vol_avg20",
+                          "RS Rating","rs_score","rs_rank","sector_rs_rank",
+                          "sector_breadth","DFC"]
             _disp_cols = [c for c in _disp_cols if c in _ld.columns]
             st.dataframe(_ld[_disp_cols].rename(columns={
-                "symbol":"Symbol","close":"Close","ema20":"EMA20","ema50":"EMA50",
-                "ema200":"EMA200","pivot_high":"Pivot High","rs_score":"RS Score%"
+                "symbol":         "Symbol",
+                "sector":         "Sector",
+                "close":          "Close",
+                "pivot_high":     "Pivot High",
+                "vol_avg20":      "Vol 20d Avg",
+                "rs_score":       "RS Score%",
+                "rs_rank":        "RS Rank",
+                "sector_rs_rank": "Sec RS Rank",
+                "sector_breadth": "Sec Breadth%",
             }), use_container_width=True, hide_index=True)
 
             st.markdown("---")
@@ -6664,15 +6701,22 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
     with _mv_tab_s:
         if _mv_shorts.empty:
             st.info("No SHORT signals today." if not _mv_mkt_up else
-                    "⚠ Market in BULL regime — SHORT signals require KSE-100 below SMA50.")
+                    "⚠ Market in BULL regime — SHORT signals require KSE-100 below EMA50.")
         else:
             _sd = _mv_shorts.copy()
-            _sd_cols        = ["symbol","close","ema20","ema50","ema200",
-                               "pivot_low","BB Width%","ATR%","Vol/Avg","RS Rating","rs_score"]
+            _sd_cols = ["symbol","sector","close","ema20","ema50","ema200",
+                        "pivot_low","BB Width%","ATR%","Vol/Avg","vol_avg20","RS Rating","rs_score"]
             _sd_cols = [c for c in _sd_cols if c in _sd.columns]
             st.dataframe(_sd[_sd_cols].rename(columns={
-                "symbol":"Symbol","close":"Close","ema20":"EMA20","ema50":"EMA50",
-                "ema200":"EMA200","pivot_low":"Pivot Low","rs_score":"RS Score%"
+                "symbol":    "Symbol",
+                "sector":    "Sector",
+                "close":     "Close",
+                "ema20":     "EMA20",
+                "ema50":     "EMA50",
+                "ema200":    "EMA200",
+                "pivot_low": "Pivot Low",
+                "vol_avg20": "Vol 20d Avg",
+                "rs_score":  "RS Score%",
             }), use_container_width=True, hide_index=True)
 
     with _mv_tab_w:
@@ -6680,10 +6724,19 @@ on recently ex-dated stocks until EMA200 normalises on adjusted prices.
             st.info("No watchlist candidates today.")
         else:
             _wd = _mv_watchlist.copy()
-            _wdisp_cols = ["symbol","close","% From Pivot","pivot_high","BB Width%","ATR%","Vol/Avg","RS Rating"]
+            _wdisp_cols = ["symbol","sector","close","% From Pivot","pivot_high",
+                           "BB Width%","ATR%","Vol/Avg","vol_avg20",
+                           "RS Rating","rs_rank","sector_rs_rank","sector_breadth"]
             _wdisp_cols = [c for c in _wdisp_cols if c in _wd.columns]
             st.dataframe(_wd[_wdisp_cols].rename(columns={
-                "symbol":"Symbol","close":"Close","pivot_high":"Pivot High"
+                "symbol":         "Symbol",
+                "sector":         "Sector",
+                "close":          "Close",
+                "pivot_high":     "Pivot High",
+                "vol_avg20":      "Vol 20d Avg",
+                "rs_rank":        "RS Rank",
+                "sector_rs_rank": "Sec RS Rank",
+                "sector_breadth": "Sec Breadth%",
             }), use_container_width=True, hide_index=True)
 
 elif cur == PAGES[18]:  # Leaders
