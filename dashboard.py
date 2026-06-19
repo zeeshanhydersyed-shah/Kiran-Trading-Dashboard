@@ -2659,6 +2659,19 @@ elif cur == PAGES[3]:  # Explorer
         use_container_width=True, hide_index=True, height=400,
     )
 
+    st.caption(
+        "**How to read this table →** "
+        "**RS Rank** — lower = stronger stock relative to market (1 is best). &nbsp;"
+        "**RS Score** — positive = outperforming index; negative = underperforming. &nbsp;"
+        "**Rank Δ** — ↑ = rising momentum, ↓ = fading. &nbsp;"
+        "**Sec Rank** — sector's RS rank; prefer stocks in top-ranked sectors (low number). &nbsp;"
+        "**Tightness** — lower = tighter base (less volatility = better setup). &nbsp;"
+        "**Pivot Dist%** — distance to last pivot high: near 0 = at pivot, negative = already broken out. &nbsp;"
+        "**BOS ✅** — breakout signal fired today; price closed above pivot. &nbsp;"
+        "**Decision flow:** top sector (low Sec Rank) → strong RS (low RS Rank, positive Score) → "
+        "rising (↑ Rank Δ) → tight base (low Tightness) → near or above pivot → BOS ✅ = highest-conviction entry."
+    )
+
     st.divider()
     st.markdown("**Price History**")
     from database import get_prices_df
