@@ -2634,6 +2634,7 @@ elif cur == PAGES[3]:  # Explorer
                    ss.rs_score_20, ss.rs_rank, ss.rs_rank_prev, ss.rank_change,
                    ss.sector_rs_rank, ss.base_tightness, ss.pivot_distance_pct,
                    ss.bos_flag, ss.avg_vol_10d, ss.vol_contraction, ss.pivot_high,
+                   ss.stage2_bull,
                    p.close AS current_close
             FROM stock_signals ss
             JOIN sectors s ON ss.symbol = s.symbol
@@ -2653,18 +2654,24 @@ elif cur == PAGES[3]:  # Explorer
     st.markdown("**Stock Explorer**")
     st.caption(f"As of {fmt_date(_ex_latest)} · {len(_ex_df)} stocks")
 
+    # ── Screener toggle ───────────────────────────────────────────────────────
+    _ex_screener = st.toggle(
+        "🎯 Screener — Stage 2 · Top 8 sectors · RS+ · Vol>200k · BBW<10 · Price>10",
+        key="exp_screener",
+    )
+
     # Sector filter + sort controls in one row
     _fc1, _fc2, _fc3, _fc4 = st.columns([2, 2, 1, 1])
     _ex_sectors = ["All sectors"] + sorted(_ex_df["sector"].dropna().unique().tolist())
     _ex_sel_sec = _fc1.selectbox("Sector", _ex_sectors, key="exp_sector",
                                   label_visibility="collapsed")
     _ex_sort_opts = {
-        "RS Rank":        ("rs_rank",            True),
-        "RS Score":       ("rs_score_20",        False),
-        "Rank Change":    ("rank_change",        False),
+        "RS Rank":         ("rs_rank",            True),
+        "RS Score":        ("rs_score_20",        False),
+        "Rank Change":     ("rank_change",        False),
         "BBW% (tightest)": ("base_tightness",     True),
-        "Pivot Distance": ("pivot_distance_pct", True),
-        "Symbol A–Z":     ("symbol",             True),
+        "Pivot Distance":  ("pivot_distance_pct", True),
+        "Symbol A–Z":      ("symbol",             True),
     }
     _ex_sort_label = _fc2.selectbox("Sort by", list(_ex_sort_opts.keys()),
                                      key="exp_sort", label_visibility="collapsed")
@@ -2678,6 +2685,20 @@ elif cur == PAGES[3]:  # Explorer
         _ex_df if _ex_sel_sec == "All sectors"
         else _ex_df[_ex_df["sector"] == _ex_sel_sec]
     ).copy()
+
+    # Apply screener criteria when toggle is ON
+    if _ex_screener:
+        _total_before = len(_ex_filtered)
+        _ex_filtered = _ex_filtered[
+            (_ex_filtered["stage2_bull"] == 1) &
+            (_ex_filtered["sector_rs_rank"] <= 8) &
+            (_ex_filtered["rs_score_20"] > 0) &
+            (_ex_filtered["avg_vol_10d"] > 200_000) &
+            (_ex_filtered["base_tightness"] < 10) &
+            (_ex_filtered["current_close"] > 10)
+        ]
+        st.caption(f"🎯 Screener active — **{len(_ex_filtered)}** stocks passed out of {_total_before}")
+
     if _ex_bos_only:
         _ex_filtered = _ex_filtered[_ex_filtered["bos_flag"] == 1]
     _ex_filtered = _ex_filtered.sort_values(

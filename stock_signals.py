@@ -58,6 +58,33 @@ def _load_stock_prices_with_volume(conn, symbols, from_date, to_date):
     return result
 
 
+def _ema(prices_close: list, pos: int, period: int):
+    """Exponential moving average at position pos using Wilder/standard multiplier.
+    Returns None if not enough data."""
+    if pos < period - 1:
+        return None
+    k = 2 / (period + 1)
+    # seed with SMA of first `period` values
+    window = [prices_close[i] for i in range(pos - period + 1, pos + 1)]
+    if any(v is None for v in window):
+        return None
+    ema = sum(window) / period
+    # refine with full history back to max(0, pos-3*period) for stability
+    start = max(0, pos - 3 * period)
+    seed_start = start + period - 1
+    if seed_start > pos:
+        return ema
+    seed_window = [prices_close[i] for i in range(start, start + period)]
+    if any(v is None for v in seed_window):
+        return ema
+    ema = sum(seed_window) / period
+    for i in range(start + period, pos + 1):
+        if prices_close[i] is None:
+            return None
+        ema = prices_close[i] * k + ema * (1 - k)
+    return ema
+
+
 def _build_pivot_lookup(stock_prices_vol: dict) -> dict:
     """Pre-compute pivot_high, pivot_distance_pct, bos_flag for every (symbol, date).
 
@@ -208,6 +235,16 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
             if pivot_lookup:
                 ph, pd_pct, bf = pivot_lookup.get(symbol, {}).get(date, (None, None, None))
 
+            # stage2_bull: close > EMA20 > EMA50 > EMA200, all EMAs stacked
+            stage2 = None
+            if pos >= 199:
+                closes = [prices[i][1] for i in range(pos - 3 * 200, pos + 1)] if pos >= 3 * 200 else [prices[i][1] for i in range(pos + 1)]
+                e20  = _ema(closes, len(closes) - 1, 20)
+                e50  = _ema(closes, len(closes) - 1, 50)
+                e200 = _ema(closes, len(closes) - 1, 200)
+                if e20 is not None and e50 is not None and e200 is not None:
+                    stage2 = 1 if (s_today > e20 > e50 > e200) else 0
+
             rows.append({
                 'symbol': symbol,
                 'sector': sector,
@@ -219,6 +256,7 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                 'pivot_high': ph,
                 'pivot_distance_pct': pd_pct,
                 'bos_flag': bf,
+                'stage2_bull': stage2,
             })
 
         if not rows:
@@ -246,13 +284,14 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
             "INSERT OR REPLACE INTO stock_signals "
             "(date, symbol, rs_score_20, rs_score_50, rs_rank, rs_rank_prev, "
             "rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d, "
-            "pivot_high, pivot_distance_pct) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "pivot_high, pivot_distance_pct, stage2_bull) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (date, r['symbol'], r['rs_score_20'], r['rs_score_50'],
                  r['rs_rank'], r['rs_rank_prev'], r['rank_change'], r['sector_rs_rank'],
                  r.get('base_tightness'), r.get('bos_flag'), r.get('vol_contraction'),
-                 r.get('avg_vol_10d'), r.get('pivot_high'), r.get('pivot_distance_pct'))
+                 r.get('avg_vol_10d'), r.get('pivot_high'), r.get('pivot_distance_pct'),
+                 r.get('stage2_bull'))
                 for r in rows
             ],
         )
@@ -416,6 +455,73 @@ def update_base_tightness_vol_contraction() -> None:
         logger.info(f"  Total rows in stock_signals : {total_rows:,}")
         logger.info(f"  base_tightness  NULLs remaining: {bt_nulls:,}")
         logger.info(f"  vol_contraction NULLs remaining: {vc_nulls:,}")
+    finally:
+        conn.close()
+
+
+def backfill_stage2_bull() -> None:
+    """Add stage2_bull column (if missing) and compute it for all existing rows."""
+    logger.info("Starting stage2_bull backfill...")
+    conn = sqlite3.connect(DB)
+    try:
+        cur = conn.cursor()
+        # Add column if not present (safe to run multiple times)
+        try:
+            cur.execute("ALTER TABLE stock_signals ADD COLUMN stage2_bull INTEGER")
+            conn.commit()
+            logger.info("  Added stage2_bull column.")
+        except Exception:
+            pass  # column already exists
+
+        symbol_sector = _load_universe(conn)
+        symbols = list(symbol_sector.keys())
+        placeholders = ','.join('?' * len(symbols))
+
+        cur.execute(
+            f"SELECT symbol, date, close FROM prices_adjusted "
+            f"WHERE symbol IN ({placeholders}) ORDER BY symbol, date",
+            symbols,
+        )
+        price_data: dict[str, list] = {}
+        for sym, date, close in cur.fetchall():
+            if sym not in price_data:
+                price_data[sym] = []
+            price_data[sym].append((date, close))
+
+        updates = []
+        total = 0
+        for symbol, prices in price_data.items():
+            closes = [p[1] for p in prices]
+            for pos, (date, close) in enumerate(prices):
+                if pos < 199 or close is None:
+                    continue
+                e20  = _ema(closes, pos, 20)
+                e50  = _ema(closes, pos, 50)
+                e200 = _ema(closes, pos, 200)
+                if e20 is None or e50 is None or e200 is None:
+                    continue
+                s2 = 1 if (close > e20 > e50 > e200) else 0
+                updates.append((s2, date, symbol))
+                total += 1
+                if len(updates) >= 10_000:
+                    cur.executemany(
+                        "UPDATE stock_signals SET stage2_bull = ? WHERE date = ? AND symbol = ?",
+                        updates,
+                    )
+                    conn.commit()
+                    logger.info(f"  {total:,} rows updated...")
+                    updates = []
+
+        if updates:
+            cur.executemany(
+                "UPDATE stock_signals SET stage2_bull = ? WHERE date = ? AND symbol = ?",
+                updates,
+            )
+            conn.commit()
+
+        cur.execute("SELECT COUNT(*) FROM stock_signals WHERE stage2_bull = 1")
+        stage2_count = cur.fetchone()[0]
+        logger.info(f"Backfill complete. {total:,} rows computed, {stage2_count:,} stage2_bull=1.")
     finally:
         conn.close()
 
