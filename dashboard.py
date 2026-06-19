@@ -2063,55 +2063,120 @@ elif cur == PAGES[2]:  # Market
 # PAGE 2 — HISTORY
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[4]:  # History
-    st.markdown("**Sector Performance History** — equal-weighted index per sector (base = 100)")
+    st.markdown("**Sector Performance History** — equal-weighted price index per sector (base = 100 at start of 1-year window)")
+    st.caption(
+        "Rising line = sector stocks outperforming their own 1-year baseline. "
+        "Sectors ordered by current RS Rank (strongest first). "
+        "Cross-reference with Market Gates → Top-Down View to confirm momentum before entering a stock."
+    )
 
     try:
         import plotly.graph_objects as go
 
-        sector_list   = sorted(sector_df["sector"].tolist())
-        selected_hist = st.multiselect(
-            "Compare sectors",
-            options=sector_list,
-            default=sector_list[:5],
+        # ── Load sector RS ranks from sector_signals ──────────────────────────
+        _hist_con = sqlite3.connect(DB_PATH)
+        _hist_latest = pd.read_sql_query(
+            "SELECT MAX(date) AS d FROM sector_signals", _hist_con
+        ).iloc[0]["d"]
+        _hist_ranks = pd.read_sql_query(
+            """
+            SELECT sector, rs_rank, composite_score
+            FROM sector_signals
+            WHERE date = ? AND rs_rank IS NOT NULL
+            ORDER BY rs_rank ASC
+            """,
+            _hist_con,
+            params=(_hist_latest,),
         )
+        _hist_con.close()
+
+        # ── Build ordered sector list with rank label ──────────────────────────
+        if not _hist_ranks.empty:
+            _hist_ordered = _hist_ranks["sector"].tolist()
+            _hist_label_map = {
+                row["sector"]: f"{row['sector']}  (#{int(row['rs_rank'])})"
+                for _, row in _hist_ranks.iterrows()
+            }
+        else:
+            # Fallback: alphabetical with no rank labels
+            _hist_ordered = sorted(sector_df["sector"].tolist())
+            _hist_label_map = {s: s for s in _hist_ordered}
+
+        _hist_labels    = [_hist_label_map[s] for s in _hist_ordered]
+        _hist_label_inv = {v: k for k, v in _hist_label_map.items()}  # label → sector name
+
+        default_labels = _hist_labels[:5]
+        selected_labels = st.multiselect(
+            "Compare sectors (ordered by RS Rank — strongest first)",
+            options=_hist_labels,
+            default=default_labels,
+        )
+        selected_hist = [_hist_label_inv[lbl] for lbl in selected_labels]
+
+        # ── Get sector membership from stock_signals ──────────────────────────
+        _hist_sym_con = sqlite3.connect(DB_PATH)
+        _hist_sym_date = pd.read_sql_query(
+            "SELECT MAX(date) AS d FROM stock_signals", _hist_sym_con
+        ).iloc[0]["d"]
+        _hist_syms_df = pd.read_sql_query(
+            "SELECT symbol, sector FROM stock_signals WHERE date = ?",
+            _hist_sym_con,
+            params=(_hist_sym_date,),
+        )
+        _hist_sym_con.close()
+
+        colors_pool = [
+            "#3b82f6","#22c55e","#f59e0b","#ef4444","#8b5cf6",
+            "#06b6d4","#f97316","#84cc16","#ec4899","#14b8a6",
+        ]
 
         if selected_hist:
             fig_hist = go.Figure()
-            colors_pool = [
-                "#3b82f6","#22c55e","#f59e0b","#ef4444","#8b5cf6",
-                "#06b6d4","#f97316","#84cc16","#ec4899","#14b8a6",
-            ]
             for i, sec in enumerate(selected_hist):
-                syms = tuple(stock_30d.loc[stock_30d["sector"] == sec, "symbol"].tolist())
+                syms = tuple(_hist_syms_df.loc[_hist_syms_df["sector"] == sec, "symbol"].tolist())
                 if not syms:
                     continue
                 h = load_sector_history(syms)
                 if h.empty:
                     continue
+                rank_lbl = _hist_label_map.get(sec, sec)
                 lc = colors_pool[i % len(colors_pool)]
                 fig_hist.add_trace(go.Scatter(
                     x=h["date"], y=h["index_value"].round(2),
-                    mode="lines", name=sec,
+                    mode="lines", name=rank_lbl,
                     line={"width": 2, "color": lc},
-                    # Show ONLY this sector's value on hover (no cross-trace tooltip)
-                    hovertemplate=f"<b>{sec}</b><br>%{{x|%d %b %Y}}: %{{y:.1f}}<extra></extra>",
+                    hovertemplate=f"<b>{rank_lbl}</b><br>%{{x|%d %b %Y}}: %{{y:.1f}}<extra></extra>",
                 ))
             fig_hist.add_hline(y=100, line_dash="dot", line_color="#94a3b8",
-                               annotation_text="Base", annotation_position="bottom right")
+                               annotation_text="Base (1yr ago)", annotation_position="bottom right")
             fig_hist.update_layout(
-                height=480,
-                # "closest" → only the hovered trace tooltip is shown
+                height=500,
                 hovermode="closest",
                 xaxis_title="", yaxis_title="Index (Base = 100)",
                 legend={"orientation": "h", "y": 1.08, "x": 0, "font": {"size": 11}},
                 margin={"l": 4, "r": 4, "t": 32, "b": 8},
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                xaxis={"gridcolor": "#f1f5f9"},
+                yaxis={"gridcolor": "#f1f5f9"},
             )
-            st.plotly_chart(fig_hist, width='stretch')
+            st.plotly_chart(fig_hist, use_container_width=True)
+
+            # ── RS rank table below chart ──────────────────────────────────────
+            if not _hist_ranks.empty:
+                _hist_shown = _hist_ranks[_hist_ranks["sector"].isin(selected_hist)].copy()
+                _hist_shown = _hist_shown.rename(columns={
+                    "sector": "Sector", "rs_rank": "RS Rank", "composite_score": "Composite Score"
+                })
+                _hist_shown["Composite Score"] = _hist_shown["Composite Score"].apply(
+                    lambda v: f"{v:.2f}" if pd.notna(v) else "—"
+                )
+                st.dataframe(_hist_shown, use_container_width=True, hide_index=True)
         else:
             st.info("Select at least one sector.")
     except ImportError:
         st.warning("Plotly visualization library is not available.")
+    except Exception as _hist_err:
+        st.warning(f"History page error: {_hist_err}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
