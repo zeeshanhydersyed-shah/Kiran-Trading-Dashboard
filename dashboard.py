@@ -2718,6 +2718,7 @@ elif cur == PAGES[3]:  # Explorer
             (_ex_filtered["bos_flag"] == 0) &
             (_ex_filtered["pivot_distance_pct"] >= 0) &
             (_ex_filtered["pivot_distance_pct"] <= 5) &
+            (_ex_filtered["rs_score_20"] > 0) &
             (_ex_filtered["rs_rank"] >= 50) &
             (_ex_filtered["rs_rank"] <= 200) &
             (_ex_filtered["base_tightness"] >= 5) &
