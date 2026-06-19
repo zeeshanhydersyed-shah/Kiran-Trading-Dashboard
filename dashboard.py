@@ -2560,100 +2560,223 @@ elif cur == PAGES[5]:  # Trade Log
 # PAGE 3 — EXPLORER
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[3]:  # Explorer
+    # ── Load stock_signals for latest date ────────────────────────────────────
+    try:
+        _ex_con = sqlite3.connect(DB_PATH)
+        _ex_latest = _ex_con.execute(
+            "SELECT MAX(date) FROM stock_signals"
+        ).fetchone()[0]
+
+        _ex_df = pd.read_sql_query(
+            """
+            SELECT ss.symbol, s.sector,
+                   ss.rs_score_20, ss.rs_rank, ss.rs_rank_prev, ss.rank_change,
+                   ss.sector_rs_rank, ss.base_tightness, ss.pivot_distance_pct,
+                   ss.bos_flag, ss.avg_vol_10d, ss.vol_contraction, ss.pivot_high,
+                   p.close AS current_close
+            FROM stock_signals ss
+            JOIN sectors s ON ss.symbol = s.symbol
+            LEFT JOIN prices p
+                ON p.symbol = ss.symbol AND p.date = ss.date
+            WHERE ss.date = ?
+            ORDER BY ss.rs_rank ASC
+            """,
+            _ex_con,
+            params=(_ex_latest,),
+        )
+        _ex_con.close()
+    except Exception as _ex_load_err:
+        st.error(f"Explorer data error: {_ex_load_err}")
+        st.stop()
+
     ex_left, ex_right = st.columns([1, 2])
 
     with ex_left:
         st.markdown("**Stock Explorer**")
-        all_sectors_list = ["All sectors"] + sorted(sector_df["sector"].tolist())
-        selected_sector  = st.selectbox("Sector", all_sectors_list, key="exp_sector", label_visibility="collapsed")
+        st.caption(f"As of {fmt_date(_ex_latest)} · {len(_ex_df)} stocks")
 
-        filtered = (
-            stock_30d if selected_sector == "All sectors"
-            else stock_30d[stock_30d["sector"] == selected_sector]
+        # Sector filter — populated from stock_signals (not sector_df) so it
+        # only shows sectors that have signal data today
+        _ex_sectors = ["All sectors"] + sorted(_ex_df["sector"].dropna().unique().tolist())
+        _ex_sel_sec = st.selectbox("Sector", _ex_sectors, key="exp_sector",
+                                    label_visibility="collapsed")
+
+        _ex_filtered = (
+            _ex_df if _ex_sel_sec == "All sectors"
+            else _ex_df[_ex_df["sector"] == _ex_sel_sec]
+        ).copy()
+
+        # Sort controls
+        _ex_sort_opts = {
+            "RS Rank (best first)":       ("rs_rank",             True),
+            "RS Score (highest first)":   ("rs_score_20",         False),
+            "Rank Change (rising first)": ("rank_change",         False),
+            "Base Tightness (tightest)":  ("base_tightness",      True),
+            "Pivot Distance (closest)":   ("pivot_distance_pct",  True),
+            "Symbol A–Z":                 ("symbol",              True),
+        }
+        _ex_sort_label = st.selectbox("Sort by", list(_ex_sort_opts.keys()),
+                                       key="exp_sort", label_visibility="collapsed")
+        _ex_sort_col, _ex_sort_asc = _ex_sort_opts[_ex_sort_label]
+
+        # BOS filter
+        _ex_bos_only = st.checkbox("Breakouts only (bos_flag = 1)", key="exp_bos")
+        if _ex_bos_only:
+            _ex_filtered = _ex_filtered[_ex_filtered["bos_flag"] == 1]
+
+        _ex_filtered = _ex_filtered.sort_values(
+            _ex_sort_col, ascending=_ex_sort_asc, na_position="last"
         )
 
-        sc1, sc2 = st.columns([2, 1])
-        sort_col = sc1.selectbox("Sort", ["perf_pct", "symbol", "latest_close"], key="exp_sort", label_visibility="collapsed")
-        sort_asc = sc2.checkbox("Asc", value=(sort_col == "symbol"), key="exp_asc")
+        total_ex = len(_ex_filtered)
+        top_n_ex = st.slider("Show top N", 1, max(1, total_ex),
+                              min(40, total_ex), key="exp_n") if total_ex > 1 else total_ex
 
-        total = len(filtered)
-        top_n = st.slider("Show top N", 1, max(1, total), min(50, total), key="exp_n") if total > 1 else total
+        _ex_show = _ex_filtered.head(top_n_ex).copy()
 
-        disp_stocks = (
-            filtered.sort_values(sort_col, ascending=sort_asc)
-            .head(top_n)[["symbol","sector","perf_pct","latest_close","base_close","latest_date","base_date"]]
-            .copy()
+        # ── Format rank change with arrow ─────────────────────────────────────
+        def _fmt_rank_chg(v):
+            if pd.isna(v): return "—"
+            v = int(v)
+            if v > 0:  return f"↑{v}"
+            if v < 0:  return f"↓{abs(v)}"
+            return "—"
+
+        _ex_show["rank_chg_fmt"] = _ex_show["rank_change"].apply(_fmt_rank_chg)
+        _ex_show["bos"] = _ex_show["bos_flag"].apply(
+            lambda x: "✅" if x == 1 else ("" if pd.isna(x) else "")
         )
-        disp_stocks.columns = ["Symbol","Sector","30d%","Close","Base","From","To"]
+
+        _ex_disp = _ex_show[[
+            "symbol", "sector", "rs_rank", "rs_score_20",
+            "rank_chg_fmt", "sector_rs_rank",
+            "base_tightness", "pivot_distance_pct",
+            "bos", "avg_vol_10d", "current_close"
+        ]].copy()
+        _ex_disp.columns = [
+            "Symbol", "Sector", "RS Rank", "RS Score",
+            "Rank Δ", "Sec Rank",
+            "Tightness", "Pivot Dist%",
+            "BOS", "Vol 10d", "Close"
+        ]
 
         st.dataframe(
-            disp_stocks.style
-            .apply(style_pct_cols, subset=["30d%"])
-            .format({"30d%":"{:.2f}","Close":"{:.2f}","Base":"{:.2f}"}),
-            width='stretch', hide_index=True, height=480,
+            _ex_disp.style.format({
+                "RS Score":    "{:+.1f}",
+                "Tightness":   lambda v: f"{v:.1f}" if pd.notna(v) else "—",
+                "Pivot Dist%": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
+                "Vol 10d":     lambda v: f"{v/1e6:.2f}M" if pd.notna(v) and v >= 1e6 else (f"{v:,.0f}" if pd.notna(v) else "—"),
+                "Close":       lambda v: f"{v:.2f}" if pd.notna(v) else "—",
+            }),
+            width="stretch", hide_index=True, height=520,
         )
 
     with ex_right:
         st.markdown("**Price History**")
         from database import get_prices_df
 
-        all_symbols   = sorted(stock_30d["symbol"].tolist())
-        chosen_symbol = st.selectbox("Symbol", all_symbols, key="exp_sym", label_visibility="collapsed")
+        _ex_sym_list = _ex_filtered["symbol"].tolist() if not _ex_filtered.empty else _ex_df["symbol"].tolist()
+        chosen_symbol = st.selectbox("Symbol", _ex_sym_list, key="exp_sym",
+                                      label_visibility="collapsed")
 
         if chosen_symbol:
-            row_30 = stock_30d[stock_30d["symbol"] == chosen_symbol]
-            row_10 = stock_10d[stock_10d["symbol"] == chosen_symbol]
+            _ex_sig_row = _ex_df[_ex_df["symbol"] == chosen_symbol]
 
-            if not row_30.empty and not row_10.empty:
-                p30 = row_30.iloc[0]["perf_pct"]
-                p10 = row_10.iloc[0]["perf_pct"]
+            # ── Signal banner ─────────────────────────────────────────────────
+            if not _ex_sig_row.empty:
+                _sr = _ex_sig_row.iloc[0]
+                _bos      = _sr["bos_flag"] == 1
+                _rs       = _sr["rs_score_20"]
+                _rank     = _sr["rs_rank"]
+                _pdist    = _sr["pivot_distance_pct"]
+                _tight    = _sr["base_tightness"]
+                _sec_rank = _sr["sector_rs_rank"]
+                _rchg     = _sr["rank_change"]
+                _close    = _sr["current_close"]
+                _pivot    = _sr["pivot_high"]
 
-                if   p30 >= 0 and p10 >= 0: mom = "Heating Up"   if p10 > p30 else "Cooling Down"
-                elif p30 < 0 and p10 >= 0:  mom = "Recovering"
-                elif p30 >= 0 and p10 < 0:  mom = "Rolling Over"
-                else:                        mom = "Falling"      if p10 < p30 else "Stabilising"
+                # Banner colour: green if BOS + positive RS, amber if near pivot,
+                # grey otherwise
+                if _bos and _rs is not None and _rs > 0:
+                    _b_col = "#22c55e"; _b_label = "Breakout"
+                elif _pdist is not None and 0 <= _pdist <= 5:
+                    _b_col = "#f59e0b"; _b_label = "Near Pivot"
+                elif _rs is not None and _rs > 0:
+                    _b_col = "#3b82f6"; _b_label = "RS Positive"
+                else:
+                    _b_col = "#94a3b8"; _b_label = "Lagging"
 
-                mc = MOMENTUM_COLORS.get(mom, "#94a3b8")
+                _rchg_str = (f"↑{int(_rchg)}" if _rchg > 0 else f"↓{abs(int(_rchg))}" if _rchg < 0 else "—") if pd.notna(_rchg) else "—"
+                _pdist_str = f"{_pdist:+.1f}%" if pd.notna(_pdist) else "—"
+                _tight_str = f"{_tight:.1f}" if pd.notna(_tight) else "—"
+                _pivot_str = f"PKR {_pivot:.2f}" if pd.notna(_pivot) else "—"
+                _close_str = f"PKR {_close:.2f}" if pd.notna(_close) else "—"
+
                 st.markdown(
-                    f"""<div style="background:{mc}18; border-left:3px solid {mc};
-                        padding:6px 12px; border-radius:4px; margin-bottom:8px;
-                        display:flex; align-items:center; gap:12px;">
-                        <b style="color:{mc}; font-size:0.85rem;">{mom}</b>
-                        <span style="font-size:0.72rem; color:#64748b;">
-                            {MOMENTUM_DESC.get(mom,'')}
-                            &nbsp;·&nbsp; 30d <b>{p30:+.2f}%</b>
-                            &nbsp;·&nbsp; 10d <b>{p10:+.2f}%</b>
-                        </span>
-                    </div>""",
+                    f"<div style='background:{_b_col}15; border-left:4px solid {_b_col}; "
+                    f"padding:8px 14px; border-radius:6px; margin-bottom:10px;'>"
+                    f"<div style='display:flex; align-items:center; gap:16px; flex-wrap:wrap;'>"
+                    f"<span style='font-size:0.9rem; font-weight:800; color:{_b_col}; white-space:nowrap;'>"
+                    f"{_b_label}</span>"
+                    f"<span style='font-size:0.75rem; color:#475569;'>"
+                    f"RS #{_rank} &nbsp;·&nbsp; RS Score <b>{_rs:+.1f}</b> &nbsp;·&nbsp; "
+                    f"Rank Δ <b>{_rchg_str}</b> &nbsp;·&nbsp; "
+                    f"Sec #{_sec_rank} &nbsp;·&nbsp; "
+                    f"Tightness <b>{_tight_str}</b> &nbsp;·&nbsp; "
+                    f"Pivot {_pivot_str} &nbsp;·&nbsp; Dist <b>{_pdist_str}</b>"
+                    f"</span></div>"
+                    f"<div style='font-size:0.72rem; color:#94a3b8; margin-top:4px;'>"
+                    f"Close {_close_str} &nbsp;·&nbsp; {_sr['sector']}"
+                    f"</div></div>",
                     unsafe_allow_html=True,
                 )
 
-            hist = get_prices_df(chosen_symbol, limit=90)
+            # ── Price chart with 20MA and 50MA ────────────────────────────────
+            hist = get_prices_df(chosen_symbol, limit=120)
             if hist:
                 h_df = pd.DataFrame(hist).sort_values("date")
                 h_df["date"] = pd.to_datetime(h_df["date"])
-                try:
-                    import plotly.graph_objects as go
-                    sec_name = stock_30d.loc[stock_30d["symbol"] == chosen_symbol, "sector"].values
+                h_df["ma20"] = h_df["close"].rolling(20, min_periods=1).mean()
+                h_df["ma50"] = h_df["close"].rolling(50, min_periods=1).mean()
+
+                if HAS_PLOTLY:
                     fig2 = go.Figure()
                     fig2.add_trace(go.Scatter(
                         x=h_df["date"], y=h_df["close"],
-                        mode="lines+markers", name=chosen_symbol,
-                        line={"color": "#3b82f6", "width": 2},
-                        marker={"size": 3},
+                        mode="lines", name="Close",
+                        line={"color": "#1e293b", "width": 2},
                     ))
+                    fig2.add_trace(go.Scatter(
+                        x=h_df["date"], y=h_df["ma20"],
+                        mode="lines", name="20 MA",
+                        line={"color": "#3b82f6", "width": 1.5, "dash": "dot"},
+                    ))
+                    fig2.add_trace(go.Scatter(
+                        x=h_df["date"], y=h_df["ma50"],
+                        mode="lines", name="50 MA",
+                        line={"color": "#f59e0b", "width": 1.5, "dash": "dash"},
+                    ))
+                    # Pivot line if available
+                    if not _ex_sig_row.empty and pd.notna(_ex_sig_row.iloc[0]["pivot_high"]):
+                        fig2.add_hline(
+                            y=float(_ex_sig_row.iloc[0]["pivot_high"]),
+                            line_dash="dot", line_color="#ef4444", line_width=1.2,
+                            annotation_text="Pivot", annotation_position="right",
+                        )
                     fig2.update_layout(
-                        title={"text": f"{chosen_symbol} — {sec_name[0] if len(sec_name) else ''}", "font": {"size": 13}},
+                        title={"text": f"{chosen_symbol}", "font": {"size": 13}},
                         xaxis_title="", yaxis_title="Close (PKR)",
-                        height=400,
+                        height=420,
                         margin={"l": 4, "r": 4, "t": 36, "b": 8},
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                         xaxis={"gridcolor": "#f1f5f9"},
                         yaxis={"gridcolor": "#f1f5f9"},
+                        legend={"orientation": "h", "y": 1.08, "font": {"size": 10}},
                     )
-                    st.plotly_chart(fig2, width='stretch')
-                except ImportError:
-                    st.dataframe(h_df, width='stretch', hide_index=True)
+                    st.plotly_chart(fig2, width="stretch")
+                else:
+                    st.dataframe(h_df[["date","close","ma20","ma50"]],
+                                 width="stretch", hide_index=True)
             else:
                 st.info(f"No price data for {chosen_symbol}.")
 
