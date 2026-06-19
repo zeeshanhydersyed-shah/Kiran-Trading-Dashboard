@@ -3704,6 +3704,128 @@ elif cur == PAGES[11]:  # Backtest (updated index)
                       unsafe_allow_html=True)
 
 
+    # ── Top-Down Panel — Index → Sector → Stock ───────────────────────────────
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    st.divider()
+    st.markdown("### 🔭 Top-Down View — Index → Sector → Stock")
+    st.caption("Gate 1 must be green before looking at sectors. Sectors sorted by RS Rank; score ≥ 0.50 confirms.")
+
+    try:
+        import sqlite3 as _td_sq
+        _td_con = _td_sq.connect(DB_PATH)
+
+        # Latest date in sector_signals
+        _td_latest = _td_con.execute(
+            "SELECT MAX(date) FROM sector_signals"
+        ).fetchone()[0]
+
+        # Market_regime for that date
+        _td_reg_row = _td_con.execute(
+            "SELECT regime FROM market_regime WHERE date = ?", (_td_latest,)
+        ).fetchone()
+        _td_regime = _td_reg_row[0] if _td_reg_row else None
+
+        # Sector rows ordered by rs_rank
+        _td_sectors = pd.read_sql_query(
+            """
+            SELECT sector, rs_rank, rs_score_20, composite_score,
+                   breadth_score, rs_inflection
+            FROM sector_signals
+            WHERE date = ?
+              AND rs_rank IS NOT NULL
+            ORDER BY rs_rank ASC
+            """,
+            _td_con,
+            params=(_td_latest,),
+        )
+        _td_con.close()
+
+        # ── Index gate status ─────────────────────────────────────────────────
+        _td_gate_open = kse_above_ma  # already computed above in the gates block
+        _td_gate_color  = "#22c55e" if _td_gate_open else "#ef4444"
+        _td_gate_label  = "OPEN — index above 50MA" if _td_gate_open else "CLOSED — index below 50MA"
+        _td_gate_advice = "Look at top sectors below." if _td_gate_open else "Do not go long. Sit out or short only."
+
+        st.markdown(
+            f"<div style='background:{_td_gate_color}15; border-left:4px solid {_td_gate_color}; "
+            f"padding:8px 16px; border-radius:6px; margin-bottom:12px; "
+            f"display:flex; align-items:center; gap:16px;'>"
+            f"<span style='font-size:0.9rem; font-weight:800; color:{_td_gate_color}; white-space:nowrap;'>"
+            f"{'✅' if _td_gate_open else '🚫'} Gate 1: {_td_gate_label}</span>"
+            f"<span style='font-size:0.78rem; color:#64748b;'>{_td_gate_advice}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        if not _td_sectors.empty:
+            # Show top 8 sectors (rank 1-8)
+            _td_top = _td_sectors.head(8).copy()
+
+            # Build compact sector rows
+            _td_html_rows = ""
+            for _, _r in _td_top.iterrows():
+                _rank   = int(_r["rs_rank"])
+                _rs     = _r["rs_score_20"]
+                _score  = _r["composite_score"]
+                _bread  = _r["breadth_score"]
+                _infl   = int(_r["rs_inflection"]) if pd.notna(_r["rs_inflection"]) else 0
+
+                # Score colour: green ≥0.50, amber 0.35-0.50, grey below
+                if _score is not None and _score >= 0.50:
+                    _sc = "#22c55e"; _sc_bg = "#f0fdf4"
+                elif _score is not None and _score >= 0.35:
+                    _sc = "#f59e0b"; _sc_bg = "#fffbeb"
+                else:
+                    _sc = "#94a3b8"; _sc_bg = "#f8fafc"
+
+                # RS sign
+                _rs_str = f"+{_rs:.1f}" if _rs is not None and _rs >= 0 else (f"{_rs:.1f}" if _rs is not None else "—")
+                _rs_col = "#22c55e" if (_rs is not None and _rs >= 0) else "#ef4444"
+
+                _infl_badge = " <span style='font-size:0.65rem; background:#dbeafe; color:#1d4ed8; border-radius:3px; padding:1px 5px; font-weight:700;'>↑ NEW</span>" if _infl else ""
+
+                _td_html_rows += (
+                    f"<tr style='border-bottom:1px solid #f1f5f9;'>"
+                    f"<td style='padding:7px 10px; font-weight:800; color:#334155; font-size:0.82rem;'>#{_rank}</td>"
+                    f"<td style='padding:7px 10px; font-size:0.82rem; color:#1e293b; font-weight:600;'>"
+                    f"{_r['sector']}{_infl_badge}</td>"
+                    f"<td style='padding:7px 10px; font-size:0.82rem; color:{_rs_col}; font-weight:700;'>{_rs_str}</td>"
+                    f"<td style='padding:7px 10px;'>"
+                    f"<span style='background:{_sc_bg}; color:{_sc}; font-weight:700; font-size:0.78rem; "
+                    f"border-radius:4px; padding:2px 8px;'>{_score:.2f}</span></td>"
+                    f"<td style='padding:7px 10px; font-size:0.78rem; color:#64748b;'>{_bread:.0f}%</td>"
+                    f"</tr>"
+                )
+
+            st.markdown(
+                f"<table style='width:100%; border-collapse:collapse; font-family:inherit;'>"
+                f"<thead><tr style='background:#f8fafc; border-bottom:2px solid #e2e8f0;'>"
+                f"<th style='padding:6px 10px; text-align:left; font-size:0.72rem; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;'>Rank</th>"
+                f"<th style='padding:6px 10px; text-align:left; font-size:0.72rem; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;'>Sector</th>"
+                f"<th style='padding:6px 10px; text-align:left; font-size:0.72rem; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;'>RS vs Index</th>"
+                f"<th style='padding:6px 10px; text-align:left; font-size:0.72rem; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;'>Score</th>"
+                f"<th style='padding:6px 10px; text-align:left; font-size:0.72rem; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;'>Breadth</th>"
+                f"</tr></thead>"
+                f"<tbody>{_td_html_rows}</tbody>"
+                f"</table>",
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                "<div style='font-size:0.7rem; color:#94a3b8; margin-top:8px;'>"
+                "RS vs Index = sector 20d return minus KSE-100 20d return. "
+                "Score ≥ 0.50 = strong (green), 0.35–0.50 = moderate (amber). "
+                "↑ NEW = sector just moved up in rank with positive RS. "
+                f"As of {fmt_date(_td_latest)}."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("Sector data not yet available for today.")
+
+    except Exception as _td_err:
+        st.caption(f"Top-down panel unavailable: {_td_err}")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 8 — MARKET REGIME  (Weinstein Breadth Z-Score)
 # ═══════════════════════════════════════════════════════════════════════════════
