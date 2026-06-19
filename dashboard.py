@@ -2601,7 +2601,7 @@ elif cur == PAGES[3]:  # Explorer
         "RS Rank":        ("rs_rank",            True),
         "RS Score":       ("rs_score_20",        False),
         "Rank Change":    ("rank_change",        False),
-        "Base Tightness": ("base_tightness",     True),
+        "BBW% (tightest)": ("base_tightness",     True),
         "Pivot Distance": ("pivot_distance_pct", True),
         "Symbol A–Z":     ("symbol",             True),
     }
@@ -2645,13 +2645,13 @@ elif cur == PAGES[3]:  # Explorer
     _ex_disp.columns = [
         "Symbol", "Sector", "RS Rank", "RS Score",
         "Rank Δ", "Sec Rank",
-        "Tightness", "Pivot Dist%",
+        "BBW%", "Pivot Dist%",
         "BOS", "Vol 10d", "Close"
     ]
     st.dataframe(
         _ex_disp.style.format({
             "RS Score":    "{:+.1f}",
-            "Tightness":   lambda v: f"{v:.1f}" if pd.notna(v) else "—",
+            "BBW%":        lambda v: f"{v:.1f}%" if pd.notna(v) else "—",
             "Pivot Dist%": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
             "Vol 10d":     lambda v: f"{v/1e6:.2f}M" if pd.notna(v) and v >= 1e6 else (f"{v:,.0f}" if pd.notna(v) else "—"),
             "Close":       lambda v: f"{v:.2f}" if pd.notna(v) else "—",
@@ -2665,11 +2665,11 @@ elif cur == PAGES[3]:  # Explorer
         "**RS Score** — positive = outperforming index; negative = underperforming. &nbsp;"
         "**Rank Δ** — ↑ = rising momentum, ↓ = fading. &nbsp;"
         "**Sec Rank** — sector's RS rank; prefer stocks in top-ranked sectors (low number). &nbsp;"
-        "**Tightness** — lower = tighter base (less volatility = better setup). &nbsp;"
+        "**BBW%** — Bollinger Band Width = (Upper − Lower) / Middle × 100; lower = tighter base = stock coiling (better setup). &nbsp;"
         "**Pivot Dist%** — distance to last pivot high: near 0 = at pivot, negative = already broken out. &nbsp;"
         "**BOS ✅** — breakout signal fired today; price closed above pivot. &nbsp;"
         "**Decision flow:** top sector (low Sec Rank) → strong RS (low RS Rank, positive Score) → "
-        "rising (↑ Rank Δ) → tight base (low Tightness) → near or above pivot → BOS ✅ = highest-conviction entry."
+        "rising (↑ Rank Δ) → coiling base (low BBW%) → near or above pivot → BOS ✅ = highest-conviction entry."
     )
 
     st.divider()
@@ -2706,7 +2706,7 @@ elif cur == PAGES[3]:  # Explorer
 
             _rchg_str  = (f"↑{int(_rchg)}" if _rchg > 0 else f"↓{abs(int(_rchg))}" if _rchg < 0 else "—") if pd.notna(_rchg) else "—"
             _pdist_str = f"{_pdist:+.1f}%" if pd.notna(_pdist) else "—"
-            _tight_str = f"{_tight:.1f}" if pd.notna(_tight) else "—"
+            _tight_str = f"{_tight:.1f}%" if pd.notna(_tight) else "—"
             _pivot_str = f"PKR {_pivot:.2f}" if pd.notna(_pivot) else "—"
             _close_str = f"PKR {_close:.2f}" if pd.notna(_close) else "—"
 
@@ -2718,7 +2718,7 @@ elif cur == PAGES[3]:  # Explorer
                 f"<span style='font-size:0.75rem; color:#475569;'>"
                 f"RS #{_rank} &nbsp;·&nbsp; Score <b>{_rs:+.1f}</b> &nbsp;·&nbsp; "
                 f"Rank Δ <b>{_rchg_str}</b> &nbsp;·&nbsp; Sec #{_sec_rank} &nbsp;·&nbsp; "
-                f"Tightness <b>{_tight_str}</b> &nbsp;·&nbsp; "
+                f"BBW% <b>{_tight_str}</b> &nbsp;·&nbsp; "
                 f"Pivot {_pivot_str} &nbsp;·&nbsp; Dist <b>{_pdist_str}</b>"
                 f"</span></div>"
                 f"<div style='font-size:0.72rem; color:#94a3b8; margin-top:4px;'>"
