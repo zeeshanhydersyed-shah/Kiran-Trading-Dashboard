@@ -2635,11 +2635,14 @@ elif cur == PAGES[3]:  # Explorer
                    ss.sector_rs_rank, ss.base_tightness, ss.pivot_distance_pct,
                    ss.bos_flag, ss.avg_vol_10d, ss.vol_contraction, ss.pivot_high,
                    ss.stage2_bull,
-                   p.close AS current_close
+                   p.close AS current_close,
+                   sec.rs_rank AS sec_global_rank
             FROM stock_signals ss
             JOIN sectors s ON ss.symbol = s.symbol
             LEFT JOIN prices p
                 ON p.symbol = ss.symbol AND p.date = ss.date
+            LEFT JOIN sector_signals sec
+                ON sec.date = ss.date AND sec.sector = s.sector
             WHERE ss.date = ?
             ORDER BY ss.rs_rank ASC
             """,
@@ -2654,10 +2657,15 @@ elif cur == PAGES[3]:  # Explorer
     st.markdown("**Stock Explorer**")
     st.caption(f"As of {fmt_date(_ex_latest)} · {len(_ex_df)} stocks")
 
-    # ── Screener toggle ───────────────────────────────────────────────────────
-    _ex_screener = st.toggle(
+    # ── Screener toggles ──────────────────────────────────────────────────────
+    _sc1, _sc2 = st.columns(2)
+    _ex_screener = _sc1.toggle(
         "🎯 Screener — Stage 2 · Top 8 sectors · RS+ · Vol>200k · BBW<10 · Price>10",
         key="exp_screener",
+    )
+    _ex_edge = _sc2.toggle(
+        "🔬 Edge Screener — BOS · Sector top 3/6-12 · RS 50-200 · BBW 5-10% · Vol>200k",
+        key="exp_edge",
     )
 
     # Sector filter + sort controls in one row
@@ -2698,6 +2706,42 @@ elif cur == PAGES[3]:  # Explorer
             (_ex_filtered["current_close"] > 10)
         ]
         st.caption(f"🎯 Screener active — **{len(_ex_filtered)}** stocks passed out of {_total_before}")
+
+    # Apply edge screener (backtest-derived criteria)
+    if _ex_edge:
+        _total_before_e = len(_ex_filtered)
+        _sec_ok = (
+            (_ex_filtered["sec_global_rank"] <= 3) |
+            ((_ex_filtered["sec_global_rank"] >= 6) & (_ex_filtered["sec_global_rank"] <= 12))
+        )
+        _ex_filtered = _ex_filtered[
+            (_ex_filtered["bos_flag"] == 1) &
+            (_ex_filtered["rs_rank"] >= 50) &
+            (_ex_filtered["rs_rank"] <= 200) &
+            (_ex_filtered["base_tightness"] >= 5) &
+            (_ex_filtered["base_tightness"] < 10) &
+            (_ex_filtered["avg_vol_10d"] > 200_000) &
+            _sec_ok
+        ]
+        # Get current regime for context
+        try:
+            _edge_con = sqlite3.connect(DB_PATH)
+            _edge_regime = _edge_con.execute(
+                "SELECT regime FROM market_regime ORDER BY date DESC LIMIT 1"
+            ).fetchone()
+            _edge_con.close()
+            _edge_regime = _edge_regime[0] if _edge_regime else "UNKNOWN"
+        except Exception:
+            _edge_regime = "UNKNOWN"
+
+        _regime_warn = (
+            "" if _edge_regime == "TRENDING_UP"
+            else f"  ⚠️ Market is **{_edge_regime}** — edge screener is calibrated for TRENDING_UP only"
+        )
+        st.caption(
+            f"🔬 Edge Screener active — **{len(_ex_filtered)}** stocks passed out of {_total_before_e}"
+            f"{_regime_warn}"
+        )
 
     if _ex_bos_only:
         _ex_filtered = _ex_filtered[_ex_filtered["bos_flag"] == 1]
