@@ -3711,19 +3711,12 @@ elif cur == PAGES[11]:  # Backtest (updated index)
     st.caption("Gate 1 must be green before looking at sectors. Sectors sorted by RS Rank; score ≥ 0.50 confirms.")
 
     try:
-        import sqlite3 as _td_sq
-        _td_con = _td_sq.connect(DB_PATH)
+        _td_con = sqlite3.connect(DB_PATH)
 
         # Latest date in sector_signals
-        _td_latest = _td_con.execute(
-            "SELECT MAX(date) FROM sector_signals"
-        ).fetchone()[0]
-
-        # Market_regime for that date
-        _td_reg_row = _td_con.execute(
-            "SELECT regime FROM market_regime WHERE date = ?", (_td_latest,)
-        ).fetchone()
-        _td_regime = _td_reg_row[0] if _td_reg_row else None
+        _td_latest = pd.read_sql_query(
+            "SELECT MAX(date) AS d FROM sector_signals", _td_con
+        ).iloc[0]["d"]
 
         # Sector rows ordered by rs_rank
         _td_sectors = pd.read_sql_query(
@@ -3741,7 +3734,7 @@ elif cur == PAGES[11]:  # Backtest (updated index)
         _td_con.close()
 
         # ── Index gate status ─────────────────────────────────────────────────
-        _td_gate_open = kse_above_ma  # already computed above in the gates block
+        _td_gate_open = st.session_state.get("gate1_bullish", False)
         _td_gate_color  = "#22c55e" if _td_gate_open else "#ef4444"
         _td_gate_label  = "OPEN — index above 50MA" if _td_gate_open else "CLOSED — index below 50MA"
         _td_gate_advice = "Look at top sectors below." if _td_gate_open else "Do not go long. Sit out or short only."
