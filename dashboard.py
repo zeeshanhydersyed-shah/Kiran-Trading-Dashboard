@@ -4008,6 +4008,112 @@ elif cur == PAGES[11]:  # Backtest (updated index)
             st.info("No closed trades yet in simulation.")
 
     # ══════════════════════════════════════════════════════════════════════════
+    # BOS BREAKOUT BACKTEST FINDINGS  — run: 2026-06-19
+    # Universe : bos_flag=1 AND BBW<10 AND avg_vol_10d>200k  (all history)
+    # Winner   : +18% hit before -6% stop within 20 trading days
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+    st.divider()
+    st.markdown("### BOS Breakout Backtest — Research Findings")
+    st.caption(
+        "Run date: **19 Jun 2026** &nbsp;·&nbsp; "
+        "Universe: all BOS signals (bos_flag=1) where BBW% < 10 and avg vol 10d > 200k &nbsp;·&nbsp; "
+        "**Winner definition:** price hit +18% before hitting -6% stop within 20 trading days &nbsp;·&nbsp; "
+        "Risk/Reward: 1:3 &nbsp;·&nbsp; "
+        "Total qualifying events: 3,718"
+    )
+
+    st.markdown("#### Finding 1 — Market Regime is the most important filter")
+    st.caption("Outside TRENDING_UP, BOS breakouts have negative expected value regardless of any other filter.")
+    _bos_reg_data = {
+        "Regime":     ["TRENDING_UP", "RANGING", "TRENDING_DOWN", "VOLATILE"],
+        "Events":     [903,  469,  72,  69],
+        "Win Rate":   ["26.8%", "12.6%", "11.1%", "7.2%"],
+        "EV / trade": ["+0.43%", "-2.98%", "-3.33%", "-4.26%"],
+        "Verdict":    ["✅ Only regime with positive EV", "❌ Avoid", "❌ Avoid", "❌ Avoid"],
+    }
+    st.dataframe(pd.DataFrame(_bos_reg_data), use_container_width=True, hide_index=True)
+
+    st.markdown("#### Finding 2 — Extending the hold window improves EV significantly")
+    st.caption(
+        "59% of BOS events did not resolve within 20 days. Of those, 37% eventually hit the -6% stop "
+        "by 60 days — they were not neutral, they were slowly failing. "
+        "Extending to 40 days is the practical sweet spot: EV turns positive without tying up capital for 3 months."
+    )
+    _bos_win_data = {
+        "Hold Window": ["20 days", "30 days", "40 days", "60 days"],
+        "Events Resolved": ["40.7%", "55.1%", "64.2%", "77.8%"],
+        "Win Rate":        ["20.8%", "24.0%", "26.4%", "30.4%"],
+        "EV / trade":      ["-1.02%", "-0.24%", "+0.33%", "+1.30%"],
+        "Verdict":         ["Negative EV", "Near breakeven", "✅ Positive EV", "✅ Best EV"],
+    }
+    st.dataframe(pd.DataFrame(_bos_win_data), use_container_width=True, hide_index=True)
+
+    st.markdown("#### Finding 3 — Sector rank at BOS: top 3 best in TRENDING_UP; sector 4-5 is dead zone")
+    st.caption(
+        "In TRENDING_UP, stocks breaking out inside the top 3 ranked sectors had the highest win rate. "
+        "Sector ranks 4-5 consistently underperformed — avoid. "
+        "Sector ranks 6-12 and 13+ also showed positive EV in TRENDING_UP."
+    )
+    _bos_sec_data = {
+        "Sector Rank at BOS": ["Top 3", "4-5", "6-8", "9-12", "13+"],
+        "Win Rate (20d, TRENDING_UP)":  ["30.2%", "21.4%", "28.4%", "25.1%", "27.7%"],
+        "Win Rate (40d, TRENDING_UP)":  ["32.5%", "20.2%", "28.0%", "29.5%", "31.9%"],
+        "EV at 40d":  ["+1.81%", "-1.16%", "+0.71%", "+1.07%", "+1.66%"],
+        "Verdict":    ["✅ Best", "❌ Dead zone — skip", "✅ Good", "✅ Good", "✅ Good"],
+    }
+    st.dataframe(pd.DataFrame(_bos_sec_data), use_container_width=True, hide_index=True)
+
+    st.markdown("#### Finding 4 — RS rank sweet spot: 50-200, not the leaders")
+    st.caption(
+        "Counterintuitive: top 25 RS stocks had the lowest win rate at BOS. "
+        "They are already extended when they break the pivot. "
+        "RS rank 101-200 inside top sectors had the highest win rate — "
+        "these are stocks not yet discovered by the market, breaking out inside a strong sector."
+    )
+    _bos_rs_data = {
+        "RS Rank at BOS": ["Top 25", "26-50", "51-100", "101-200", "201+"],
+        "Win Rate (20d, TRENDING_UP)": ["100%*", "22.8%", "23.9%", "29.5%", "27.6%"],
+        "EV at 20d":                   ["+18%*", "-0.53%", "-0.26%", "+1.08%", "+0.62%"],
+        "Verdict":                     ["*1 event only — ignore", "Below avg", "Below avg", "✅ Best range", "Small sample"],
+    }
+    st.dataframe(pd.DataFrame(_bos_rs_data), use_container_width=True, hide_index=True)
+
+    st.markdown("#### Finding 5 — BBW sweet spot: 5-7%")
+    st.caption("Very tight bases (<3%) had zero wins. The 5-7% BBW range had the highest win rate in TRENDING_UP.")
+    _bos_bbw_data = {
+        "BBW% at BOS": ["<3%", "3-5%", "5-7%", "7-10%"],
+        "Events (TRENDING_UP)": [0, 45, 186, 672],
+        "Win Rate": ["—", "24.4%", "29.0%", "26.3%"],
+        "EV":       ["—", "-0.13%", "+0.97%", "+0.32%"],
+        "Verdict":  ["No data", "Below avg", "✅ Sweet spot", "Positive EV"],
+    }
+    st.dataframe(pd.DataFrame(_bos_bbw_data), use_container_width=True, hide_index=True)
+
+    st.markdown("#### Finding 6 — Best single combo found (TRENDING_UP + 40d window)")
+    st.caption(
+        "Sector top 3 × RS rank 101-200 is the standout combination. "
+        "The stock is not yet a leader globally, but it is breaking out inside the strongest sector. "
+        "This is the 'not yet discovered' setup — price structure is tight, sector is leading, "
+        "stock is catching up. This is what the 🔬 Edge Screener on the Explorer page targets."
+    )
+    _bos_combo_data = {
+        "Combo (TRENDING_UP + 40d)":           ["Sector top 3 × RS 101-200", "Sector 6-8 × RS top 50", "Sector top 3 × RS top 50", "Sector 13+ × RS 201+", "All TRENDING_UP (baseline)"],
+        "Events": [61, 24, 28, 22, 903],
+        "Win Rate": ["45.9%", "37.5%", "35.7%", "36.4%", "26.4%"],
+        "EV":       ["+5.02%", "+3.00%", "+2.57%", "+2.73%", "+0.33%"],
+        "Verdict":  ["✅ Highest EV found", "✅ Strong", "✅ Strong", "✅ Strong", "Baseline"],
+    }
+    st.dataframe(pd.DataFrame(_bos_combo_data), use_container_width=True, hide_index=True)
+
+    st.info(
+        "**How to use these findings:** These results do not replace your discretionary process. "
+        "They are a reference map — showing which conditions historically produced the best outcomes "
+        "on this specific setup type. Use the 🔬 Edge Screener on the Explorer page to surface stocks "
+        "that match the best combo in real time. Build conviction by observing it live before relying on it."
+    )
+
+    # ══════════════════════════════════════════════════════════════════════════
     # STM SCREENER PERFORMANCE — numbers only, no chart
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
