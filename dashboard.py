@@ -2664,7 +2664,7 @@ elif cur == PAGES[3]:  # Explorer
         key="exp_screener",
     )
     _ex_edge = _sc2.toggle(
-        "🔬 Edge Screener — BOS · Sector top 3/6-12 · RS 50-200 · BBW 5-10% · Vol>200k",
+        "👀 Watch List — Coiling near pivot · Sector top 3/6-12 · RS 50-200 · BBW 5-10% · Vol>200k",
         key="exp_edge",
     )
 
@@ -2707,7 +2707,7 @@ elif cur == PAGES[3]:  # Explorer
         ]
         st.caption(f"🎯 Screener active — **{len(_ex_filtered)}** stocks passed out of {_total_before}")
 
-    # Apply edge screener (backtest-derived criteria)
+    # Apply watch list (pre-breakout, coiling near pivot)
     if _ex_edge:
         _total_before_e = len(_ex_filtered)
         _sec_ok = (
@@ -2715,7 +2715,9 @@ elif cur == PAGES[3]:  # Explorer
             ((_ex_filtered["sec_global_rank"] >= 6) & (_ex_filtered["sec_global_rank"] <= 12))
         )
         _ex_filtered = _ex_filtered[
-            (_ex_filtered["bos_flag"] == 1) &
+            (_ex_filtered["bos_flag"] == 0) &
+            (_ex_filtered["pivot_distance_pct"] >= 0) &
+            (_ex_filtered["pivot_distance_pct"] <= 5) &
             (_ex_filtered["rs_rank"] >= 50) &
             (_ex_filtered["rs_rank"] <= 200) &
             (_ex_filtered["base_tightness"] >= 5) &
@@ -2736,10 +2738,11 @@ elif cur == PAGES[3]:  # Explorer
 
         _regime_warn = (
             "" if _edge_regime == "TRENDING_UP"
-            else f"  ⚠️ Market is **{_edge_regime}** — edge screener is calibrated for TRENDING_UP only"
+            else f"  ⚠️ Market is **{_edge_regime}** — watch list is calibrated for TRENDING_UP only"
         )
         st.caption(
-            f"🔬 Edge Screener active — **{len(_ex_filtered)}** stocks passed out of {_total_before_e}"
+            f"👀 Watch List active — **{len(_ex_filtered)}** stocks coiling near pivot · "
+            f"set alerts, enter on the break tomorrow"
             f"{_regime_warn}"
         )
 
@@ -4095,7 +4098,7 @@ elif cur == PAGES[11]:  # Backtest (updated index)
         "Sector top 3 × RS rank 101-200 is the standout combination. "
         "The stock is not yet a leader globally, but it is breaking out inside the strongest sector. "
         "This is the 'not yet discovered' setup — price structure is tight, sector is leading, "
-        "stock is catching up. This is what the 🔬 Edge Screener on the Explorer page targets."
+        "stock is catching up. This is what the 👀 Watch List on the Explorer page targets."
     )
     _bos_combo_data = {
         "Combo (TRENDING_UP + 40d)":           ["Sector top 3 × RS 101-200", "Sector 6-8 × RS top 50", "Sector top 3 × RS top 50", "Sector 13+ × RS 201+", "All TRENDING_UP (baseline)"],
