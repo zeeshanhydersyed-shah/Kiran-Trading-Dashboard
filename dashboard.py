@@ -1002,6 +1002,55 @@ with st.sidebar:
 
     st.divider()
 
+    # ── Live regime widget (global — visible on every page) ───────────────────
+    # Queries market_regime directly each render so the value is never stale.
+    try:
+        import sqlite3 as _sqlite3
+        _rc = _sqlite3.connect(DB_PATH)
+        _regime_rows = _rc.execute(
+            "SELECT date, regime FROM market_regime ORDER BY date"
+        ).fetchall()
+        _rc.close()
+    except Exception:
+        _regime_rows = []
+
+    if _regime_rows:
+        _r_dates   = [r[0] for r in _regime_rows]
+        _r_regimes = [r[1] for r in _regime_rows]
+        _r_last_transition_idx = None
+        for _ri in range(len(_r_regimes) - 1, 0, -1):
+            if _r_regimes[_ri] != _r_regimes[_ri - 1]:
+                _r_last_transition_idx = _ri
+                break
+        _r_current  = _r_regimes[-1]
+        _r_latest_d = _r_dates[-1]
+        _r_days_since = (
+            len(_r_dates) - 1 - _r_last_transition_idx
+            if _r_last_transition_idx is not None else len(_r_dates) - 1
+        )
+        _r_regime_color = {
+            "TRENDING_UP":   "#22c55e",
+            "VOLATILE":      "#f59e0b",
+            "RANGING":       "#94a3b8",
+            "TRENDING_DOWN": "#ef4444",
+        }.get(_r_current, "#94a3b8")
+        # Amber warning if within 0-2 days of last transition (risk zone)
+        _r_days_style = (
+            "background:#fef3c7; color:#92400e; padding:1px 5px; border-radius:3px; font-weight:bold"
+            if _r_days_since <= 2
+            else "font-weight:bold"
+        )
+        st.markdown(
+            f"<div style='font-size:0.78rem; margin-bottom:2px; color:#94a3b8;'>Market Regime</div>"
+            f"<div style='font-size:0.88rem; font-weight:700; color:{_r_regime_color}; "
+            f"margin-bottom:1px;'>{_r_current.replace('_', ' ')}</div>"
+            f"<div style='font-size:0.78rem;'>"
+            f"<span style='{_r_days_style}'>{_r_days_since}d</span>"
+            f" since last change &nbsp;·&nbsp; as of {fmt_date(_r_latest_d)}</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
     # ── Source-date status (cached, 30-min TTL) ────────────────────────────────
     # Shows what trading date ksestocks.com is currently publishing so the user
     # knows whether new data is available before clicking Refresh.
@@ -1145,97 +1194,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Market Gates header banner (3-state logic: Bullish/Bearish/Ranging) ───────
-try:
-    wd_header = load_weinstein_data()
-    if not wd_header.get("error"):
-        regime = wd_header.get("regime", {})
-        signals = wd_header.get("signals", pd.DataFrame())
-        breadth_osc = load_breadth_oscillator_data()
-
-        # ── Determine 4 gate states ────────────────────────────────────────
-        # Gate 1: KSE > 50MA
-        gate1 = kse100.get("above_ma50", False) if kse100.get("available") else False
-
-        # Gate 2: % above 50MA >= 70%
-        pct_above_ma = regime.get("pct_above_ma", 0)
-        gate2 = pct_above_ma >= 70
-
-        # Gate 3: Histogram >= 0
-        hist_val = regime.get("z_histogram")
-        gate3 = hist_val is not None and hist_val >= 0
-
-        # Gate 4: Long > Short
-        if not breadth_osc.empty:
-            latest_long = breadth_osc["Long_Count"].iloc[-1]
-            latest_short = breadth_osc["Short_Count"].iloc[-1]
-            gate4 = latest_long > latest_short
-        else:
-            gate4 = None
-
-        # ── Determine 3-state logic ────────────────────────────────────────
-        all_gates_pass = gate1 and gate2 and gate3 and (gate4 is True)
-        all_gates_fail = (not gate1) and (not gate2) and (not gate3) and (gate4 is False)
-
-        if all_gates_pass:
-            cond, color, emoji = "Bullish", "#22c55e", "🟢"
-            guidance = "All gates green. Look for LONG trades only."
-        elif all_gates_fail:
-            cond, color, emoji = "Bearish", "#ef4444", "🔴"
-            guidance = "All gates red. Look for SHORT trades only."
-        else:
-            cond, color, emoji = "Ranging", "#fbbf24", "🟡"
-            guidance = "Mixed signals. Sit out — wait for clarity."
-    else:
-        raise Exception("Weinstein data error")
-except Exception:
-    # Fallback to breadth-based logic if Weinstein fails
-    cond = breadth.get("condition", "Ranging") if breadth else "Ranging"
-    color = breadth.get("color", "#fbbf24") if breadth else "#fbbf24"
-    emoji = breadth.get("emoji", "🟡") if breadth else "🟡"
-    guidance = GUIDANCE.get(cond, "")
-
-# ── KSE-100 50-day MA pill ────────────────────────────────────────────────
-if kse100.get("available") and kse100.get("ma50") is not None:
-    above   = kse100["above_ma50"]
-    kse_c   = kse100["close"]
-    kse_m   = kse100["ma50"]
-    kse_pct = kse100.get("pct_vs_ma50", 0)
-    kse_col = "#22c55e" if above else "#ef4444"
-    kse_lbl = "▲ ABOVE" if above else "▼ BELOW"
-    kse_p30   = kse100.get("perf_30d")
-    p30_col   = "#22c55e" if (kse_p30 is not None and kse_p30 >= 0) else "#ef4444"
-    p30_txt   = (f"&nbsp;·&nbsp; 30d <span style='color:{p30_col};font-weight:700;'>"
-                 f"{kse_p30:+.1f}%</span>"
-                 if kse_p30 is not None else "")
-    kse_txt = (f"KSE-100 <b>{kse_c:,.0f}</b> &nbsp;·&nbsp; "
-               f"50-MA <b>{kse_m:,.0f}</b> &nbsp;·&nbsp; "
-               f"<span style='color:{kse_col};font-weight:700;'>{kse_lbl} 50MA "
-               f"({kse_pct:+.1f}%)</span>{p30_txt}")
-    kse_note = ("&nbsp;·&nbsp; <b>LONGs active</b>" if above
-                else "&nbsp;·&nbsp; <b>LONGs suppressed — index below 50MA</b>")
-else:
-    kse_txt  = "KSE-100 50MA: <i>data loading…</i>"
-    kse_note = ""
-
-st.markdown(
-    f"""<div style="background:{color}18; border-left:4px solid {color};
-        padding:7px 14px; border-radius:6px; margin-bottom:4px;
-        display:flex; align-items:center; gap:16px;">
-        <span style="font-size:0.95rem; font-weight:700; color:{color}; white-space:nowrap;">
-            {emoji} {cond}
-        </span>
-        <span style="font-size:0.72rem; color:#64748b;">
-            {guidance}
-        </span>
-    </div>
-    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;
-        padding:5px 14px; margin-bottom:8px; font-size:0.72rem; color:#64748b;">
-        📈 {kse_txt}{kse_note}
-    </div>""",
-    unsafe_allow_html=True,
-)
-
 # ── Corporate action suspects warning pill ────────────────────────────────
 @st.cache_data(ttl=300)
 def _get_corporate_action_count():
@@ -1255,6 +1213,84 @@ try:
         st.warning(f"⚠️ {_pending_count} corporate action(s) need review — see 🏥 Data Health page.")
 except Exception:
     pass
+
+# ── Regime conditions header (global — every page, no exceptions) ─────────────
+# Queries market_regime live on every render; never cached or stale.
+try:
+    import sqlite3 as _sq_rh
+    _rh_con = _sq_rh.connect(DB_PATH)
+    _rh_rows = _rh_con.execute(
+        "SELECT date, regime FROM market_regime ORDER BY date"
+    ).fetchall()
+    _rh_con.close()
+
+    if _rh_rows:
+        _rh_dates   = [r[0] for r in _rh_rows]
+        _rh_regimes = [r[1] for r in _rh_rows]
+        _rh_last_t  = None
+        for _rh_i in range(len(_rh_regimes) - 1, 0, -1):
+            if _rh_regimes[_rh_i] != _rh_regimes[_rh_i - 1]:
+                _rh_last_t = _rh_i
+                break
+        _rh_regime     = _rh_regimes[-1]
+        _rh_days_since = (len(_rh_dates) - 1 - _rh_last_t) if _rh_last_t is not None else (len(_rh_dates) - 1)
+
+        if _rh_regime == "TRENDING_UP":
+            if _rh_days_since >= 6:
+                _rh_label    = "Stable uptrend — favorable conditions"
+                _rh_bg       = "#f0fdf4"
+                _rh_border   = "#22c55e"
+                _rh_color    = "#166534"
+                _rh_extra    = ""
+            elif _rh_days_since >= 3:
+                _rh_label    = "Uptrend settling — moderate caution"
+                _rh_bg       = "#f8fafc"
+                _rh_border   = "#64748b"
+                _rh_color    = "#334155"
+                _rh_extra    = ""
+            else:
+                _rh_label    = "Uptrend just started — proceed carefully"
+                _rh_bg       = "#fef3c7"
+                _rh_border   = "#f59e0b"
+                _rh_color    = "#92400e"
+                _rh_extra    = " ⚠️"
+        elif _rh_regime == "VOLATILE":
+            _rh_label  = "Choppy conditions — selective only"
+            _rh_bg     = "#fffbeb"
+            _rh_border = "#fbbf24"
+            _rh_color  = "#78350f"
+            _rh_extra  = ""
+        elif _rh_regime == "RANGING":
+            _rh_label  = "Narrow range — low activity expected"
+            _rh_bg     = "#f8fafc"
+            _rh_border = "#94a3b8"
+            _rh_color  = "#475569"
+            _rh_extra  = ""
+        elif _rh_regime == "TRENDING_DOWN":
+            # Distinct blue-grey — total unknown, not a quantified warning
+            _rh_label  = "Downtrend — untested in your history"
+            _rh_bg     = "#e8edf2"
+            _rh_border = "#64748b"
+            _rh_color  = "#334155"
+            _rh_extra  = " ℹ️"
+        else:
+            _rh_label = _rh_regime
+            _rh_bg = "#f8fafc"; _rh_border = "#94a3b8"; _rh_color = "#475569"; _rh_extra = ""
+
+        st.markdown(
+            f"<div style='background:{_rh_bg}; border-left:4px solid {_rh_border}; "
+            f"padding:6px 14px; border-radius:6px; margin-bottom:6px; "
+            f"display:flex; align-items:center; gap:12px;'>"
+            f"<span style='font-size:0.85rem; font-weight:700; color:{_rh_color}; white-space:nowrap;'>"
+            f"{_rh_label}{_rh_extra}</span>"
+            f"<span style='font-size:0.72rem; color:#94a3b8;'>"
+            f"{_rh_days_since}d since last regime change &nbsp;·&nbsp; as of {fmt_date(_rh_dates[-1])}"
+            f"</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+except Exception:
+    pass  # never crashes the dashboard
 
 # ── Kiran's Voice panel ───────────────────────────────────────────────────────
 try:
@@ -2202,37 +2238,101 @@ elif cur == PAGES[5]:  # Trade Log
             log_df = log_df[log_df["symbol"].str.upper().str.contains(sym_srch, na=False)]
 
         # Ensure columns exist
-        for col in ["exit_date", "actual_exit", "actual_pl_pct", "holding_days", "actual_entry"]:
+        for col in ["exit_date", "actual_exit", "actual_pl_pct", "holding_days", "actual_entry",
+                    "regime_at_entry", "days_since_last_transition"]:
             if col not in log_df.columns:
                 log_df[col] = None
 
+        def _regime_label(regime, days_since):
+            """Map regime + days_since_last_transition to locked plain-language label."""
+            try:
+                d = int(days_since) if days_since is not None and days_since == days_since else None
+            except (TypeError, ValueError):
+                d = None
+            if regime == "TRENDING_UP":
+                if d is None:        return "Stable uptrend — favorable conditions"
+                elif d >= 6:         return "Stable uptrend — favorable conditions"
+                elif d >= 3:         return "Uptrend settling — moderate caution"
+                else:                return "Uptrend just started — proceed carefully"
+            elif regime == "VOLATILE":      return "Choppy conditions — selective only"
+            elif regime == "RANGING":       return "Narrow range — low activity expected"
+            elif regime == "TRENDING_DOWN": return "Downtrend — untested in your history"
+            return "—"
+
         display_log = log_df[[
-            "id", "created_date", "exit_date", "direction", "symbol",
+            "id", "created_date", "regime_at_entry", "days_since_last_transition",
+            "exit_date", "direction", "symbol",
             "entry_price", "stop_loss", "actual_exit",
             "risk_pct", "actual_pl_pct", "holding_days",
             "status", "outcome", "notes",
         ]].copy()
         display_log.columns = [
-            "ID", "Entry Date", "Exit Date", "Dir", "Symbol",
+            "ID", "Entry Date", "Regime", "Days▲",
+            "Exit Date", "Dir", "Symbol",
             "Entry", "SL", "Exit",
             "Risk%", "P&L%", "Days",
             "Status", "Outcome", "Notes",
         ]
+        display_log.insert(
+            2, "Conditions",
+            display_log.apply(
+                lambda r: _regime_label(r["Regime"], r["Days▲"]), axis=1
+            ),
+        )
         display_log["Entry Date"] = display_log["Entry Date"].apply(fmt_date)
         display_log["Exit Date"]  = display_log["Exit Date"].apply(fmt_date)
+
+        _LABEL_PROCEED   = "Uptrend just started — proceed carefully"
+        _LABEL_DOWNTREND = "Downtrend — untested in your history"
+
+        def style_conditions(series):
+            out = []
+            for v in series:
+                if v == _LABEL_PROCEED:
+                    # Amber warning — quantified risk zone
+                    out.append("background-color:#fef3c7; color:#92400e; font-weight:600")
+                elif v == _LABEL_DOWNTREND:
+                    # Blue-grey neutral — total unknown, visually distinct from amber
+                    out.append("background-color:#e8edf2; color:#475569; font-style:italic")
+                else:
+                    out.append("")
+            return out
+
+        def style_transition_proximity(series):
+            """Amber background on Days▲ values 0-2 (quantified risk zone)."""
+            out = []
+            for v in series:
+                try:
+                    if v is not None and not pd.isna(v) and int(v) <= 2:
+                        out.append("background-color:#fef3c7; color:#92400e; font-weight:bold")
+                    else:
+                        out.append("")
+                except (TypeError, ValueError):
+                    out.append("")
+            return out
 
         fmt_map = {
             "Entry": "{:.2f}", "SL": "{:.2f}", "Exit": "{:.2f}",
             "Risk%": "{:.2f}", "P&L%": "{:.2f}", "Days": "{:.0f}",
+            "Days▲": "{:.0f}",
         }
         st.dataframe(
             display_log.style
-            .apply(style_direction, subset=["Dir"])
-            .apply(style_outcome,   subset=["Outcome"])
-            .apply(style_pct_cols,  subset=["P&L%"])
+            .apply(style_direction,            subset=["Dir"])
+            .apply(style_outcome,              subset=["Outcome"])
+            .apply(style_pct_cols,             subset=["P&L%"])
+            .apply(style_conditions,           subset=["Conditions"])
+            .apply(style_transition_proximity, subset=["Days▲"])
             .format(fmt_map, na_rep="—"),
             use_container_width=True, hide_index=True,
             height=min(900, max(200, (len(display_log) + 1) * 38)),
+        )
+        st.caption(
+            "**Conditions** = market regime context at entry  ·  "
+            "**Regime** = raw classification  ·  "
+            "**Days▲** = trading days since last regime transition  ·  "
+            "Amber = proceed carefully (0–2 days)  ·  "
+            "Grey-blue = untested regime (no history)"
         )
 
     # ── Partial close ─────────────────────────────────────────────────────────
