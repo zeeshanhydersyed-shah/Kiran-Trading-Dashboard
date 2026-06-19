@@ -2113,15 +2113,11 @@ elif cur == PAGES[4]:  # History
         )
         selected_hist = [_hist_label_inv[lbl] for lbl in selected_labels]
 
-        # ── Get sector membership from stock_signals ──────────────────────────
+        # ── Get sector membership from sectors table ───────────────────────────
         _hist_sym_con = sqlite3.connect(DB_PATH)
-        _hist_sym_date = pd.read_sql_query(
-            "SELECT MAX(date) AS d FROM stock_signals", _hist_sym_con
-        ).iloc[0]["d"]
         _hist_syms_df = pd.read_sql_query(
-            "SELECT symbol, sector FROM stock_signals WHERE date = ?",
+            "SELECT symbol, sector FROM sectors WHERE sector IS NOT NULL",
             _hist_sym_con,
-            params=(_hist_sym_date,),
         )
         _hist_sym_con.close()
 
