@@ -2665,7 +2665,7 @@ elif cur == PAGES[3]:  # Explorer
                    ss.bos_flag, ss.avg_vol_10d, ss.vol_contraction, ss.pivot_high,
                    ss.stage2_bull,
                    ss.close_above_ema50, ss.ema50_slope_pos,
-                   ss.base_duration, ss.overhead_clear,
+                   ss.base_duration, ss.overhead_clear, ss.near_pivot_days,
                    p.close AS current_close,
                    sec.rs_rank              AS sec_global_rank,
                    sec.sector_stage         AS sec_stage,
@@ -2705,7 +2705,7 @@ elif cur == PAGES[3]:  # Explorer
         key="exp_edge",
     )
     _ex_weinstein = _sc3.toggle(
-        "📖 Weinstein — 8-Point Top-Down: Sector Stage 2 + RS new high · Stock RS↑ leader · Rising 50EMA · Tight base · Clear overhead",
+        "📖 Weinstein — 8-Point Top-Down: Sector Stage 2 + RS new high · Stock RS↑ leader · Rising 50EMA · Near pivot ≥10d",
         key="exp_weinstein",
     )
 
@@ -2808,10 +2808,8 @@ elif cur == PAGES[3]:  # Explorer
             (_ex_filtered["rank_change"].fillna(-999) > 0) &
             # [6] RS leader in its sector (top 3)
             (_ex_filtered["sector_rs_rank"].fillna(999) <= 3) &
-            # [7] Coiling in a base (consecutive tight days — show in table for ranking)
-            (_ex_filtered["base_duration"].fillna(0) >= 5) &
-            # [8] Minimal overhead supply — 200d high ≤ pivot × 1.15
-            (_ex_filtered["overhead_clear"].fillna(0) == 1) &
+            # [7] Coiling near pivot ≥10 consecutive days (0–15% below pivot high)
+            (_ex_filtered["near_pivot_days"].fillna(0) >= 10) &
             # Stock near its own pivot (pre-breakout zone)
             (_ex_filtered["pivot_distance_pct"].fillna(99) >= 0) &
             (_ex_filtered["pivot_distance_pct"].fillna(99) <= 5) &
@@ -2825,7 +2823,7 @@ elif cur == PAGES[3]:  # Explorer
         st.caption(
             f"📖 Weinstein Watchlist — **{len(_ex_filtered)}** stocks · "
             f"Sector Stage 2 + RS new high + early move · "
-            f"Stock above rising 50EMA · RS↑ · Sector top 3 · Tight base · Clear overhead"
+            f"Stock above rising 50EMA · RS↑ · Sector top 3 · Near pivot ≥10d · Overhead = discretion"
         )
 
     if _ex_bos_only:
@@ -2853,20 +2851,21 @@ elif cur == PAGES[3]:  # Explorer
     _ex_disp = _ex_show[[
         "symbol", "sector", "sec_stage_fmt", "rs_rank", "rs_score_20",
         "rank_chg_fmt", "sector_rs_rank",
-        "base_tightness", "base_duration", "pivot_distance_pct",
-        "bos", "avg_vol_10d", "current_close"
+        "base_tightness", "near_pivot_days", "pivot_distance_pct",
+        "overhead_clear", "bos", "avg_vol_10d", "current_close"
     ]].copy()
     _ex_disp.columns = [
         "Symbol", "Sector", "Sec Stage", "RS Rank", "RS Score",
         "Rank Δ", "Sec Rank",
-        "BBW%", "Base Days", "Pivot Dist%",
-        "BOS", "Vol 10d", "Close"
+        "BBW%", "Piv Days", "Pivot Dist%",
+        "OH Clear", "BOS", "Vol 10d", "Close"
     ]
     st.dataframe(
         _ex_disp.style.format({
             "RS Score":    "{:+.1f}",
             "BBW%":        lambda v: f"{v:.1f}%" if pd.notna(v) else "—",
-            "Base Days":   lambda v: f"{int(v)}d" if pd.notna(v) else "—",
+            "Piv Days":    lambda v: f"{int(v)}d" if pd.notna(v) else "—",
+            "OH Clear":    lambda v: "✅" if v == 1 else ("❌" if v == 0 else "—"),
             "Pivot Dist%": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
             "Vol 10d":     lambda v: f"{v/1e6:.2f}M" if pd.notna(v) and v >= 1e6 else (f"{v:,.0f}" if pd.notna(v) else "—"),
             "Close":       lambda v: f"{v:.2f}" if pd.notna(v) else "—",

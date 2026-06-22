@@ -92,6 +92,7 @@ def _ensure_new_stock_columns(conn: sqlite3.Connection) -> None:
         "ema50_slope_pos":   "INTEGER",
         "base_duration":     "INTEGER",
         "overhead_clear":    "INTEGER",
+        "near_pivot_days":   "INTEGER",
     }
     for col, dtype in new_cols.items():
         if col not in existing:
@@ -186,7 +187,8 @@ def _compute_bt_vc(prices_vol, pos):
 def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                             stock_prices, symbol_sector, prev_ranks,
                             stock_prices_vol=None, pivot_lookup=None,
-                            base_duration_seed: dict | None = None):
+                            base_duration_seed: dict | None = None,
+                            near_pivot_seed: dict | None = None):
     stock_date_lists = {sym: [p[0] for p in prices] for sym, prices in stock_prices.items()}
     vol_date_lists = (
         {sym: [p[0] for p in prices] for sym, prices in stock_prices_vol.items()}
@@ -198,6 +200,9 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
     base_duration_tracker: dict = defaultdict(int)
     if base_duration_seed:
         base_duration_tracker.update(base_duration_seed)
+    near_pivot_tracker: dict = defaultdict(int)  # consecutive days pivot_dist 0-15%
+    if near_pivot_seed:
+        near_pivot_tracker.update(near_pivot_seed)
 
     for date in trading_dates:
         kse_pos = kse_date_idx.get(date)
@@ -265,6 +270,14 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                 base_duration_tracker[symbol] = 0
             base_dur = base_duration_tracker[symbol]
 
+            # near_pivot_days: consecutive days stock is 0-15% below its pivot high
+            # Captures range-bound coiling near resistance regardless of BBW width
+            if pd_pct is not None and 0 <= pd_pct <= 15:
+                near_pivot_tracker[symbol] += 1
+            else:
+                near_pivot_tracker[symbol] = 0
+            npd = near_pivot_tracker[symbol]
+
             # overhead_clear: 200-day high of stock <= pivot_high * 1.15 (clear air above)
             overhead_clear = None
             if ph is not None and vol_prices_sym is not None and vpos_sym is not None and vpos_sym >= 199:
@@ -317,6 +330,7 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                 'ema50_slope_pos': ema50_slope_pos,
                 'base_duration': base_dur,
                 'overhead_clear': overhead_clear,
+                'near_pivot_days': npd,
             })
 
         if not rows:
@@ -345,8 +359,8 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
             "(date, symbol, rs_score_20, rs_score_50, rs_rank, rs_rank_prev, "
             "rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d, "
             "pivot_high, pivot_distance_pct, stage2_bull, "
-            "close_above_ema50, ema50_slope_pos, base_duration, overhead_clear) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "close_above_ema50, ema50_slope_pos, base_duration, overhead_clear, near_pivot_days) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (date, r['symbol'], r['rs_score_20'], r['rs_score_50'],
                  r['rs_rank'], r['rs_rank_prev'], r['rank_change'], r['sector_rs_rank'],
@@ -354,7 +368,7 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                  r.get('avg_vol_10d'), r.get('pivot_high'), r.get('pivot_distance_pct'),
                  r.get('stage2_bull'),
                  r.get('close_above_ema50'), r.get('ema50_slope_pos'),
-                 r.get('base_duration'), r.get('overhead_clear'))
+                 r.get('base_duration'), r.get('overhead_clear'), r.get('near_pivot_days'))
                 for r in rows
             ],
         )
@@ -444,14 +458,20 @@ def append_latest_stock_signals() -> None:
 
         pivot_lookup = _build_pivot_lookup(stock_prices_vol)
 
-        # Seed base_duration from last available DB values so it accumulates
+        # Seed base_duration and near_pivot_days from last DB values so they accumulate
         base_dur_seed = {}
         if last_inserted:
             seed_rows = cur.execute(
-                "SELECT symbol, base_duration FROM stock_signals WHERE date = ?",
+                "SELECT symbol, base_duration, near_pivot_days FROM stock_signals WHERE date = ?",
                 (last_inserted,),
             ).fetchall()
             base_dur_seed = {r[0]: (r[1] or 0) for r in seed_rows}
+            # Pass near_pivot seed via the base_duration_seed mechanism isn't clean —
+            # we inject it directly into the tracker after _process_trading_dates is called.
+            # Store it here for use below.
+            _npd_seed = {r[0]: (r[2] or 0) for r in seed_rows}
+        else:
+            _npd_seed = {}
 
         trading_dates = [row[0] for row in kse_list if row[0] > start_date]
         total = _process_trading_dates(
@@ -460,6 +480,7 @@ def append_latest_stock_signals() -> None:
             stock_prices_vol=stock_prices_vol,
             pivot_lookup=pivot_lookup,
             base_duration_seed=base_dur_seed,
+            near_pivot_seed=_npd_seed,
         )
         logger.info(f"Append complete: {total} dates processed.")
     finally:
@@ -529,6 +550,36 @@ def update_base_tightness_vol_contraction() -> None:
         logger.info(f"  Total rows in stock_signals : {total_rows:,}")
         logger.info(f"  base_tightness  NULLs remaining: {bt_nulls:,}")
         logger.info(f"  vol_contraction NULLs remaining: {vc_nulls:,}")
+    finally:
+        conn.close()
+
+
+def backfill_near_pivot_days() -> None:
+    """Compute near_pivot_days for all rows: consecutive days where pivot_distance_pct is 0–15%."""
+    logger.info("Starting near_pivot_days backfill...")
+    conn = sqlite3.connect(DB)
+    try:
+        _ensure_new_stock_columns(conn)
+        cur = conn.cursor()
+        rows = cur.execute(
+            "SELECT symbol, date, pivot_distance_pct FROM stock_signals ORDER BY symbol, date ASC"
+        ).fetchall()
+
+        updates = []
+        counter: dict = defaultdict(int)
+        for sym, date, pd_pct in rows:
+            if pd_pct is not None and 0 <= pd_pct <= 15:
+                counter[sym] += 1
+            else:
+                counter[sym] = 0
+            updates.append((counter[sym], sym, date))
+
+        cur.executemany(
+            "UPDATE stock_signals SET near_pivot_days = ? WHERE symbol = ? AND date = ?",
+            updates,
+        )
+        conn.commit()
+        logger.info(f"near_pivot_days backfill complete: {len(updates):,} rows updated.")
     finally:
         conn.close()
 
