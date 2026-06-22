@@ -16,7 +16,24 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 DB = "psx_data.db"
-WARMUP = 60  # trading days of price history for indicator warm-up
+WARMUP = 70  # trading days — 70 gives EMA50 enough history
+
+
+def _ensure_sector_stage_columns(conn: sqlite3.Connection) -> None:
+    """Add sector stage columns to sector_signals if they don't exist yet."""
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(sector_signals)").fetchall()}
+    new_cols = {
+        "sector_ema50":        "REAL",
+        "sector_above_ema":    "INTEGER",
+        "sector_ema_slope":    "REAL",
+        "sector_stage":        "TEXT",
+        "sector_pivot_dist_pct": "REAL",
+        "sector_rs_new_high":  "INTEGER",
+    }
+    for col, dtype in new_cols.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE sector_signals ADD COLUMN {col} {dtype}")
+    conn.commit()
 
 
 def _minmax_norm(series: pd.Series) -> pd.Series:
@@ -170,6 +187,105 @@ def append_latest_sector_signals() -> None:
         ).fetchall()
         prev_ranks = {r[0]: r[1] for r in prev_rank_rows}
 
+        # 20-day max rs_score_20 per sector — for sector_rs_new_high flag
+        rs_history_rows = conn.execute(
+            """
+            SELECT sector, MAX(rs_score_20)
+            FROM sector_signals
+            WHERE date < ? AND date >= DATE(?, '-30 days')
+            GROUP BY sector
+            """,
+            (target_date, target_date),
+        ).fetchall()
+        sector_rs_20d_max = {r[0]: r[1] for r in rs_history_rows}
+
+        # ------------------------------------------------------------------
+        # Step 7b — sector price index time series → EMA50 → stage
+        # ------------------------------------------------------------------
+        _ensure_sector_stage_columns(conn)
+
+        sector_stage_data: dict = {}
+        _all_sectors_ts = sorted(prices["sector"].dropna().unique())
+
+        for _sec in _all_sectors_ts:
+            _sec_hist = prices[prices["sector"] == _sec].copy()
+            _syms = _sec_hist["symbol"].unique()
+
+            # Market-cap weights — fixed (today's weights applied to whole series)
+            _w = pd.Series({s: mcap.get(s, 0) for s in _syms})
+            _w_total = _w.sum()
+            if _w_total <= 0:
+                _w = pd.Series({s: 1.0 / len(_syms) for s in _syms})
+            else:
+                _w = _w / _w_total
+
+            # Pivot: rows=date cols=symbol, weighted sum → sector index
+            _piv = _sec_hist.pivot_table(index="date", columns="symbol", values="close")
+            _piv = _piv.ffill()
+            _w_aligned = _w.reindex(_piv.columns).fillna(0)
+            _w_aligned = _w_aligned / _w_aligned.sum()
+            _idx = (_piv * _w_aligned).sum(axis=1)
+
+            # Normalise to base=100 at window start
+            if len(_idx) < 5 or _idx.iloc[0] == 0:
+                sector_stage_data[_sec] = {
+                    "sector_ema50": None, "sector_above_ema": None,
+                    "sector_ema_slope": None, "sector_stage": None,
+                    "sector_pivot_dist_pct": None,
+                }
+                continue
+            _idx = _idx / _idx.iloc[0] * 100
+
+            # EMA50
+            _ema50 = _idx.ewm(span=50, adjust=False).mean()
+
+            _cur_idx = _idx.get(target_date)
+            _cur_ema = _ema50.get(target_date)
+
+            if _cur_idx is None or _cur_ema is None or _cur_ema == 0:
+                sector_stage_data[_sec] = {
+                    "sector_ema50": None, "sector_above_ema": None,
+                    "sector_ema_slope": None, "sector_stage": None,
+                    "sector_pivot_dist_pct": None,
+                }
+                continue
+
+            _above = bool(_cur_idx > _cur_ema)
+
+            # Slope: 5-bar change in EMA50
+            _ema_vals = _ema50.dropna()
+            if len(_ema_vals) >= 6:
+                _slope = float(_ema_vals.iloc[-1] - _ema_vals.iloc[-6])
+                _slope_pos = _slope > 0
+            else:
+                _slope = None
+                _slope_pos = None
+
+            # Weinstein 4-stage from two booleans
+            if _slope_pos is not None:
+                if _above and _slope_pos:
+                    _stage = "Stage 2"
+                elif _above and not _slope_pos:
+                    _stage = "Stage 3"
+                elif not _above and not _slope_pos:
+                    _stage = "Stage 4"
+                else:
+                    _stage = "Stage 1"
+            else:
+                _stage = None
+
+            # Distance from recent 20-day pivot high (breakout proximity)
+            _recent_high = float(_idx.iloc[-20:].max()) if len(_idx) >= 20 else float(_idx.max())
+            _pivot_dist = (_recent_high - float(_cur_idx)) / float(_cur_idx) * 100
+
+            sector_stage_data[_sec] = {
+                "sector_ema50":        round(float(_cur_ema), 2),
+                "sector_above_ema":    1 if _above else 0,
+                "sector_ema_slope":    round(float(_slope), 4) if _slope is not None else None,
+                "sector_stage":        _stage,
+                "sector_pivot_dist_pct": round(_pivot_dist, 2),
+            }
+
         # ------------------------------------------------------------------
         # Step 8 — compute sector metrics
         # ------------------------------------------------------------------
@@ -273,6 +389,14 @@ def append_latest_sector_signals() -> None:
             ):
                 rs_infl = 1
 
+            # sector_rs_new_high: today's rs_score_20 >= 20-day max (RS at new relative high)
+            rs_new_high = 0
+            rs_today = vals["rs_score_20"]
+            if not np.isnan(rs_today):
+                hist_max = sector_rs_20d_max.get(sector)
+                if hist_max is None or float(rs_today) >= float(hist_max):
+                    rs_new_high = 1
+
             rows.append(
                 {
                     "date": target_date,
@@ -285,8 +409,14 @@ def append_latest_sector_signals() -> None:
                     "adv_dec_ratio": None if np.isnan(vals["adv_dec_ratio"]) else round(float(vals["adv_dec_ratio"]), 4),
                     "vol_ratio": None if np.isnan(vals["vol_ratio"]) else round(float(vals["vol_ratio"]), 4),
                     "rs_inflection": rs_infl,
+                    "rs_new_high": rs_new_high,
                     "regime": regime,
                     "composite_score": None,  # filled in Step 9
+                    **sector_stage_data.get(sector, {
+                        "sector_ema50": None, "sector_above_ema": None,
+                        "sector_ema_slope": None, "sector_stage": None,
+                        "sector_pivot_dist_pct": None,
+                    }),
                 }
             )
 
@@ -320,8 +450,10 @@ def append_latest_sector_signals() -> None:
                 INSERT OR REPLACE INTO sector_signals
                     (date, sector, rs_score_20, rs_score_50, rs_rank, rs_rank_prev,
                      breadth_score, adv_dec_ratio, vol_ratio, rs_inflection,
-                     regime, composite_score)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     regime, composite_score,
+                     sector_ema50, sector_above_ema, sector_ema_slope,
+                     sector_stage, sector_pivot_dist_pct, sector_rs_new_high)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     r["date"],
@@ -336,6 +468,12 @@ def append_latest_sector_signals() -> None:
                     int(r["rs_inflection"]),
                     r["regime"],
                     float(r["composite_score"]),
+                    r.get("sector_ema50"),
+                    r.get("sector_above_ema"),
+                    r.get("sector_ema_slope"),
+                    r.get("sector_stage"),
+                    r.get("sector_pivot_dist_pct"),
+                    int(r.get("rs_new_high", 0)),
                 ),
             )
             rows_written += 1

@@ -1893,6 +1893,8 @@ elif cur == PAGES[2]:  # Market
                     ss.rs_score_20, ss.rs_score_50, ss.rs_rank,
                     ss.breadth_score, ss.adv_dec_ratio, ss.vol_ratio,
                     ss.rs_inflection, ss.composite_score, ss.regime,
+                    ss.sector_stage, ss.sector_above_ema,
+                    ss.sector_ema_slope, ss.sector_pivot_dist_pct,
                     COALESCE(sf.flow_direction,     NULL) AS flow_direction,
                     COALESCE(sf.flow_smart_net_5d,  NULL) AS flow_smart_net_5d,
                     COALESCE(sf.flow_smart_net_20d, NULL) AS flow_smart_net_20d
@@ -2009,6 +2011,20 @@ elif cur == PAGES[2]:  # Market
                 lambda v: "🔥" if v == 1 else ""
             )
 
+            # Stage display with colour emoji
+            _stage_icons = {
+                "Stage 2": "🟢 Stage 2",
+                "Stage 3": "🟡 Stage 3",
+                "Stage 4": "🔴 Stage 4",
+                "Stage 1": "⚪ Stage 1",
+            }
+            rr_display["Stage"] = rr_display["sector_stage"].map(_stage_icons).fillna("—")
+
+            # Pivot distance (how close to breakout)
+            rr_display["Pivot%"] = rr_display["sector_pivot_dist_pct"].apply(
+                lambda v: f"{v:.1f}%" if pd.notna(v) else "—"
+            )
+
             # Format columns
             rr_display["rs_score_20"] = rr_display["rs_score_20"].apply(
                 lambda v: f"{v:+.2f}" if pd.notna(v) else "—"
@@ -2026,6 +2042,8 @@ elif cur == PAGES[2]:  # Market
             table_cols = {
                 "rs_rank":         "#",
                 "sector":          "Sector",
+                "Stage":           "Stage",
+                "Pivot%":          "→Pivot",
                 "Flow":            "Flow",
                 "signal":          "🔥",
                 "trend":           "RS Trend",
@@ -2045,6 +2063,8 @@ elif cur == PAGES[2]:  # Market
             # ── Legend ───────────────────────────────────────────────
             st.markdown(
                 """<div style="font-size:0.7rem; color:#64748b; line-height:2;">
+                <b>Stage</b> Weinstein stage from sector price index vs 50 EMA (🟢=2 🟡=3 🔴=4 ⚪=1) &nbsp;|&nbsp;
+                <b>→Pivot</b> % below sector's 20-day high — 0% = at pivot &nbsp;|&nbsp;
                 <b>RS-20</b> sector return vs KSE-100 over 20 days (%) &nbsp;|&nbsp;
                 <b>Breadth</b> % stocks above 20d EMA &nbsp;|&nbsp;
                 <b>Vol Ratio</b> today vs 20d avg volume &nbsp;|&nbsp;
@@ -2063,11 +2083,11 @@ elif cur == PAGES[2]:  # Market
 # PAGE 2 — HISTORY
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[4]:  # History
-    st.markdown("**Sector Performance History** — equal-weighted price index per sector (base = 100 at start of 1-year window)")
+    st.markdown("**Sector Price Chart** — market-cap weighted sector index with 50-day EMA (base = 100 at window start)")
     st.caption(
-        "Rising line = sector stocks outperforming their own 1-year baseline. "
-        "Sectors ordered by current RS Rank (strongest first). "
-        "Cross-reference with Market Gates → Top-Down View to confirm momentum before entering a stock."
+        "🟢 Price above rising EMA = Stage 2 · 🟡 Price above flat/falling EMA = Stage 3 · "
+        "🔴 Price below falling EMA = Stage 4 · ⚪ Price below rising EMA = Stage 1. "
+        "Sectors ordered by current RS Rank (strongest first)."
     )
 
     try:
@@ -2137,23 +2157,32 @@ elif cur == PAGES[4]:  # History
                     continue
                 rank_lbl = _hist_label_map.get(sec, sec)
                 lc = colors_pool[i % len(colors_pool)]
+                # Sector price index
                 fig_hist.add_trace(go.Scatter(
                     x=h["date"], y=h["index_value"].round(2),
                     mode="lines", name=rank_lbl,
                     line={"width": 2, "color": lc},
                     hovertemplate=f"<b>{rank_lbl}</b><br>%{{x|%d %b %Y}}: %{{y:.1f}}<extra></extra>",
                 ))
+                # EMA50 overlay — same colour, dashed, thinner
+                _ema50_vals = h["index_value"].ewm(span=50, adjust=False).mean().round(2)
+                fig_hist.add_trace(go.Scatter(
+                    x=h["date"], y=_ema50_vals,
+                    mode="lines", name=f"{rank_lbl} EMA50",
+                    line={"width": 1.2, "color": lc, "dash": "dash"},
+                    hovertemplate=f"<b>{rank_lbl} EMA50</b><br>%{{x|%d %b %Y}}: %{{y:.1f}}<extra></extra>",
+                ))
             fig_hist.add_hline(y=100, line_dash="dot", line_color="#94a3b8",
                                annotation_text="Base (1yr ago)", annotation_position="bottom right")
             fig_hist.update_layout(
-                height=500,
+                height=520,
                 hovermode="closest",
                 xaxis_title="", yaxis_title="Index (Base = 100)",
-                legend={"orientation": "h", "y": 1.08, "x": 0, "font": {"size": 11}},
+                legend={"orientation": "h", "y": 1.08, "x": 0, "font": {"size": 10}},
                 margin={"l": 4, "r": 4, "t": 32, "b": 8},
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                xaxis={"gridcolor": "#f1f5f9"},
-                yaxis={"gridcolor": "#f1f5f9"},
+                xaxis={"gridcolor": "#1e293b"},
+                yaxis={"gridcolor": "#1e293b"},
             )
             st.plotly_chart(fig_hist, use_container_width=True)
 
@@ -2635,8 +2664,16 @@ elif cur == PAGES[3]:  # Explorer
                    ss.sector_rs_rank, ss.base_tightness, ss.pivot_distance_pct,
                    ss.bos_flag, ss.avg_vol_10d, ss.vol_contraction, ss.pivot_high,
                    ss.stage2_bull,
+                   ss.close_above_ema50, ss.ema50_slope_pos,
+                   ss.base_duration, ss.overhead_clear,
                    p.close AS current_close,
-                   sec.rs_rank AS sec_global_rank
+                   sec.rs_rank              AS sec_global_rank,
+                   sec.sector_stage         AS sec_stage,
+                   sec.sector_above_ema     AS sec_above_ema,
+                   sec.sector_ema_slope     AS sec_ema_slope,
+                   sec.sector_pivot_dist_pct AS sec_pivot_dist,
+                   sec.rs_inflection        AS sec_rs_inflection,
+                   sec.sector_rs_new_high   AS sec_rs_new_high
             FROM stock_signals ss
             JOIN sectors s ON ss.symbol = s.symbol
             LEFT JOIN prices p
@@ -2658,7 +2695,7 @@ elif cur == PAGES[3]:  # Explorer
     st.caption(f"As of {fmt_date(_ex_latest)} · {len(_ex_df)} stocks")
 
     # ── Screener toggles ──────────────────────────────────────────────────────
-    _sc1, _sc2 = st.columns(2)
+    _sc1, _sc2, _sc3 = st.columns(3)
     _ex_screener = _sc1.toggle(
         "🎯 Screener — Stage 2 · Top 8 sectors · RS+ · Vol>200k · BBW<10 · Price>10",
         key="exp_screener",
@@ -2666,6 +2703,10 @@ elif cur == PAGES[3]:  # Explorer
     _ex_edge = _sc2.toggle(
         "👀 Watch List — Coiling near pivot · Sector top 3/6-12 · RS 50-200 · BBW 5-10% · Vol>200k",
         key="exp_edge",
+    )
+    _ex_weinstein = _sc3.toggle(
+        "📖 Weinstein — 8-Point Top-Down: Sector Stage 2 + RS new high · Stock RS↑ leader · Rising 50EMA · Tight base · Clear overhead",
+        key="exp_weinstein",
     )
 
     # Sector filter + sort controls in one row
@@ -2747,6 +2788,46 @@ elif cur == PAGES[3]:  # Explorer
             f"{_regime_warn}"
         )
 
+    # Weinstein top-down watchlist — 8-point filter (volume excluded: watchlist phase)
+    if _ex_weinstein:
+        _total_before_w = len(_ex_filtered)
+        _ex_filtered = _ex_filtered[
+            # ── Sector-level criteria ─────────────────────────────────────
+            # [1] Sector Stage 2 — price above rising 50 EMA
+            (_ex_filtered["sec_stage"] == "Stage 2") &
+            # [2] Early Stage 2 — sector not extended from its high (≤10% below 20d high)
+            (_ex_filtered["sec_pivot_dist"].fillna(99) <= 10) &
+            # [1b] Sector RS at new 20-day high (RS accelerating, not just positive)
+            (_ex_filtered["sec_rs_new_high"].fillna(0) == 1) &
+            # ── Stock-level criteria ──────────────────────────────────────
+            # [3] Stock above its own 50 EMA
+            (_ex_filtered["close_above_ema50"].fillna(0) == 1) &
+            # [4] Stock 50 EMA sloping upward
+            (_ex_filtered["ema50_slope_pos"].fillna(0) == 1) &
+            # [5] RS rank improving — moving up the leaderboard
+            (_ex_filtered["rank_change"].fillna(-999) > 0) &
+            # [6] RS leader in its sector (top 3)
+            (_ex_filtered["sector_rs_rank"].fillna(999) <= 3) &
+            # [7] Coiling in a base (consecutive tight days — show in table for ranking)
+            (_ex_filtered["base_duration"].fillna(0) >= 5) &
+            # [8] Minimal overhead supply — 200d high ≤ pivot × 1.15
+            (_ex_filtered["overhead_clear"].fillna(0) == 1) &
+            # Stock near its own pivot (pre-breakout zone)
+            (_ex_filtered["pivot_distance_pct"].fillna(99) >= 0) &
+            (_ex_filtered["pivot_distance_pct"].fillna(99) <= 5) &
+            # Liquid
+            (_ex_filtered["avg_vol_10d"] > 200_000)
+        ]
+        # Sort: best sector RS rank first, then best stock RS rank within sector
+        _ex_filtered = _ex_filtered.sort_values(
+            ["sec_global_rank", "sector_rs_rank", "rs_rank"], ascending=True
+        )
+        st.caption(
+            f"📖 Weinstein Watchlist — **{len(_ex_filtered)}** stocks · "
+            f"Sector Stage 2 + RS new high + early move · "
+            f"Stock above rising 50EMA · RS↑ · Sector top 3 · Tight base · Clear overhead"
+        )
+
     if _ex_bos_only:
         _ex_filtered = _ex_filtered[_ex_filtered["bos_flag"] == 1]
     _ex_filtered = _ex_filtered.sort_values(
@@ -2766,22 +2847,26 @@ elif cur == PAGES[3]:  # Explorer
     _ex_show["bos"] = _ex_show["bos_flag"].apply(
         lambda x: "✅" if x == 1 else ""
     )
+    _stage_icon_map = {"Stage 2": "🟢", "Stage 3": "🟡", "Stage 4": "🔴", "Stage 1": "⚪"}
+    _ex_show["sec_stage_fmt"] = _ex_show["sec_stage"].map(_stage_icon_map).fillna("—")
+
     _ex_disp = _ex_show[[
-        "symbol", "sector", "rs_rank", "rs_score_20",
+        "symbol", "sector", "sec_stage_fmt", "rs_rank", "rs_score_20",
         "rank_chg_fmt", "sector_rs_rank",
-        "base_tightness", "pivot_distance_pct",
+        "base_tightness", "base_duration", "pivot_distance_pct",
         "bos", "avg_vol_10d", "current_close"
     ]].copy()
     _ex_disp.columns = [
-        "Symbol", "Sector", "RS Rank", "RS Score",
+        "Symbol", "Sector", "Sec Stage", "RS Rank", "RS Score",
         "Rank Δ", "Sec Rank",
-        "BBW%", "Pivot Dist%",
+        "BBW%", "Base Days", "Pivot Dist%",
         "BOS", "Vol 10d", "Close"
     ]
     st.dataframe(
         _ex_disp.style.format({
             "RS Score":    "{:+.1f}",
             "BBW%":        lambda v: f"{v:.1f}%" if pd.notna(v) else "—",
+            "Base Days":   lambda v: f"{int(v)}d" if pd.notna(v) else "—",
             "Pivot Dist%": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
             "Vol 10d":     lambda v: f"{v/1e6:.2f}M" if pd.notna(v) and v >= 1e6 else (f"{v:,.0f}" if pd.notna(v) else "—"),
             "Close":       lambda v: f"{v:.2f}" if pd.notna(v) else "—",

@@ -85,6 +85,20 @@ def _ema(prices_close: list, pos: int, period: int):
     return ema
 
 
+def _ensure_new_stock_columns(conn: sqlite3.Connection) -> None:
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(stock_signals)").fetchall()}
+    new_cols = {
+        "close_above_ema50": "INTEGER",
+        "ema50_slope_pos":   "INTEGER",
+        "base_duration":     "INTEGER",
+        "overhead_clear":    "INTEGER",
+    }
+    for col, dtype in new_cols.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE stock_signals ADD COLUMN {col} {dtype}")
+    conn.commit()
+
+
 def _build_pivot_lookup(stock_prices_vol: dict) -> dict:
     """Pre-compute pivot_high, pivot_distance_pct, bos_flag for every (symbol, date).
 
@@ -171,7 +185,8 @@ def _compute_bt_vc(prices_vol, pos):
 
 def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                             stock_prices, symbol_sector, prev_ranks,
-                            stock_prices_vol=None, pivot_lookup=None):
+                            stock_prices_vol=None, pivot_lookup=None,
+                            base_duration_seed: dict | None = None):
     stock_date_lists = {sym: [p[0] for p in prices] for sym, prices in stock_prices.items()}
     vol_date_lists = (
         {sym: [p[0] for p in prices] for sym, prices in stock_prices_vol.items()}
@@ -179,6 +194,10 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
     )
     cur = conn.cursor()
     date_count = 0
+    # Seed from prior day's values so base_duration accumulates across runs
+    base_duration_tracker: dict = defaultdict(int)
+    if base_duration_seed:
+        base_duration_tracker.update(base_duration_seed)
 
     for date in trading_dates:
         kse_pos = kse_date_idx.get(date)
@@ -223,27 +242,64 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
             bt = None
             vc = None
             avv = None
+            vpos_sym = None
+            vol_prices_sym = None
             if stock_prices_vol:
-                vol_prices = stock_prices_vol.get(symbol)
-                if vol_prices:
+                vol_prices_sym = stock_prices_vol.get(symbol)
+                if vol_prices_sym:
                     vdl = vol_date_lists[symbol]
-                    vpos = bisect.bisect_left(vdl, date)
-                    if vpos < len(vdl) and vdl[vpos] == date:
-                        bt, vc, avv = _compute_bt_vc(vol_prices, vpos)
+                    vpos_sym = bisect.bisect_left(vdl, date)
+                    if vpos_sym < len(vdl) and vdl[vpos_sym] == date:
+                        bt, vc, avv = _compute_bt_vc(vol_prices_sym, vpos_sym)
+                    else:
+                        vpos_sym = None
 
             ph = pd_pct = bf = None
             if pivot_lookup:
                 ph, pd_pct, bf = pivot_lookup.get(symbol, {}).get(date, (None, None, None))
 
-            # stage2_bull: close > EMA20 > EMA50 > EMA200, all EMAs stacked
+            # base_duration: consecutive days this symbol has been in a tight base (bt < 12)
+            if bt is not None and bt < 12:
+                base_duration_tracker[symbol] += 1
+            else:
+                base_duration_tracker[symbol] = 0
+            base_dur = base_duration_tracker[symbol]
+
+            # overhead_clear: 200-day high of stock <= pivot_high * 1.15 (clear air above)
+            overhead_clear = None
+            if ph is not None and vol_prices_sym is not None and vpos_sym is not None and vpos_sym >= 199:
+                highs_200 = [vol_prices_sym[i][3] for i in range(vpos_sym - 199, vpos_sym + 1)]
+                valid_highs = [h for h in highs_200 if h is not None]
+                if valid_highs:
+                    high_200d = max(valid_highs)
+                    overhead_clear = 1 if high_200d <= ph * 1.15 else 0
+
+            # close_above_ema50 and ema50_slope_pos (need pos >= 49)
+            close_above_ema50 = None
+            ema50_slope_pos = None
+            e50_today = None
+            if pos >= 49:
+                c_start = max(0, pos - 3 * 50)
+                closes_ema = [prices[i][1] for i in range(c_start, pos + 1)]
+                e50_today = _ema(closes_ema, len(closes_ema) - 1, 50)
+                if e50_today is not None:
+                    close_above_ema50 = 1 if s_today > e50_today else 0
+                    if pos >= 54:
+                        c_start5 = max(0, pos - 5 - 3 * 50)
+                        closes_5ago = [prices[i][1] for i in range(c_start5, pos - 4)]
+                        e50_5ago = _ema(closes_5ago, len(closes_5ago) - 1, 50)
+                        if e50_5ago is not None:
+                            ema50_slope_pos = 1 if e50_today > e50_5ago else 0
+
+            # stage2_bull: close > EMA20 > EMA50 > EMA200 (full bull stack)
             stage2 = None
             if pos >= 199:
                 closes = [prices[i][1] for i in range(pos - 3 * 200, pos + 1)] if pos >= 3 * 200 else [prices[i][1] for i in range(pos + 1)]
                 e20  = _ema(closes, len(closes) - 1, 20)
-                e50  = _ema(closes, len(closes) - 1, 50)
+                e50f = _ema(closes, len(closes) - 1, 50)
                 e200 = _ema(closes, len(closes) - 1, 200)
-                if e20 is not None and e50 is not None and e200 is not None:
-                    stage2 = 1 if (s_today > e20 > e50 > e200) else 0
+                if e20 is not None and e50f is not None and e200 is not None:
+                    stage2 = 1 if (s_today > e20 > e50f > e200) else 0
 
             rows.append({
                 'symbol': symbol,
@@ -257,6 +313,10 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                 'pivot_distance_pct': pd_pct,
                 'bos_flag': bf,
                 'stage2_bull': stage2,
+                'close_above_ema50': close_above_ema50,
+                'ema50_slope_pos': ema50_slope_pos,
+                'base_duration': base_dur,
+                'overhead_clear': overhead_clear,
             })
 
         if not rows:
@@ -284,14 +344,17 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
             "INSERT OR REPLACE INTO stock_signals "
             "(date, symbol, rs_score_20, rs_score_50, rs_rank, rs_rank_prev, "
             "rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d, "
-            "pivot_high, pivot_distance_pct, stage2_bull) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "pivot_high, pivot_distance_pct, stage2_bull, "
+            "close_above_ema50, ema50_slope_pos, base_duration, overhead_clear) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (date, r['symbol'], r['rs_score_20'], r['rs_score_50'],
                  r['rs_rank'], r['rs_rank_prev'], r['rank_change'], r['sector_rs_rank'],
                  r.get('base_tightness'), r.get('bos_flag'), r.get('vol_contraction'),
                  r.get('avg_vol_10d'), r.get('pivot_high'), r.get('pivot_distance_pct'),
-                 r.get('stage2_bull'))
+                 r.get('stage2_bull'),
+                 r.get('close_above_ema50'), r.get('ema50_slope_pos'),
+                 r.get('base_duration'), r.get('overhead_clear'))
                 for r in rows
             ],
         )
@@ -332,6 +395,7 @@ def backfill_stock_signals(start_date: str, end_date: str) -> None:
 def append_latest_stock_signals() -> None:
     conn = sqlite3.connect(DB)
     try:
+        _ensure_new_stock_columns(conn)
         cur = conn.cursor()
 
         cur.execute("SELECT MAX(date) FROM stock_signals")
@@ -380,12 +444,22 @@ def append_latest_stock_signals() -> None:
 
         pivot_lookup = _build_pivot_lookup(stock_prices_vol)
 
+        # Seed base_duration from last available DB values so it accumulates
+        base_dur_seed = {}
+        if last_inserted:
+            seed_rows = cur.execute(
+                "SELECT symbol, base_duration FROM stock_signals WHERE date = ?",
+                (last_inserted,),
+            ).fetchall()
+            base_dur_seed = {r[0]: (r[1] or 0) for r in seed_rows}
+
         trading_dates = [row[0] for row in kse_list if row[0] > start_date]
         total = _process_trading_dates(
             conn, trading_dates, kse_list, kse_date_idx,
             stock_prices, symbol_sector, prev_ranks,
             stock_prices_vol=stock_prices_vol,
             pivot_lookup=pivot_lookup,
+            base_duration_seed=base_dur_seed,
         )
         logger.info(f"Append complete: {total} dates processed.")
     finally:
@@ -455,6 +529,36 @@ def update_base_tightness_vol_contraction() -> None:
         logger.info(f"  Total rows in stock_signals : {total_rows:,}")
         logger.info(f"  base_tightness  NULLs remaining: {bt_nulls:,}")
         logger.info(f"  vol_contraction NULLs remaining: {vc_nulls:,}")
+    finally:
+        conn.close()
+
+
+def backfill_base_duration() -> None:
+    """Compute base_duration for all rows in stock_signals using the existing base_tightness column."""
+    logger.info("Starting base_duration backfill...")
+    conn = sqlite3.connect(DB)
+    try:
+        _ensure_new_stock_columns(conn)
+        cur = conn.cursor()
+        rows = cur.execute(
+            "SELECT symbol, date, base_tightness FROM stock_signals ORDER BY symbol, date ASC"
+        ).fetchall()
+
+        updates = []
+        counter: dict = defaultdict(int)
+        for sym, date, bt in rows:
+            if bt is not None and bt < 12:
+                counter[sym] += 1
+            else:
+                counter[sym] = 0
+            updates.append((counter[sym], sym, date))
+
+        cur.executemany(
+            "UPDATE stock_signals SET base_duration = ? WHERE symbol = ? AND date = ?",
+            updates,
+        )
+        conn.commit()
+        logger.info(f"base_duration backfill complete: {len(updates):,} rows updated.")
     finally:
         conn.close()
 
