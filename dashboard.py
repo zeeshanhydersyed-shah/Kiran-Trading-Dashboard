@@ -2708,21 +2708,109 @@ elif cur == PAGES[3]:  # Explorer
     st.markdown("**Stock Explorer**")
     st.caption(f"As of {fmt_date(_ex_latest)} · {len(_ex_df)} stocks")
 
-    # ── Screener toggles ──────────────────────────────────────────────────────
-    _sc1, _sc2, _sc3, _sc4 = st.columns(4)
-    _ex_screener = _sc1.toggle(
-        "🎯 Screener — Stage 2 · Top 8 sectors · RS+ · Vol>200k · BBW<10 · Price>10",
-        key="exp_screener",
-    )
-    _ex_edge = _sc2.toggle(
-        "👀 Watch List — Coiling near pivot · Sector top 3/6-12 · RS 50-200 · BBW 5-10% · Vol>200k",
-        key="exp_edge",
-    )
-    _ex_weinstein = _sc3.toggle(
-        "📖 Weinstein — PSX Top-Down: Sector Stage 2 · Top-8 sector · Stock RS↑ · Rising 150EMA · Coiling ≥7d near pivot",
+    with st.expander("📖 Weinstein Screener — How It Works & Empirical Findings", expanded=False):
+        st.markdown("""
+### How the screener works
+
+**Purpose — early warning, not a buy trigger.**
+The Weinstein Watchlist identifies stocks that are set up for a sustained Stage 2 advance: sector in a confirmed uptrend, stock above a rising long-term moving average, relative strength improving, and price coiling near its recent high with volume contracting. A stock appearing here is a candidate to monitor. Entry is on a confirmed breakout on heavy volume, not on screener appearance alone.
+
+**Expected frequency.** ~92 signals per year (~1–2 per week). This is the deduped count — first day a stock enters a qualifying streak. Most setups will hold the conditions for several consecutive days; the screener doesn't repeat-count those.
+
+**Hold duration.** This is calibrated to a 90-day (multi-month) forward window. It is not a swing trade screen. Weinstein's Stage 2 plays, correctly entered, play out over months.
+
+---
+
+**Gate-by-gate explanation**
+
+| Gate | What it checks | Why it's there |
+|---|---|---|
+| Sector Stage 2 | Sector price index is above its rising EMA | Forest-before-trees: Weinstein Ch.3 — never buy a stock in a sick sector |
+| Sector rank ≤ 8 | Sector is in the top 8 globally by RS rank | Healthy sector, not necessarily #1. Hard floor prevents buying into recovering laggards |
+| Stock above rising 150d EMA | Close > 150d EMA AND EMA slope positive | Weinstein 30-week MA (Ch.2): the defining condition for Stage 2 |
+| RS rank improving (rank_change > 0) | Stock moved up in the cross-sectional RS ranking today | Stock is gaining relative strength vs the market, not just riding the tide |
+| Sector RS rank ≤ 5 | Stock is a relative leader within its own sector | Weinstein: buy the best stock in the best sector, not the median |
+| Near pivot ≥ 7 days | Stock has been 0–15% below its recent pivot high for 7+ consecutive days | Coiling/base formation: price compressing before a potential move, not extended after a run |
+| Volume > 200k avg | 10-day average volume > 200,000 shares | Liquidity floor — prevents illiquid setups where spread and slippage kill execution |
+
+---
+
+### Empirical findings
+
+**Grounded in Stan Weinstein's *Secrets for Profiting in Bull and Bear Markets*.**
+Rules extracted with page citations before testing began. Tested original thresholds first; relaxed only where PSX data supported it.
+
+- **Stage 2 definition**: Ch.2 pp.33–35 — price above rising 30-week MA
+- **Sector-first**: Ch.3 pp.75–88 — sector must be in Stage 2, not necessarily ranked #1
+- **Relative Strength formula**: Ch.4 pp.108–112 — price / market index, week-over-week slope
+- **Volume at breakout**: Ch.4 p.129 — "never overlook poor volume on a breakout"
+- **Short selling**: Ch.7 p.237 — "volume NOT required for shorts" (asymmetric to longs)
+
+---
+
+**The 20d→90d measurement window finding.**
+The first backtest used a 20-day forward return window. At 20d, the sector gate `sec_rank ≤ 8` appeared to *hurt* EV vs the prior 5-day rank-improvement gate. Correcting to a 90-day window — appropriate for Stage 2 plays that take months to resolve — reversed the finding completely. The 5-day rank gate has no edge over base at any horizon. The sec_rank ≤ 8 hard floor adds +1.14% EV at 90d. The two gates were not comparable at short windows because Stage 2 setups require time to resolve.
+
+---
+
+**MA grid — 6 variants tested (50/100/150 × SMA/EMA) at 60/90/120d**
+
+| Variant | EV@90d |
+|---|---|
+| 150d EMA | **+8.70%** |
+| 150d SMA | +7.90% |
+| 100d EMA | +7.68% |
+| 100d SMA | +7.21% |
+| 50d EMA | +4.89% |
+| 50d SMA | +4.12% |
+
+EMA beat SMA at every length. Longer beat shorter at every type. 150d EMA selected.
+
+---
+
+**Sector gate — tested against base (no sector rank gate) at 90d**
+
+| Sector gate | EV@90d |
+|---|---|
+| sec_rank ≤ 5 | +7.89% |
+| **sec_rank ≤ 8** | **+8.41%** |
+| sec_rank ≤ 12 | +7.31% |
+| Prior gate: 5-day rank improvement | +7.27% (= base, no edge) |
+| No sector rank gate (base) | +7.27% |
+
+sec_rank ≤ 8 selected. The prior gate (sector RS rank improving over 5 days) had no measurable edge over the unfiltered base at any horizon and was removed.
+
+Two other gates were tested and rejected:
+- **`sec_pivot_dist ≤ 10%`** (sector not extended from its high): noise at every horizon tested. Removed.
+- **5-day RS rank improvement gate**: EV matched the no-gate base identically. Removed.
+
+---
+
+**Final combined-gate backtest (persistent-state, 90d window)**
+
+Methodology: daily `stock_signals` rows meeting all conditions, deduped to first day of each qualifying streak per symbol. Forward return measured at 90 trading days.
+
+| Version | N (streaks) | WR | LR | EV@90d | Freq/yr |
+|---|---|---|---|---|---|
+| **EMA150 Weinstein (current)** | **1,021** | **43.5%** | **35.7%** | **+10.50%** | **92/yr** |
+| EMA50 Weinstein (prior) | 1,197 | 42.3% | 37.8% | +8.82% | 108/yr |
+
+The EMA150 version improves EV by +1.68% and reduces loss rate by 2.1 percentage points. The lower frequency (92 vs 108/yr) reflects tighter filtering, not signal loss.
+
+---
+
+**Short screener — audited and disabled.**
+The short screener was audited against the book directly (Ch.7). Key finding: Weinstein explicitly states volume is *not* required for short entries (p.237) — the signal logic was sign-flipped from the long screener rather than built from source. Tested against PSX data at all windows and variants: **negative EV at every configuration**. PSX is bullish 89% of time (TRENDING_UP + RANGING + VOLATILE); only 11% TRENDING_DOWN historically. Structural mismatch for short-side methodology. Screener code is preserved behind `market_regime = TRENDING_DOWN` gate for future revisit if PSX enters an extended bear phase and the EV can be validated on that regime subset.
+""")
+
+    # ── Screener toggle ───────────────────────────────────────────────────────
+    _ex_weinstein = st.toggle(
+        "📖 Weinstein Watchlist — Sector Stage 2 · Top-8 sector · Stock RS↑ · Rising 150EMA · Coiling ≥7d near pivot",
         key="exp_weinstein",
     )
-    _ex_short = False  # Short screener disabled — negative EV on PSX; gated behind TRENDING_DOWN for future use
+    _ex_screener = False   # superseded by Weinstein screener
+    _ex_edge = False       # superseded by Weinstein screener
+    _ex_short = False      # disabled — negative EV on PSX; gated behind TRENDING_DOWN for future use
 
     # Sector filter + sort controls in one row
     _fc1, _fc2, _fc3, _fc4 = st.columns([2, 2, 1, 1])
@@ -2749,59 +2837,6 @@ elif cur == PAGES[3]:  # Explorer
         _ex_df if _ex_sel_sec == "All sectors"
         else _ex_df[_ex_df["sector"] == _ex_sel_sec]
     ).copy()
-
-    # Apply screener criteria when toggle is ON
-    if _ex_screener:
-        _total_before = len(_ex_filtered)
-        _ex_filtered = _ex_filtered[
-            (_ex_filtered["stage2_bull"] == 1) &
-            (_ex_filtered["sector_rs_rank"] <= 8) &
-            (_ex_filtered["rs_score_20"] > 0) &
-            (_ex_filtered["avg_vol_10d"] > 200_000) &
-            (_ex_filtered["base_tightness"] < 10) &
-            (_ex_filtered["current_close"] > 10)
-        ]
-        st.caption(f"🎯 Screener active — **{len(_ex_filtered)}** stocks passed out of {_total_before}")
-
-    # Apply watch list (pre-breakout, coiling near pivot)
-    if _ex_edge:
-        _total_before_e = len(_ex_filtered)
-        _sec_ok = (
-            (_ex_filtered["sec_global_rank"] <= 3) |
-            ((_ex_filtered["sec_global_rank"] >= 6) & (_ex_filtered["sec_global_rank"] <= 12))
-        )
-        _ex_filtered = _ex_filtered[
-            (_ex_filtered["bos_flag"] == 0) &
-            (_ex_filtered["pivot_distance_pct"] >= 0) &
-            (_ex_filtered["pivot_distance_pct"] <= 5) &
-            (_ex_filtered["rs_score_20"] > 0) &
-            (_ex_filtered["rs_rank"] >= 50) &
-            (_ex_filtered["rs_rank"] <= 200) &
-            (_ex_filtered["base_tightness"] >= 5) &
-            (_ex_filtered["base_tightness"] < 10) &
-            (_ex_filtered["avg_vol_10d"] > 200_000) &
-            _sec_ok
-        ]
-        # Get current regime for context
-        try:
-            _edge_con = sqlite3.connect(DB_PATH)
-            _edge_regime = _edge_con.execute(
-                "SELECT regime FROM market_regime ORDER BY date DESC LIMIT 1"
-            ).fetchone()
-            _edge_con.close()
-            _edge_regime = _edge_regime[0] if _edge_regime else "UNKNOWN"
-        except Exception:
-            _edge_regime = "UNKNOWN"
-
-        _regime_warn = (
-            "" if _edge_regime == "TRENDING_UP"
-            else f"  ⚠️ Market is **{_edge_regime}** — watch list is calibrated for TRENDING_UP only"
-        )
-        st.caption(
-            f"👀 Watch List active — **{len(_ex_filtered)}** stocks coiling near pivot · "
-            f"set alerts, enter on the break tomorrow"
-            f"{_regime_warn}"
-        )
 
     # Weinstein top-down watchlist
     if _ex_weinstein:
@@ -5772,6 +5807,16 @@ elif cur == PAGES[13]:  # Model Health (updated index)
 
     st.markdown("### 🏥 Model Health Dashboard")
     st.caption("Live accuracy tracking for both ML models. Refresh daily after logging predictions.")
+
+    st.warning(
+        "**ML expansion parked — needs a planning conversation before any new work starts.**  \n"
+        "Open questions before scoping: (1) prediction target — probability of WINNER label, expected EV, "
+        "or time-to-resolution? (2) train/test split methodology given PSX's regime imbalance (89% non-bear "
+        "history caused one contaminated backtest this session — same risk applies to ML); "
+        "(3) feature leak safety — sector rank and RS columns need point-in-time correctness, not look-ahead; "
+        "(4) what would the model add that the rule-based Weinstein gates don't already capture "
+        "(EV 10.50%, 92/yr, validated). This page tracks the *existing* model. New ML work: separate session."
+    )
 
     try:
         from part5_model_health import generate_health_report
