@@ -28,10 +28,20 @@ def get_conn():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 3: run_mv_signals()
+# KILLED: run_mv_signals() — Minervini screener removed.
+# Verdict: N=29 proxy signals over 11 years (3/yr), 86% overlap with BREAKOUT
+# setup_log. Actual production screener fires fewer than 5 times per year.
+# N too small for statistical validity; no marginal information over BREAKOUT.
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_mv_signals() -> dict:
+# ══════════════════════════════════════════════════════════════════════════════
+# KILLED: run_stm_signals() — STM screener removed.
+# Verdict: 82% overlap with BREAKOUT+PRE_BREAKOUT+Weinstein combined.
+# Z-histogram gate (most distinctive feature) has no historical validation.
+# Quality logic (uptrend + outperforming + 500k vol) folded into Explorer filter.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _killed_mv_signals() -> dict:
     """
     Compute Minervini signals for the latest date and write to mv_signals table.
     Returns a summary dict: {as_of_date, longs, shorts, watchlist, status}
@@ -276,8 +286,8 @@ def run_mv_signals() -> dict:
         conn.commit()
         conn.close()
 
-        log.info(f"run_mv_signals: wrote {rows_written} signal rows + 1 GATE_STATUS row")
-        log.info("=== run_mv_signals COMPLETE ===")
+        log.info(f"_killed_mv_signals: wrote {rows_written} signal rows + 1 GATE_STATUS row")
+        log.info("=== _killed_mv_signals COMPLETE ===")
         return {
             "status":       "ok",
             "as_of_date":   as_of_date,
@@ -288,16 +298,12 @@ def run_mv_signals() -> dict:
         }
 
     except Exception as e:
-        log.error(f"run_mv_signals FAILED: {e}")
+        log.error(f"_killed_mv_signals FAILED: {e}")
         log.error(traceback.format_exc())
         return {"status": "error", "message": str(e)}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SECTION 4: run_stm_signals()
-# ══════════════════════════════════════════════════════════════════════════════
-
-def run_stm_signals() -> dict:
+def _killed_stm_signals() -> dict:
     """
     Compute STM signals for the latest date and write to stm_signals table.
     Returns a summary dict: {as_of_date, symbols, status}
@@ -428,8 +434,8 @@ def run_stm_signals() -> dict:
         conn.commit()
         conn.close()
 
-        log.info(f"run_stm_signals: wrote {rows_written} rows")
-        log.info("=== run_stm_signals COMPLETE ===")
+        log.info(f"_killed_stm_signals: wrote {rows_written} rows")
+        log.info("=== _killed_stm_signals COMPLETE ===")
         return {
             "status":       "ok",
             "as_of_date":   as_of_date,
@@ -438,7 +444,7 @@ def run_stm_signals() -> dict:
         }
 
     except Exception as e:
-        log.error(f"run_stm_signals FAILED: {e}")
+        log.error(f"_killed_stm_signals FAILED: {e}")
         log.error(traceback.format_exc())
         return {"status": "error", "message": str(e)}
 
@@ -579,29 +585,33 @@ def run_recovery_signals() -> dict:
                 drawdown = (pre_high - closes[bs]) / pre_high
                 if drawdown < 0.30:
                     continue
-                bv   = volumes[bs : prev + 1]
-                bm50 = vol_ma50[bs : prev + 1]
-                l5v  = bv[-5:]
-                l5m  = bm50[-5:]
-                ok   = l5m > 0
-                if ok.sum() < 3:
+                # FIX 1: base-relative volume baseline (replaces vol_ma50 in Gates 8 & 9)
+                # Use median of the first half (≤10 bars) of the base as baseline,
+                # so the denominator reflects volume AFTER the decline stopped, not during it.
+                bv        = volumes[bs : prev + 1]
+                half_len  = min(10, b_days // 2)
+                early_bars = max(1, half_len)
+                base_vol_baseline = np.median(volumes[bs : bs + early_bars])
+                if base_vol_baseline <= 0:
                     continue
-                l5r = np.where(
-                    ok, l5v / np.where(l5m > 0, l5m, 1.0), 1.0)
-                if not (l5r[ok].mean() < 0.50
-                        and (l5r[ok] < 0.60).sum() >= 3):
+                # Gate 8: volume contraction in last 5 base bars vs base_vol_baseline
+                l5v = bv[-5:]
+                l5r = l5v / base_vol_baseline
+                if not (l5r.mean() < 0.50 and (l5r < 0.60).sum() >= 3):
                     continue
-                all_br = np.where(bm50 > 0, bv / bm50, 0.0)
+                # Gate 9: prior volume surge within base vs base_vol_baseline
+                all_br = bv / base_vol_baseline
                 if (all_br > 1.5).sum() < 2:
                     continue
                 if vol_ma50[t] <= 0:
                     continue
                 vr      = volumes[t] / vol_ma50[t]
                 day_rng = highs[t] - lows[t]
+                # FIX 2: remove close>open (open is structurally NULL in this dataset);
+                # replaced by close>b_high + close in upper 40% of range, which are retained.
                 if not (
                     vr >= 2.5
                     and closes[t] > b_high
-                    and closes[t] > opens[t]
                     and day_rng > 0
                     and (closes[t] - lows[t]) / day_rng >= 0.40
                 ):
@@ -659,19 +669,20 @@ def run_recovery_signals() -> dict:
             drawdown = (pre_high - closes[bs]) / pre_high
             if drawdown < 0.30:
                 continue
-            l5v  = volumes[-5:]
-            l5m  = vol_ma50[-5:]
-            ok   = l5m > 0
-            if ok.sum() < 3:
+            # FIX 1 (WATCHLIST path): same base-relative baseline as TRIGGERED path
+            bv        = volumes[bs:]
+            half_len  = min(10, b_days // 2)
+            early_bars = max(1, half_len)
+            base_vol_baseline = np.median(volumes[bs : bs + early_bars])
+            if base_vol_baseline <= 0:
                 continue
-            l5r = np.where(
-                ok, l5v / np.where(l5m > 0, l5m, 1.0), 1.0)
-            if not (l5r[ok].mean() < 0.50
-                    and (l5r[ok] < 0.60).sum() >= 3):
+            # Gate 8: contraction in last 5 base bars
+            l5v = bv[-5:]
+            l5r = l5v / base_vol_baseline
+            if not (l5r.mean() < 0.50 and (l5r < 0.60).sum() >= 3):
                 continue
-            bv     = volumes[bs:]
-            bm50   = vol_ma50[bs:]
-            all_br = np.where(bm50 > 0, bv / bm50, 0.0)
+            # Gate 9: prior surge within base
+            all_br = bv / base_vol_baseline
             if (all_br > 1.5).sum() < 2:
                 continue
             cur_vr = (volumes[-1] / vol_ma50[-1]
@@ -900,8 +911,6 @@ def main():
 
     # Run each module independently
     for name, fn in [
-        ("mv_signals",        run_mv_signals),
-        ("stm_signals",       run_stm_signals),
         ("recovery_signals",  run_recovery_signals),
         ("portfolio_signals", run_portfolio_signals),
     ]:
