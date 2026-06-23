@@ -5141,8 +5141,8 @@ elif cur == PAGES[8]:  # Recovery Bases
     st.caption(
         "Post-capitulation VCP screener — stocks that declined ≥30%, formed a tight base "
         "with volume drying up, then broke out on a surge. "
-        "**Watchlist** = currently basing, volume contracting. "
-        "**Triggered** = breakout fired in last 5 trading days."
+        "**Triggered** = breakout fired in the last 5 days — the only actionable signal. "
+        "**Watchlist** = base forming, no breakout yet — monitoring only, not an entry."
     )
 
     # ── Read pre-computed recovery signals ───────────────────────
@@ -5285,7 +5285,11 @@ elif cur == PAGES[8]:  # Recovery Bases
     # ══════════════════════════════════════════════════════════════════════════
     st.divider()
     st.markdown("#### 👁️ Basing Now — Watchlist")
-    st.caption("Volume contracting. Sorted by tightest base range (most coiled first). Watch for a vol surge above Trigger Level.")
+    st.caption(
+        "**Not a buy signal.** These stocks meet the base conditions but have not broken out. "
+        "Backtested EV for Watchlist appearance alone is near zero — no edge until Triggered. "
+        "Use this list to know which stocks to watch; do not act until the breakout fires."
+    )
 
     if len(_wl) == 0:
         st.info("No stocks currently in a qualifying base with volume contraction.")
