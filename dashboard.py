@@ -5917,6 +5917,11 @@ elif cur == PAGES[13]:  # Agent
 
         # ── Today's Opportunities — with read-time regime veto ───────────────
         st.markdown("#### 🎯 Today's Opportunities")
+        st.caption(
+            "Suggestions are validated-signal synthesis — Claude selects and ranks signals already "
+            "identified by setup_log / stock_signals / recovery_signals screeners. "
+            "Claude's ranking has not been independently backtested."
+        )
 
         # ── Read-time veto helpers ────────────────────────────────────────────
         def _get_veto_context() -> dict:

@@ -513,10 +513,9 @@ Return JSON with this exact structure:
   "what_to_stop_doing": "One-sentence biggest negative pattern"
 }}"""
 
-        raw = _call_claude(prompt, system=self.SYSTEM, max_tokens=1500)
+        raw = _call_claude(prompt, system=self.SYSTEM, max_tokens=3000)
 
         try:
-            # Strip any accidental markdown code fences
             clean = raw.strip()
             if clean.startswith("```"):
                 clean = clean.split("```")[1]
@@ -524,8 +523,13 @@ Return JSON with this exact structure:
                     clean = clean[4:]
             result = json.loads(clean)
         except Exception as e:
-            logger.warning("PatternAnalyzer: JSON parse failed (%s), using raw text", e)
-            result = {"patterns": [], "key_insight": raw[:500], "raw": raw}
+            logger.warning("PatternAnalyzer: JSON parse failed (%s) — trying regex extract", e)
+            try:
+                import re as _re
+                m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+                result = json.loads(m.group()) if m else {"patterns": [], "key_insight": raw[:500], "raw": raw}
+            except Exception:
+                result = {"patterns": [], "key_insight": raw[:500], "raw": raw}
 
         # Persist patterns to DB
         patterns_saved = 0
@@ -959,6 +963,310 @@ def _characterise_setup(row: pd.Series, active_symbols: set) -> str:
     )
 
 
+def _load_pipeline_signals(
+    raw_data: list[dict],
+    sector_df: "pd.DataFrame",
+    avoid_sectors: list,
+    active_symbols: set,
+    is_long_ok: bool,
+) -> tuple[list[str], float, list[str]]:
+    """
+    Pull today's validated pipeline signals from setup_log, stock_signals,
+    recovery_signals.  Returns (section_text_list, universe_stage3_pct,
+    all_candidate_symbols).
+
+    This replaces _compute_stm_candidates — Claude now reasons over
+    pre-validated signals rather than a raw universe ranked by a quality score.
+    Claude's job: rank and select from signals the screener already found;
+    it is NOT generating its own candidate list.
+    """
+    import sqlite3
+
+    # Build symbol → (latest close, sector) from raw_data in one pass
+    sym_info: dict[str, dict] = {}
+    for row in raw_data:
+        sym = row["symbol"]
+        d   = str(row.get("date", ""))
+        if sym not in sym_info or d > sym_info[sym]["date"]:
+            sym_info[sym] = {
+                "date":   d,
+                "close":  float(row.get("close") or 0),
+                "sector": row.get("sector", "?"),
+            }
+    latest_close = {s: v["close"]  for s, v in sym_info.items()}
+    sym_sector   = {s: v["sector"] for s, v in sym_info.items()}
+
+    # Sector momentum map from sector_df
+    sec_momentum: dict[str, str] = {}
+    if not sector_df.empty and "momentum" in sector_df.columns:
+        for _, r in sector_df.iterrows():
+            sec_momentum[r["sector"]] = r.get("momentum", "?")
+
+    # Universe Stage 3 % — sector-level proxy used for Phase 2 gate
+    if not sector_df.empty and "momentum" in sector_df.columns:
+        stage3_count     = sector_df["momentum"].str.contains("Stage 3|Topping", na=False).sum()
+        universe_stage3_pct = round(float(stage3_count) / len(sector_df) * 100, 1)
+    else:
+        universe_stage3_pct = 0.0
+
+    def _sector_ok(sym: str, explicit_sector: str | None) -> tuple[bool, str]:
+        """Return (passes_filter, sector_name)."""
+        sector = (explicit_sector or sym_sector.get(sym, "?")) or "?"
+        if avoid_sectors and sector in avoid_sectors:
+            return False, sector
+        return True, sector
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        sections: list[str] = []
+        all_syms: list[str] = []
+
+        # ── 1. BREAKOUT signals ───────────────────────────────────────────────
+        row0 = conn.execute(
+            "SELECT MAX(setup_date) FROM setup_log WHERE setup_type='BREAKOUT'"
+        ).fetchone()
+        latest_bo = row0[0] if row0 else None
+
+        if latest_bo:
+            bo_rows = conn.execute("""
+                SELECT sl.symbol, sl.sector, sl.rs_score_20,
+                       sl.pivot_distance_pct, sl.base_tightness,
+                       ss.avg_vol_10d, ss.bos_flag, ss.base_duration, ss.overhead_clear
+                FROM setup_log sl
+                LEFT JOIN stock_signals ss
+                       ON ss.symbol = sl.symbol AND ss.date = sl.setup_date
+                WHERE sl.setup_date = ? AND sl.setup_type = 'BREAKOUT'
+                ORDER BY sl.rs_score_20 DESC
+            """, (latest_bo,)).fetchall()
+
+            filtered = []
+            for r in bo_rows:
+                sym = r["symbol"]
+                if sym in active_symbols:
+                    continue
+                ok, sector = _sector_ok(sym, r["sector"])
+                if not ok:
+                    continue
+                if (r["avg_vol_10d"] or 0) < AGENT_MIN_VOLUME:
+                    continue
+                filtered.append((dict(r), sector))
+
+            if filtered:
+                lines = [
+                    f"BREAKOUT SIGNALS (bos_flag=1, pivot breached, validated by signal_engine — {latest_bo}):",
+                    "  Symbol | Sector               | RS     | Vol    | Base | Tight | PivotDist | Overhead | SectorStage",
+                ]
+                for r, sector in filtered:
+                    sym      = r["symbol"]
+                    vol_k    = (r["avg_vol_10d"] or 0) / 1000
+                    rs       = r["rs_score_20"] or 0
+                    base_d   = r["base_duration"] or 0
+                    tight    = r["base_tightness"] or 0
+                    pivot_d  = r["pivot_distance_pct"] or 0
+                    ovhd     = "clear" if r["overhead_clear"] else "blocked"
+                    bos      = "bos✓" if r["bos_flag"] else ""
+                    mom      = sec_momentum.get(sector, "?")
+                    lines.append(
+                        f"  {sym:6} | {sector[:20]:20} | RS:{rs:+5.1f} | "
+                        f"Vol:{vol_k:5.0f}k | {base_d:2.0f}d | {tight:.1f}% | "
+                        f"{pivot_d:+.1f}% | {ovhd:7} | {bos:5} | {mom}"
+                    )
+                    all_syms.append(sym)
+                sections.append("\n".join(lines))
+
+        # ── 2. PRE-BREAKOUT setups ────────────────────────────────────────────
+        row0 = conn.execute(
+            "SELECT MAX(setup_date) FROM setup_log WHERE setup_type='PRE_BREAKOUT'"
+        ).fetchone()
+        latest_pre = row0[0] if row0 else None
+
+        if latest_pre:
+            pre_rows = conn.execute("""
+                SELECT sl.symbol, sl.sector, sl.rs_score_20,
+                       sl.pivot_distance_pct, sl.base_tightness,
+                       ss.avg_vol_10d, ss.base_duration, ss.overhead_clear
+                FROM setup_log sl
+                LEFT JOIN stock_signals ss
+                       ON ss.symbol = sl.symbol AND ss.date = sl.setup_date
+                WHERE sl.setup_date = ? AND sl.setup_type = 'PRE_BREAKOUT'
+                ORDER BY sl.rs_score_20 DESC
+            """, (latest_pre,)).fetchall()
+
+            filtered = []
+            for r in pre_rows:
+                sym = r["symbol"]
+                if sym in active_symbols:
+                    continue
+                ok, sector = _sector_ok(sym, r["sector"])
+                if not ok:
+                    continue
+                if (r["avg_vol_10d"] or 0) < AGENT_MIN_VOLUME:
+                    continue
+                filtered.append((dict(r), sector))
+
+            if filtered:
+                lines = [
+                    f"PRE-BREAKOUT SETUPS (within 5% of pivot, base tight — {latest_pre}):",
+                    "  Symbol | Sector               | RS     | Vol    | Base | Tight | PivotDist | SectorStage",
+                ]
+                for r, sector in filtered:
+                    sym      = r["symbol"]
+                    vol_k    = (r["avg_vol_10d"] or 0) / 1000
+                    rs       = r["rs_score_20"] or 0
+                    base_d   = r["base_duration"] or 0
+                    tight    = r["base_tightness"] or 0
+                    pivot_d  = r["pivot_distance_pct"] or 0
+                    mom      = sec_momentum.get(sector, "?")
+                    lines.append(
+                        f"  {sym:6} | {sector[:20]:20} | RS:{rs:+5.1f} | "
+                        f"Vol:{vol_k:5.0f}k | {base_d:2.0f}d | {tight:.1f}% | "
+                        f"{pivot_d:+.1f}% | {mom}"
+                    )
+                    all_syms.append(sym)
+                sections.append("\n".join(lines))
+
+        # ── 3. Weinstein Stage 2 ──────────────────────────────────────────────
+        row0 = conn.execute(
+            "SELECT MAX(date) FROM stock_signals WHERE stage2_bull = 1"
+        ).fetchone()
+        latest_wein = row0[0] if row0 else None
+
+        if latest_wein:
+            wein_rows = conn.execute("""
+                SELECT symbol, rs_score_20, avg_vol_10d,
+                       close_above_ema50, ema50_slope_pos,
+                       pivot_distance_pct, base_tightness, base_duration
+                FROM stock_signals
+                WHERE date = ? AND stage2_bull = 1
+                ORDER BY rs_score_20 DESC
+            """, (latest_wein,)).fetchall()
+
+            filtered = []
+            for r in wein_rows:
+                sym = r["symbol"]
+                if sym in active_symbols:
+                    continue
+                ok, sector = _sector_ok(sym, None)
+                if not ok:
+                    continue
+                if (r["avg_vol_10d"] or 0) < AGENT_MIN_VOLUME:
+                    continue
+                filtered.append((dict(r), sector))
+
+            if filtered:
+                lines = [
+                    f"WEINSTEIN STAGE 2 (stage2_bull=1, EMA150 rising — {latest_wein}):",
+                    "  Symbol | Sector               | RS     | Vol    | above_ema50 | slope+ | PivotDist | SectorStage",
+                ]
+                for r, sector in filtered:
+                    sym     = r["symbol"]
+                    vol_k   = (r["avg_vol_10d"] or 0) / 1000
+                    rs      = r["rs_score_20"] or 0
+                    above   = "✓" if r["close_above_ema50"] else "✗"
+                    slope   = "✓" if r["ema50_slope_pos"]   else "✗"
+                    pivot_d = r["pivot_distance_pct"] or 0
+                    mom     = sec_momentum.get(sector, "?")
+                    lines.append(
+                        f"  {sym:6} | {sector[:20]:20} | RS:{rs:+5.1f} | "
+                        f"Vol:{vol_k:5.0f}k | ema50:{above} | slope:{slope} | "
+                        f"{pivot_d:+.1f}% | {mom}"
+                    )
+                    all_syms.append(sym)
+                sections.append("\n".join(lines))
+
+        # ── 4. Recovery Bases — TRIGGERED only ───────────────────────────────
+        row0 = conn.execute(
+            "SELECT MAX(as_of_date) FROM recovery_signals WHERE list_type = 'TRIGGERED'"
+        ).fetchone()
+        latest_rec = row0[0] if row0 else None
+
+        if latest_rec:
+            rec_rows = conn.execute("""
+                SELECT symbol, sector, close, drawdown_pct, base_days, base_range_pct, dist_pct
+                FROM recovery_signals
+                WHERE as_of_date = ? AND list_type = 'TRIGGERED'
+                ORDER BY dist_pct ASC
+            """, (latest_rec,)).fetchall()
+
+            filtered = []
+            for r in rec_rows:
+                sym = r["symbol"]
+                if sym in active_symbols:
+                    continue
+                ok, sector = _sector_ok(sym, r["sector"])
+                if not ok:
+                    continue
+                filtered.append((dict(r), sector))
+
+            if filtered:
+                lines = [
+                    f"RECOVERY BASES — TRIGGERED (post-capitulation breakout — {latest_rec}):",
+                    "  Symbol | Sector               | Close    | Drawdown | BaseDays | BaseRng | Dist%",
+                ]
+                for r, sector in filtered:
+                    sym = r["symbol"]
+                    lines.append(
+                        f"  {sym:6} | {sector[:20]:20} | "
+                        f"{r['close']:8.2f} | {r['drawdown_pct']:+5.1f}% | "
+                        f"{r['base_days']:3d}d | {r['base_range_pct']:.1f}% | "
+                        f"{r['dist_pct']:+.1f}%"
+                    )
+                    all_syms.append(sym)
+                sections.append("\n".join(lines))
+
+    finally:
+        conn.close()
+
+    return sections, universe_stage3_pct, all_syms
+
+
+def _check_perf_circuit_breaker() -> tuple[bool, str]:
+    """
+    Query agent_opportunities directly to compute recent win rate.
+    Returns (blocked, reason).
+
+    Threshold: last 5+ graded outcomes; if win_rate < 30% → block.
+    At 1% risk targeting 2R, breakeven WR = 33%. Below 30% = negative
+    expectancy territory even accounting for wins.
+
+    If fewer than 5 graded outcomes exist → do NOT block (insufficient data).
+    """
+    CB_MIN_SAMPLE   = 5      # minimum graded outcomes before circuit breaker can fire
+    CB_WIN_RATE_PCT = 30.0   # below this → block
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(DB_PATH)
+        rows = conn.execute("""
+            SELECT outcome
+            FROM agent_opportunities
+            WHERE status IN ('Expired', 'Taken', 'Skipped')
+              AND outcome IN ('Win', 'Loss', 'Breakeven')
+            ORDER BY run_date DESC
+            LIMIT 20
+        """).fetchall()
+        conn.close()
+
+        total = len(rows)
+        if total < CB_MIN_SAMPLE:
+            return False, ""
+
+        wins = sum(1 for r in rows if r[0] == "Win")
+        wr   = wins / total * 100
+
+        if wr < CB_WIN_RATE_PCT:
+            return True, (
+                f"Circuit breaker: {wins}/{total} wins in last {total} graded suggestions "
+                f"= {wr:.0f}% win rate (threshold: {CB_WIN_RATE_PCT:.0f}%). "
+                f"Agent edge below threshold — no new suggestions until rate recovers."
+            )
+        return False, ""
+    except Exception as e:
+        logger.warning("Circuit breaker check failed (%s) — allowing through", e)
+        return False, ""
+
+
 class OpportunityGeneratorAgent:
     """
     Independent analyst: reviews the full universe of liquid PSX stocks,
@@ -1151,53 +1459,21 @@ Respond ONLY with valid JSON."""
             if s.get("status") in ("Pending", "Active")
         }
 
-        # ── KSE-100 30d return for RS ─────────────────────────────────────────
-        kse_30d = 0.0
-        try:
-            from agent_benchmark import get_kse100_return
-            from datetime import date as _date, timedelta as _td
-            _thirty_ago = (_date.today() - _td(days=30)).isoformat()
-            kse_30d_val = get_kse100_return(_thirty_ago, _date.today().isoformat())
-            if kse_30d_val is not None:
-                kse_30d = kse_30d_val
-        except Exception:
-            pass
-
-        # ── Compute full technical picture for all stocks ─────────────────────
-        logger.info("Computing indicators for full universe…")
-        all_df = _compute_stm_candidates(raw_data, stock_30d, sector_df, kse_30d)
-
-        if all_df.empty:
-            logger.info("OpportunityGenerator: no price data available.")
-            return {"opportunities": [], "regime_warning": "", "market_read": "",
-                    "universe_stage3_pct": 0.0}
-
-        # ── HARD filters only (risk management — not strategy) ────────────────
-        # 1. Volume (liquidity)
-        all_df = all_df[all_df["avg_vol_10d"] >= AGENT_MIN_VOLUME]
-        # 2. Avoid sectors (regime + personal preference)
-        if avoid_sectors:
-            all_df = all_df[~all_df["sector"].isin(avoid_sectors)]
-        # 3. Not already in active position
-        all_df = all_df[~all_df["symbol"].isin(active_symbols)]
-
-        if all_df.empty:
-            return {"opportunities": [], "regime_warning": "", "market_read": "",
-                    "universe_stage3_pct": 0.0}
-
-        # ── PHASE 2 GATE — breadth exhaustion + RoC (needs universe data) ────
-        stage3_mask          = all_df["momentum"].str.contains("Stage 3", na=False)
-        stage3_count         = int(stage3_mask.sum())
-        total_count          = len(all_df)
-        universe_stage3_pct  = round(stage3_count / total_count * 100, 1) if total_count > 0 else 0.0
-        prev_stage3_pct      = adb.get_prev_stage3_pct(days_back=7)
+        # ── Pull validated pipeline signals from screener tables ────────────────
+        logger.info("Loading validated pipeline signals from setup_log / stock_signals…")
+        pipeline_sections, universe_stage3_pct, pipeline_syms = _load_pipeline_signals(
+            raw_data, sector_df, avoid_sectors, active_symbols, is_long_ok
+        )
+        prev_stage3_pct = adb.get_prev_stage3_pct(days_back=7)
 
         logger.info(
-            "Universe breadth: %d/%d Stage 3 (%.0f%%)%s",
-            stage3_count, total_count, universe_stage3_pct,
+            "Pipeline signals: %d symbols across %d signal types | "
+            "Sector breadth Stage 3: %.0f%%%s",
+            len(pipeline_syms), len(pipeline_sections), universe_stage3_pct,
             f" | prev-week: {prev_stage3_pct:.0f}%" if prev_stage3_pct is not None else "",
         )
 
+        # ── PHASE 2 GATE — breadth exhaustion + RoC ──────────────────────────
         gate2_blocked, gate2_reason = self._regime_gate_phase2(
             regime_result, universe_stage3_pct, prev_stage3_pct
         )
@@ -1207,52 +1483,7 @@ Respond ONLY with valid JSON."""
             result["universe_stage3_pct"] = universe_stage3_pct
             return result
 
-        # ── Separate long / short pools ───────────────────────────────────────
-        # Shorts MUST be DFC-listed (PSX rule — code enforces this, Claude cannot override)
-        short_eligible = all_df["symbol"].isin(DFC_SYMBOLS)
-        all_df["dfc_eligible"] = short_eligible.map({True: "DFC✓", False: "no-short"})
-
-        # ── HARD Stage 3 exclusion from long pool ─────────────────────────────
-        # Stage 3: Topping stocks are NEVER included as long candidates outside
-        # Early Bull (where sector rotation into laggards can occasionally justify it).
-        # This filter runs in CODE — Claude cannot see or reason around these stocks.
-        regime_label_raw = regime_result.get("regime", "")
-        is_early_bull    = "Early Bull" in regime_label_raw
-
-        if is_long_ok:
-            if not is_early_bull:
-                excluded_stage3 = all_df.loc[stage3_mask, "symbol"].tolist()
-                pool_long_base  = all_df[~stage3_mask].copy()
-                if excluded_stage3:
-                    logger.info(
-                        "Stage 3 hard exclusion: removed %d stocks from long pool — %s%s",
-                        len(excluded_stage3),
-                        ", ".join(excluded_stage3[:8]),
-                        "…" if len(excluded_stage3) > 8 else "",
-                    )
-            else:
-                pool_long_base = all_df.copy()   # Early Bull: no Stage 3 exclusion
-
-            pool_long = pool_long_base.sort_values("quality", ascending=False).head(35)
-        else:
-            pool_long = pd.DataFrame()
-
-        if is_short_ok:
-            pool_short = all_df[short_eligible].copy()
-            # Flag obviously broken downtrends for Claude
-            pool_short = pool_short[pool_short["latest_close"] < pool_short["ma21"]]
-            pool_short = pool_short.sort_values("quality", ascending=True).head(12)
-            # (lower quality score in our scale means weaker stock)
-        else:
-            pool_short = pd.DataFrame()
-
-        logger.info(
-            "Universe → %d long candidates, %d short candidates (DFC-only)",
-            len(pool_long), len(pool_short)
-        )
-
         # ── Pull Support Reversal setups from DB ──────────────────────────────
-        # SR setups are longs — suppress them if the regime blocks new longs
         sr_setups = []
         if is_long_ok:
             sr_setups = [
@@ -1264,39 +1495,11 @@ Respond ONLY with valid JSON."""
             ]
         logger.info("Support Reversal candidates from DB: %d", len(sr_setups))
 
-        # ── Load learned pattern evidence ─────────────────────────────────────
-        pattern_library = _load_active_patterns()
-        reference_profile = _load_reference_breakout_profile()
-
-        # ── Build candidate text for Claude ───────────────────────────────────
-        sections = []
-
-        if not pool_long.empty:
-            lines = [
-                "LONG UNIVERSE (liquid stocks, sorted by quality score — Claude selects freely):",
-                "Columns: Symbol | Sector | Close | MA21-dist% | MA200-dist% | "
-                "5d-Range | Consol-Days | RS-vs-KSE | Avg-Vol | ATR% | Structure | Stage"
-            ]
-            for _, r in pool_long.iterrows():
-                lines.append("  " + _characterise_setup(r, active_symbols))
-            sections.append("\n".join(lines))
-
-        if not pool_short.empty:
-            lines = [
-                "SHORT UNIVERSE (DFC-eligible only, showing downtrend candidates):",
-                "Same columns as above. Marked DFC✓ = shortable on PSX."
-            ]
-            for _, r in pool_short.iterrows():
-                line = "  " + _characterise_setup(r, active_symbols)
-                line += f" | {r['dfc_eligible']}"
-                lines.append(line)
-            sections.append("\n".join(lines))
-
         if sr_setups:
             lines = [
                 "SUPPORT REVERSAL SETUPS (pre-calculated by main screener — "
                 "price at 200MA/major support with bullish reversal candle):",
-                "Symbol | Sector | Entry | SL | Target2R | Risk%"
+                "Symbol | Sector | Entry | SL | Target2R | Risk%",
             ]
             for s in sr_setups[:8]:
                 lines.append(
@@ -1306,14 +1509,14 @@ Respond ONLY with valid JSON."""
                     f"T2:{s.get('target_2r',0):.2f} | "
                     f"Risk:{s.get('risk_pct',0):.1f}%"
                 )
-            sections.append("\n".join(lines))
+            pipeline_sections.append("\n".join(lines))
 
-        if not sections:
-            logger.info("OpportunityGenerator: universe is empty after hard filters.")
+        if not pipeline_sections:
+            logger.info("OpportunityGenerator: no validated signals available today.")
             return {"opportunities": [], "regime_warning": "", "market_read": "",
                     "universe_stage3_pct": universe_stage3_pct}
 
-        candidates_text = "\n\n".join(sections)
+        candidates_text = "\n\n".join(pipeline_sections)
 
         # ── Detect ranging regime for prompt context ──────────────────────────
         regime_label = regime_result.get("regime", "").lower()
@@ -1325,58 +1528,60 @@ Respond ONLY with valid JSON."""
         pattern_library   = _load_active_patterns()
         reference_profile = _load_reference_breakout_profile()
 
-        # ── Claude's independent analysis ─────────────────────────────────────
-        prompt = f"""Today is {TODAY}. Analyse the PSX market and identify the best trade setups.
+        # ── Claude's task: rank and select from pre-validated signals ─────────
+        prompt = f"""Today is {TODAY}. Select the best trade setups from today's validated pipeline signals.
+
+IMPORTANT: The signals below have already been identified by the system's validated screeners
+(setup_log, stock_signals, recovery_signals). Your job is NOT to find setups — the screeners
+already did that. Your job is to RANK and SELECT from these validated signals based on
+today's specific regime, and calculate precise entry/exit levels.
 
 MARKET REGIME: {regime_result.get('one_line_summary', 'Unknown')}
 REGIME TYPE: {regime_result.get('regime', '?')} — {subtype}
 TRADE BIAS: {trade_bias}
 REGIME PLAYBOOK: {playbook}
 RECOMMENDED SIZING: {regime_result.get('position_sizing', '?')} — {regime_result.get('sizing_rationale', '')}
-UNIVERSE BREADTH: {universe_stage3_pct:.0f}% of liquid universe is Stage 3: Topping
+SECTOR BREADTH: {universe_stage3_pct:.0f}% of sectors are Stage 3: Topping
 SECTORS TO FOCUS: {', '.join(regime_result.get('sectors_to_focus', [])[:5])}
 SECTORS TO AVOID: {', '.join(regime_result.get('sectors_to_avoid', [])[:3])}
 
-{'RANGING MARKET — MANDATORY PLAYBOOK SWITCH: Do NOT suggest momentum breakouts or trend-following longs. The only valid longs are AT-SUPPORT stocks with stable or improving RS (Range Support Play). The only valid shorts are AT-RESISTANCE DFC stocks (Range Resistance Short). If the range is volatile/choppy with no clean boundaries, recommend minimal exposure and say so explicitly.' if is_ranging else 'TRENDING MARKET — momentum burst setups appropriate. Prioritise tight consolidations in confirmed Stage 2 uptrends with strong RS. Stage 3 stocks have already been excluded from the universe by the code.'}
+{'RANGING MARKET — MANDATORY PLAYBOOK SWITCH: BREAKOUT and PRE-BREAKOUT signals are lower priority — fake-outs are the norm. The most valid longs are RECOVERY BASES (TRIGGERED) and SUPPORT REVERSAL setups. If the range is volatile/choppy with no clean boundaries, recommend minimal exposure and say so explicitly.' if is_ranging else 'TRENDING MARKET — BREAKOUT signals are highest priority. Stage 2 confirmed uptrends with strong RS and tight bases. Recovery Bases TRIGGERED are also strong in trending markets. PRE-BREAKOUT: watch but do not chase.'}
 
 {pattern_library}
 
 KEY INSIGHT FROM TRADE HISTORY: {patterns_result.get('key_insight', '—')}
 
-STOCK UNIVERSE — each line: Symbol | Sector | Close | MA21-dist% | MA200-dist% | 5d-Range | Consol-Days | RS | Vol | ATR | MA-Structure | Range-Position | Stage
-NOTE: Stage 3: Topping stocks have been HARD-EXCLUDED from this universe by the system filter.
-      Every stock you see below has cleared the Stage 3 exclusion gate.
-(AT-SUPPORT = near 20d low | AT-RESISTANCE = near 20d high)
+VALIDATED PIPELINE SIGNALS — pre-screened by signal_engine, grouped by type:
+NOTE: These signals come from the system's validated screeners. Claude's selection
+      and ranking from this list has NOT been independently backtested.
 {candidates_text}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CALIBRATION STANDARD — WHAT A VALID SETUP LOOKS LIKE IN THIS SYSTEM:
 The following are real trades the trader has labelled as structurally correct.
-Before selecting any candidate below, ask: does this stock's situation share the
+Before selecting any signal below, ask: does this stock's situation share the
 STRUCTURAL qualities described in these examples — not just similar numbers?
-A stock can match the statistics of a valid breakout while being at a completely
-different structural stage (e.g. exhaustion at highs vs. base breakout).
 {reference_profile}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 YOUR TASK:
-1. Re-read the regime. Apply the correct playbook — not the default:
-   - TRENDING : tight bases in confirmed Stage 2 uptrends. Targets = 2–3R.
-   - RANGING  : AT-SUPPORT stocks with improving RS = Range Support Play.
-                Target = 20d high (range resistance). NOT a 2R extension.
-                AT-RESISTANCE DFC stocks = Range Resistance Short.
+1. Re-read the regime. Apply the correct signal-type priority:
+   - TRENDING : BREAKOUT > Recovery TRIGGERED > PRE_BREAKOUT > SR. Targets = 2–3R.
+   - RANGING  : Recovery TRIGGERED + SR = valid longs. BREAKOUT = avoid.
                 Volatile/Chop regime = state 0 opportunities and explain why.
-2. Compare each candidate to the calibration examples above. Reject candidates
+2. For each signal type present, assess whether the regime supports it.
+   Reject signal types that are regime-mismatched — explain why in skipped_reasons.
+3. Compare each candidate to the calibration examples above. Reject candidates
    that match the statistics but not the structure.
-3. Pick 3–5 best opportunities. If genuine opportunities don't exist, return 0.
+4. Pick 3–5 best opportunities. If genuine opportunities don't exist, return 0.
    Do NOT fill the list to reach a target count.
-4. For each pick, calculate precise levels:
+5. For each pick, calculate precise levels:
    TRENDING LONG : Entry = close or just above 5d high | SL = recent low × 0.99 (<=6%) | T1 = 1.5R | T2 = 2.5R
    RANGE LONG    : Entry = close (near support)        | SL = 20d low × 0.99 (<=6%)   | Target = 20d high
    RANGE SHORT   : Entry = close (near resistance)     | SL = 20d high × 1.01 (<=6%)  | Target = 20d low
    TRENDING SHORT: Entry = close                       | SL = recent high × 1.01 (<=6%) | T1 = 1.5R | T2 = 2.5R
-5. In reasoning, explicitly state: regime match, range position, RS vs KSE, calibration match.
-6. Confidence 50–90. Be conservative — lower in ranging markets, lower for partial matches.
+6. In reasoning, explicitly state: signal type, regime match, RS vs KSE, calibration match.
+7. Confidence 50–90. Be conservative — lower in ranging markets, lower for partial matches.
 
 Return JSON:
 {{
@@ -1702,10 +1907,23 @@ Write in a direct, professional tone. Use Markdown formatting."""
             regime_result = {"regime": "Unknown", "trade_bias": "Balanced", "one_line_summary": str(e)}
             errors.append(f"RegimeDetector: {e}")
 
+        # ── Circuit breaker: check agent win rate before generating new suggestions ─
+        _cb_blocked, _cb_reason = _check_perf_circuit_breaker()
+
         try:
-            _opp_result        = OpportunityGeneratorAgent().run(
-                stock_30d, sector_df, raw_data, regime_result, pattern_result, setups
-            )
+            if _cb_blocked:
+                logger.warning("TradingDesk: CIRCUIT BREAKER ACTIVE — %s", _cb_reason)
+                _opp_result = {
+                    "opportunities": [],
+                    "regime_warning": f"CIRCUIT BREAKER ACTIVE — {_cb_reason}",
+                    "market_read": regime_result.get("one_line_summary", ""),
+                    "regime_blocked": True,
+                    "universe_stage3_pct": None,
+                }
+            else:
+                _opp_result = OpportunityGeneratorAgent().run(
+                    stock_30d, sector_df, raw_data, regime_result, pattern_result, setups
+                )
             opportunities      = _opp_result.get("opportunities", [])
             regime_warning     = _opp_result.get("regime_warning", "")
             market_read        = _opp_result.get("market_read", "")
