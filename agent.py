@@ -1037,8 +1037,12 @@ def _load_pipeline_signals(
                 LEFT JOIN stock_signals ss
                        ON ss.symbol = sl.symbol AND ss.date = sl.setup_date
                 WHERE sl.setup_date = ? AND sl.setup_type = 'BREAKOUT'
+                  AND sl.pivot_distance_pct >= -10
                 ORDER BY sl.rs_score_20 DESC
             """, (latest_bo,)).fetchall()
+            # pivot_distance_pct >= -10 filters out stocks >10% above pivot (extended runs).
+            # bos_flag is a level flag (persists every day the stock stays above pivot),
+            # so without this filter the pool includes stocks that broke out months ago.
 
             filtered = []
             for r in bo_rows:
@@ -1054,7 +1058,7 @@ def _load_pipeline_signals(
 
             if filtered:
                 lines = [
-                    f"BREAKOUT SIGNALS (bos_flag=1, pivot breached, validated by signal_engine — {latest_bo}):",
+                    f"BREAKOUT SIGNALS (bos_flag=1, within 10% of pivot — {latest_bo}):",
                     "  Symbol | Sector               | RS     | Vol    | Base | Tight | PivotDist | Overhead | SectorStage",
                 ]
                 for r, sector in filtered:
