@@ -88,11 +88,13 @@ def _ema(prices_close: list, pos: int, period: int):
 def _ensure_new_stock_columns(conn: sqlite3.Connection) -> None:
     existing = {r[1] for r in conn.execute("PRAGMA table_info(stock_signals)").fetchall()}
     new_cols = {
-        "close_above_ema50": "INTEGER",
-        "ema50_slope_pos":   "INTEGER",
-        "base_duration":     "INTEGER",
-        "overhead_clear":    "INTEGER",
-        "near_pivot_days":   "INTEGER",
+        "close_above_ema50":  "INTEGER",
+        "ema50_slope_pos":    "INTEGER",
+        "base_duration":      "INTEGER",
+        "overhead_clear":     "INTEGER",
+        "near_pivot_days":    "INTEGER",
+        "close_above_ema150": "INTEGER",
+        "ema150_slope_pos":   "INTEGER",
     }
     for col, dtype in new_cols.items():
         if col not in existing:
@@ -304,6 +306,22 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                         if e50_5ago is not None:
                             ema50_slope_pos = 1 if e50_today > e50_5ago else 0
 
+            # close_above_ema150 and ema150_slope_pos (need pos >= 149)
+            close_above_ema150 = None
+            ema150_slope_pos = None
+            if pos >= 149:
+                c_start150 = max(0, pos - 3 * 150)
+                closes_150 = [prices[i][1] for i in range(c_start150, pos + 1)]
+                e150_today = _ema(closes_150, len(closes_150) - 1, 150)
+                if e150_today is not None:
+                    close_above_ema150 = 1 if s_today > e150_today else 0
+                    if pos >= 154:
+                        c_start150_5 = max(0, pos - 5 - 3 * 150)
+                        closes_150_5ago = [prices[i][1] for i in range(c_start150_5, pos - 4)]
+                        e150_5ago = _ema(closes_150_5ago, len(closes_150_5ago) - 1, 150)
+                        if e150_5ago is not None:
+                            ema150_slope_pos = 1 if e150_today > e150_5ago else 0
+
             # stage2_bull: close > EMA20 > EMA50 > EMA200 (full bull stack)
             stage2 = None
             if pos >= 199:
@@ -331,6 +349,8 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                 'base_duration': base_dur,
                 'overhead_clear': overhead_clear,
                 'near_pivot_days': npd,
+                'close_above_ema150': close_above_ema150,
+                'ema150_slope_pos': ema150_slope_pos,
             })
 
         if not rows:
@@ -359,8 +379,9 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
             "(date, symbol, rs_score_20, rs_score_50, rs_rank, rs_rank_prev, "
             "rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d, "
             "pivot_high, pivot_distance_pct, stage2_bull, "
-            "close_above_ema50, ema50_slope_pos, base_duration, overhead_clear, near_pivot_days) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "close_above_ema50, ema50_slope_pos, base_duration, overhead_clear, near_pivot_days, "
+            "close_above_ema150, ema150_slope_pos) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (date, r['symbol'], r['rs_score_20'], r['rs_score_50'],
                  r['rs_rank'], r['rs_rank_prev'], r['rank_change'], r['sector_rs_rank'],
@@ -368,7 +389,8 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                  r.get('avg_vol_10d'), r.get('pivot_high'), r.get('pivot_distance_pct'),
                  r.get('stage2_bull'),
                  r.get('close_above_ema50'), r.get('ema50_slope_pos'),
-                 r.get('base_duration'), r.get('overhead_clear'), r.get('near_pivot_days'))
+                 r.get('base_duration'), r.get('overhead_clear'), r.get('near_pivot_days'),
+                 r.get('close_above_ema150'), r.get('ema150_slope_pos'))
                 for r in rows
             ],
         )
@@ -677,6 +699,85 @@ def backfill_stage2_bull() -> None:
         cur.execute("SELECT COUNT(*) FROM stock_signals WHERE stage2_bull = 1")
         stage2_count = cur.fetchone()[0]
         logger.info(f"Backfill complete. {total:,} rows computed, {stage2_count:,} stage2_bull=1.")
+    finally:
+        conn.close()
+
+
+def backfill_ema150_signals() -> None:
+    """Add close_above_ema150 and ema150_slope_pos columns and compute for all existing rows."""
+    logger.info("Starting close_above_ema150 + ema150_slope_pos backfill...")
+    conn = sqlite3.connect(DB)
+    try:
+        _ensure_new_stock_columns(conn)
+        cur = conn.cursor()
+
+        symbol_sector = _load_universe(conn)
+        symbols = list(symbol_sector.keys())
+        placeholders = ','.join('?' * len(symbols))
+
+        cur.execute(
+            f"SELECT symbol, date, close FROM prices_adjusted "
+            f"WHERE symbol IN ({placeholders}) ORDER BY symbol, date",
+            symbols,
+        )
+        price_data: dict[str, list] = {}
+        for sym, date, close in cur.fetchall():
+            if sym not in price_data:
+                price_data[sym] = []
+            price_data[sym].append((date, close))
+
+        updates = []
+        total = 0
+        for symbol, prices in price_data.items():
+            closes = [p[1] for p in prices]
+            n = len(prices)
+            for pos in range(n):
+                if pos < 149 or closes[pos] is None:
+                    continue
+                date = prices[pos][0]
+                c_start = max(0, pos - 3 * 150)
+                closes_slice = closes[c_start:pos + 1]
+                e150 = _ema(closes_slice, len(closes_slice) - 1, 150)
+                if e150 is None:
+                    continue
+                above = 1 if closes[pos] > e150 else 0
+                slope = None
+                if pos >= 154:
+                    c_start5 = max(0, pos - 5 - 3 * 150)
+                    closes_5ago = closes[c_start5:pos - 4]
+                    e150_5ago = _ema(closes_5ago, len(closes_5ago) - 1, 150)
+                    if e150_5ago is not None:
+                        slope = 1 if e150 > e150_5ago else 0
+                updates.append((above, slope, date, symbol))
+                total += 1
+                if len(updates) >= 10_000:
+                    cur.executemany(
+                        "UPDATE stock_signals "
+                        "SET close_above_ema150 = ?, ema150_slope_pos = ? "
+                        "WHERE date = ? AND symbol = ?",
+                        updates,
+                    )
+                    conn.commit()
+                    logger.info(f"  {total:,} rows updated...")
+                    updates = []
+
+        if updates:
+            cur.executemany(
+                "UPDATE stock_signals "
+                "SET close_above_ema150 = ?, ema150_slope_pos = ? "
+                "WHERE date = ? AND symbol = ?",
+                updates,
+            )
+            conn.commit()
+
+        cur.execute("SELECT COUNT(*) FROM stock_signals WHERE close_above_ema150 = 1")
+        above_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM stock_signals WHERE close_above_ema150 IS NOT NULL")
+        filled_count = cur.fetchone()[0]
+        logger.info(
+            f"Backfill complete. {total:,} rows computed. "
+            f"{filled_count:,} non-null, {above_count:,} close_above_ema150=1."
+        )
     finally:
         conn.close()
 
