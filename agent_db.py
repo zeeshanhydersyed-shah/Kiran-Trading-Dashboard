@@ -751,12 +751,15 @@ def get_agent_performance_summary() -> dict:
                 COUNT(*)                                         AS total,
                 SUM(CASE WHEN outcome='Win'  THEN 1 ELSE 0 END) AS wins,
                 SUM(CASE WHEN outcome='Loss' THEN 1 ELSE 0 END) AS losses,
-                AVG(CASE WHEN actual_pl_pct IS NOT NULL THEN actual_pl_pct END) AS avg_pl,
-                SUM(CASE WHEN status='Pending' THEN 1 ELSE 0 END) AS pending
+                AVG(CASE WHEN actual_pl_pct IS NOT NULL THEN actual_pl_pct END) AS avg_pl
             FROM agent_opportunities
-            WHERE status IN ('Win','Loss','Breakeven','Pending','Taken')
+            WHERE status IN ('Expired', 'Taken', 'Skipped')
+              AND outcome IN ('Win', 'Loss', 'Breakeven')
             """
         ).fetchone()
+        pending = conn.execute(
+            "SELECT COUNT(*) FROM agent_opportunities WHERE status = 'Pending'"
+        ).fetchone()[0]
     if not row or row["total"] == 0:
         return {}
     closed = (row["wins"] or 0) + (row["losses"] or 0)
@@ -765,7 +768,7 @@ def get_agent_performance_summary() -> dict:
         "total":    row["total"],
         "wins":     row["wins"] or 0,
         "losses":   row["losses"] or 0,
-        "pending":  row["pending"] or 0,
+        "pending":  pending,
         "win_rate": win_rate,
         "avg_pl":   round(row["avg_pl"], 2) if row["avg_pl"] is not None else None,
     }

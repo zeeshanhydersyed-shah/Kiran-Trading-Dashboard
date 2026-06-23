@@ -186,6 +186,14 @@ def append_setup_log_today() -> int:
                 WHERE ss.date = ?
                   AND ss.bos_flag = 1
                   AND ss.avg_vol_10d > 200000
+                  AND COALESCE((
+                      SELECT ss_prev.bos_flag
+                      FROM stock_signals ss_prev
+                      WHERE ss_prev.symbol = ss.symbol
+                        AND ss_prev.date < ss.date
+                      ORDER BY ss_prev.date DESC
+                      LIMIT 1
+                  ), 0) = 0
             """),
             ("PRE_BREAKOUT", """
                 SELECT ss.symbol, ss.date, 'PRE_BREAKOUT', mr.regime,

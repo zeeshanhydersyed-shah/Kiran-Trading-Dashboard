@@ -204,21 +204,28 @@ append_setup_log_today()
 **Setup detection conditions (exact, must match backfill for consistency):**
 | Type | Conditions |
 |---|---|
-| BREAKOUT | `bos_flag = 1` AND `avg_vol_10d > 200000` |
+| BREAKOUT | `bos_flag = 1` AND `avg_vol_10d > 200000` — **transition day only** in `append_setup_log_today()` (prev `bos_flag` must be 0); historical backfill inserts all bos_flag=1 days |
 | PRE_BREAKOUT | `pivot_distance_pct BETWEEN 0 AND 3` AND `base_tightness < 8` AND `avg_vol_10d > 200000` |
 | RS_LEADER_MARKET | `avg_vol_10d > 200000` ORDER BY `rs_score_20 DESC` LIMIT 20 |
 | RS_LEADER_SECTOR | `avg_vol_10d > 200000` AND `sector_rs_rank <= 3` |
 
-**cmd_update() hook order (as of 2026-06-14):**
+**BREAKOUT backtest methodology — important:**
+`backtest_bos.py` uses `base_tightness < 10` as its entry filter and measures a binary WIN/LOSS outcome (+18% target / -6% stop / 20-day path). The validated BREAKOUT EV is derived from that filtered population.
+
+**Do not re-derive the "best filter" from average forward return alone.** The `base_tightness < 10` subset has *lower* average forward return than the unfiltered pool (+1.07% vs +1.43% @10d) because it excludes extended-run days that continue trending. The correct metric for the validated edge is the binary WIN/LOSS model, not average forward return. Filtering by `base_tightness < 10` removes stocks where a stop-loss–based entry is incoherent — it does not improve the average forward return and was never intended to.
+
+**cmd_update() hook order (as of 2026-06-23):**
 1. Scrape + upsert prices
 2. `cleanup_ghost_dates()`
 3. `ensure_suspects_table` → `append_new_prices_adjusted` → `auto_detect_suspects`
 4. `append_latest_regime()`
 5. `sector_signals.append_latest_sector_signals()`
 6. `stock_signals.append_latest_stock_signals()`
-7. `append_setup_log_today()`
-8. `auto_save_setups()` + `auto_save_setups_with_source()`
-9. Market breadth oscillator subprocess
+7. `append_setup_log_today()` — BREAKOUT inserts transition day only (prev bos_flag=0 check)
+8. `TradingDeskAgent("daily").run()` — reads from setup_log / stock_signals / recovery_signals
+9. Leaders deep scan
+10. `auto_save_setups()` + `auto_save_setups_with_source()`
+11. Market breadth oscillator subprocess
 
 ---
 

@@ -171,6 +171,18 @@ def cmd_update():
     except Exception as exc:
         logger.warning("Regime hook failed: %s", exc)
 
+    # Backfill days_to_nearest_transition for trade_setups rows where it is still
+    # NULL. This column is retrospective-only (requires future transition data) so
+    # it cannot be set at insert time; instead we fill it here once the surrounding
+    # regime history has had time to accumulate. Rows created within the last ~10
+    # trading days may still receive NULL if the nearest future transition hasn't
+    # occurred yet — that is correct and expected behaviour.
+    try:
+        from backfill_regime_columns import backfill_days_to_nearest
+        backfill_days_to_nearest()
+    except Exception as exc:
+        logger.warning("days_to_nearest_transition backfill hook failed: %s", exc)
+
     # Append today's sector signals
     try:
         sector_signals.append_latest_sector_signals()
@@ -189,6 +201,17 @@ def cmd_update():
         append_setup_log_today()
     except Exception as exc:
         logger.warning("setup_log hook failed: %s", exc)
+
+    # Run daily agent analysis (reads from setup_log / stock_signals / recovery_signals)
+    try:
+        from agent import TradingDeskAgent
+        _agent_result = TradingDeskAgent(run_type="daily").run()
+        logger.info(
+            "Agent run complete — %d opportunities.",
+            len((_agent_result or {}).get("opportunities", [])),
+        )
+    except Exception as exc:
+        logger.warning("Agent daily hook failed: %s", exc)
 
     # Pre-compute Leaders deep scan (filtered picks + audit trail)
     try:

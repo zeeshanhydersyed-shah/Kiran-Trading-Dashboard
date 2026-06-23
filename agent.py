@@ -1667,6 +1667,7 @@ Return JSON:
             "regime_warning":     result.get("regime_warning", ""),
             "market_read":        result.get("market_read", ""),
             "universe_stage3_pct": universe_stage3_pct,
+            "input_signals":      pipeline_sections,  # audit trail: what was shown to Claude
         }
 
 
@@ -2016,6 +2017,7 @@ Keep it under 650 words. Be direct and actionable."""
             "regime_warning":      regime_warning,
             "market_read":         market_read,
             "universe_stage3_pct": universe_stage3_pct,   # learning loop foundation
+            "input_signals":       _opp_result.get("input_signals", []),  # audit trail: what Claude was shown
         }
 
         try:
@@ -2151,7 +2153,14 @@ You can help with:
 
 Always reference specific numbers from the data when available.
 Keep responses focused and under 400 words unless depth is specifically needed.
-Never make up numbers — if data isn't available, say so."""
+Never make up numbers — if data isn't available, say so.
+
+HARD RULE — SYMBOL GUARD:
+Only reference or recommend specific PSX stock tickers (e.g. LUCK, OGDC, HBL) if they
+appear explicitly in the LIVE DATA CONTEXT provided to you in this conversation.
+Never suggest, recall, or mention a symbol from your training data or general knowledge.
+If the user asks about a symbol not in the context, fetch it from the context or say it
+is not in today's data — do not invent price levels, setups, or commentary for it."""
 
 
 def _load_excel_journal() -> str:
