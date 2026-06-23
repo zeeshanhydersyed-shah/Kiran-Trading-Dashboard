@@ -61,22 +61,19 @@ Local edits alone **never** update the live app.
 5. 📋 Trade Log
 6. 📉 Analytics
 7. 💡 Setups
-8. 🔎 STM
-9. 🔄 Recovery Bases
-10. 🎯 Setup Perf
-11. 🤖 Backtest
-12. 🗂️ Portfolio
-13. 🏥 Model Health
-14. 🤖 Agent
-15. 💰 Valuation
-16. 📡 Flows
-17. 🏹 Minervini Setup
-18. 🏆 Leaders
-19. 📋 Setup History
-20. 🏥 Data Health ← NEW (Phase 7.2)
-10. 🎯 Setup Perf
-11. 🤖 Backtest
-12. 🗂️ Portfolio
+8. 🔄 Recovery Bases
+9. 🎯 Setup Perf
+10. 🤖 Backtest
+11. 🗂️ Portfolio
+12. 🏥 Model Health
+13. 🤖 Agent
+14. 💰 Valuation
+15. 📡 Flows
+16. 🏆 Leaders
+17. 📋 Setup History
+18. 🏥 Data Health
+
+*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap.)*
 
 ## ML model architecture
 Two separate models:
