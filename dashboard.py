@@ -61,7 +61,7 @@ from database import (
 )
 from processor import run_analysis
 from stm_sr_integration import enrich_stm_with_sr_zones
-from config import DB_PATH
+from config import DB_PATH, DFC_SYMBOLS
 
 # Gracefully handle missing optional imports
 try:
@@ -2659,6 +2659,17 @@ elif cur == PAGES[3]:  # Explorer
 
         _ex_df = pd.read_sql_query(
             """
+            WITH date_5ago AS (
+                SELECT date FROM sector_signals
+                WHERE date < ?
+                ORDER BY date DESC
+                LIMIT 1 OFFSET 4
+            ),
+            sec_5d AS (
+                SELECT sector, rs_rank AS rs_rank_5d
+                FROM sector_signals
+                WHERE date = (SELECT date FROM date_5ago)
+            )
             SELECT ss.symbol, s.sector,
                    ss.rs_score_20, ss.rs_rank, ss.rs_rank_prev, ss.rank_change,
                    ss.sector_rs_rank, ss.base_tightness, ss.pivot_distance_pct,
@@ -2673,18 +2684,20 @@ elif cur == PAGES[3]:  # Explorer
                    sec.sector_ema_slope     AS sec_ema_slope,
                    sec.sector_pivot_dist_pct AS sec_pivot_dist,
                    sec.rs_inflection        AS sec_rs_inflection,
-                   sec.sector_rs_new_high   AS sec_rs_new_high
+                   sec.sector_rs_new_high   AS sec_rs_new_high,
+                   sec5.rs_rank_5d          AS sec_rs_rank_5d
             FROM stock_signals ss
             JOIN sectors s ON ss.symbol = s.symbol
             LEFT JOIN prices p
                 ON p.symbol = ss.symbol AND p.date = ss.date
             LEFT JOIN sector_signals sec
                 ON sec.date = ss.date AND sec.sector = s.sector
+            LEFT JOIN sec_5d sec5 ON sec5.sector = s.sector
             WHERE ss.date = ?
             ORDER BY ss.rs_rank ASC
             """,
             _ex_con,
-            params=(_ex_latest,),
+            params=(_ex_latest, _ex_latest),
         )
         _ex_con.close()
     except Exception as _ex_load_err:
@@ -2695,7 +2708,7 @@ elif cur == PAGES[3]:  # Explorer
     st.caption(f"As of {fmt_date(_ex_latest)} · {len(_ex_df)} stocks")
 
     # ── Screener toggles ──────────────────────────────────────────────────────
-    _sc1, _sc2, _sc3 = st.columns(3)
+    _sc1, _sc2, _sc3, _sc4 = st.columns(4)
     _ex_screener = _sc1.toggle(
         "🎯 Screener — Stage 2 · Top 8 sectors · RS+ · Vol>200k · BBW<10 · Price>10",
         key="exp_screener",
@@ -2705,9 +2718,10 @@ elif cur == PAGES[3]:  # Explorer
         key="exp_edge",
     )
     _ex_weinstein = _sc3.toggle(
-        "📖 Weinstein — 8-Point Top-Down: Sector Stage 2 + RS new high · Stock RS↑ leader · Rising 50EMA · Near pivot ≥10d",
+        "📖 Weinstein — PSX Top-Down: Sector Stage 2 · Top-8 sector · Stock RS↑ · Rising 50EMA · Coiling ≥7d near pivot",
         key="exp_weinstein",
     )
+    _ex_short = False  # Short screener disabled — negative EV on PSX; gated behind TRENDING_DOWN for future use
 
     # Sector filter + sort controls in one row
     _fc1, _fc2, _fc3, _fc4 = st.columns([2, 2, 1, 1])
@@ -2788,17 +2802,15 @@ elif cur == PAGES[3]:  # Explorer
             f"{_regime_warn}"
         )
 
-    # Weinstein top-down watchlist — 8-point filter (volume excluded: watchlist phase)
+    # Weinstein top-down watchlist
     if _ex_weinstein:
         _total_before_w = len(_ex_filtered)
         _ex_filtered = _ex_filtered[
             # ── Sector-level criteria ─────────────────────────────────────
-            # [1] Sector Stage 2 — price above rising 50 EMA
+            # [1] Sector Stage 2 — price above rising sector EMA
             (_ex_filtered["sec_stage"] == "Stage 2") &
-            # [2] Early Stage 2 — sector not extended from its high (≤10% below 20d high)
-            (_ex_filtered["sec_pivot_dist"].fillna(99) <= 10) &
-            # [1b] Sector RS at new 20-day high (RS accelerating, not just positive)
-            (_ex_filtered["sec_rs_new_high"].fillna(0) == 1) &
+            # [2] Sector among global top 8 by RS rank (Weinstein: healthy sector, not necessarily #1)
+            (_ex_filtered["sec_global_rank"].fillna(999) <= 8) &
             # ── Stock-level criteria ──────────────────────────────────────
             # [3] Stock above its own 50 EMA
             (_ex_filtered["close_above_ema50"].fillna(0) == 1) &
@@ -2806,24 +2818,52 @@ elif cur == PAGES[3]:  # Explorer
             (_ex_filtered["ema50_slope_pos"].fillna(0) == 1) &
             # [5] RS rank improving — moving up the leaderboard
             (_ex_filtered["rank_change"].fillna(-999) > 0) &
-            # [6] RS leader in its sector (top 3)
-            (_ex_filtered["sector_rs_rank"].fillna(999) <= 3) &
-            # [7] Coiling near pivot ≥10 consecutive days (0–15% below pivot high)
-            (_ex_filtered["near_pivot_days"].fillna(0) >= 10) &
-            # Stock near its own pivot (pre-breakout zone)
-            (_ex_filtered["pivot_distance_pct"].fillna(99) >= 0) &
-            (_ex_filtered["pivot_distance_pct"].fillna(99) <= 5) &
+            # [6] RS leader in its sector (top 5)
+            (_ex_filtered["sector_rs_rank"].fillna(999) <= 5) &
+            # [7] Coiling near pivot ≥7 consecutive days (0–15% below pivot high)
+            (_ex_filtered["near_pivot_days"].fillna(0) >= 7) &
             # Liquid
             (_ex_filtered["avg_vol_10d"] > 200_000)
         ]
-        # Sort: best sector RS rank first, then best stock RS rank within sector
         _ex_filtered = _ex_filtered.sort_values(
             ["sec_global_rank", "sector_rs_rank", "rs_rank"], ascending=True
         )
         st.caption(
             f"📖 Weinstein Watchlist — **{len(_ex_filtered)}** stocks · "
-            f"Sector Stage 2 + RS new high + early move · "
-            f"Stock above rising 50EMA · RS↑ · Sector top 3 · Near pivot ≥10d · Overhead = discretion"
+            f"Sector Stage 2 · Global top-8 sector · Stock above rising 50EMA · "
+            f"RS↑ · Sector top 5 · Coiling ≥7d"
+        )
+
+    # Stage 4 short screener — disabled: negative EV on PSX at all tested windows.
+    # PSX is bullish 89% of time (TU+RG+VL); only 11% TRENDING_DOWN. Short signals
+    # are sign-flipped from long, not book-grounded. Re-enable only if market_regime
+    # is TRENDING_DOWN for an extended period and EV is re-validated on that subset.
+    # _ex_short is hardcoded False above; restore the toggle when revisiting.
+    if _ex_short:
+        _total_before_s = len(_ex_filtered)
+        _ex_filtered = _ex_filtered[
+            # Sector in distribution or decline
+            (_ex_filtered["sec_stage"].isin(["Stage 3", "Stage 4"])) &
+            # Sector RS rank deteriorating over 5 days (rank number getting worse = higher)
+            (_ex_filtered["sec_global_rank"].fillna(0) > _ex_filtered["sec_rs_rank_5d"].fillna(0)) &
+            # Stock below declining 50 EMA
+            (_ex_filtered["close_above_ema50"].fillna(1) == 0) &
+            (_ex_filtered["ema50_slope_pos"].fillna(1) == 0) &
+            # RS rank falling
+            (_ex_filtered["rank_change"].fillna(0) < 0) &
+            # Bounce into resistance — stock near old pivot from below (-8% to +2%)
+            (_ex_filtered["pivot_distance_pct"].fillna(-99) >= -8) &
+            (_ex_filtered["pivot_distance_pct"].fillna(99) <= 2) &
+            # DFC eligible only
+            (_ex_filtered["symbol"].isin(DFC_SYMBOLS))
+        ]
+        _ex_filtered = _ex_filtered.sort_values(
+            ["sec_global_rank", "rank_change", "rs_rank"], ascending=[True, True, False]
+        )
+        st.caption(
+            f"📉 Stage 4 Shorts — **{len(_ex_filtered)}** DFC stocks · "
+            f"Sector Stage 3/4 + RS rank falling · Below declining 50EMA · "
+            f"Bouncing to resistance (-8% to +2% of pivot) · Tight stop above pivot/EMA"
         )
 
     if _ex_bos_only:
