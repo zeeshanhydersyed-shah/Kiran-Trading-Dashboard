@@ -483,7 +483,8 @@ def load_breadth_oscillator_data() -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# ── STM screener data loader ──────────────────────────────────────────────────
+# ── STM screener functions — DEAD CODE (screener killed; pages removed below)
+# Quality logic (uptrend + outperforming + 500k vol) folded into Explorer filter.
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_stm_prices() -> pd.DataFrame:
@@ -894,7 +895,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔎 STM", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏹 Minervini Setup", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
 
 
 def fmt_date(d) -> str:
@@ -2811,6 +2812,12 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
     _ex_screener = False   # superseded by Weinstein screener
     _ex_edge = False       # superseded by Weinstein screener
     _ex_short = False      # disabled — negative EV on PSX; gated behind TRENDING_DOWN for future use
+    _ex_uptrend = st.toggle(
+        "📈 Confirmed Uptrend — Close > EMA50 + Rising slope + RS↑ + Vol > 500k",
+        key="exp_uptrend",
+        help="Uptrend quality filter from former STM screener. EV +2.82%@10d vs +1.60% for raw BREAKOUT. "
+             "No Z-histogram gate (unvalidated historically). 67% overlap with BREAKOUT signals.",
+    )
 
     # Sector filter + sort controls in one row
     _fc1, _fc2, _fc3, _fc4 = st.columns([2, 2, 1, 1])
@@ -2900,6 +2907,18 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
             f"📉 Stage 4 Shorts — **{len(_ex_filtered)}** DFC stocks · "
             f"Sector Stage 3/4 + RS rank falling · Below declining 50EMA · "
             f"Bouncing to resistance (-8% to +2% of pivot) · Tight stop above pivot/EMA"
+        )
+
+    if _ex_uptrend:
+        _ex_filtered = _ex_filtered[
+            (_ex_filtered["close_above_ema50"].fillna(0) == 1) &
+            (_ex_filtered["ema50_slope_pos"].fillna(0) == 1) &
+            (_ex_filtered["rs_score_20"].fillna(0) > 0) &
+            (_ex_filtered["avg_vol_10d"].fillna(0) > 500_000)
+        ]
+        st.caption(
+            f"📈 Confirmed Uptrend — **{len(_ex_filtered)}** stocks · "
+            f"Close > EMA50 + Rising slope · RS↑ (outperforming) · Vol > 500k"
         )
 
     if _ex_bos_only:
@@ -3675,7 +3694,7 @@ elif cur == PAGES[6]:  # Analytics
 # ===============================================================================
 # PAGE 7 -- BACKTEST
 # ===============================================================================
-elif cur == PAGES[11]:  # Backtest (updated index)
+elif cur == PAGES[10]:  # Backtest
     st.markdown("**Backtest Results** -- KIRAN rules replayed on historical data (Jan 2024 - present)")
     st.caption(
         "Point-in-time correct: each date only uses data available on that day. "
@@ -4277,42 +4296,6 @@ elif cur == PAGES[11]:  # Backtest (updated index)
         "that match the best combo in real time. Build conviction by observing it live before relying on it."
     )
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # STM SCREENER PERFORMANCE — numbers only, no chart
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-    st.divider()
-    st.markdown("### STM Screener Performance")
-    st.caption("Based on STM picks saved to the Trade Log. Outcomes reflect manually logged results.")
-
-    _all_setups = get_trade_setups()
-    _stm_all    = [r for r in _all_setups if r.get("source") == "STM"]
-    _stm_closed = [r for r in _stm_all  if r.get("status")  == "Closed"]
-    _stm_active = [r for r in _stm_all  if r.get("status")  in ("Active", "Pending")]
-
-    _stm_total   = len(_stm_all)
-    _stm_wins    = sum(1 for r in _stm_closed if r.get("outcome") == "Win")
-    _stm_losses  = sum(1 for r in _stm_closed if r.get("outcome") == "Loss")
-    _stm_closed_n= len(_stm_closed)
-
-    _stm_trig_r  = _stm_closed_n / _stm_total       * 100 if _stm_total       else 0
-    _stm_win_r   = _stm_wins     / _stm_closed_n    * 100 if _stm_closed_n    else 0
-    _stm_loss_r  = _stm_losses   / _stm_closed_n    * 100 if _stm_closed_n    else 0
-
-    stm_c = st.columns(4)
-    stm_c[0].markdown(kpi("Total STM Setups",  f"{_stm_total:,}",
-                          f"{len(_stm_active):,} active / pending", "#3b82f6"), unsafe_allow_html=True)
-    stm_c[1].markdown(kpi("Closed Rate",       f"{_stm_trig_r:.1f}%",
-                          f"{_stm_closed_n:,} logged & closed", "#f59e0b"), unsafe_allow_html=True)
-    stm_c[2].markdown(kpi("Win Rate",          f"{_stm_win_r:.1f}%"  if _stm_closed_n else "—",
-                          f"{_stm_wins:,} wins of {_stm_closed_n} closed",
-                          gc(_stm_win_r / 100 - 0.5) if _stm_closed_n else "#94a3b8"),
-                      unsafe_allow_html=True)
-    stm_c[3].markdown(kpi("Loss Rate",         f"{_stm_loss_r:.1f}%" if _stm_closed_n else "—",
-                          f"{_stm_losses:,} losses of {_stm_closed_n} closed",
-                          gc(0.5 - _stm_loss_r / 100) if _stm_closed_n else "#94a3b8"),
-                      unsafe_allow_html=True)
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 8 — MARKET REGIME  (Weinstein Breadth Z-Score)
@@ -4813,7 +4796,7 @@ elif cur == PAGES[1]:  # Regime
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 9 — SETUP PERFORMANCE
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[10]:  # Setup Perf (updated index)
+elif cur == PAGES[9]:  # Setup Perf
     st.markdown("**Setup Performance** — lifecycle and P&L of every system-generated setup")
 
     all_setups_raw = get_trade_setups()
@@ -4841,7 +4824,7 @@ elif cur == PAGES[10]:  # Setup Perf (updated index)
     )
 
     # Source selector — lets auditors filter by screener
-    _sp_sources = ["System", "STM", "Support Reversal", "Minervini"]
+    _sp_sources = ["System", "Support Reversal"]
     _sp_src_sel = st.multiselect(
         "📊 Screener source",
         _sp_sources,
@@ -5143,439 +5126,14 @@ elif cur == PAGES[10]:  # Setup Perf (updated index)
                                   "Entry", "SL", "T1", "Risk %", "Quality"]
             st.dataframe(pend_disp, width='stretch', hide_index=True)
 
-    st.divider()
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # STM SCREENER — KIRAN SETUP CROSS-REFERENCE
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("##### 🔎 STM Screener — Kiran Setup Cross-Reference")
-    st.caption(
-        "STM results with a column showing whether Kiran independently has an open setup. "
-        "Both screeners work on their own logic — this is purely informational."
-    )
-
-    with st.spinner("Running STM screener…"):
-        _w = load_weinstein_data()
-        _stm = _run_stm_screener(data, _w)
-
-    # ── STM gate status (compact pills) ──────────────────────────────────────
-    def _mini_pill(label, passed):
-        col  = "#22c55e" if passed else "#ef4444"
-        icon = "✔" if passed else "✖"
-        return (
-            f'<span style="background:{"#f0fdf4" if passed else "#fff5f5"};'
-            f'border:1px solid {col}55;border-radius:20px;padding:3px 10px;'
-            f'font-size:0.7rem;color:{col};font-weight:700;margin-right:6px;">'
-            f'{icon} {label}</span>'
-        )
-
-    pills_html = "".join(_mini_pill(lbl, ok) for lbl, ok, _ in _stm["gates"])
-    st.markdown(
-        f'<div style="margin-bottom:10px;">STM gates: {pills_html}</div>',
-        unsafe_allow_html=True,
-    )
-
-    if not _stm["all_pass"]:
-        st.info("STM market gates are not all active — cross-reference will show when conditions are met.")
-    else:
-        stm_result = _stm["result"]
-
-        if stm_result.empty:
-            st.info("STM screener returned no stocks under current conditions.")
-        else:
-            # Build Kiran open LONG symbol set
-            kiran_open = pd.concat([pending, active], ignore_index=True) \
-                if (not pending.empty or not active.empty) else pd.DataFrame()
-            kiran_long = kiran_open[kiran_open["direction"] == "LONG"] \
-                if not kiran_open.empty else pd.DataFrame()
-            kiran_syms = set(kiran_long["symbol"].tolist()) if not kiran_long.empty else set()
-
-            # STM result with Kiran flag
-            xref = stm_result.reset_index()[[
-                "symbol", "sector", "as_of_date", "latest_close",
-                "rs", "perf_30d", "range_5d_pct", "dist_21ma_pct", "avg_vol_10d",
-            ]].copy()
-            xref["kiran_setup"] = xref["symbol"].apply(
-                lambda s: "✔ Has setup" if s in kiran_syms else "— No setup"
-            )
-            xref["avg_vol_10d"] = (xref["avg_vol_10d"] / 1_000).round(0).astype(int)
-            xref["as_of_date"]  = pd.to_datetime(xref["as_of_date"]).dt.strftime("%d %b %Y")
-            xref = xref.sort_values("rs", ascending=False).reset_index(drop=True)
-            xref.index = xref.index + 1
-
-            n_with    = (xref["kiran_setup"] == "✔ Has setup").sum()
-            n_without = (xref["kiran_setup"] == "— No setup").sum()
-
-            xm1, xm2, xm3 = st.columns(3)
-            xm1.metric("STM stocks",          len(xref))
-            xm2.metric("Kiran also has setup", n_with)
-            xm3.metric("No Kiran setup",       n_without)
-
-            xref.columns = [
-                "Symbol", "Sector", "As Of", "Close",
-                "RS %", "30d %", "5d Range %", "Dist 21MA %", "Vol 10d (K)",
-                "Kiran Setup",
-            ]
-
-            def _kiran_col(s):
-                return [
-                    "color:#22c55e;font-weight:700" if v == "✔ Has setup"
-                    else "color:#94a3b8"
-                    for v in s
-                ]
-
-            st.dataframe(
-                xref.style
-                    .apply(_kiran_col, subset=["Kiran Setup"])
-                    .apply(lambda s: ["color:#22c55e;font-weight:bold" if v > 0
-                                      else "color:#ef4444;font-weight:bold" for v in s],
-                           subset=["RS %", "30d %"])
-                    .format({
-                        "Close": "{:.2f}", "RS %": "{:+.2f}", "30d %": "{:+.2f}",
-                        "5d Range %": "{:.2f}", "Dist 21MA %": "{:+.2f}",
-                    }),
-                width='stretch', hide_index=False,
-                height=min(600, 60 + len(xref) * 36),
-            )
-            st.caption(
-                "Kiran Setup column shows whether Kiran independently generated an open LONG setup "
-                "for that stock. '— No setup' simply means Kiran hasn't flagged it — "
-                "both screeners operate on their own criteria."
-            )
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE 10 — STM  (Short-Term Momentum Screener)
-# ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[8]:  # STM
-
-    st.markdown("### 🔎 STM — Short-Term Momentum Screener")
-    st.caption(
-        "Three-layer filter: market regime → top sectors → individual stock conditions. "
-        "Ranked by Relative Strength vs KSE-100."
-    )
-
-    w_data_stm = load_weinstein_data()
-
-    with st.spinner("Running STM screener…"):
-        stm = _run_stm_screener(data, w_data_stm)
-
-    # ── Stale data warning ────────────────────────────────────────
-    import datetime as _stm_dt
-    _stm_today = _stm_dt.date.today().isoformat()
-    try:
-        import sqlite3 as _stm_sq2
-        from config import DB_PATH as _stm_db2
-        _stm_date2 = sqlite3.connect(_stm_db2).execute(
-            "SELECT MAX(as_of_date) FROM stm_signals"
-        ).fetchone()[0]
-        if _stm_date2 and _stm_date2 != _stm_today:
-            st.warning(
-                f"⚠️ STM signals last computed: "
-                f"**{_stm_date2}** — run signal_engine.py to refresh."
-            )
-    except Exception:
-        pass
-
-    def _gate_card(label, passed, detail=""):
-        col  = "#22c55e" if passed else "#ef4444"
-        bg   = "#f0fdf4" if passed else "#fff5f5"
-        icon = "PASS" if passed else "FAIL"
-        det  = (f'<div style="font-size:0.62rem;color:#64748b;margin-top:2px;">{detail}</div>'
-                if detail else "")
-        return (
-            f'<div style="background:{bg};border:1px solid {col}33;border-top:3px solid {col};'
-            f'border-radius:8px;padding:10px 14px;text-align:center;">'
-            f'<div style="font-size:0.68rem;color:#64748b;text-transform:uppercase;'
-            f'letter-spacing:.06em;margin-bottom:3px;">{label}</div>'
-            f'<div style="font-size:1.05rem;font-weight:800;color:{col};">{icon}</div>'
-            f'{det}</div>'
-        )
-
-    # ── Direction tabs ────────────────────────────────────────────────────────
-    _long_label  = f"{'[ACTIVE] ' if stm['all_pass'] else ''}LONG"
-    _short_label = f"{'[ACTIVE] ' if stm['short_all_pass'] else ''}SHORT"
-    _tab_long, _tab_short = st.tabs([f"📈 {_long_label}", f"📉 {_short_label}"])
-
-    # ════════════════ LONG TAB ════════════════════════════════════════════════
-    with _tab_long:
-        st.markdown("**Market Filters — LONG**")
-        fc1, fc2, fc3 = st.columns(3)
-        for col_w, (label, passed, detail) in zip([fc1, fc2, fc3], stm["gates"]):
-            col_w.markdown(_gate_card(label, passed, detail), unsafe_allow_html=True)
-
-        if not stm["all_pass"]:
-            st.divider()
-            st.info("LONG gates not active — screener will show candidates when all 3 conditions are met.")
-        else:
-            st.divider()
-            result  = stm["result"]
-            kse_30d = stm["kse_30d"]
-            n_passed = len(result)
-
-            # Auto-save LONG picks
-            _stm_key = f"stm_saved_{id(result)}"
-            if not st.session_state.get(_stm_key) and not result.empty:
-                picks = []
-                for _, row in result.iterrows():
-                    date_str = str(row["as_of_date"])[:10]
-                    pick = {
-                        "created_date": date_str, "direction": "LONG",
-                        "symbol": row["symbol"], "sector": row["sector"],
-                        "sector_momentum": "—",
-                        "stock_perf_30d": float(row["perf_30d"]),
-                        "stock_perf_10d": float(row.get("perf_10d", 0.0)),
-                        "latest_close":   float(row["latest_close"]),
-                        "entry_price":    float(row["latest_close"]),
-                        "stop_loss":      float(row["stop_loss"]),
-                        "target_1r":      float(row["target_1r"]),
-                        "target_2r":      float(row["target_2r"]),
-                        "risk_pct":       float(row["risk_pct"]),
-                        "atr_pct":        float(row.get("atr_pct", 0.0)),
-                        "sector_rank":    int(row.get("sector_rank", 99)),
-                        "breadth_score":  float(row.get("breadth_score", 0.0)),
-                        "source": "STM",
-                        "status": "Pending" if row["tradeable"] else "Cancelled",
-                        "notes": "" if row["tradeable"] else f"Skipped: risk {row['risk_pct']:.1f}% > 6%",
-                    }
-                    picks.append(pick)
-                auto_save_stm_picks(picks)
-                st.session_state[_stm_key] = True
-
-            # ── Enrich with S/R zone context ──────────────────────────────
-            if not result.empty:
-                with st.spinner("Analysing S/R zones…"):
-                    result = enrich_stm_with_sr_zones(result, load_stm_prices())
-
-            sm1, sm2, sm3, sm4 = st.columns(4)
-            sm1.metric("KSE-100 30d",       f"{kse_30d:+.1f}%")
-            sm2.metric("Passed Filters",     f"{n_passed}")
-            sm3.metric("Best RS",            f"{result['rs'].iloc[0]:+.1f}%" if n_passed else "—")
-            sm4.metric("Avg RS",             f"{result['rs'].mean():+.1f}%"  if n_passed else "—")
-            st.divider()
-
-            if result.empty:
-                st.info("No stocks passed all LONG filters under current conditions.")
-            else:
-                n_tradeable = int(result["tradeable"].sum())
-                st.markdown(
-                    f"**{n_passed} stocks passed** — {n_tradeable} tradeable (risk ≤ 6%) · "
-                    f"ranked by RS vs KSE-100"
-                )
-                ml_scores = []; qual_scores = []
-                for _, row in result.iterrows():
-                    ml_row = {
-                        "avg_vol_10d": row.get("avg_vol_10d", 0), "atr_pct": row.get("atr_pct", 0.0),
-                        "stock_perf_30d": row.get("perf_30d", 0.0), "risk_pct": row.get("risk_pct", 0.0),
-                        "stock_perf_10d": row.get("perf_10d", 0.0), "sector_rank": row.get("sector_rank", 99),
-                        "breadth_score": row.get("breadth_score", 0.0), "as_of_date": str(row.get("as_of_date", "")),
-                        "entry_price": row.get("latest_close", 0.0), "latest_close": row.get("latest_close", 0.0),
-                    }
-                    prob = get_ml_confidence(ml_row)
-                    ml_scores.append(int(round(prob * 100)) if prob is not None else None)
-                    qs = int(
-                        (row.get("rs", 0.0) > 5.0)
-                      + (row.get("range_5d_pct", 99.) <= 5.0)
-                      + (0 < row.get("dist_21ma_pct", 99.) <= 5.0)
-                      + (row.get("risk_pct", 99.) <= 3.0)
-                      + bool(row.get("coiling", False))   # 5th pt: coiling at resistance
-                    )
-                    qual_scores.append(qs)
-
-                _has_sr = "dist_to_r_pct" in result.columns
-                _sr_src_cols  = ["dist_to_r_pct", "r_zone_strength", "in_r_zone"] if _has_sr else []
-                _sr_disp_cols = ["Dist R%", "R Str", "In Zone"]                   if _has_sr else []
-
-                disp = result[[
-                    "symbol", "sector", "as_of_date", "latest_close",
-                    "rs", "perf_30d", "range_5d_pct", "avg_vol_10d",
-                    "ma21", "ma50", "dist_21ma_pct",
-                    "stop_loss", "risk_pct", "target_2r", "tradeable",
-                ] + _sr_src_cols].copy()
-                disp["avg_vol_10d"] = (disp["avg_vol_10d"] / 1_000).round(0).astype(int)
-                disp["as_of_date"]  = pd.to_datetime(disp["as_of_date"]).dt.strftime("%d %b %Y")
-                disp["Score"] = qual_scores; disp["ML %"] = ml_scores
-                disp["tradeable"] = disp["tradeable"].map({True: "Valid", False: "Skip"})
-                if _has_sr:
-                    disp["in_r_zone"] = disp["in_r_zone"].map({True: "YES", False: "—"})
-                # Column order in disp: 15 base cols → 3 SR cols (if any) → Score → ML%
-                # Rename must match that exact order
-                disp.columns = (
-                    ["Symbol","Sector","As Of","Close","RS %","30d %","5d Rng %",
-                     "Vol(K)","21MA","50MA","Dist21MA%","SL","Risk%","T2R","Trade"]
-                    + _sr_disp_cols
-                    + ["Score","ML%"]
-                )
-
-                def _srs(s):  return ["color:#22c55e;font-weight:bold" if v>0 else "color:#ef4444;font-weight:bold" for v in s]
-                def _srng(s): return ["color:#22c55e" if v<=5 else "color:#fbbf24" if v<=8 else "color:#94a3b8" for v in s]
-                def _sdist(s):return ["color:#22c55e;font-weight:bold" if 0<v<=5 else "color:#fbbf24" if 0<v<=10 else "color:#94a3b8" for v in s]
-                def _strd(s): return ["color:#22c55e;font-weight:700" if v=="Valid" else "color:#ef4444" for v in s]
-                def _srsk(s): return ["color:#22c55e" if v<=3 else "color:#fbbf24" if v<=6 else "color:#ef4444" for v in s]
-                def _sscr(s): return ["color:#16a34a;font-weight:700" if v>=3 else "color:#b45309;font-weight:700" if v==2 else "color:#94a3b8" for v in s]
-                def _sml(s):  return ["color:#16a34a;font-weight:700" if (v is not None and v>=65) else "color:#b45309;font-weight:700" if (v is not None and v>=50) else "color:#dc2626" if v is not None else "color:#94a3b8" for v in s]
-
-                st.caption("**Score 0-5:** 4-5 best · 3 good · 2 borderline · 0-1 weak  (5th pt = Coiling at resistance)")
-                _fmt = {"Close":"{:.2f}","RS %":"{:+.2f}","30d %":"{:+.2f}",
-                        "5d Rng %":"{:.2f}","21MA":"{:.2f}","50MA":"{:.2f}",
-                        "Dist21MA%":"{:+.2f}","SL":"{:.2f}","Risk%":"{:.2f}","T2R":"{:.2f}"}
-                if _has_sr:
-                    _fmt["Dist R%"] = "{:.2f}"
-                    _fmt["R Str"]   = "{:.0f}"
-                st.dataframe(
-                    disp.style
-                        .apply(_srs,  subset=["RS %","30d %"]).apply(_srng, subset=["5d Rng %"])
-                        .apply(_sdist,subset=["Dist21MA%"]).apply(_strd, subset=["Trade"])
-                        .apply(_srsk, subset=["Risk%"]).apply(_sscr, subset=["Score"])
-                        .apply(_sml,  subset=["ML%"])
-                        .format(_fmt, na_rep="—"),
-                    width='stretch', hide_index=False,
-                    height=min(640, 60 + n_passed * 36),
-                )
-                st.caption(
-                    "SL = 1% below day low · T2R = 2R target · ML% = LightGBM win probability · "
-                    "Dist R% = % to nearest resistance zone floor · R Str = zone strength 0-100 · "
-                    "In Zone = price inside resistance zone · Picks auto-saved to Trade Log"
-                )
-
-                # ── Coiling highlight ──────────────────────────────────────
-                if _has_sr:
-                    coil_rows = result[result["coiling"] == True]
-                    if not coil_rows.empty:
-                        st.divider()
-                        st.markdown("#### 🔥 Coiling at Resistance")
-                        st.caption(
-                            "Tight 5-day range building within 5% of a confirmed resistance zone. "
-                            "Watch for volume expansion as the trigger."
-                        )
-                        for _, r in coil_rows.iterrows():
-                            in_z    = "🔴 Inside zone" if r.get("in_r_zone") else f"{r.get('dist_to_r_pct', 0):.1f}% below"
-                            r_str   = r.get('r_zone_strength')
-                            r_str_s = f"{r_str:.0f}" if r_str is not None else "—"
-                            st.markdown(
-                                f"**{r['symbol']}** &nbsp;·&nbsp; "
-                                f"Close: {r['latest_close']:.2f} &nbsp;·&nbsp; "
-                                f"RS: {r['rs']:+.1f}% &nbsp;·&nbsp; "
-                                f"Zone: {in_z} &nbsp;·&nbsp; "
-                                f"Zone Str: {r_str_s} &nbsp;·&nbsp; "
-                                f"5d Rng: {r['range_5d_pct']:.1f}% &nbsp;·&nbsp; "
-                                f"Risk: {r['risk_pct']:.1f}%"
-                            )
-
-    # ════════════════ SHORT TAB ═══════════════════════════════════════════════
-    with _tab_short:
-        st.markdown("**Market Filters — SHORT**")
-        sc1, sc2, sc3 = st.columns(3)
-        for col_w, (label, passed, detail) in zip([sc1, sc2, sc3], stm["short_gates"]):
-            col_w.markdown(_gate_card(label, passed, detail), unsafe_allow_html=True)
-
-        if not stm["short_all_pass"]:
-            st.divider()
-            st.info("SHORT gates not active — screener will show candidates when all 3 bearish conditions are met.")
-        else:
-            st.divider()
-            st.divider()
-            short_result = stm["short_result"]
-            kse_30d_sh   = stm["kse_30d"]
-            n_short      = len(short_result)
-
-            # Auto-save SHORT picks
-            _short_key = f"stm_short_saved_{id(short_result)}"
-            if not st.session_state.get(_short_key) and not short_result.empty:
-                short_picks = []
-                for _, row in short_result.iterrows():
-                    date_str = str(row["as_of_date"])[:10]
-                    pick = {
-                        "created_date": date_str, "direction": "SHORT",
-                        "symbol": row["symbol"], "sector": row["sector"],
-                        "sector_momentum": "—",
-                        "stock_perf_30d": float(row["perf_30d"]),
-                        "stock_perf_10d": float(row.get("perf_10d", 0.0)),
-                        "latest_close":   float(row["latest_close"]),
-                        "entry_price":    float(row["latest_close"]),
-                        "stop_loss":      float(row["stop_loss"]),
-                        "target_1r":      float(row["target_1r"]),
-                        "target_2r":      float(row["target_2r"]),
-                        "risk_pct":       float(row["risk_pct"]),
-                        "atr_pct":        float(row.get("atr_pct", 0.0)),
-                        "sector_rank":    int(row.get("sector_rank", 99)),
-                        "breadth_score":  float(row.get("breadth_score", 0.0)),
-                        "source": "STM",
-                        "status": "Pending" if row["tradeable"] else "Cancelled",
-                        "notes": "" if row["tradeable"] else f"Skipped: risk {row['risk_pct']:.1f}% > 6%",
-                    }
-                    short_picks.append(pick)
-                auto_save_stm_picks(short_picks)
-                st.session_state[_short_key] = True
-
-            sh1, sh2, sh3, sh4 = st.columns(4)
-            sh1.metric("KSE-100 30d",     f"{kse_30d_sh:+.1f}%")
-            sh2.metric("Passed Filters",  f"{n_short}")
-            sh3.metric("Worst RS",        f"{short_result['rs_short'].iloc[0]:+.1f}%" if n_short else "—")
-            sh4.metric("Avg RS Under",    f"{short_result['rs_short'].mean():+.1f}%"  if n_short else "—")
-            st.divider()
-
-            if short_result.empty:
-                st.info("No stocks passed all SHORT filters under current conditions.")
-            else:
-                n_sh_trade = int(short_result["tradeable"].sum())
-                st.markdown(
-                    f"**{n_short} stocks passed** — {n_sh_trade} tradeable (risk ≤ 6%) · "
-                    f"ranked by underperformance vs KSE-100 (worst first)"
-                )
-
-                sh_disp = short_result[[
-                    "symbol", "sector", "as_of_date", "latest_close",
-                    "rs_short", "perf_30d", "range_5d_pct", "avg_vol_10d",
-                    "ma21", "ma50", "dist_21ma_pct",
-                    "stop_loss", "risk_pct", "target_2r", "tradeable",
-                ]].copy()
-                sh_disp["avg_vol_10d"] = (sh_disp["avg_vol_10d"] / 1_000).round(0).astype(int)
-                sh_disp["as_of_date"]  = pd.to_datetime(sh_disp["as_of_date"]).dt.strftime("%d %b %Y")
-                sh_disp["tradeable"]   = sh_disp["tradeable"].map({True: "Valid", False: "Skip"})
-
-                # Short quality score (mirror of LONG)
-                sh_qual = []
-                for _, row in short_result.iterrows():
-                    qs = int(
-                        (row.get("rs_short", 0.0) > 5.0)           # underperforming by >5%
-                      + (row.get("range_5d_pct", 99.) <= 5.0)      # tight consolidation
-                      + (-5.0 <= row.get("dist_21ma_pct", 0.) < 0) # close below 21MA (not too extended)
-                      + (row.get("risk_pct", 99.) <= 3.0)           # tight SL
-                    )
-                    sh_qual.append(qs)
-                sh_disp["Score"] = sh_qual
-
-                sh_disp.columns = ["Symbol","Sector","As Of","Close","Under-RS%","30d %","5d Rng %",
-                                   "Vol(K)","21MA","50MA","Dist21MA%","SL","Risk%","T2R","Trade","Score"]
-
-                def _srs_sh(s): return ["color:#ef4444;font-weight:bold" if v>0 else "color:#94a3b8" for v in s]
-                def _s30_sh(s): return ["color:#ef4444;font-weight:bold" if v<0 else "color:#94a3b8" for v in s]
-                def _sdist_sh(s): return ["color:#ef4444;font-weight:bold" if -5<=v<0 else "color:#fbbf24" if -10<=v<0 else "color:#94a3b8" for v in s]
-
-                st.dataframe(
-                    sh_disp.style
-                        .apply(_srs_sh, subset=["Under-RS%"])
-                        .apply(_s30_sh, subset=["30d %"])
-                        .apply(_sdist_sh, subset=["Dist21MA%"])
-                        .apply(lambda s: ["color:#22c55e;font-weight:700" if v=="Valid" else "color:#ef4444" for v in s], subset=["Trade"])
-                        .apply(lambda s: ["color:#16a34a;font-weight:700" if v>=3 else "color:#b45309;font-weight:700" if v==2 else "color:#94a3b8" for v in s], subset=["Score"])
-                        .format({"Close":"{:.2f}","Under-RS%":"{:+.2f}","30d %":"{:+.2f}",
-                                 "5d Rng %":"{:.2f}","21MA":"{:.2f}","50MA":"{:.2f}",
-                                 "Dist21MA%":"{:+.2f}","SL":"{:.2f}","Risk%":"{:.2f}","T2R":"{:.2f}"}, na_rep="—"),
-                    width='stretch', hide_index=False,
-                    height=min(640, 60 + n_short * 36),
-                )
-                st.caption(
-                    "**Under-RS%** = how much stock underperforms KSE-100 (higher = weaker) · "
-                    "**SL** = 1% above day high · **T2R** = 2R target (downside) · "
-                    "**Dist21MA%** = negative = below 21MA · Picks auto-saved to Trade Log as SHORT"
-                )
+elif False:  # STM page removed — killed (82% overlap, Z-histogram gate unvalidated)
+    pass
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE 9 — 🔄 Recovery Bases
+# PAGE 8 — 🔄 Recovery Bases
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[9]:  # Recovery Bases
+elif cur == PAGES[8]:  # Recovery Bases
 
 
     # ── Page header ───────────────────────────────────────────────────────────
@@ -5800,7 +5358,7 @@ elif cur == PAGES[9]:  # Recovery Bases
     )
 
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
-elif cur == PAGES[13]:  # Model Health (updated index)
+elif cur == PAGES[12]:  # Model Health
     import os as _os
     import subprocess as _sp
     import traceback as _tb
@@ -5881,7 +5439,7 @@ elif cur == PAGES[13]:  # Model Health (updated index)
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 11 — 🗂️ Portfolio  (Weinstein Stage 2 Portfolio Screener)
 # ══════════════════════════════════════════════════════════════════════════════
-elif st.session_state.page == PAGES[12]:
+elif st.session_state.page == PAGES[11]:
     st.markdown("### 🗂️ Stage 2 Portfolio")
     st.caption(
         "Stocks in Weinstein Stage 2 (price above rising 30-week MA) ranked by "
@@ -6104,7 +5662,7 @@ elif st.session_state.page == PAGES[12]:
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE — 🤖 Agent   (Claude Trading Desk Agent)
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[14]:  # Agent
+elif cur == PAGES[13]:  # Agent
     import subprocess as _agent_sp
     import sys as _agent_sys
 
@@ -6940,14 +6498,14 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE — 💰 Valuation   (Financial Highlights / DCF Data)
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[15]:  # Valuation
+elif cur == PAGES[14]:  # Valuation
     from page_valuation import render_valuation_page
     render_valuation_page()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE — 📡 Flows   (FIPI / LIPI Institutional Flow Tracker)
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[16]:  # Flows
+elif cur == PAGES[15]:  # Flows
     from page_flows import render_flows_page
     render_flows_page()
 
@@ -6956,313 +6514,11 @@ elif cur == PAGES[16]:  # Flows
 
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 17 — 🏹 Minervini Setup Screener  v2
-# Read-only. Two signal types: Watchlist (pre-breakout) + Breakout (confirmed).
-# Writes ONLY to trade_setups (source="Minervini") via explicit Save button.
-# ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[17]:  # Minervini Setup
 
-    st.markdown("### 🏹 Minervini Setup — Breakout Screener")
+elif False:  # Minervini page removed — killed (N=29 proxy, 86% BREAKOUT overlap, <5 signals/yr)
+    pass
 
-    with st.expander("📖 How this screener works — read before trading", expanded=False):
-        st.markdown("""
-**Find stocks in a confirmed uptrend that have coiled tightly under a resistance level — and either just broke out or are about to.** Sector must be strong, stock must be a market leader. Singles and doubles only — no speculative names.
-
----
-#### Two Signal Types
-
-**📋 WATCHLIST** — Base is tight, price coiling within 3% of pivot. Breakout has NOT happened yet.
-Use for morning prep. Watch intraday. Enter discretionarily on the break with volume confirmation.
-
-**✅ BREAKOUT** — Confirmed end-of-day breakout with volume. Breakout happened TODAY.
-Enter tomorrow's open if you missed the intraday move. Risk is slightly wider.
-
----
-#### All Gates (applied to both WATCHLIST and BREAKOUT)
-| Gate | Rule |
-|---|---|
-| **Stage 2 uptrend** | close > EMA20 > EMA50 > EMA200 — full bull stack |
-| **Tight base** | Bollinger Band width (prior day) ≤ 12% — stock is coiling, not extended |
-| **No overhead supply** | 200-day high ≤ pivot × 1.05 — breakout into clear air |
-| **Market trend** | KSE-100 above EMA50 — bull regime only |
-| **Market breadth** | ≥ 60% of all PSX stocks above their 20-EMA — broad participation |
-| **Sector rank** | Sector in top 6 by RS-20 — strong sector tailwind |
-| **Sector breadth** | ≥ 70% of sector stocks above their 20-EMA — sector is healthy |
-| **Stock RS Rank** | Market-wide rank ≤ 50 — stock is among the top leaders in PSX |
-| **Stock sector rank** | Rank ≤ 5 within its own sector — leader within the sector |
-| **RS Rating** | Cross-sectional percentile ≥ 60 — multi-period momentum (40%×1yr + 30%×6m + 20%×3m + 10%×1m) |
-| **Liquidity** | 20-day avg volume ≥ 100,000 shares |
-| **Volatility** | ATR14 between 1% and 6% of price — controlled move, not erratic |
-| **Volume (BO only)** | Today's volume ≥ 2× 20-day avg — institutional conviction on the break |
-
-#### SHORT Signal — DFC counters only
-Inverse rules: Stage 4 (close < EMA20 < EMA50 < EMA200), breakdown below 60-day low,
-tight base (BB ≤ 12%), KSE-100 below EMA50, RS Rating ≤ 40. Only PSX-shortable (DFC) stocks. No breadth/sector/rank gates on shorts.
-
-#### Zero results = discipline working
-If no stocks appear, no setup qualifies today. The screener is intentionally strict — a leader breaking out from a top sector in a healthy market. Forcing trades from a weak list is where losses come from.
-
-#### Known limitation
-Stocks post-bonus-issue have distorted EMAs for ~200 days. Stage 2 may fail on recently ex-dated stocks until EMA200 normalises on adjusted prices.
-
----
-*Signals are read-only. Use **Save to Setup Perf** to track them over time.*
-        """)
-
-    # ── Read pre-computed Minervini signals ───────────────────────
-    import sqlite3 as _mv_sq
-    from config import DB_PATH as _mv_db
-
-    @st.cache_data(ttl=300, show_spinner=False)
-    def _load_mv_signals():
-        conn = _mv_sq.connect(_mv_db)
-        conn.execute("PRAGMA cache_size=-32000")
-        latest = conn.execute(
-            "SELECT MAX(as_of_date) FROM mv_signals"
-        ).fetchone()[0]
-        rows = conn.execute(
-            """SELECT * FROM mv_signals
-               WHERE as_of_date = ?""",
-            (latest,)
-        ).fetchall()
-        cols = [d[0] for d in conn.execute(
-            "SELECT * FROM mv_signals LIMIT 0"
-        ).description]
-        conn.close()
-        df = pd.DataFrame(rows, columns=cols)
-        for col in ("close","ema20","ema50","ema200","pivot_high",
-                    "pivot_low","bb_width","high_200d","atr_pct",
-                    "vol_ratio","rs_rating","rs_score","vol_avg20",
-                    "rs_rank","sector_rs_rank","sector_breadth","mkt_breadth"):
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-        return df, latest
-
-    _mv_all, _mv_date = _load_mv_signals()
-
-    # ── Extract gate-status sentinel row, then remove it from signal data ─────
-    _mv_gate = _mv_all[_mv_all["signal_type"] == "GATE_STATUS"].copy()
-    _mv_all  = _mv_all[_mv_all["signal_type"] != "GATE_STATUS"].copy()
-
-    # ── Stale data warning ────────────────────────────────────────
-    import datetime as _mv_dt
-    _mv_today = _mv_dt.date.today().isoformat()
-    if _mv_date != _mv_today:
-        st.warning(
-            f"⚠️ Minervini signals last computed: "
-            f"**{_mv_date}** — run signal_engine.py to refresh."
-        )
-
-    if _mv_gate.empty and _mv_all.empty:
-        st.info("No Minervini signals found. Run signal_engine.py first.")
-        st.stop()
-
-    # Split by signal_type — match original variable names exactly
-    _mv_longs     = _mv_all[_mv_all["signal_type"] == "LONG"].copy()
-    _mv_shorts    = _mv_all[_mv_all["signal_type"] == "SHORT"].copy()
-    _mv_watchlist = _mv_all[_mv_all["signal_type"] == "WATCHLIST"].copy()
-
-    # Add display columns expected by render code
-    for _df in [_mv_longs, _mv_shorts]:
-        _df["BB Width%"] = _df["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
-        _df["ATR%"]      = _df["atr_pct"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
-        _df["Vol/Avg"]   = _df["vol_ratio"].apply(lambda x: f"{x:.1f}×" if pd.notna(x) else "—")
-        _df["RS Rating"] = _df["rs_rating"].apply(lambda x: f"{x:.0f}%ile" if pd.notna(x) else "—")
-        _df["DFC"]       = _df["is_dfc"].map({1: "✓", 0: ""}) if "is_dfc" in _df.columns else "—"
-    for _df in [_mv_watchlist]:
-        _df["BB Width%"]    = _df["bb_width"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "—")
-        _df["ATR%"]         = _df["atr_pct"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
-        _df["Vol/Avg"]      = _df["vol_ratio"].apply(lambda x: f"{x:.1f}×" if pd.notna(x) else "—")
-        _df["RS Rating"]    = _df["rs_rating"].apply(lambda x: f"{x:.0f}%ile" if pd.notna(x) else "—")
-        _df["% From Pivot"] = (
-            (_df["pivot_high"] - _df["close"]) / _df["pivot_high"] * 100
-        ).apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
-
-    _mv_nl = len(_mv_longs)
-    _mv_ns = len(_mv_shorts)
-    _mv_nw = len(_mv_watchlist)
-
-    # ── Market regime banner — Gate 1: KSE EMA50 | Gate 2: Market breadth ──
-    # Prefer gate-status sentinel row (always current); fall back to signal rows.
-    _mv_gate_src = _mv_gate if not _mv_gate.empty else _mv_all
-    _mv_mkt_up  = bool(_mv_gate_src["market_up"].iloc[0]) if len(_mv_gate_src) > 0 else True
-    _mv_mkt_col = "#16a34a" if _mv_mkt_up else "#dc2626"
-    _mv_mkt_txt = "BULL — KSE-100 above EMA50" if _mv_mkt_up else "BEAR — KSE-100 below EMA50"
-
-    _mv_mkt_breadth = None
-    if "mkt_breadth" in _mv_gate_src.columns and len(_mv_gate_src) > 0:
-        _mbv = _mv_gate_src["mkt_breadth"].iloc[0]
-        if pd.notna(_mbv):
-            _mv_mkt_breadth = float(_mbv)
-    _mv_br_ok  = _mv_mkt_breadth is not None and _mv_mkt_breadth >= 60
-    _mv_br_col = "#16a34a" if _mv_br_ok else "#dc2626"
-    _mv_br_txt = (f"{_mv_mkt_breadth:.1f}% of PSX stocks above 20-EMA"
-                  if _mv_mkt_breadth is not None else "unavailable")
-
-    st.markdown(
-        f'<div style="background:{"#f0fdf4" if _mv_mkt_up else "#fff5f5"};'
-        f'border-left:4px solid {_mv_mkt_col};padding:8px 14px;border-radius:6px;margin-bottom:4px;">'
-        f'<b style="color:{_mv_mkt_col};">Gate 1 — Trend: {_mv_mkt_txt}</b>'
-        f' &nbsp;·&nbsp; As of: <b>{_mv_date}</b>'
-        f'</div>', unsafe_allow_html=True
-    )
-    st.markdown(
-        f'<div style="background:{"#f0fdf4" if _mv_br_ok else "#fff5f5"};'
-        f'border-left:4px solid {_mv_br_col};padding:8px 14px;border-radius:6px;margin-bottom:10px;">'
-        f'<b style="color:{_mv_br_col};">Gate 2 — Breadth: {_mv_br_txt}</b>'
-        f' &nbsp;(gate: ≥ 60%)'
-        f'</div>', unsafe_allow_html=True
-    )
-
-    # ── Gate funnel KPIs ──────────────────────────────────────────────────────
-    _mv_total = len(_mv_all["symbol"].unique())
-    _mv_s2    = 0   # not available from pre-computed table
-    _mv_bo    = 0   # not available from pre-computed table
-
-    _kc = st.columns(6)
-    for _col, _lbl, _val, _clr in [
-        (_kc[0], "Universe",      f"{_mv_total:,}",  "#1d4ed8"),
-        (_kc[1], "Stage 2",       f"{_mv_s2:,}",     "#7c3aed"),
-        (_kc[2], "Broke Pivot",   f"{_mv_bo:,}",     "#d97706"),
-        (_kc[3], "LONG Signals",  f"{_mv_nl}",       "#16a34a"),
-        (_kc[4], "SHORT (DFC)",   f"{_mv_ns}",       "#dc2626"),
-        (_kc[5], "Watchlist",     f"{_mv_nw}",       "#0891b2"),
-    ]:
-        _col.markdown(
-            f'<div style="border:1px solid {_clr}33;border-top:3px solid {_clr};'
-            f'border-radius:8px;padding:10px;text-align:center;">'
-            f'<div style="font-size:0.65rem;color:#64748b;text-transform:uppercase;'
-            f'letter-spacing:.06em;">{_lbl}</div>'
-            f'<div style="font-size:1.4rem;font-weight:800;color:{_clr};">{_val}</div>'
-            f'</div>', unsafe_allow_html=True
-        )
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Tabs ──────────────────────────────────────────────────────────────────
-    _mv_tab_l, _mv_tab_s, _mv_tab_w = st.tabs([
-        f"📈 LONG Signals ({_mv_nl})",
-        f"📉 SHORT Signals — DFC only ({_mv_ns})",
-        f"🕐 Watchlist ({_mv_nw})"
-    ])
-
-    with _mv_tab_l:
-        if _mv_longs.empty:
-            st.info("No LONG signals today." if _mv_mkt_up else
-                    "⚠ Market in BEAR regime — LONG signals require KSE-100 above EMA50.")
-        else:
-            _ld = _mv_longs.copy()
-            _disp_cols = ["symbol","sector","close","pivot_high",
-                          "BB Width%","ATR%","Vol/Avg","vol_avg20",
-                          "RS Rating","rs_score","rs_rank","sector_rs_rank",
-                          "sector_breadth","DFC"]
-            _disp_cols = [c for c in _disp_cols if c in _ld.columns]
-            st.dataframe(_ld[_disp_cols].rename(columns={
-                "symbol":         "Symbol",
-                "sector":         "Sector",
-                "close":          "Close",
-                "pivot_high":     "Pivot High",
-                "vol_avg20":      "Vol 20d Avg",
-                "rs_score":       "RS Score%",
-                "rs_rank":        "RS Rank",
-                "sector_rs_rank": "Sec RS Rank",
-                "sector_breadth": "Sec Breadth%",
-            }), use_container_width=True, hide_index=True)
-
-            st.markdown("---")
-            _sc1, _sc2 = st.columns([2, 3])
-            with _sc1:
-                _mv_save_btn = st.button(
-                    f"💾 Save {_mv_nl} signal(s) to Setup Perf",
-                    type="primary",
-                    help="Saves today's signals with source='Minervini' for audit in Setup Perf. "
-                         "Does not open trades or affect Trade Log."
-                )
-            with _sc2:
-                st.caption(
-                    "Saving records this screen's picks for later audit. "
-                    "It does **not** open a trade or affect the Trade Log."
-                )
-
-            if _mv_save_btn:
-                _date_str  = str(_mv_date)[:10]
-                _existing  = get_trade_setups()
-                _ex_keys   = {
-                    (r.get("symbol",""), str(r.get("created_date",""))[:10], r.get("source",""))
-                    for r in (_existing or [])
-                }
-                _saved, _skipped = 0, 0
-                for _, _sr in _mv_longs.iterrows():
-                    if (_sr["symbol"], _date_str, "Minervini") in _ex_keys:
-                        _skipped += 1
-                        continue
-                    save_trade_setup({
-                        "created_date":    _date_str,
-                        "direction":       "LONG",
-                        "symbol":          _sr["symbol"],
-                        "sector":          "",
-                        "source":          "Minervini",
-                        "entry_price":     float(_sr["close"]),
-                        "stop_loss":       round(float(_sr["close"]) * 0.96, 2),
-                        "target_1r":       round(float(_sr["close"]) * 1.08, 2),
-                        "target_2r":       round(float(_sr["close"]) * 1.16, 2),
-                        "status":          "Pending",
-                        "quality_score":   int(min(round(float(_sr["rs_rating"]) / 20), 5)),
-                        "risk_pct":        4.0,
-                        "stock_perf_30d":  float(_sr.get("rs_score", 0)),
-                        "stock_perf_10d":  0.0,
-                        "sector_momentum": "",
-                        "breadth_score":   0.0,
-                        "sector_rank":     0,
-                    })
-                    _saved += 1
-                if _saved:
-                    st.success(f"✅ {_saved} signal(s) saved to Setup Perf (source=Minervini).")
-                if _skipped:
-                    st.info(f"ℹ {_skipped} already existed — skipped.")
-
-    with _mv_tab_s:
-        if _mv_shorts.empty:
-            st.info("No SHORT signals today." if not _mv_mkt_up else
-                    "⚠ Market in BULL regime — SHORT signals require KSE-100 below EMA50.")
-        else:
-            _sd = _mv_shorts.copy()
-            _sd_cols = ["symbol","sector","close","ema20","ema50","ema200",
-                        "pivot_low","BB Width%","ATR%","Vol/Avg","vol_avg20","RS Rating","rs_score"]
-            _sd_cols = [c for c in _sd_cols if c in _sd.columns]
-            st.dataframe(_sd[_sd_cols].rename(columns={
-                "symbol":    "Symbol",
-                "sector":    "Sector",
-                "close":     "Close",
-                "ema20":     "EMA20",
-                "ema50":     "EMA50",
-                "ema200":    "EMA200",
-                "pivot_low": "Pivot Low",
-                "vol_avg20": "Vol 20d Avg",
-                "rs_score":  "RS Score%",
-            }), use_container_width=True, hide_index=True)
-
-    with _mv_tab_w:
-        if _mv_watchlist.empty:
-            st.info("No watchlist candidates today.")
-        else:
-            _wd = _mv_watchlist.copy()
-            _wdisp_cols = ["symbol","sector","close","% From Pivot","pivot_high",
-                           "BB Width%","ATR%","Vol/Avg","vol_avg20",
-                           "RS Rating","rs_rank","sector_rs_rank","sector_breadth"]
-            _wdisp_cols = [c for c in _wdisp_cols if c in _wd.columns]
-            st.dataframe(_wd[_wdisp_cols].rename(columns={
-                "symbol":         "Symbol",
-                "sector":         "Sector",
-                "close":          "Close",
-                "pivot_high":     "Pivot High",
-                "vol_avg20":      "Vol 20d Avg",
-                "rs_rank":        "RS Rank",
-                "sector_rs_rank": "Sec RS Rank",
-                "sector_breadth": "Sec Breadth%",
-            }), use_container_width=True, hide_index=True)
-
-elif cur == PAGES[18]:  # Leaders
+elif cur == PAGES[16]:  # Leaders
     import sqlite3
     from config import DB_PATH as _ld_db
 
@@ -8125,7 +7381,7 @@ _Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.8
 
     _ld_conn.close()
 
-elif cur == PAGES[19]:  # Setup History
+elif cur == PAGES[17]:  # Setup History
     st.header('📋 Setup History')
     tab1, tab2 = st.tabs(['📊 Screen Performance', '🔍 Stock Lookup'])
 
@@ -8303,7 +7559,7 @@ elif cur == PAGES[19]:  # Setup History
                     hide_index=True
                 )
 
-elif cur == PAGES[20]:  # Data Health
+elif cur == PAGES[18]:  # Data Health
     import sqlite3
     from config import DB_PATH as _dh_db
     from datetime import datetime as _dh_dt
