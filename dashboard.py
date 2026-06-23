@@ -5777,7 +5777,7 @@ elif cur == PAGES[13]:  # Agent
                     try:
                         _r = _agent_sp.run(
                             [_agent_sys.executable, "agent.py", "--type", "daily"],
-                            capture_output=True, text=True, timeout=180,
+                            capture_output=True, text=True, timeout=300,
                             cwd=_os.path.dirname(_os.path.abspath(__file__)),
                         )
                         if _r.returncode == 0:

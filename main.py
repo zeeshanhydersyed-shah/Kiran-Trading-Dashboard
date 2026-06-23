@@ -202,16 +202,28 @@ def cmd_update():
     except Exception as exc:
         logger.warning("setup_log hook failed: %s", exc)
 
-    # Run daily agent analysis (reads from setup_log / stock_signals / recovery_signals)
+    # Run daily agent analysis in a subprocess so it cannot block the pipeline.
+    # Agent is bonus — a timeout or API failure must never stop stock_signals / setup_log
+    # from completing. Timeout is 360s (4 sequential LLM calls × ~60s worst-case each + margin).
     try:
-        from agent import TradingDeskAgent
-        _agent_result = TradingDeskAgent(run_type="daily").run()
-        logger.info(
-            "Agent run complete — %d opportunities.",
-            len((_agent_result or {}).get("opportunities", [])),
+        import subprocess as _sp
+        _agent_proc = _sp.run(
+            [sys.executable, "agent.py", "--type", "daily"],
+            timeout=360,
+            check=False,
+            capture_output=True,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
         )
+        if _agent_proc.returncode == 0:
+            logger.info("Agent daily hook: complete.")
+        else:
+            logger.warning(
+                "Agent daily hook: exited %d — %s",
+                _agent_proc.returncode,
+                (_agent_proc.stderr or b"")[-500:].decode("utf-8", errors="replace"),
+            )
     except Exception as exc:
-        logger.warning("Agent daily hook failed: %s", exc)
+        logger.warning("Agent daily hook failed (will retry next run): %s", exc)
 
     # Pre-compute Leaders deep scan (filtered picks + audit trail)
     try:
