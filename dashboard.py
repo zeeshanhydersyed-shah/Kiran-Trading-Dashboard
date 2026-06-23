@@ -2676,6 +2676,7 @@ elif cur == PAGES[3]:  # Explorer
                    ss.bos_flag, ss.avg_vol_10d, ss.vol_contraction, ss.pivot_high,
                    ss.stage2_bull,
                    ss.close_above_ema50, ss.ema50_slope_pos,
+                   ss.close_above_ema150, ss.ema150_slope_pos,
                    ss.base_duration, ss.overhead_clear, ss.near_pivot_days,
                    p.close AS current_close,
                    sec.rs_rank              AS sec_global_rank,
@@ -2718,7 +2719,7 @@ elif cur == PAGES[3]:  # Explorer
         key="exp_edge",
     )
     _ex_weinstein = _sc3.toggle(
-        "📖 Weinstein — PSX Top-Down: Sector Stage 2 · Top-8 sector · Stock RS↑ · Rising 50EMA · Coiling ≥7d near pivot",
+        "📖 Weinstein — PSX Top-Down: Sector Stage 2 · Top-8 sector · Stock RS↑ · Rising 150EMA · Coiling ≥7d near pivot",
         key="exp_weinstein",
     )
     _ex_short = False  # Short screener disabled — negative EV on PSX; gated behind TRENDING_DOWN for future use
@@ -2812,10 +2813,10 @@ elif cur == PAGES[3]:  # Explorer
             # [2] Sector among global top 8 by RS rank (Weinstein: healthy sector, not necessarily #1)
             (_ex_filtered["sec_global_rank"].fillna(999) <= 8) &
             # ── Stock-level criteria ──────────────────────────────────────
-            # [3] Stock above its own 50 EMA
-            (_ex_filtered["close_above_ema50"].fillna(0) == 1) &
-            # [4] Stock 50 EMA sloping upward
-            (_ex_filtered["ema50_slope_pos"].fillna(0) == 1) &
+            # [3] Stock above its own 150 EMA (Weinstein 30-week MA equivalent)
+            (_ex_filtered["close_above_ema150"].fillna(0) == 1) &
+            # [4] Stock 150 EMA sloping upward
+            (_ex_filtered["ema150_slope_pos"].fillna(0) == 1) &
             # [5] RS rank improving — moving up the leaderboard
             (_ex_filtered["rank_change"].fillna(-999) > 0) &
             # [6] RS leader in its sector (top 5)
@@ -2830,7 +2831,7 @@ elif cur == PAGES[3]:  # Explorer
         )
         st.caption(
             f"📖 Weinstein Watchlist — **{len(_ex_filtered)}** stocks · "
-            f"Sector Stage 2 · Global top-8 sector · Stock above rising 50EMA · "
+            f"Sector Stage 2 · Global top-8 sector · Stock above rising 150EMA · "
             f"RS↑ · Sector top 5 · Coiling ≥7d"
         )
 
