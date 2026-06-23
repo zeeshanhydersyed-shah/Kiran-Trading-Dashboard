@@ -5350,10 +5350,12 @@ elif cur == PAGES[8]:  # Recovery Bases
     # ── Screener parameters footnote ─────────────────────────────────────────
     st.divider()
     st.caption(
-        "**Parameters:** Decline ≥30% from pre-base high · Base 8–90 bars · Range <20% · "
-        "Volume baseline: vol_ma50 · Contraction: last-5d avg <0.50× ma50, ≥3 days <0.60× · "
-        "Trigger: vol ≥2.5× + close > base high + green candle + close in upper 40% of range · "
-        "Liquidity: 20d avg vol >800K · Min price ₨5 · "
+        "**Parameters:** Decline >=30% from pre-base high · Base 8-90 bars · Range <20% · "
+        "Volume baseline: median of first 10 base bars (base-relative, not vol_ma50) · "
+        "Contraction: last-5d avg <0.50x baseline, >=3 days <0.60x · "
+        "Prior surge: >=2 bars within base >1.5x baseline · "
+        "Trigger: vol >=2.5x vol_MA50 + close > base high + close in upper 40% of H-L range · "
+        "Liquidity: 20d avg vol >800K · Min price Rs.5 · "
         "Regime: KSE-100 close vs 10 days ago"
     )
 
