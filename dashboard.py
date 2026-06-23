@@ -5145,6 +5145,77 @@ elif cur == PAGES[8]:  # Recovery Bases
         "**Watchlist** = base forming, no breakout yet — monitoring only, not an entry."
     )
 
+    # ── Audit reference (collapsed by default) ───────────────────────────────
+    with st.expander("📋 Screener audit & backtest results (June 2026)", expanded=False):
+        st.markdown("""
+**Verdict: KEEP AS-IS** — full 11-year backtest (2015–2026), 314-symbol universe (production sector exclusions applied).
+
+---
+**Mechanism**
+
+Post-capitulation VCP. Six conditions must be simultaneously true on entry day:
+1. **Prior decline ≥30%** from the highest close in the 90 bars before the base started — the "capitulation" requirement
+2. **Base tightness <20%** — `_base_scan` walks backwards extending the base until adding one more bar would exceed 20% range (8–90 bar window)
+3. **Volume contraction** — last-5d avg < 50% of early-base median, ≥3 bars individually below 60%
+4. **Prior surge within base** — ≥2 bars inside the base with volume > 1.5× early-base median (accumulation fingerprint)
+5. **Liquidity** — 20d avg vol ≥ 800k; close ≥ Rs.5
+6. **Breakout** (Triggered only) — vol ≥ 2.5× vol_MA50 + close > base_high + close in upper 40% of H-L range
+
+Volume baseline (Gates 3 & 4) uses the **median of the first ≤10 base bars**, not vol_MA50 — intentional because the 50-day MA includes the high-volume selling period before the base formed.
+The trigger vol gate deliberately uses **vol_MA50** for absolute magnitude comparison.
+
+---
+**Backtest — TRIGGERED** (N=22, 2.0/yr, canonical universe)
+
+| Window | N | WR | LR | EV |
+|---|---|---|---|---|
+| @10d | 25 | 30.0% | 10.0% | +4.6% |
+| @20d | 22 | 36.8% | 26.3% | +7.7% |
+| @30d | 17 | 41.2% | 35.3% | +5.7% |
+| @60d | 16 | **50.0%** | 31.2% | **+12.6%** |
+
+WIN = close > +6% at window close. LOSS = close < −6%. EV = (WR × avg_win) + (LR × avg_loss).
+**Optimal holding window: 60 days.** The mechanism takes 1–2 months to resolve; 2–4 week windows are too short.
+
+---
+**Backtest — WATCHLIST** (N=1,030, ~90/yr)
+
+| Window | WR | LR | EV |
+|---|---|---|---|
+| @20d | 28.2% | 32.6% | **+0.5%** |
+| @30d | 30.6% | 39.0% | +0.6% |
+| @60d | 39.6% | 40.7% | +3.4% |
+| @90d | 38.8% | 46.0% | +4.1% (LR > WR) |
+
+**Watchlist appearance alone has no predictive value** — near-zero EV at 20–30d, LR exceeds WR at 90d.
+Watchlist is a monitoring filter only. Do not act until Triggered.
+
+---
+**Funnel (baseline ≥30%, 522 liquid symbols)**
+
+| Gate | Pairs | Drop |
+|---|---|---|
+| Base found (≥8 bars) | 162,122 | — |
+| Range <20% | 162,122 | 0% — redundant (enforced by _base_scan) |
+| Decline ≥30% | 21,599 | 87% |
+| Contraction | 4,475 | 79% |
+| Surge → Watchlist | 3,201 | 28% |
+| Trigger | 27 | 99% |
+
+The 87% drop at the decline gate and 79% at contraction are structural, not tunable.
+The rarity (2/yr) reflects the specificity of the setup, not a calibration error.
+
+---
+**Variant tested: loosen decline threshold to ≥20%**
+
+| | N / freq | EV @60d |
+|---|---|---|
+| Baseline ≥30% | 27 / 2.4/yr | +9.5% |
+| Variant ≥20% | 67 / 6.1/yr | +2.5% |
+
+Frequency 2.5× higher, EV drops 74%. The 30% threshold is load-bearing — loosening it destroys the edge.
+""")
+
     # ── Read pre-computed recovery signals ───────────────────────
     import sqlite3 as _rec_sq
     from config import DB_PATH as _rec_db
