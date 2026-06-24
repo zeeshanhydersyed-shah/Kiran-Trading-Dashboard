@@ -6379,7 +6379,7 @@ elif cur == PAGES[15]:  # Leaders
                 SELECT ls.symbol, ls.setup_type, ls.sector, ls.sector_rank,
                        ls.rs_rank, ls.rs_score_20, ls.avg_vol_10d,
                        ls.base_tightness, ls.pivot_high, ls.pivot_distance_pct,
-                       ls.vol_ratio_today, ls.final_score, ls.flag,
+                       ls.vol_ratio_today, ls.vol_contraction, ls.final_score, ls.flag,
                        ls.entry_trigger, ls.stop_loss, ls.sl_pct
                 FROM leaders_scan ls
                 WHERE ls.scan_date = ?
@@ -6422,12 +6422,28 @@ elif cur == PAGES[15]:  # Leaders
                 f"Active: **{_uw_counts.get('ACTIVE BREAKOUT', 0)}**"
             )
 
-            _uw_filter = st.selectbox(
-                "Show",
-                ["All", "COILING", "BROKE OUT TODAY", "ACTIVE BREAKOUT"],
-                key="uw_filter",
-            )
+            _uw_col1, _uw_col2 = st.columns([2, 3])
+            with _uw_col1:
+                _uw_filter = st.selectbox(
+                    "Show",
+                    ["All", "COILING", "BROKE OUT TODAY", "ACTIVE BREAKOUT"],
+                    key="uw_filter",
+                )
+            with _uw_col2:
+                _uw_tight_vol = st.checkbox(
+                    "Tight vol only — coiling (vc < 85%)",
+                    value=False,
+                    key="uw_tight_vol",
+                    help="When on: COILING rows restricted to vol_contraction < 85% (volume contracting into the base). Off: all coiling candidates shown regardless of volume behaviour.",
+                )
+
             _uw_show = _uw_df if _uw_filter == "All" else _uw_df[_uw_df['status'] == _uw_filter]
+            if _uw_tight_vol:
+                # Apply vc gate only to COILING rows; leave breakout rows untouched
+                _uw_show = _uw_show[
+                    (_uw_show['status'] != 'COILING') |
+                    (_uw_show['vol_contraction'].isna() | (_uw_show['vol_contraction'] < 85))
+                ]
 
             if _uw_show.empty:
                 st.info("No candidates in this category today.")
@@ -6435,7 +6451,7 @@ elif cur == PAGES[15]:  # Leaders
                 _uw_disp = _uw_show[[
                     'symbol', 'status', 'breakout_date', 'sector', 'sector_rank',
                     'rs_rank', 'rs_score_20', 'pivot_distance_pct',
-                    'base_tightness', 'vol_ratio_today', 'final_score', 'flag',
+                    'base_tightness', 'vol_contraction', 'vol_ratio_today', 'final_score', 'flag',
                 ]].copy()
                 _uw_disp['rs_score_20'] = _uw_disp['rs_score_20'].apply(
                     lambda x: f"{x:+.2f}%" if pd.notna(x) else "—")
@@ -6443,6 +6459,8 @@ elif cur == PAGES[15]:  # Leaders
                     lambda x: f"{x:+.2f}%" if pd.notna(x) else "—")
                 _uw_disp['base_tightness'] = _uw_disp['base_tightness'].apply(
                     lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
+                _uw_disp['vol_contraction'] = _uw_disp['vol_contraction'].apply(
+                    lambda x: f"{x:.0f}%" if pd.notna(x) else "—")
                 _uw_disp['vol_ratio_today'] = _uw_disp['vol_ratio_today'].apply(
                     lambda x: f"{x:.1f}x" if pd.notna(x) else "—")
                 _uw_disp['final_score'] = _uw_disp['final_score'].apply(
@@ -6461,6 +6479,7 @@ elif cur == PAGES[15]:  # Leaders
                         'rs_score_20':         'RS20',
                         'pivot_distance_pct':  'Pct from Pivot',
                         'base_tightness':      'BBW%',
+                        'vol_contraction':     'Vol Contr%',
                         'vol_ratio_today':     'Vol Ratio',
                         'final_score':         'Score',
                         'flag':                'Flags',

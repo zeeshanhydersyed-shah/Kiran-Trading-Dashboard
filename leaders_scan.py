@@ -48,6 +48,7 @@ def ensure_tables(con):
         sector_composite     REAL,
         vol_rejection_flag   INTEGER,
         nearest_overhead_pct REAL,
+        vol_contraction      REAL,
         raw_score            INTEGER,
         penalty              INTEGER,
         final_score          INTEGER,
@@ -330,7 +331,7 @@ def _breakout_health_check(con, symbol, scan_date, pivot_high):
 def append_leaders_scan(db_path=None):
     """
     Build leaders_scan for today. Pulls stock_signals + sector_signals + prices,
-    applies filters (coiled vol_contraction<85; base_tightness<7; not-extended for BO), scores each
+    applies filters (base_tightness<7; not-extended for BO), scores each
     candidate, writes results. Idempotent — safe to re-run same day.
     """
     if db_path is None:
@@ -368,17 +369,13 @@ def append_leaders_scan(db_path=None):
                        ss.rs_rank, ss.sector_rs_rank, ss.rank_change,
                        ss.rs_score_20, ss.rs_score_50,
                        ss.base_tightness, ss.pivot_high, ss.pivot_distance_pct,
-                       ss.avg_vol_10d
+                       ss.avg_vol_10d, ss.vol_contraction
                 FROM stock_signals ss
                 JOIN stock_metadata sm ON ss.symbol = sm.symbol
                 WHERE ss.date = ?
                   AND ss.pivot_distance_pct BETWEEN 0 AND 5
                   AND ss.base_tightness < 7
                   AND ss.avg_vol_10d > 200000
-                  AND (
-                      ss.vol_contraction < 85
-                      OR ss.pivot_distance_pct < 2
-                  )
             """
         else:
             sql = """
@@ -444,6 +441,7 @@ def append_leaders_scan(db_path=None):
             rs_rank_val    = int(r['rs_rank'])    if pd.notna(r['rs_rank'])    else None
             sec_rs_rank    = int(r['sector_rs_rank']) if pd.notna(r['sector_rs_rank']) else None
             rank_chg_val   = int(r['rank_change']) if pd.notna(r['rank_change']) else None
+            vc_val         = float(r['vol_contraction']) if 'vol_contraction' in r.index and pd.notna(r.get('vol_contraction')) else None
 
             insert_rows.append((
                 scan_date, setup_type, sym, sector,
@@ -453,7 +451,7 @@ def append_leaders_scan(db_path=None):
                 r['avg_vol_10d'], vol_ratio,
                 entry, sl, sl_pct,
                 s_infl, s_comp,
-                int(vol_rej), overhead,
+                int(vol_rej), overhead, vc_val,
                 raw, penalty, final_score, flag_str
             ))
 
@@ -467,9 +465,9 @@ def append_leaders_scan(db_path=None):
                  avg_vol_10d, vol_ratio_today,
                  entry_trigger, stop_loss, sl_pct,
                  rs_inflection, sector_composite,
-                 vol_rejection_flag, nearest_overhead_pct,
+                 vol_rejection_flag, nearest_overhead_pct, vol_contraction,
                  raw_score, penalty, final_score, flag)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, insert_rows)
             con.commit()
 
