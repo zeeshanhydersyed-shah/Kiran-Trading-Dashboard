@@ -7146,9 +7146,9 @@ _Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.8
                 for _, _rr in _rd_flagged.iterrows():
                     _rd_sym = _rr['symbol']
                     _rd_flag = _rr['flag']
-                    _rd_fs = int(_rr['final_score'])
-                    _rd_penalty = int(_rr['penalty'] or 0)
-                    _rd_raw = int(_rr['raw_score'] or 0)
+                    _rd_fs = int(_rr['final_score'] if pd.notna(_rr['final_score']) else 0)
+                    _rd_penalty = int(_rr['penalty'] if pd.notna(_rr['penalty']) else 0)
+                    _rd_raw = int(_rr['raw_score'] if pd.notna(_rr['raw_score']) else 0)
                     st.markdown(
                         f'<div style="background:#FFF8F0;border-left:3px solid #EF9F27;'
                         f'padding:8px 12px;margin-bottom:8px;border-radius:4px;">'
