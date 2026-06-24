@@ -6280,10 +6280,9 @@ elif cur == PAGES[15]:  # Leaders
 
     st.markdown("### 🏆 Leaders — Stock Signal Board")
 
-    _ld_tab_rs, _ld_tab_pre, _ld_tab_bos, _ld_tab_scan, _ld_tab_radar = st.tabs([
+    _ld_tab_rs, _ld_tab_unified, _ld_tab_scan, _ld_tab_radar = st.tabs([
         "🏆 RS Leaders",
-        "🎯 Pre-Breakout",
-        "🚀 Breakouts",
+        "📋 Watchlist",
         "🔬 Deep Scan",
         "📡 Radar"
     ])
@@ -6367,204 +6366,109 @@ elif cur == PAGES[15]:  # Leaders
             )
 
     # ── Tab 2: Pre-Breakout ────────────────────────────────────────────────
-    with _ld_tab_pre:
-        # Conviction-scored pre-breakout radar (5-factor scoring from diagnostic analysis)
-        _ld_pre_sql = """
-            WITH sector_latest AS (
-                SELECT MAX(date) AS max_date FROM sector_signals
-            ),
-            scored AS (
-                SELECT
-                    ss.symbol,
-                    sm.sector,
-                    ss.rs_rank,
-                    ss.sector_rs_rank,
-                    ss.rs_score_20,
-                    ss.avg_vol_10d,
-                    ss.base_tightness,
-                    ss.pivot_distance_pct,
-                    sec.composite_score AS sector_score,
-                    -- Factor 1: RS rank sweet spot 101-150 (peak win rate from diagnostics)
-                    CASE WHEN ss.rs_rank BETWEEN 101 AND 150 THEN 3
-                         WHEN ss.rs_rank BETWEEN 51  AND 100 THEN 2
-                         WHEN ss.rs_rank BETWEEN 151 AND 200 THEN 1
-                         ELSE 0 END AS score_rs_rank,
-                    -- Factor 2: RS20 cooling (winners avg -1.23 vs losers +0.82)
-                    CASE WHEN ss.rs_score_20 < -2   THEN 3
-                         WHEN ss.rs_score_20 < 0    THEN 2
-                         WHEN ss.rs_score_20 < 2    THEN 1
-                         ELSE 0 END AS score_rs20,
-                    -- Factor 3: Volume (liquidity floor)
-                    CASE WHEN ss.avg_vol_10d > 3000000 THEN 3
-                         WHEN ss.avg_vol_10d > 1500000 THEN 2
-                         WHEN ss.avg_vol_10d > 500000  THEN 1
-                         ELSE 0 END AS score_vol,
-                    -- Factor 4: Sector RS rank >10 best win rate (21.7% from diagnostics)
-                    CASE WHEN ss.sector_rs_rank > 10 THEN 3
-                         WHEN ss.sector_rs_rank > 5  THEN 2
-                         WHEN ss.sector_rs_rank > 0  THEN 1
-                         ELSE 0 END AS score_sec_rank,
-                    -- Factor 5: Sector momentum (composite_score threshold 0.47)
-                    CASE WHEN sec.composite_score >= 0.60 THEN 3
-                         WHEN sec.composite_score >= 0.47 THEN 2
-                         WHEN sec.composite_score >= 0.30 THEN 1
-                         ELSE 0 END AS score_sec_momentum
-                FROM stock_signals ss
-                JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                JOIN sector_signals sec
-                    ON sm.sector = sec.sector
-                    AND sec.date = (SELECT max_date FROM sector_latest)
-                WHERE ss.date = ?
-                  AND ss.pivot_distance_pct BETWEEN 0 AND 5
-                  AND ss.base_tightness < 10
-                  AND ss.avg_vol_10d > 200000
-            )
-            SELECT
-                symbol, sector, rs_rank, sector_rs_rank, rs_score_20,
-                avg_vol_10d, base_tightness, pivot_distance_pct, sector_score,
-                (score_rs_rank + score_rs20 + score_vol + score_sec_rank + score_sec_momentum)
-                    AS conviction_score
-            FROM scored
-            ORDER BY conviction_score DESC, pivot_distance_pct ASC
-            LIMIT 20
-        """
-        _ld_pre_df = pd.read_sql_query(_ld_pre_sql, _ld_conn, params=(_ld_latest,))
+    # ── Tab 2: Unified Watchlist ──────────────────────────────────────────────
+    with _ld_tab_unified:
+        _uw_scan_date = _ld_conn.execute(
+            "SELECT MAX(scan_date) FROM leaders_scan"
+        ).fetchone()[0]
 
-        st.markdown(f"**Pre-Breakout Radar — {_ld_latest}** &nbsp;|&nbsp; 5-factor conviction scoring")
-        st.caption("RS rank 101–150 · RS20 cooling · volume >1.5M · sector rank >10 · sector momentum ≥0.47")
-
-        if _ld_pre_df.empty:
-            st.info("No pre-breakout candidates today.")
+        if not _uw_scan_date:
+            st.info("No scan data yet — will populate after next pipeline run.")
         else:
-            _ld_pre_strong = (_ld_pre_df["conviction_score"] >= 11).sum()
-            _ld_pre_watch  = ((_ld_pre_df["conviction_score"] >= 8) & (_ld_pre_df["conviction_score"] < 11)).sum()
-            st.success(
-                f"**{len(_ld_pre_df)} candidate(s)** — "
-                f"{_ld_pre_strong} strong (≥11) · {_ld_pre_watch} watch (8–10)"
-            )
+            _uw_df = pd.read_sql_query("""
+                SELECT ls.symbol, ls.setup_type, ls.sector, ls.sector_rank,
+                       ls.rs_rank, ls.rs_score_20, ls.avg_vol_10d,
+                       ls.base_tightness, ls.pivot_high, ls.pivot_distance_pct,
+                       ls.vol_ratio_today, ls.final_score, ls.flag,
+                       ls.entry_trigger, ls.stop_loss, ls.sl_pct
+                FROM leaders_scan ls
+                WHERE ls.scan_date = ?
+                ORDER BY ls.setup_type DESC, ls.final_score DESC
+            """, _ld_conn, params=(_uw_scan_date,))
 
-            _ld_pre_disp = _ld_pre_df.copy()
-            _ld_pre_disp["pivot_distance_pct"] = _ld_pre_disp["pivot_distance_pct"].apply(lambda x: f"{x:.2f}%")
-            _ld_pre_disp["base_tightness"]      = _ld_pre_disp["base_tightness"].apply(lambda x: f"{x:.2f}%")
-            _ld_pre_disp["rs_score_20"]         = _ld_pre_disp["rs_score_20"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "—")
-            _ld_pre_disp["avg_vol_10d"]         = _ld_pre_disp["avg_vol_10d"].apply(lambda x: f"{int(x):,}")
-            _ld_pre_disp["sector_score"]        = _ld_pre_disp["sector_score"].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "—")
-
-            _ld_pre_disp = _ld_pre_disp.rename(columns={
-                "symbol":              "Symbol",
-                "sector":              "Sector",
-                "rs_rank":             "RS Rank",
-                "sector_rs_rank":      "Sec Rank",
-                "rs_score_20":         "RS20",
-                "pivot_distance_pct":  "Pivot Dist%",
-                "base_tightness":      "BBW%",
-                "avg_vol_10d":         "Avg Vol",
-                "sector_score":        "Sector Score",
-                "conviction_score":    "Conviction",
-            })
-
-            def _color_conviction(val):
-                if val >= 11:
-                    return "background-color: #1a472a; color: white; font-weight: bold"
-                elif val >= 8:
-                    return "background-color: #7d6608; color: white"
-                else:
-                    return ""
-
-            styled = _ld_pre_disp.style.map(_color_conviction, subset=["Conviction"])
-            st.dataframe(styled, use_container_width=True, hide_index=True)
-
-            with st.expander("How is conviction scored?"):
-                st.markdown("""
-| Factor | 3 pts | 2 pts | 1 pt | 0 pts |
-|--------|-------|-------|------|-------|
-| **RS Rank** | 101–150 | 51–100 | 151–200 | Outside |
-| **RS20 (momentum cooling)** | < −2 | 0 to −2 | 0 to +2 | > +2 |
-| **Avg Vol 10d** | > 3M | > 1.5M | > 500K | ≤ 500K |
-| **Sector RS Rank** | > 10 | > 5 | > 0 | 0 |
-| **Sector Composite** | ≥ 0.60 | ≥ 0.47 | ≥ 0.30 | < 0.30 |
-
-**Max score: 15** · Green ≥ 11 · Yellow 8–10 · No highlight < 8
-
-_Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.82; rank 101–150 peaks at 18% win rate; sector rank > 10 yields 21.7% win rate._
-                """)
-
-    # ── Tab 3: Breakouts ───────────────────────────────────────────────────
-    with _ld_tab_bos:
-        st.markdown(f"**Latest date:** {_ld_latest} &nbsp;|&nbsp; Price cleared pivot today — sorted freshest first")
-
-        _ld_bos_df = pd.read_sql_query("""
-            SELECT ss.symbol, sm.sector,
-                   ss.rs_rank, ss.sector_rs_rank,
-                   ss.pivot_distance_pct, ss.pivot_high,
-                   ss.base_tightness, ss.avg_vol_10d,
-                   pa.close
-            FROM stock_signals ss
-            JOIN stock_metadata sm ON ss.symbol = sm.symbol
-            JOIN prices_adjusted pa
-                ON ss.symbol = pa.symbol AND ss.date = pa.date
-            WHERE ss.date = ?
-              AND ss.bos_flag = 1
-              AND ss.avg_vol_10d > 200000
-            ORDER BY ss.pivot_distance_pct DESC
-        """, _ld_conn, params=(_ld_latest,))
-
-        if _ld_bos_df.empty:
-            st.info("No liquid breakouts today.")
-        else:
-            st.success(f"**{len(_ld_bos_df)} breakout(s)** cleared pivot with liquid volume")
-
-            # Compute breakout_date for each symbol (start of current bos_flag=1 streak)
-            _bos_dates = {}
-            for _bos_sym in _ld_bos_df["symbol"].tolist():
-                _last_zero = _ld_conn.execute(
+            # Compute breakout_date for BREAKOUT rows (reuses streak logic)
+            _uw_bo_dates = {}
+            for _uw_sym in _uw_df[_uw_df['setup_type'] == 'BREAKOUT']['symbol'].tolist():
+                _uw_last_zero = _ld_conn.execute(
                     "SELECT MAX(date) FROM stock_signals"
                     " WHERE symbol = ? AND bos_flag = 0 AND date <= ?",
-                    (_bos_sym, _ld_latest),
+                    (_uw_sym, _uw_scan_date),
                 ).fetchone()[0]
-                if _last_zero is None:
-                    _bos_dates[_bos_sym] = _ld_conn.execute(
+                if _uw_last_zero is None:
+                    _uw_bo_dates[_uw_sym] = _ld_conn.execute(
                         "SELECT MIN(date) FROM stock_signals WHERE symbol = ? AND bos_flag = 1",
-                        (_bos_sym,),
+                        (_uw_sym,),
                     ).fetchone()[0]
                 else:
-                    _bos_dates[_bos_sym] = _ld_conn.execute(
+                    _uw_bo_dates[_uw_sym] = _ld_conn.execute(
                         "SELECT MIN(date) FROM stock_signals"
                         " WHERE symbol = ? AND date > ? AND bos_flag = 1",
-                        (_bos_sym, _last_zero),
+                        (_uw_sym, _uw_last_zero),
                     ).fetchone()[0]
-            _ld_bos_df.insert(1, "breakout_date", _ld_bos_df["symbol"].map(_bos_dates))
 
-            _ld_bos_disp = _ld_bos_df.copy()
-            _ld_bos_disp["pivot_distance_pct"] = _ld_bos_disp["pivot_distance_pct"].apply(
-                lambda x: f"{x:.2f}%"
-            )
-            _ld_bos_disp["base_tightness"] = _ld_bos_disp["base_tightness"].apply(
-                lambda x: f"{x:.2f}%" if pd.notna(x) else "—"
-            )
-            _ld_bos_disp["avg_vol_10d"] = _ld_bos_disp["avg_vol_10d"].apply(
-                lambda x: f"{int(x):,}"
-            )
-            _ld_bos_disp["close"] = _ld_bos_disp["close"].apply(
-                lambda x: f"{x:.2f}"
-            )
-            _ld_bos_disp["pivot_high"] = _ld_bos_disp["pivot_high"].apply(
-                lambda x: f"{x:.2f}"
-            )
-            st.dataframe(
-                _ld_bos_disp.rename(columns={
-                    "symbol": "Symbol", "breakout_date": "Breakout Date",
-                    "sector": "Sector",
-                    "rs_rank": "RS Rank", "sector_rs_rank": "Sector Rank",
-                    "pivot_distance_pct": "Above Pivot%",
-                    "pivot_high": "Pivot High", "close": "Close",
-                    "base_tightness": "BBW%",
-                    "avg_vol_10d": "Avg Vol 10d"
-                }),
-                use_container_width=True, hide_index=True
+            def _uw_status(row):
+                if row['setup_type'] == 'PRE_BREAKOUT':
+                    return 'COILING'
+                return 'BROKE OUT TODAY' if _uw_bo_dates.get(row['symbol']) == _uw_scan_date else 'ACTIVE BREAKOUT'
+
+            _uw_df['status'] = _uw_df.apply(_uw_status, axis=1)
+            _uw_df['breakout_date'] = _uw_df['symbol'].map(_uw_bo_dates)
+
+            _uw_counts = _uw_df['status'].value_counts()
+            st.markdown(
+                f"**Watchlist — {_uw_scan_date}** &nbsp;|&nbsp; "
+                f"Coiling: **{_uw_counts.get('COILING', 0)}** &nbsp;·&nbsp; "
+                f"Broke out today: **{_uw_counts.get('BROKE OUT TODAY', 0)}** &nbsp;·&nbsp; "
+                f"Active: **{_uw_counts.get('ACTIVE BREAKOUT', 0)}**"
             )
 
-    # ── Tab 4: Deep Scan ──────────────────────────────────────────────────────
+            _uw_filter = st.selectbox(
+                "Show",
+                ["All", "COILING", "BROKE OUT TODAY", "ACTIVE BREAKOUT"],
+                key="uw_filter",
+            )
+            _uw_show = _uw_df if _uw_filter == "All" else _uw_df[_uw_df['status'] == _uw_filter]
+
+            if _uw_show.empty:
+                st.info("No candidates in this category today.")
+            else:
+                _uw_disp = _uw_show[[
+                    'symbol', 'status', 'breakout_date', 'sector', 'sector_rank',
+                    'rs_rank', 'rs_score_20', 'pivot_distance_pct',
+                    'base_tightness', 'vol_ratio_today', 'final_score', 'flag',
+                ]].copy()
+                _uw_disp['rs_score_20'] = _uw_disp['rs_score_20'].apply(
+                    lambda x: f"{x:+.2f}%" if pd.notna(x) else "—")
+                _uw_disp['pivot_distance_pct'] = _uw_disp['pivot_distance_pct'].apply(
+                    lambda x: f"{x:+.2f}%" if pd.notna(x) else "—")
+                _uw_disp['base_tightness'] = _uw_disp['base_tightness'].apply(
+                    lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
+                _uw_disp['vol_ratio_today'] = _uw_disp['vol_ratio_today'].apply(
+                    lambda x: f"{x:.1f}x" if pd.notna(x) else "—")
+                _uw_disp['final_score'] = _uw_disp['final_score'].apply(
+                    lambda x: int(x) if pd.notna(x) else "—")
+                _uw_disp['flag'] = _uw_disp['flag'].fillna("—")
+                _uw_disp['breakout_date'] = _uw_disp['breakout_date'].fillna("—")
+
+                st.dataframe(
+                    _uw_disp.rename(columns={
+                        'symbol':              'Symbol',
+                        'status':              'Status',
+                        'breakout_date':       'BO Date',
+                        'sector':              'Sector',
+                        'sector_rank':         'Sec Rank',
+                        'rs_rank':             'RS Rank',
+                        'rs_score_20':         'RS20',
+                        'pivot_distance_pct':  'Pct from Pivot',
+                        'base_tightness':      'BBW%',
+                        'vol_ratio_today':     'Vol Ratio',
+                        'final_score':         'Score',
+                        'flag':                'Flags',
+                    }),
+                    use_container_width=True, hide_index=True,
+                )
+
+    # ── Tab 3: Deep Scan ──────────────────────────────────────────────────────
     with _ld_tab_scan:
         _ds_scan_date = _ld_conn.execute(
             "SELECT MAX(scan_date) FROM leaders_scan"
