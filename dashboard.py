@@ -2812,12 +2812,6 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
     _ex_screener = False   # superseded by Weinstein screener
     _ex_edge = False       # superseded by Weinstein screener
     _ex_short = False      # disabled — negative EV on PSX; gated behind TRENDING_DOWN for future use
-    _ex_uptrend = st.toggle(
-        "📈 Confirmed Uptrend — Close > EMA50 + Rising slope + RS↑ + Vol > 500k",
-        key="exp_uptrend",
-        help="Uptrend quality filter from former STM screener. EV +2.82%@10d vs +1.60% for raw BREAKOUT. "
-             "No Z-histogram gate (unvalidated historically). 67% overlap with BREAKOUT signals.",
-    )
 
     # Sector filter + sort controls in one row
     _fc1, _fc2, _fc3, _fc4 = st.columns([2, 2, 1, 1])
@@ -2907,18 +2901,6 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
             f"📉 Stage 4 Shorts — **{len(_ex_filtered)}** DFC stocks · "
             f"Sector Stage 3/4 + RS rank falling · Below declining 50EMA · "
             f"Bouncing to resistance (-8% to +2% of pivot) · Tight stop above pivot/EMA"
-        )
-
-    if _ex_uptrend:
-        _ex_filtered = _ex_filtered[
-            (_ex_filtered["close_above_ema50"].fillna(0) == 1) &
-            (_ex_filtered["ema50_slope_pos"].fillna(0) == 1) &
-            (_ex_filtered["rs_score_20"].fillna(0) > 0) &
-            (_ex_filtered["avg_vol_10d"].fillna(0) > 500_000)
-        ]
-        st.caption(
-            f"📈 Confirmed Uptrend — **{len(_ex_filtered)}** stocks · "
-            f"Close > EMA50 + Rising slope · RS↑ (outperforming) · Vol > 500k"
         )
 
     if _ex_bos_only:
