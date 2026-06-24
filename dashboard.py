@@ -12,14 +12,6 @@ sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 
 import numpy as np
 
-# Try to import joblib, but don't crash if it's missing
-try:
-    import joblib
-    HAS_JOBLIB = True
-except ImportError:
-    HAS_JOBLIB = False
-    joblib = None
-
 import pandas as pd
 import streamlit as st
 
@@ -33,10 +25,6 @@ except ImportError:
     go = None
     px = None
 
-# Show warning if joblib is missing (but don't crash)
-if not HAS_JOBLIB:
-    import warnings
-    warnings.warn("joblib not installed. Run: pip install -r requirements.txt", RuntimeWarning)
 
 # ── Bridge Streamlit secrets → os.environ BEFORE importing database ───────────
 # Streamlit Cloud sometimes injects secrets after Python's import phase starts.
@@ -53,7 +41,7 @@ from database import (
     init_db, get_price_date_range, count_prices, count_sectors,
     get_latest_stock_date, get_latest_index_date,
     save_trade_setup, get_trade_setups, update_trade_setup, close_trade_setup,
-    activate_trade_setup, delete_trade_setup, auto_save_setups, get_backtest_summary,
+    activate_trade_setup, delete_trade_setup, get_backtest_summary,
     auto_save_stm_picks, get_sim_portfolio_data,
     add_portfolio_transaction, get_portfolio_transactions, delete_portfolio_transaction,
     add_portfolio_value, get_portfolio_values, delete_portfolio_value,
@@ -768,105 +756,6 @@ def _run_stm_screener(data: dict, w_data: dict) -> dict:
 
 _MODEL_DIR = __file__.rsplit("\\", 1)[0]
 
-@st.cache_resource(show_spinner=False)
-def load_ml_model():
-    """Load kiran_model.pkl and kiran_model_features.pkl. Returns (model, features) or (None, None)."""
-    import os
-
-    # If joblib is not available, return None
-    if not HAS_JOBLIB:
-        return None, None
-
-    model_path    = os.path.join(_MODEL_DIR, "kiran_model.pkl")
-    features_path = os.path.join(_MODEL_DIR, "kiran_model_features.pkl")
-    if not os.path.exists(model_path) or not os.path.exists(features_path):
-        return None, None
-
-    try:
-        model    = joblib.load(model_path)
-        features = joblib.load(features_path)
-        return model, features
-    except Exception as e:
-        # Log other errors but don't crash
-        logger.warning(f"Could not load ML model: {str(e)}")
-        return None, None
-
-
-def get_ml_confidence(setup_row: dict) -> "float | None":
-    """
-    Extract the 10 training features from a setup dict and return
-    predict_proba win probability (0–1), or None if unavailable.
-
-    Feature order must exactly match training:
-      ["log_vol", "atr_pct", "stock_perf_30d", "risk_pct",
-       "momentum_ratio", "dist_to_entry_pct", "sector_rank",
-       "month", "stock_perf_10d", "breadth_score"]
-    """
-    model, features = load_ml_model()
-    if model is None or features is None:
-        return None
-
-    try:
-        avg_vol_10d    = setup_row.get("avg_vol_10d")
-        atr_pct        = setup_row.get("atr_pct")
-        stock_perf_30d = setup_row.get("stock_perf_30d")
-        risk_pct       = setup_row.get("risk_pct")
-        stock_perf_10d = setup_row.get("stock_perf_10d")
-        sector_rank    = setup_row.get("sector_rank")
-        breadth_score  = setup_row.get("breadth_score")
-        # live setups use "created_date"; backtest setups use "as_of_date"
-        as_of_date     = setup_row.get("as_of_date") or setup_row.get("created_date")
-        entry_price    = setup_row.get("entry_price")
-        latest_close   = setup_row.get("latest_close")
-
-        # Require all raw inputs to be present
-        required = [avg_vol_10d, atr_pct, stock_perf_30d, risk_pct,
-                    stock_perf_10d, sector_rank, breadth_score,
-                    as_of_date, entry_price, latest_close]
-        if any(v is None for v in required):
-            return None
-
-        # Derived features (must match phase4_train.py exactly)
-        log_vol = float(np.log1p(float(avg_vol_10d)))
-
-        perf_30d_abs = abs(float(stock_perf_30d))
-        if perf_30d_abs > 0.1:
-            momentum_ratio = float(np.clip(
-                float(stock_perf_10d) / float(stock_perf_30d), -3.0, 3.0
-            ))
-        else:
-            momentum_ratio = 0.0
-
-        dist_to_entry_pct = abs(
-            (float(entry_price) - float(latest_close)) / float(latest_close) * 100
-        )
-
-        # Month from as_of_date (string or datetime)
-        if isinstance(as_of_date, str):
-            month = int(as_of_date[5:7])
-        else:
-            month = int(pd.Timestamp(as_of_date).month)
-
-        row_values = [
-            log_vol,
-            float(atr_pct),
-            float(stock_perf_30d),
-            float(risk_pct),
-            momentum_ratio,
-            dist_to_entry_pct,
-            float(sector_rank),
-            float(month),
-            float(stock_perf_10d),
-            float(breadth_score),
-        ]
-
-        X = np.array(row_values, dtype=float).reshape(1, -1)
-        prob = float(model.predict_proba(X)[0][1])
-        return prob
-
-    except Exception:
-        return None
-
 
 MOMENTUM_COLORS = {
     "Heating Up":   "#22c55e",
@@ -895,7 +784,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "💡 Setups", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
 
 
 def fmt_date(d) -> str:
@@ -1174,13 +1063,6 @@ breadth     = data["breadth"]
 kse100      = data.get("kse100", {})
 long_cands  = data["long_candidates"]
 short_cands = data["short_candidates"]
-raw_setups  = data.get("trade_setups", [])
-
-# Auto-save new system setups once per data-load (idempotent but DB-intensive)
-_data_key = id(data)  # changes only when cache invalidates and load_data() re-runs
-if st.session_state.get("_last_autosave_key") != _data_key:
-    auto_save_setups(raw_setups)
-    st.session_state["_last_autosave_key"] = _data_key
 
 # ── KIRAN Header ──────────────────────────────────────────────────────────────
 st.markdown(
@@ -2203,196 +2085,6 @@ elif cur == PAGES[4]:  # History
         st.warning("Plotly visualization library is not available.")
     except Exception as _hist_err:
         st.warning(f"History page error: {_hist_err}")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE 3 — SETUPS
-# ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[7]:  # Setups
-    st.markdown(
-        "**Trade Setups** — entry above/below latest close · "
-        "SL at recent swing low · max risk 12% · shorts DFC-eligible only"
-    )
-
-    if not raw_setups:
-        st.info("No qualifying setups today.")
-    else:
-        today_str    = datetime.now().strftime("%Y-%m-%d")
-        short_setups = [s for s in raw_setups if s["direction"] == "SHORT"]
-        long_setups  = [s for s in raw_setups if s["direction"] == "LONG"]
-
-        # Build lookup: (symbol, direction, date) → saved DB record
-        # Used by each card to find its existing system row ID.
-        _all_saved = get_trade_setups()
-        _saved_lookup: dict[tuple, dict] = {
-            (r["symbol"], r["direction"], r["created_date"][:10]): r
-            for r in _all_saved
-            if r.get("source", "System") == "System"
-        }
-
-        def render_setup_card(s: dict):
-            is_short     = s["direction"] == "SHORT"
-            card_bg      = "#fff5f5" if is_short else "#f0fdf4"
-            border_color = "#ef4444" if is_short else "#22c55e"
-            arrow        = "▼" if is_short else "▲"
-
-            q_score  = s.get("quality_score", 0)
-            q_checks = s.get("quality_checks", {})
-            if isinstance(q_checks, str):
-                try:    q_checks = json.loads(q_checks)
-                except: q_checks = {}
-            max_q = len(q_checks) if q_checks else 4
-            stars = "★" * q_score + "☆" * (max_q - q_score)
-
-            checklist_html = "&nbsp;&nbsp;".join(
-                f"{'✅' if ok else '❌'} <span style='color:#374151'>{k}</span>"
-                for k, ok in q_checks.items()
-            ) if q_checks else ""
-
-            # ML confidence badge
-            ml_prob = get_ml_confidence(s)
-            if ml_prob is not None:
-                ml_pct = int(round(ml_prob * 100))
-                if ml_pct >= 65:
-                    ml_bg, ml_fg = "#dcfce7", "#16a34a"
-                elif ml_pct >= 50:
-                    ml_bg, ml_fg = "#fef9c3", "#b45309"
-                else:
-                    ml_bg, ml_fg = "#fee2e2", "#dc2626"
-                ml_badge_html = (
-                    f"<span style='background:{ml_bg}; color:{ml_fg}; "
-                    f"font-size:0.68rem; font-weight:700; padding:2px 7px; "
-                    f"border-radius:999px; border:1px solid {ml_fg}44; "
-                    f"margin-left:8px; white-space:nowrap;' "
-                    f"title='ML win probability'>ML: {ml_pct}%</span>"
-                )
-            else:
-                ml_badge_html = ""
-
-            st.markdown(
-                f"""<div style="background:{card_bg}; border:1px solid {border_color}40;
-                    border-left:3px solid {border_color}; border-radius:6px;
-                    padding:8px 12px; margin-bottom:8px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>
-                      <b style="color:{border_color}; font-size:0.92rem;">
-                        {arrow} {s['direction']} &nbsp; {s['symbol']}
-                      </b>
-                      <span style="color:#64748b; font-size:0.72rem; margin-left:8px;">
-                        {s['sector']} &nbsp;·&nbsp; {s.get('sector_momentum','—')}
-                        &nbsp;·&nbsp; Range&nbsp;<b>{s.get('range_width_pct',0):.1f}%</b>/{s.get('range_window','?')}d
-                        &nbsp;·&nbsp; 30d&nbsp;<b>{f"{s['stock_perf_30d']:+.1f}%" if s.get('stock_perf_30d') is not None else "—"}</b>
-                        {f"&nbsp;·&nbsp; 60d&nbsp;<b>{s['stock_perf_60d']:+.1f}%</b>" if s.get('stock_perf_60d') is not None else ""}
-                        &nbsp;·&nbsp; 10d&nbsp;<b>{f"{s['stock_perf_10d']:+.1f}%" if s.get('stock_perf_10d') is not None else "—"}</b>
-                        &nbsp;·&nbsp; Breadth&nbsp;<b>{s.get('breadth_score',0):.0f}</b>
-                      </span>
-                    </span>
-                    <span style="display:flex; align-items:center; gap:6px;">
-                      {ml_badge_html}
-                      <span style="color:#f59e0b; font-size:0.88rem; letter-spacing:1px;"
-                            title="Quality {q_score}/{max_q}">
-                        {stars} <span style="color:#94a3b8; font-size:0.68rem;">{q_score}/{max_q}</span>
-                      </span>
-                    </span>
-                  </div>
-                  <div style="font-size:0.7rem; color:#475569; margin-top:4px;">
-                    {checklist_html}
-                  </div>
-                </div>""",
-                unsafe_allow_html=True,
-            )
-
-            c1, c2, c3, c4, c5, c6 = st.columns(6)
-            c1.metric("Entry",  f"{s['entry_price']:.2f}")
-            c2.metric("SL",     f"{s['stop_loss']:.2f}", delta=f"−{s['risk_pct']:.1f}%", delta_color="inverse")
-            c3.metric("T1R",    f"{s['target_1r']:.2f}")
-            c4.metric("T2R",    f"{s['target_2r']:.2f}")
-            c5.metric("ATR%",   f"{s['atr_pct']:.2f}%")
-            c6.metric("Risk%",  f"{s['risk_pct']:.2f}%")
-            st.markdown(
-                f"<div style='font-size:0.7rem;color:#64748b;margin-bottom:4px;'>"
-                f"Close&nbsp;<b>{s['latest_close']:.2f}</b> &nbsp;·&nbsp; "
-                f"Support&nbsp;<b>{s['support_level']:.2f}</b> &nbsp;·&nbsp; "
-                f"Resistance&nbsp;<b>{s['resistance_level']:.2f}</b>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-
-            # ── "I Took This" inline action ───────────────────────────────
-            db_key  = (s["symbol"], s["direction"], s.get("created_date", today_str)[:10])
-            db_rec  = _saved_lookup.get(db_key)
-            rec_id  = db_rec["id"]    if db_rec else None
-            rec_st  = db_rec.get("status", "Pending") if db_rec else "Pending"
-            rec_ae  = db_rec.get("actual_entry")      if db_rec else None
-
-            # Status badge
-            if rec_st == "Active":
-                ae_txt = f"  ·  filled @ **{rec_ae:.2f}**" if rec_ae else ""
-                st.markdown(
-                    f"<div style='font-size:0.7rem; color:#16a34a; font-weight:600; "
-                    f"margin-bottom:6px;'>✅ You are in this trade{ae_txt}</div>",
-                    unsafe_allow_html=True,
-                )
-            elif rec_st == "Closed":
-                outcome_col = "#22c55e" if rec_oc == "Win" else (
-                    "#ef4444" if rec_oc == "Loss" else "#94a3b8")
-                st.markdown(
-                    f"<div style='font-size:0.7rem; color:{outcome_col}; font-weight:600; "
-                    f"margin-bottom:6px;'>⬛ Closed — {rec_oc}</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                # Show expander only for Pending / not-yet-taken setups
-                card_key = f"took_{s['symbol']}_{s['direction']}"
-                with st.expander("✏️ I took this trade", expanded=False):
-                    if rec_id is None:
-                        st.warning("Setup not yet saved to log — refresh the page and try again.")
-                    else:
-                        tf1, tf2, tf3 = st.columns([2, 2, 3])
-                        tf_entry = tf1.number_input(
-                            "My actual fill price",
-                            min_value=0.0, step=0.01, format="%.2f",
-                            value=float(s["entry_price"]),
-                            key=f"{card_key}_entry",
-                            help="Leave as KIRAN's level if you haven't filled yet, or enter your actual fill.",
-                        )
-                        tf_sl = tf2.number_input(
-                            "My actual SL",
-                            min_value=0.0, step=0.01, format="%.2f",
-                            value=float(s["stop_loss"]),
-                            key=f"{card_key}_sl",
-                            help="Your actual stop-loss placement.",
-                        )
-                        tf_notes = tf3.text_input(
-                            "Notes (optional)",
-                            placeholder="e.g. partial fill, adjusted SL…",
-                            key=f"{card_key}_notes",
-                        )
-                        if st.button("✅ Confirm — mark as Active", key=f"{card_key}_confirm",
-                                     type="primary"):
-                            note_str = tf_notes.strip() or None
-                            activate_trade_setup(
-                                setup_id     = int(rec_id),
-                                actual_entry = float(tf_entry) if tf_entry > 0 else None,
-                                notes        = note_str,
-                            )
-                            st.success(
-                                f"{s['symbol']} {s['direction']} marked Active "
-                                f"@ {tf_entry:.2f}. Find it in Trade Log to close later."
-                            )
-                            st.rerun()
-
-            st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
-
-        if long_setups:
-            st.markdown("##### 🟢 Long Setups")
-            for s in long_setups:
-                render_setup_card(s)
-
-        if short_setups:
-            st.markdown("##### 🔴 Short Setups")
-            for s in short_setups:
-                render_setup_card(s)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3676,7 +3368,7 @@ elif cur == PAGES[6]:  # Analytics
 # ===============================================================================
 # PAGE 7 -- BACKTEST
 # ===============================================================================
-elif cur == PAGES[10]:  # Backtest
+elif cur == PAGES[9]:  # Backtest
     st.markdown("**Backtest Results** -- KIRAN rules replayed on historical data (Jan 2024 - present)")
     st.caption(
         "Point-in-time correct: each date only uses data available on that day. "
@@ -4778,7 +4470,7 @@ elif cur == PAGES[1]:  # Regime
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 9 — SETUP PERFORMANCE
 # ═══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[9]:  # Setup Perf
+elif cur == PAGES[8]:  # Setup Perf
     st.markdown("**Setup Performance** — lifecycle and P&L of every system-generated setup")
 
     all_setups_raw = get_trade_setups()
@@ -5115,7 +4807,7 @@ elif False:  # STM page removed — killed (82% overlap, Z-histogram gate unvali
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 8 — 🔄 Recovery Bases
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[8]:  # Recovery Bases
+elif cur == PAGES[7]:  # Recovery Bases
 
 
     # ── Page header ───────────────────────────────────────────────────────────
@@ -5417,7 +5109,7 @@ Frequency 2.5× higher, EV drops 74%. The 30% threshold is load-bearing — loos
     )
 
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
-elif cur == PAGES[12]:  # Model Health
+elif cur == PAGES[11]:  # Model Health
     import os as _os
     import subprocess as _sp
     import traceback as _tb
@@ -5498,7 +5190,7 @@ elif cur == PAGES[12]:  # Model Health
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 11 — 🗂️ Portfolio  (Weinstein Stage 2 Portfolio Screener)
 # ══════════════════════════════════════════════════════════════════════════════
-elif st.session_state.page == PAGES[11]:
+elif st.session_state.page == PAGES[10]:
     st.markdown("### 🗂️ Stage 2 Portfolio")
     st.caption(
         "Stocks in Weinstein Stage 2 (price above rising 30-week MA) ranked by "
@@ -5721,7 +5413,7 @@ elif st.session_state.page == PAGES[11]:
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE — 🤖 Agent   (Claude Trading Desk Agent)
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[13]:  # Agent
+elif cur == PAGES[12]:  # Agent
     import subprocess as _agent_sp
     import sys as _agent_sys
 
@@ -6562,14 +6254,14 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE — 💰 Valuation   (Financial Highlights / DCF Data)
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[14]:  # Valuation
+elif cur == PAGES[13]:  # Valuation
     from page_valuation import render_valuation_page
     render_valuation_page()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE — 📡 Flows   (FIPI / LIPI Institutional Flow Tracker)
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[15]:  # Flows
+elif cur == PAGES[14]:  # Flows
     from page_flows import render_flows_page
     render_flows_page()
 
@@ -6582,7 +6274,7 @@ elif cur == PAGES[15]:  # Flows
 elif False:  # Minervini page removed — killed (N=29 proxy, 86% BREAKOUT overlap, <5 signals/yr)
     pass
 
-elif cur == PAGES[16]:  # Leaders
+elif cur == PAGES[15]:  # Leaders
     import sqlite3
     from config import DB_PATH as _ld_db
 
@@ -6821,6 +6513,28 @@ _Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.8
             st.info("No liquid breakouts today.")
         else:
             st.success(f"**{len(_ld_bos_df)} breakout(s)** cleared pivot with liquid volume")
+
+            # Compute breakout_date for each symbol (start of current bos_flag=1 streak)
+            _bos_dates = {}
+            for _bos_sym in _ld_bos_df["symbol"].tolist():
+                _last_zero = _ld_conn.execute(
+                    "SELECT MAX(date) FROM stock_signals"
+                    " WHERE symbol = ? AND bos_flag = 0 AND date <= ?",
+                    (_bos_sym, _ld_latest),
+                ).fetchone()[0]
+                if _last_zero is None:
+                    _bos_dates[_bos_sym] = _ld_conn.execute(
+                        "SELECT MIN(date) FROM stock_signals WHERE symbol = ? AND bos_flag = 1",
+                        (_bos_sym,),
+                    ).fetchone()[0]
+                else:
+                    _bos_dates[_bos_sym] = _ld_conn.execute(
+                        "SELECT MIN(date) FROM stock_signals"
+                        " WHERE symbol = ? AND date > ? AND bos_flag = 1",
+                        (_bos_sym, _last_zero),
+                    ).fetchone()[0]
+            _ld_bos_df.insert(1, "breakout_date", _ld_bos_df["symbol"].map(_bos_dates))
+
             _ld_bos_disp = _ld_bos_df.copy()
             _ld_bos_disp["pivot_distance_pct"] = _ld_bos_disp["pivot_distance_pct"].apply(
                 lambda x: f"{x:.2f}%"
@@ -6839,7 +6553,8 @@ _Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.8
             )
             st.dataframe(
                 _ld_bos_disp.rename(columns={
-                    "symbol": "Symbol", "sector": "Sector",
+                    "symbol": "Symbol", "breakout_date": "Breakout Date",
+                    "sector": "Sector",
                     "rs_rank": "RS Rank", "sector_rs_rank": "Sector Rank",
                     "pivot_distance_pct": "Above Pivot%",
                     "pivot_high": "Pivot High", "close": "Close",
@@ -7445,7 +7160,7 @@ _Based on PRE_BREAKOUT diagnostic: winners average RS20 = −1.23 vs losers +0.8
 
     _ld_conn.close()
 
-elif cur == PAGES[17]:  # Setup History
+elif cur == PAGES[16]:  # Setup History
     st.header('📋 Setup History')
     tab1, tab2 = st.tabs(['📊 Screen Performance', '🔍 Stock Lookup'])
 
@@ -7623,7 +7338,7 @@ elif cur == PAGES[17]:  # Setup History
                     hide_index=True
                 )
 
-elif cur == PAGES[18]:  # Data Health
+elif cur == PAGES[17]:  # Data Health
     import sqlite3
     from config import DB_PATH as _dh_db
     from datetime import datetime as _dh_dt
