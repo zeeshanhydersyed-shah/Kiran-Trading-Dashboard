@@ -77,7 +77,7 @@ def fetch_breakout(cur, date):
         LEFT JOIN stock_metadata sm ON sm.symbol = ss.symbol
         WHERE ss.date = ?
           AND ss.bos_flag = 1
-          AND ss.avg_vol_10d > 200000
+          AND ss.avg_vol_10d > 500000
     """, (date,))
     return cur.fetchall()
 
@@ -185,7 +185,7 @@ def append_setup_log_today() -> int:
                 LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
                 WHERE ss.date = ?
                   AND ss.bos_flag = 1
-                  AND ss.avg_vol_10d > 200000
+                  AND ss.avg_vol_10d > 500000
                   AND COALESCE((
                       SELECT ss_prev.bos_flag
                       FROM stock_signals ss_prev
