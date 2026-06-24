@@ -263,6 +263,68 @@ def _build_key_reason(row_dict, setup_type):
     return "; ".join(parts[:3]) if parts else "meets all criteria"
 
 
+# ── Post-breakout health filter ───────────────────────────────────────────────
+
+def _breakout_health_check(con, symbol, scan_date, pivot_high):
+    """
+    Two-rule filter for active breakouts.
+
+    Rule 1 (all ages): drop if current close >= 15% above pivot_high (extended).
+    Rule 2 (days_since >= 5 only): require BOTH
+        - the lowest post-breakout close occurred >= 2 trading days ago, AND
+        - today's close is >= 1% above that low (not stale / retested cleanly).
+    Returns True if symbol passes both rules and should be kept.
+    """
+    last_zero = con.execute(
+        "SELECT MAX(date) FROM stock_signals WHERE symbol = ? AND bos_flag = 0 AND date <= ?",
+        (symbol, scan_date),
+    ).fetchone()[0]
+    if last_zero is None:
+        streak_start = con.execute(
+            "SELECT MIN(date) FROM stock_signals WHERE symbol = ?", (symbol,)
+        ).fetchone()[0]
+    else:
+        streak_start = con.execute(
+            "SELECT MIN(date) FROM stock_signals WHERE symbol = ? AND date > ? AND bos_flag = 1",
+            (symbol, last_zero),
+        ).fetchone()[0]
+
+    if streak_start is None:
+        return False
+
+    closes = [
+        r[0] for r in con.execute(
+            "SELECT close FROM prices_adjusted"
+            " WHERE symbol = ? AND date >= ? AND date <= ?"
+            " ORDER BY date ASC",
+            (symbol, streak_start, scan_date),
+        ).fetchall()
+    ]
+    if not closes:
+        return False
+
+    days_since    = len(closes) - 1
+    current_close = closes[-1]
+    current_pct   = (current_close - pivot_high) / pivot_high * 100
+
+    # Rule 1 — extended cutoff
+    if current_pct >= 15.0:
+        return False
+
+    # Rule 2 — stale / retest check (only when the breakout is 5+ trading days old)
+    if days_since >= 5:
+        post_bo = closes[1:]  # exclude breakout day itself
+        if post_bo:
+            min_val      = min(post_bo)
+            min_idx      = max(i for i, c in enumerate(post_bo) if c == min_val)
+            days_since_low = (len(post_bo) - 1) - min_idx
+            pct_above_low  = (current_close - min_val) / min_val * 100
+            if days_since_low < 2 or pct_above_low < 1.0:
+                return False
+
+    return True
+
+
 # ── Main scan builder ─────────────────────────────────────────────────────────
 
 def append_leaders_scan(db_path=None):
@@ -329,7 +391,7 @@ def append_leaders_scan(db_path=None):
                 JOIN stock_metadata sm ON ss.symbol = sm.symbol
                 WHERE ss.date = ?
                   AND ss.bos_flag = 1
-                  AND ss.pivot_distance_pct BETWEEN 0 AND 5
+                  AND ss.pivot_distance_pct < 15
                   AND ss.avg_vol_10d > 200000
             """
 
@@ -340,6 +402,10 @@ def append_leaders_scan(db_path=None):
             sym        = r['symbol']
             sector     = r['sector']
             pivot_high = r['pivot_high']
+
+            # Post-breakout health filter: skip extended or stale breakouts
+            if setup_type == 'BREAKOUT' and not _breakout_health_check(con, sym, scan_date, pivot_high):
+                continue
 
             s_comp  = sec_composite.get(sector, 0.0)
             s_infl  = int(sec_inflection.get(sector, 0))
