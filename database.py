@@ -530,10 +530,66 @@ def count_sectors() -> int:
 # Trade setups
 # ---------------------------------------------------------------------------
 
+def _get_regime_context(conn, entry_date: str) -> tuple:
+    """
+    Return (regime_at_entry, days_since_last_transition) for entry_date.
+
+    days_since_last_transition is CAUSAL: it only looks backward from entry_date,
+    so it is safe to populate at entry time in a live trading context.
+
+    days_to_nearest_transition is NOT computed here because it requires knowledge
+    of future regime transitions and cannot be known at entry time. It must be
+    backfilled retrospectively once enough future data has accumulated.
+
+    Returns (None, None) if entry_date is not yet in market_regime.
+    """
+    row = conn.execute(
+        "SELECT regime FROM market_regime WHERE date = ?", (entry_date,)
+    ).fetchone()
+    if row is None:
+        return None, None
+
+    regime_at_entry = row[0]
+
+    # Find the most recent transition on or before entry_date.
+    # A transition is a date where the regime differs from the prior trading day.
+    transition = conn.execute(
+        """
+        SELECT cur.date
+        FROM market_regime cur
+        JOIN market_regime prev
+          ON prev.date = (
+              SELECT MAX(date) FROM market_regime WHERE date < cur.date
+          )
+        WHERE cur.regime != prev.regime
+          AND cur.date <= ?
+        ORDER BY cur.date DESC
+        LIMIT 1
+        """,
+        (entry_date,),
+    ).fetchone()
+
+    if transition is None:
+        # No prior transition found — count trading days from start of series
+        days_since = conn.execute(
+            "SELECT COUNT(*) FROM market_regime WHERE date <= ?", (entry_date,)
+        ).fetchone()[0] - 1
+    else:
+        days_since = conn.execute(
+            "SELECT COUNT(*) FROM market_regime WHERE date > ? AND date <= ?",
+            (transition[0], entry_date),
+        ).fetchone()[0]
+
+    return regime_at_entry, days_since
+
+
 def save_trade_setup(s: dict) -> int:
     """Insert a new trade setup. Returns the new row id."""
     import json
     with get_conn() as conn:
+        entry_date = s["created_date"]
+        regime_at_entry, days_since = _get_regime_context(conn, entry_date)
+        # days_to_nearest_transition requires future data — left NULL at insert time
         cur = conn.execute(
             """
             INSERT INTO trade_setups (
@@ -544,8 +600,9 @@ def save_trade_setup(s: dict) -> int:
                 risk_pct, atr_pct, status, notes,
                 quality_score, quality_checks,
                 range_width_pct, range_window, sector_rank, breadth_score,
-                source
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                source,
+                regime_at_entry, days_since_last_transition
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 s["created_date"], s["direction"], s["symbol"], s["sector"],
@@ -562,6 +619,7 @@ def save_trade_setup(s: dict) -> int:
                 s.get("range_width_pct"), s.get("range_window"),
                 s.get("sector_rank"), s.get("breadth_score"),
                 s.get("source", "System"),
+                regime_at_entry, days_since,
             ),
         )
         return cur.lastrowid

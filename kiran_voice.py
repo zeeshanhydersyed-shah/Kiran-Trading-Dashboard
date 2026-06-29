@@ -12,11 +12,12 @@ Entry points:
   get_memory(n=7)                                → list of dicts
 """
 
-import json
 import logging
 import os
 import sqlite3
 from datetime import date, timedelta
+
+import pandas as pd
 
 from dotenv import load_dotenv
 
@@ -70,6 +71,133 @@ STANCE INSTRUCTION:
 After your prose response, on a new line write exactly:
 STANCE: <one sentence summary of your position today>
 This line is parsed programmatically. Keep it under 120 characters."""
+
+
+# ── Conversational entity detection + deep context ────────────────────────────
+
+def detect_entities(user_input: str, con) -> tuple[str | None, str | None]:
+    """Detect valid PSX symbol or sector name in user input.
+    Returns (symbol or None, sector or None).
+    """
+    text = user_input.upper()
+
+    symbols = pd.read_sql(
+        "SELECT symbol FROM stock_metadata", con
+    )["symbol"].tolist()
+
+    sectors = pd.read_sql(
+        "SELECT DISTINCT sector FROM stock_metadata", con
+    )["sector"].tolist()
+
+    found_symbol = None
+    for word in text.split():
+        clean = word.strip("?.,!")
+        if clean in symbols:
+            found_symbol = clean
+            break
+
+    found_sector = None
+    for sector in sectors:
+        if sector.upper() in text:
+            found_sector = sector
+            break
+
+    return found_symbol, found_sector
+
+
+def get_stock_context(symbol: str, con) -> str:
+    """Pull deep stock data when a symbol is detected in user input."""
+    signals = pd.read_sql("""
+        SELECT date, symbol, rs_rank, rs_rank_prev, rank_change,
+               sector_rs_rank, rs_score_20, base_tightness,
+               bos_flag, vol_contraction, avg_vol_10d,
+               pivot_high, pivot_distance_pct
+        FROM stock_signals
+        WHERE symbol = ?
+        ORDER BY date DESC
+        LIMIT 10
+    """, con, params=[symbol])
+
+    setups = pd.read_sql("""
+        SELECT setup_date, setup_type,
+               fwd_return_5d, fwd_return_10d, fwd_return_20d,
+               outcome_label
+        FROM setup_log
+        WHERE symbol = ?
+        ORDER BY setup_date DESC
+        LIMIT 10
+    """, con, params=[symbol])
+
+    if signals.empty:
+        return f"\nDEEP STOCK CONTEXT — {symbol}:\nNo data found for {symbol} in Kiran DB."
+
+    latest = signals.iloc[0]
+
+    return f"""
+DEEP STOCK CONTEXT — {symbol}:
+Latest date: {latest['date']}
+RS Rank: {latest['rs_rank']} (prev: {latest['rs_rank_prev']}, change: {latest['rank_change']})
+Sector RS Rank: {latest['sector_rs_rank']}
+RS Score 20d: {round(latest['rs_score_20'], 2) if pd.notna(latest['rs_score_20']) else 'N/A'}
+Base Tightness (BBW%): {round(latest['base_tightness'], 2) if pd.notna(latest['base_tightness']) else 'N/A'}%
+BOS Flag: {latest['bos_flag']}
+Volume Contraction: {latest['vol_contraction']}
+Avg Vol 10d: {f"{latest['avg_vol_10d']:,.0f}" if pd.notna(latest['avg_vol_10d']) else 'N/A'}
+Pivot High: {latest['pivot_high']}
+Distance from Pivot: {round(latest['pivot_distance_pct'], 2) if pd.notna(latest['pivot_distance_pct']) else 'N/A'}%
+
+RS RANK TREND (last 10 sessions):
+{signals[['date', 'rs_rank', 'base_tightness', 'pivot_distance_pct']].to_string(index=False)}
+
+SETUP HISTORY (last 10):
+{setups.to_string(index=False) if not setups.empty else 'No prior setups logged.'}"""
+
+
+def get_sector_context(sector: str, con) -> str:
+    """Pull deep sector data when a sector is detected in user input."""
+    sector_hist = pd.read_sql("""
+        SELECT date, rs_score_20, rs_score_50, rs_rank,
+               breadth_score, adv_dec_ratio, vol_ratio,
+               composite_score, regime
+        FROM sector_signals
+        WHERE sector = ?
+        ORDER BY date DESC
+        LIMIT 20
+    """, con, params=[sector])
+
+    leaders = pd.read_sql("""
+        SELECT s.date, s.symbol, s.rs_rank, s.sector_rs_rank,
+               s.base_tightness, s.pivot_distance_pct,
+               s.bos_flag, s.avg_vol_10d
+        FROM stock_signals s
+        JOIN stock_metadata m ON s.symbol = m.symbol
+        WHERE m.sector = ?
+          AND s.date = (SELECT MAX(date) FROM stock_signals)
+          AND s.avg_vol_10d > 200000
+        ORDER BY s.sector_rs_rank ASC
+        LIMIT 10
+    """, con, params=[sector])
+
+    if sector_hist.empty:
+        return f"\nDEEP SECTOR CONTEXT — {sector}:\nNo sector data found for {sector} in Kiran DB."
+
+    latest = sector_hist.iloc[0]
+
+    return f"""
+DEEP SECTOR CONTEXT — {sector}:
+Latest date: {latest['date']}
+RS Rank: {latest['rs_rank']}
+Composite Score: {round(latest['composite_score'], 3)}
+Breadth Score: {round(latest['breadth_score'], 2)}
+Adv/Dec Ratio: {round(latest['adv_dec_ratio'], 2)}
+Volume Ratio: {round(latest['vol_ratio'], 2)}
+Regime: {latest['regime']}
+
+SECTOR TREND (last 20 sessions):
+{sector_hist[['date', 'rs_rank', 'composite_score', 'breadth_score']].to_string(index=False)}
+
+CURRENT LEADERS IN {sector} (liquid, ranked by sector RS):
+{leaders[['symbol', 'rs_rank', 'sector_rs_rank', 'base_tightness', 'pivot_distance_pct', 'bos_flag']].to_string(index=False) if not leaders.empty else 'No liquid leaders found.'}"""
 
 
 # ── Context builder ───────────────────────────────────────────────────────────
@@ -285,9 +413,7 @@ def _build_context(trigger_type: str, zeeshan_input: str | None) -> tuple[str, s
     else:
         memory_block = "  No prior entries."
 
-    con.close()
-
-    # ── Render context ────────────────────────────────────────────────────────
+    # ── Render base context ───────────────────────────────────────────────────
     context = f"""MARKET STATE (as of {market_date}):
 Regime: {regime}
 KSE-100: {kse100_close} | 30d performance: {kse100_30d_pct}%
@@ -313,6 +439,26 @@ AGENT MEMORY (last 7 journal entries):
 
 TRIGGER: {trigger_type}
 ZEESHAN SAYS: {zeeshan_input or ''}"""
+
+    # ── 8. Conversational deep context injection ──────────────────────────────
+    if trigger_type == "conversational" and zeeshan_input:
+        symbol, sector = detect_entities(zeeshan_input, con)
+
+        if symbol:
+            context += get_stock_context(symbol, con)
+
+        if sector:
+            context += get_sector_context(sector, con)
+
+        if not symbol and not sector:
+            context += (
+                "\n\nNOTE TO KIRAN: No specific stock or sector detected in "
+                "Zeeshan's question. Answer from market-level context only. "
+                "If you need stock or sector specific data to answer properly, "
+                "say so explicitly."
+            )
+
+    con.close()
 
     return context, market_date
 

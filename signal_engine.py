@@ -576,8 +576,6 @@ def run_recovery_signals() -> dict:
                 b_high   = b_closes.max()
                 b_low    = b_closes.min()
                 b_range  = (b_high - b_low) / b_low
-                if b_range >= 0.20:
-                    continue
                 pre      = closes[max(0, bs - 90) : bs]
                 if len(pre) < 5:
                     continue
@@ -660,8 +658,6 @@ def run_recovery_signals() -> dict:
             b_high   = b_closes.max()
             b_low    = b_closes.min()
             b_range  = (b_high - b_low) / b_low
-            if b_range >= 0.20:
-                continue
             pre      = closes[max(0, bs - 90) : bs]
             if len(pre) < 5:
                 continue

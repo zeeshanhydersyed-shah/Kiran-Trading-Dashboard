@@ -483,6 +483,59 @@ def count_sectors() -> int:
 # Trade setups
 # ---------------------------------------------------------------------------
 
+def _get_regime_context(conn, entry_date: str) -> tuple:
+    """
+    Return (regime_at_entry, days_since_last_transition) for entry_date.
+
+    days_since_last_transition is CAUSAL: it only looks backward from entry_date,
+    so it is safe to populate at entry time in a live trading context.
+
+    days_to_nearest_transition is NOT computed here because it requires knowledge
+    of future regime transitions and cannot be known at entry time. It must be
+    backfilled retrospectively once enough future data has accumulated.
+
+    Returns (None, None) if entry_date is not yet in market_regime.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT regime FROM market_regime WHERE date = %s", (entry_date,))
+        row = cur.fetchone()
+        if row is None:
+            return None, None
+        regime_at_entry = row[0]
+
+        # Most recent transition on or before entry_date
+        cur.execute(
+            """
+            SELECT cur.date
+            FROM market_regime cur
+            JOIN market_regime prev
+              ON prev.date = (
+                  SELECT MAX(date) FROM market_regime WHERE date < cur.date
+              )
+            WHERE cur.regime != prev.regime
+              AND cur.date <= %s
+            ORDER BY cur.date DESC
+            LIMIT 1
+            """,
+            (entry_date,),
+        )
+        transition = cur.fetchone()
+
+        if transition is None:
+            cur.execute(
+                "SELECT COUNT(*) FROM market_regime WHERE date <= %s", (entry_date,)
+            )
+            days_since = cur.fetchone()[0] - 1
+        else:
+            cur.execute(
+                "SELECT COUNT(*) FROM market_regime WHERE date > %s AND date <= %s",
+                (transition[0], entry_date),
+            )
+            days_since = cur.fetchone()[0]
+
+    return regime_at_entry, days_since
+
+
 def save_trade_setup(s: dict) -> int:
     sql = """
         INSERT INTO trade_setups (
@@ -493,11 +546,14 @@ def save_trade_setup(s: dict) -> int:
             risk_pct, atr_pct, status, notes,
             quality_score, quality_checks,
             range_width_pct, range_window, sector_rank, breadth_score,
-            source, trade_execution
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            source, trade_execution,
+            regime_at_entry, days_since_last_transition
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
     """
+    # days_to_nearest_transition requires future data — left NULL at insert time
     with get_conn() as conn:
+        regime_at_entry, days_since = _get_regime_context(conn, s["created_date"])
         with conn.cursor() as cur:
             cur.execute(sql, (
                 s["created_date"], s["direction"], s["symbol"], s["sector"],
@@ -515,6 +571,7 @@ def save_trade_setup(s: dict) -> int:
                 s.get("sector_rank"), s.get("breadth_score"),
                 s.get("source", "System"),
                 s.get("trade_execution", "Paper"),
+                regime_at_entry, days_since,
             ))
             return cur.fetchone()[0]
 

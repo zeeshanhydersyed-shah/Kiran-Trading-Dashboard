@@ -26,7 +26,6 @@ from database import (
     count_prices,
     count_sectors,
     get_price_date_range,
-    auto_save_setups,
     auto_save_setups_with_source,
 )
 from scraper import (
@@ -110,10 +109,9 @@ def cmd_update():
 
     if not new_dates:
         logger.info("Database is already up to date (latest: %s).", latest_str)
-        # Still run analysis to auto-save today's setups if not yet saved
+        # Still run analysis to auto-save today's support reversal setups if not yet saved
         result = run_analysis()
         if result:
-            auto_save_setups(result.get("trade_setups", []))
             auto_save_setups_with_source(
                 result.get("support_reversal_setups", []),
                 source="Support Reversal"
@@ -233,10 +231,9 @@ def cmd_update():
     except Exception as exc:
         logger.warning("Leaders deep scan hook failed: %s", exc)
 
-    # Auto-save today's system-generated and support reversal setups
+    # Auto-save today's support reversal setups
     result = run_analysis()
     if result:
-        auto_save_setups(result.get("trade_setups", []))
         auto_save_setups_with_source(
             result.get("support_reversal_setups", []),
             source="Support Reversal"
