@@ -1160,15 +1160,51 @@ try:
             _rh_label = _rh_regime
             _rh_bg = "#f8fafc"; _rh_border = "#94a3b8"; _rh_color = "#475569"; _rh_extra = ""
 
+        # ── Kelly pill (computed once, appended to header) ────────────────────
+        try:
+            from kelly import build_kelly_snapshot
+            @st.cache_data(ttl=600, show_spinner=False)
+            def _cached_kelly():
+                return build_kelly_snapshot()
+            _kl = _cached_kelly()
+            _kl_full = f"{_kl.full_kelly_pct:+.2f}%"
+            _kl_half = f"{_kl.half_kelly_pct:+.2f}%"
+            if _kl.negative_edge:
+                _kl_pill_bg    = "#fef2f2"
+                _kl_pill_color = "#991b1b"
+                _kl_label      = "No Edge"
+            else:
+                _kl_pill_bg    = "#f0fdf4"
+                _kl_pill_color = "#166534"
+                _kl_label      = "Kelly"
+            _kelly_html = (
+                f"<span style='margin-left:4px; border-left:1px solid #e2e8f0; "
+                f"padding-left:12px; display:inline-flex; align-items:center; gap:8px; white-space:nowrap;'>"
+                f"<span style='font-size:0.68rem; color:#94a3b8; letter-spacing:0.04em; text-transform:uppercase;'>"
+                f"Kelly (30T)</span>"
+                f"<span style='font-size:0.75rem; font-weight:600; "
+                f"background:{_kl_pill_bg}; color:{_kl_pill_color}; "
+                f"padding:1px 7px; border-radius:4px;'>"
+                f"Full {_kl_full}</span>"
+                f"<span style='font-size:0.75rem; font-weight:600; "
+                f"background:{_kl_pill_bg}; color:{_kl_pill_color}; "
+                f"padding:1px 7px; border-radius:4px;'>"
+                f"Half {_kl_half}</span>"
+                f"</span>"
+            )
+        except Exception:
+            _kelly_html = ""
+
         st.markdown(
             f"<div style='background:{_rh_bg}; border-left:4px solid {_rh_border}; "
             f"padding:6px 14px; border-radius:6px; margin-bottom:6px; "
-            f"display:flex; align-items:center; gap:12px;'>"
+            f"display:flex; align-items:center; gap:12px; flex-wrap:wrap;'>"
             f"<span style='font-size:0.85rem; font-weight:700; color:{_rh_color}; white-space:nowrap;'>"
             f"{_rh_label}{_rh_extra}</span>"
-            f"<span style='font-size:0.72rem; color:#94a3b8;'>"
+            f"<span style='font-size:0.72rem; color:#94a3b8; white-space:nowrap;'>"
             f"{_rh_days_since}d since last regime change &nbsp;·&nbsp; as of {fmt_date(_rh_dates[-1])}"
             f"</span>"
+            f"{_kelly_html}"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -2214,6 +2250,362 @@ elif cur == PAGES[5]:  # Trade Log
             "Amber = proceed carefully (0–2 days)  ·  "
             "Grey-blue = untested regime (no history)"
         )
+
+    # ── Regime Performance Analysis ───────────────────────────────────────────
+    if actual_trades:
+        st.divider()
+        st.markdown("**Regime Performance Analysis**")
+        st.caption(
+            "Win rate and returns for your Actual closed trades, grouped by the 6 market conditions. "
+            "Only trades with a recorded Win / Loss / Breakeven outcome are counted."
+        )
+        _REGIME_ANALYSIS_SQL = """
+            WITH labeled AS (
+                SELECT
+                    CASE
+                        WHEN regime_at_entry = 'TRENDING_UP'
+                             AND (days_since_last_transition IS NULL OR days_since_last_transition >= 6)
+                             THEN 'Stable uptrend — favorable conditions'
+                        WHEN regime_at_entry = 'TRENDING_UP'
+                             AND days_since_last_transition BETWEEN 3 AND 5
+                             THEN 'Uptrend settling — moderate caution'
+                        WHEN regime_at_entry = 'TRENDING_UP'
+                             AND days_since_last_transition <= 2
+                             THEN 'Uptrend just started — proceed carefully'
+                        WHEN regime_at_entry = 'VOLATILE'
+                             THEN 'Choppy conditions — selective only'
+                        WHEN regime_at_entry = 'RANGING'
+                             THEN 'Narrow range — low activity expected'
+                        WHEN regime_at_entry = 'TRENDING_DOWN'
+                             THEN 'Down / Short setups only'
+                    END AS condition_label,
+                    outcome,
+                    actual_pl_pct,
+                    actual_pl_pkr
+                FROM trade_setups
+                WHERE source = 'Actual'
+                  AND outcome IN ('Win', 'Loss', 'Breakeven')
+            )
+            SELECT
+                condition_label                                                              AS "Conditions",
+                COUNT(*)                                                                     AS "Trades",
+                SUM(CASE WHEN outcome = 'Win'  THEN 1 ELSE 0 END)                           AS "Wins",
+                SUM(CASE WHEN outcome = 'Loss' THEN 1 ELSE 0 END)                           AS "Losses",
+                ROUND(
+                    100.0 * SUM(CASE WHEN outcome = 'Win' THEN 1 ELSE 0 END)
+                    / NULLIF(SUM(CASE WHEN outcome IN ('Win','Loss') THEN 1 ELSE 0 END), 0),
+                    1
+                )                                                                            AS "Win Rate %",
+                ROUND(AVG(actual_pl_pct), 2)                                                AS "Avg Return %",
+                ROUND(SUM(COALESCE(actual_pl_pkr, 0)), 0)                                   AS "Net PnL (PKR)"
+            FROM labeled
+            WHERE condition_label IS NOT NULL
+            GROUP BY condition_label
+            ORDER BY "Trades" DESC
+        """
+        try:
+            _ra_con = sqlite3.connect(DB_PATH)
+            ra_df = pd.read_sql_query(_REGIME_ANALYSIS_SQL, _ra_con)
+            _ra_con.close()
+        except Exception as _ra_err:
+            ra_df = pd.DataFrame()
+            st.warning(f"Regime analysis query failed: {_ra_err}")
+
+        if not ra_df.empty:
+            # ── Condition ordering (fixed, most to least favorable) ───────────
+            _COND_ORDER = [
+                "Stable uptrend — favorable conditions",
+                "Uptrend settling — moderate caution",
+                "Uptrend just started — proceed carefully",
+                "Choppy conditions — selective only",
+                "Narrow range — low activity expected",
+                "Down / Short setups only",
+            ]
+            ra_df["_sort"] = ra_df["Conditions"].apply(
+                lambda x: _COND_ORDER.index(x) if x in _COND_ORDER else 99
+            )
+            ra_df = ra_df.sort_values("_sort").drop(columns=["_sort"]).reset_index(drop=True)
+
+            # ── Cell styling ──────────────────────────────────────────────────
+            def _style_win_rate(series):
+                styles = []
+                for v in series:
+                    try:
+                        f = float(v)
+                        if f >= 55:
+                            styles.append("color:#16a34a; font-weight:700")
+                        elif f >= 45:
+                            styles.append("color:#92400e; font-weight:600")
+                        else:
+                            styles.append("color:#dc2626; font-weight:700")
+                    except (TypeError, ValueError):
+                        styles.append("")
+                return styles
+
+            def _style_net_pnl(series):
+                styles = []
+                for v in series:
+                    try:
+                        f = float(v)
+                        styles.append("color:#16a34a; font-weight:600" if f >= 0 else "color:#dc2626; font-weight:600")
+                    except (TypeError, ValueError):
+                        styles.append("")
+                return styles
+
+            def _style_avg_return(series):
+                styles = []
+                for v in series:
+                    try:
+                        f = float(v)
+                        styles.append("color:#16a34a" if f >= 0 else "color:#dc2626")
+                    except (TypeError, ValueError):
+                        styles.append("")
+                return styles
+
+            _ra_fmt = {
+                "Win Rate %": "{:.1f}%",
+                "Avg Return %": "{:+.2f}%",
+                "Net PnL (PKR)": "{:+,.0f}",
+            }
+            st.dataframe(
+                ra_df.style
+                .apply(_style_win_rate,   subset=["Win Rate %"])
+                .apply(_style_avg_return, subset=["Avg Return %"])
+                .apply(_style_net_pnl,    subset=["Net PnL (PKR)"])
+                .format(_ra_fmt, na_rep="—"),
+                use_container_width=True,
+                hide_index=True,
+                height=min(500, (len(ra_df) + 1) * 42),
+            )
+
+            # ── Key takeaways ─────────────────────────────────────────────────
+            _ra_closed = ra_df[ra_df["Trades"] >= 5].copy()  # min sample size
+            if not _ra_closed.empty:
+                _best  = _ra_closed.loc[_ra_closed["Win Rate %"].idxmax()]
+                _worst = _ra_closed.loc[_ra_closed["Win Rate %"].idxmin()]
+                _total_closed = int(ra_df["Trades"].sum())
+                _total_wins   = int(ra_df["Wins"].sum())
+                _overall_wr   = round(100.0 * _total_wins / _total_closed, 1) if _total_closed else 0
+
+                st.markdown(
+                    f"**Key takeaways** (conditions with ≥5 trades)  \n"
+                    f"- **Best condition:** {_best['Conditions']} — "
+                    f"{_best['Win Rate %']:.1f}% win rate across {int(_best['Trades'])} trades  \n"
+                    f"- **Worst condition:** {_worst['Conditions']} — "
+                    f"{_worst['Win Rate %']:.1f}% win rate across {int(_worst['Trades'])} trades  \n"
+                    f"- **Overall closed trades:** {_total_closed} · "
+                    f"Overall win rate: {_overall_wr:.1f}%"
+                )
+            else:
+                st.caption("Not enough closed trades per condition yet (min 5) to generate takeaways.")
+
+            # ── Condition definitions (dynamic footnote) ──────────────────────
+            # Joins trade_setups to market_regime on entry date so indicator
+            # averages (EMA spread, ATR%, 20d return) are pulled from the DB
+            # for the actual dates your trades were entered — not hardcoded.
+            # Classification rules sourced verbatim from regime.py _classify().
+            _DEF_SQL = """
+                WITH labeled AS (
+                    SELECT
+                        CASE
+                            WHEN ts.regime_at_entry = 'TRENDING_UP'
+                                 AND (ts.days_since_last_transition IS NULL
+                                      OR ts.days_since_last_transition >= 6)
+                                 THEN 'Stable uptrend — favorable conditions'
+                            WHEN ts.regime_at_entry = 'TRENDING_UP'
+                                 AND ts.days_since_last_transition BETWEEN 3 AND 5
+                                 THEN 'Uptrend settling — moderate caution'
+                            WHEN ts.regime_at_entry = 'TRENDING_UP'
+                                 AND ts.days_since_last_transition <= 2
+                                 THEN 'Uptrend just started — proceed carefully'
+                            WHEN ts.regime_at_entry = 'VOLATILE'
+                                 THEN 'Choppy conditions — selective only'
+                            WHEN ts.regime_at_entry = 'RANGING'
+                                 THEN 'Narrow range — low activity expected'
+                            WHEN ts.regime_at_entry = 'TRENDING_DOWN'
+                                 THEN 'Down / Short setups only'
+                        END                           AS condition_label,
+                        ts.regime_at_entry,
+                        ts.days_since_last_transition,
+                        mr.ema_20,
+                        mr.ema_50,
+                        mr.ema_200,
+                        mr.atr_pct,
+                        mr.return_20d
+                    FROM trade_setups ts
+                    LEFT JOIN market_regime mr ON ts.created_date = mr.date
+                    WHERE ts.source = 'Actual'
+                      AND ts.regime_at_entry IS NOT NULL
+                )
+                SELECT
+                    condition_label,
+                    regime_at_entry,
+                    MIN(CASE WHEN days_since_last_transition IS NOT NULL
+                             THEN days_since_last_transition END)                AS min_days,
+                    MAX(days_since_last_transition)                               AS max_days,
+                    SUM(CASE WHEN days_since_last_transition IS NULL
+                             THEN 1 ELSE 0 END)                                  AS null_days_n,
+                    ROUND(AVG(CASE WHEN ema_20 IS NOT NULL AND ema_50 IS NOT NULL
+                                   THEN (ema_20 - ema_50) / ema_50 * 100 END), 2) AS avg_ema20_vs_50_pct,
+                    ROUND(AVG(CASE WHEN ema_50 IS NOT NULL AND ema_200 IS NOT NULL
+                                   THEN (ema_50 - ema_200) / ema_200 * 100 END), 2) AS avg_ema50_vs_200_pct,
+                    ROUND(AVG(atr_pct),    2)                                    AS avg_atr_pct,
+                    ROUND(AVG(return_20d), 2)                                    AS avg_return_20d,
+                    COUNT(*)                                                      AS n
+                FROM labeled
+                WHERE condition_label IS NOT NULL
+                GROUP BY condition_label, regime_at_entry
+            """
+            try:
+                _def_con = sqlite3.connect(DB_PATH)
+                _def_meta = pd.read_sql_query(_DEF_SQL, _def_con)
+                _def_con.close()
+            except Exception:
+                _def_meta = pd.DataFrame()
+
+            if not _def_meta.empty:
+                # Sort into canonical order; keep only conditions present in data
+                _def_meta["_sort"] = _def_meta["condition_label"].apply(
+                    lambda x: _COND_ORDER.index(x) if x in _COND_ORDER else 99
+                )
+                _def_meta = _def_meta.sort_values("_sort").reset_index(drop=True)
+
+                # Short display titles for the selectbox and heading
+                _COND_TITLES = {
+                    "Stable uptrend — favorable conditions":    "Stable Uptrend (6+ Days)",
+                    "Uptrend settling — moderate caution":      "Uptrend Settling (3–5 Days)",
+                    "Uptrend just started — proceed carefully": "Uptrend Just Started (0–2 Days)",
+                    "Choppy conditions — selective only":       "Volatile / Choppy",
+                    "Narrow range — low activity expected":     "Ranging / Narrow",
+                    "Down / Short setups only":                 "Downtrend",
+                }
+
+                # Core definitions — one sentence per regime, derived from
+                # regime.py _classify(). Duration note appended for TRENDING_UP.
+                def _core_def(regime, cond):
+                    if regime == "TRENDING_UP":
+                        base = (
+                            "KSE-100 is in a confirmed broad-market uptrend "
+                            r"($EMA_{20} > EMA_{50} > EMA_{200}$), "
+                            "with the index trading above the $EMA_{20}$ and posting "
+                            "positive returns over the prior 20 days. "
+                            "This is the only regime that provides a structural tailwind "
+                            "for long setups."
+                        )
+                        if "favorable" in cond:
+                            note = "The trend has been in place for **6+ days** — settled and reliable."
+                        elif "settling" in cond:
+                            note = "The trend is **3–5 days old** — still establishing; watch for false starts."
+                        else:
+                            note = "The trend is **0–2 days old** — very fresh; could be a genuine breakout or a brief bounce."
+                        return base + " " + note
+                    elif regime == "TRENDING_DOWN":
+                        return (
+                            "KSE-100 is in a confirmed broad-market downtrend "
+                            r"($EMA_{20} < EMA_{50} < EMA_{200}$), "
+                            "with the index trading below the $EMA_{20}$ and declining "
+                            "over the prior 20 days. "
+                            "Long setups face a direct index headwind — system flags this as short-only territory."
+                        )
+                    elif regime == "VOLATILE":
+                        return (
+                            "No directional EMA stack is present, but daily swings are elevated: "
+                            "ATR(20) exceeds **1.5%** of the index level. "
+                            "The market is active and reactive but structurally choppy — "
+                            "harder to hold positions through noise."
+                        )
+                    else:  # RANGING
+                        return (
+                            "No directional EMA stack and ATR(20) ≤ **1.5%** of the index level. "
+                            "Low-volatility, sideways action with no trend conviction — "
+                            "conditions where breakouts frequently stall or reverse quickly."
+                        )
+
+                _available = [
+                    c for c in _COND_ORDER
+                    if c in _def_meta["condition_label"].values
+                ]
+
+                with st.expander("What do these conditions actually mean?"):
+                    _sel_cond = st.selectbox(
+                        "Select a condition:",
+                        options=_available,
+                        format_func=lambda x: _COND_TITLES.get(x, x),
+                        key="regime_def_sel",
+                        label_visibility="collapsed",
+                    )
+
+                    _r = _def_meta[_def_meta["condition_label"] == _sel_cond].iloc[0]
+                    _regime   = _r["regime_at_entry"]
+                    _min_d    = _r["min_days"]
+                    _max_d    = _r["max_days"]
+                    _null_n   = int(_r["null_days_n"]) if pd.notna(_r["null_days_n"]) else 0
+                    _e20_v50  = _r["avg_ema20_vs_50_pct"]
+                    _e50_v200 = _r["avg_ema50_vs_200_pct"]
+                    _atr      = _r["avg_atr_pct"]
+                    _r20      = _r["avg_return_20d"]
+
+                    # ── Heading ───────────────────────────────────────────────
+                    _title = _COND_TITLES.get(_sel_cond, _sel_cond)
+                    st.markdown(f"### 📊 Regime Context: {_title}")
+
+                    # ── Core definition ───────────────────────────────────────
+                    st.markdown(
+                        f"**Core Definition:** {_core_def(_regime, _sel_cond)}"
+                    )
+
+                    st.divider()
+
+                    # ── Observed entry conditions heading ─────────────────────
+                    if _min_d is not None and _max_d is not None:
+                        _day_range = f"Observed {int(_min_d)}–{int(_max_d)} Days"
+                    elif _null_n:
+                        _day_range = "No Transition Date on Record"
+                    else:
+                        _day_range = "Observed"
+                    st.markdown(
+                        f"**Your Historical Entry Conditions ({_day_range}):**"
+                    )
+
+                    # ── Three metric columns ──────────────────────────────────
+                    _mc1, _mc2, _mc3 = st.columns(3)
+
+                    # Trend Strength
+                    if pd.notna(_r20):
+                        _ts_sign  = "+" if _r20 >= 0 else ""
+                        _ts_label = f"{_ts_sign}{_r20:.2f}% (20-day avg)"
+                        _ts_delta = "Positive momentum" if _r20 >= 0 else "Negative momentum"
+                    else:
+                        _ts_label, _ts_delta = "N/A", None
+                    _mc1.metric("Trend Strength", _ts_label, _ts_delta)
+
+                    # Volatility
+                    if pd.notna(_atr):
+                        _mc3.metric("Daily ATR (avg)", f"{_atr:.2f}% of index")
+                    else:
+                        _mc3.metric("Daily ATR (avg)", "N/A")
+
+                    # EMA spread — use the middle column as a bullet block
+                    _mc2.markdown("**MA Spacings**")
+                    if pd.notna(_e20_v50):
+                        _mc2.markdown(
+                            f"$EMA_{{20}}$ was **{_e20_v50:+.2f}%** above $EMA_{{50}}$"
+                        )
+                    if pd.notna(_e50_v200):
+                        _mc2.markdown(
+                            f"$EMA_{{50}}$ was **{_e50_v200:+.2f}%** above $EMA_{{200}}$"
+                        )
+                    if not pd.notna(_e20_v50) and not pd.notna(_e50_v200):
+                        _mc2.caption("No market_regime data matched your entry dates.")
+
+                    # ── Footer caption ────────────────────────────────────────
+                    st.caption(
+                        "Classification rules sourced from `regime.py _classify()` — applied nightly to "
+                        "KSE-100 OHLCV data. Indicator averages joined live from `market_regime` on "
+                        "your actual trade entry dates."
+                    )
+        else:
+            st.info("No closed Actual trades with regime data yet.")
 
     # ── Partial close ─────────────────────────────────────────────────────────
     if actual_trades:
@@ -6719,32 +7111,31 @@ elif cur == PAGES[15]:  # Leaders
                     _ds_audit_disp['triggered'] = _ds_audit_disp['triggered'].apply(
                         lambda x: "Yes" if x == 1 else ("No" if x == 0 else "—"))
 
-                    _ds_styled = _ds_audit_disp.style.map(
-                        _ds_color_outcome, subset=["outcome_label"]
+                    _ds_cols = [
+                        'scan_date', 'setup_type', 'rank', 'symbol', 'sector',
+                        'entry_trigger', 'sl_pct', 'triggered', 'trigger_date',
+                        'fwd_return_5d', 'fwd_return_10d', 'fwd_return_20d',
+                        'outcome_label'
+                    ]
+                    _ds_renamed = _ds_audit_disp[_ds_cols].rename(columns={
+                        'scan_date':      'Date',
+                        'setup_type':     'Type',
+                        'rank':           'Rank',
+                        'symbol':         'Symbol',
+                        'sector':         'Sector',
+                        'entry_trigger':  'Entry',
+                        'sl_pct':         'SL%',
+                        'triggered':      'Triggered',
+                        'trigger_date':   'Trigger Date',
+                        'fwd_return_5d':  'Ret 5d',
+                        'fwd_return_10d': 'Ret 10d',
+                        'fwd_return_20d': 'Ret 20d',
+                        'outcome_label':  'Outcome',
+                    })
+                    _ds_styled = _ds_renamed.style.map(
+                        _ds_color_outcome, subset=["Outcome"]
                     )
-                    st.dataframe(
-                        _ds_styled[[
-                            'scan_date', 'setup_type', 'rank', 'symbol', 'sector',
-                            'entry_trigger', 'sl_pct', 'triggered', 'trigger_date',
-                            'fwd_return_5d', 'fwd_return_10d', 'fwd_return_20d',
-                            'outcome_label'
-                        ]].rename(columns={
-                            'scan_date':      'Date',
-                            'setup_type':     'Type',
-                            'rank':           'Rank',
-                            'symbol':         'Symbol',
-                            'sector':         'Sector',
-                            'entry_trigger':  'Entry',
-                            'sl_pct':         'SL%',
-                            'triggered':      'Triggered',
-                            'trigger_date':   'Trigger Date',
-                            'fwd_return_5d':  'Ret 5d',
-                            'fwd_return_10d': 'Ret 10d',
-                            'fwd_return_20d': 'Ret 20d',
-                            'outcome_label':  'Outcome',
-                        }),
-                        use_container_width=True, hide_index=True
-                    )
+                    st.dataframe(_ds_styled, use_container_width=True, hide_index=True)
 
                     # Summary stats — only rows that triggered
                     _ds_triggered = _ds_audit[_ds_audit['triggered'] == 1].copy()

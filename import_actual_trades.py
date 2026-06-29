@@ -306,6 +306,31 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
             if fixed:
                 logger.info("  Reclassified %d Breakeven → Win/Loss", fixed)
 
+    # ── Sync portfolio value from JOURNAL-2!B3 → portfolio_values ────────────────
+    # B3 holds the current portfolio value, manually updated daily in Excel.
+    # Writing it here keeps the DB current so Streamlit Cloud has a fresh capital
+    # base for Kelly sizing without any manual Audit-page entry.
+    if not dry_run:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
+            ws = wb[SHEET_NAME]
+            raw_val = ws["B3"].value
+            wb.close()
+            if raw_val is not None:
+                portfolio_val = float(raw_val)
+                if portfolio_val > 0:
+                    from database import add_portfolio_value
+                    today = pd.Timestamp.today().strftime("%Y-%m-%d")
+                    add_portfolio_value(today, portfolio_val, notes="Auto-synced from JOURNAL-2!B3")
+                    logger.info("Portfolio value synced: PKR %.0f (as of %s)", portfolio_val, today)
+                else:
+                    logger.warning("B3 value is zero or negative (%.0f) — portfolio_values not updated", portfolio_val)
+            else:
+                logger.warning("B3 is empty — portfolio_values not updated")
+        except Exception as e:
+            logger.warning("Could not sync portfolio value from B3: %s", e)
+
     logger.info(
         "\n=== SUMMARY ===\n"
         "  Imported   : %d\n"
