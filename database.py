@@ -1009,6 +1009,83 @@ def evaluate_paper_trades() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Flows Signal Log — persists Intelligence Engine signals across sessions
+# ---------------------------------------------------------------------------
+
+def init_flows_signal_log():
+    """Create flows_signal_log table if it doesn't exist (idempotent)."""
+    with get_conn() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flows_signal_log (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                date            TEXT    NOT NULL,
+                sector          TEXT    NOT NULL,
+                signal_type     TEXT    NOT NULL,
+                action          TEXT,
+                strength        TEXT,
+                trigger         TEXT,
+                buy_ratio       REAL,
+                buy_ratio_3d    REAL,
+                consec_buy_days REAL,
+                vol_zscore      REAL,
+                ret_5d_pct      REAL,
+                outcome         TEXT    DEFAULT 'PENDING',
+                fwd_5d_actual   REAL,
+                fwd_10d_actual  REAL,
+                description     TEXT,
+                smart_net_vol   REAL,
+                confidence_note TEXT,
+                UNIQUE(date, sector, signal_type)
+            )
+        """)
+
+
+def upsert_flow_signals(signals: list[dict]):
+    """Insert new signals — silently skips duplicates (date+sector+signal_type)."""
+    if not signals:
+        return
+    with get_conn() as conn:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO flows_signal_log
+                (date, sector, signal_type, action, strength, trigger,
+                 buy_ratio, buy_ratio_3d, consec_buy_days, vol_zscore,
+                 ret_5d_pct, outcome, fwd_5d_actual)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            [
+                (
+                    s["date"], s["sector"], s["signal_type"],
+                    s.get("action"), s.get("strength"), s.get("trigger"),
+                    s.get("buy_ratio"), s.get("buy_ratio_3d"),
+                    s.get("consec_buy_days"), s.get("vol_zscore"),
+                    s.get("ret_5d_pct"),
+                    s.get("outcome", "PENDING"), s.get("fwd_5d_actual"),
+                )
+                for s in signals
+            ],
+        )
+
+
+def get_flow_signal_journal() -> list[dict]:
+    """Return all rows from flows_signal_log, newest first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM flows_signal_log ORDER BY date DESC, sector"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_flow_signal_outcome(row_id: int, fwd_5d_actual: float, outcome: str):
+    """Write validated outcome back to a signal row."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE flows_signal_log SET fwd_5d_actual=?, outcome=? WHERE id=?",
+            (fwd_5d_actual, outcome, row_id),
+        )
+
+
+# ---------------------------------------------------------------------------
 # PostgreSQL override — runs LAST so PG functions replace SQLite ones
 # when DATABASE_URL is available (Streamlit Cloud / GitHub Actions).
 # ---------------------------------------------------------------------------
@@ -1033,6 +1110,10 @@ if _PG_URL:
         get_latest_prices,
         cleanup_ghost_dates,
         get_sector_price_data,
+        get_sector_price_data_1y,
+        get_sector_price_data_60d,
+        get_sector_price_data_60d_active,
+        get_sector_price_data_300d_active,
         get_prices_for_breadth,
         count_prices,
         count_sectors,
@@ -1045,6 +1126,7 @@ if _PG_URL:
         setup_already_saved,
         get_backtest_summary,
         auto_save_setups,
+        auto_save_setups_with_source,
         stm_pick_already_saved,
         auto_save_stm_picks,
         get_sim_portfolio_data,
@@ -1055,4 +1137,8 @@ if _PG_URL:
         get_portfolio_values,
         delete_portfolio_value,
         evaluate_paper_trades,
+        init_flows_signal_log,
+        upsert_flow_signals,
+        get_flow_signal_journal,
+        update_flow_signal_outcome,
     )

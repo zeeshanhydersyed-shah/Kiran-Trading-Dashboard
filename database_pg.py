@@ -461,6 +461,86 @@ def get_sector_price_data() -> list[dict]:
         return _fetchall(conn, sql)
 
 
+def get_sector_price_data_1y() -> list[dict]:
+    """Sector x prices, last 365 calendar days.
+    Used by History page (load_sector_history)."""
+    sql = """
+        SELECT s.symbol, s.sector, p.date,
+               COALESCE(p.open, p.close)  AS open,
+               COALESCE(p.high, p.close)  AS high,
+               COALESCE(p.low,  p.close)  AS low,
+               p.close,
+               COALESCE(p.volume, 0)      AS volume
+        FROM sectors s
+        JOIN prices p ON p.symbol = s.symbol
+        WHERE p.date >= CURRENT_DATE - INTERVAL '365 days'
+        ORDER BY s.symbol, p.date
+    """
+    with get_conn() as conn:
+        return _fetchall(conn, sql)
+
+
+def get_sector_price_data_60d() -> list[dict]:
+    """Sector x prices, last 90 calendar days (approx 60 trading days).
+    Used by STM screener display."""
+    sql = """
+        SELECT s.symbol, s.sector, p.date,
+               COALESCE(p.open, p.close)  AS open,
+               COALESCE(p.high, p.close)  AS high,
+               COALESCE(p.low,  p.close)  AS low,
+               p.close,
+               COALESCE(p.volume, 0)      AS volume
+        FROM sectors s
+        JOIN prices p ON p.symbol = s.symbol
+        WHERE p.date >= CURRENT_DATE - INTERVAL '90 days'
+        ORDER BY s.symbol, p.date
+    """
+    with get_conn() as conn:
+        return _fetchall(conn, sql)
+
+
+def get_sector_price_data_300d_active() -> list[dict]:
+    """Sector x prices, active symbols only, last 420 calendar days (approx 300 trading days).
+    Used by signal_engine.run_recovery_signals()."""
+    sql = """
+        SELECT s.symbol, s.sector, p.date,
+               COALESCE(p.open, p.close)  AS open,
+               COALESCE(p.high, p.close)  AS high,
+               COALESCE(p.low,  p.close)  AS low,
+               p.close,
+               COALESCE(p.volume, 0)      AS volume
+        FROM sectors s
+        JOIN prices p  ON p.symbol  = s.symbol
+        JOIN stock_metadata sm ON sm.symbol = s.symbol
+        WHERE sm.is_active = TRUE
+        AND p.date >= CURRENT_DATE - INTERVAL '420 days'
+        ORDER BY s.symbol, p.date
+    """
+    with get_conn() as conn:
+        return _fetchall(conn, sql)
+
+
+def get_sector_price_data_60d_active() -> list[dict]:
+    """Sector x prices, active symbols only, last 90 calendar days (approx 60 trading days).
+    Used by signal_engine.run_stm_signals()."""
+    sql = """
+        SELECT s.symbol, s.sector, p.date,
+               COALESCE(p.open, p.close)  AS open,
+               COALESCE(p.high, p.close)  AS high,
+               COALESCE(p.low,  p.close)  AS low,
+               p.close,
+               COALESCE(p.volume, 0)      AS volume
+        FROM sectors s
+        JOIN prices p  ON p.symbol  = s.symbol
+        JOIN stock_metadata sm ON sm.symbol = s.symbol
+        WHERE sm.is_active = TRUE
+        AND p.date >= CURRENT_DATE - INTERVAL '90 days'
+        ORDER BY s.symbol, p.date
+    """
+    with get_conn() as conn:
+        return _fetchall(conn, sql)
+
+
 def get_prices_for_breadth() -> list[dict]:
     """Return all symbol/date/close rows for Weinstein breadth computation."""
     with get_conn() as conn:
@@ -711,6 +791,21 @@ def auto_save_setups(setups: list[dict]) -> int:
     return saved
 
 
+def auto_save_setups_with_source(setups: list[dict], source: str = "System") -> int:
+    """PG version of auto_save_setups_with_source.
+    Saves new system setups with explicit source label,
+    skipping duplicates. Returns count saved."""
+    saved = 0
+    for s in setups:
+        if not setup_already_saved(s["symbol"], s["direction"], s["created_date"]):
+            s_with_source = dict(s, source=source)
+            save_trade_setup(s_with_source)
+            saved += 1
+    if saved:
+        logger.info("Auto-saved %d new system setup(s) (source=%s).", saved, source)
+    return saved
+
+
 def stm_pick_already_saved(symbol: str, date: str) -> bool:
     with get_conn() as conn:
         row = _fetchone(
@@ -774,6 +869,90 @@ def delete_portfolio_transaction(tx_id: int):
     """Delete a portfolio transaction by ID."""
     with get_conn() as conn:
         _exec(conn, "DELETE FROM portfolio_transactions WHERE id = %s", (tx_id,))
+
+
+# ---------------------------------------------------------------------------
+# Flows Signal Log
+# ---------------------------------------------------------------------------
+
+def init_flows_signal_log():
+    """Create flows_signal_log table if it doesn't exist (idempotent)."""
+    ddl = """
+        CREATE TABLE IF NOT EXISTS flows_signal_log (
+            id              SERIAL PRIMARY KEY,
+            date            TEXT    NOT NULL,
+            sector          TEXT    NOT NULL,
+            signal_type     TEXT    NOT NULL,
+            action          TEXT,
+            strength        TEXT,
+            trigger         TEXT,
+            buy_ratio       DOUBLE PRECISION,
+            buy_ratio_3d    DOUBLE PRECISION,
+            consec_buy_days DOUBLE PRECISION,
+            vol_zscore      DOUBLE PRECISION,
+            ret_5d_pct      DOUBLE PRECISION,
+            outcome         TEXT    DEFAULT 'PENDING',
+            fwd_5d_actual   DOUBLE PRECISION,
+            fwd_10d_actual  DOUBLE PRECISION,
+            description     TEXT,
+            smart_net_vol   DOUBLE PRECISION,
+            confidence_note TEXT,
+            UNIQUE(date, sector, signal_type)
+        )
+    """
+    with get_conn() as conn:
+        _exec(conn, ddl)
+
+
+def upsert_flow_signals(signals: list[dict]):
+    """Insert new signals — silently skips duplicates (date+sector+signal_type)."""
+    if not signals:
+        return
+    sql = """
+        INSERT INTO flows_signal_log
+            (date, sector, signal_type, action, strength, trigger,
+             buy_ratio, buy_ratio_3d, consec_buy_days, vol_zscore,
+             ret_5d_pct, outcome, fwd_5d_actual)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (date, sector, signal_type) DO NOTHING
+    """
+    with get_conn() as conn:
+        import psycopg2.extras
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_batch(
+                cur,
+                sql,
+                [
+                    (
+                        s["date"], s["sector"], s["signal_type"],
+                        s.get("action"), s.get("strength"), s.get("trigger"),
+                        s.get("buy_ratio"), s.get("buy_ratio_3d"),
+                        s.get("consec_buy_days"), s.get("vol_zscore"),
+                        s.get("ret_5d_pct"),
+                        s.get("outcome", "PENDING"), s.get("fwd_5d_actual"),
+                    )
+                    for s in signals
+                ],
+            )
+
+
+def get_flow_signal_journal() -> list[dict]:
+    """Return all rows from flows_signal_log, newest first."""
+    with get_conn() as conn:
+        return _fetchall(
+            conn,
+            "SELECT * FROM flows_signal_log ORDER BY date DESC, sector",
+        )
+
+
+def update_flow_signal_outcome(row_id: int, fwd_5d_actual: float, outcome: str):
+    """Write validated outcome back to a signal row."""
+    with get_conn() as conn:
+        _exec(
+            conn,
+            "UPDATE flows_signal_log SET fwd_5d_actual=%s, outcome=%s WHERE id=%s",
+            (fwd_5d_actual, outcome, row_id),
+        )
 
 
 def add_portfolio_value(date: str, value: float, notes: str = "") -> int:
