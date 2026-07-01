@@ -24,8 +24,11 @@ def _parse_pg_url(url: str) -> dict:
 
     Standard urlparse breaks when the password contains special characters
     like ?, #, $, + (common in auto-generated Supabase passwords).
-    We parse manually so those characters are passed through unchanged.
+    We parse manually and URL-decode each field so percent-encoded characters
+    (e.g. %3F → ?) are passed to psycopg2 as their literal values.
     """
+    from urllib.parse import unquote
+
     # Strip scheme
     rest = url.split("://", 1)[-1]
 
@@ -36,13 +39,13 @@ def _parse_pg_url(url: str) -> dict:
 
     # user : password  (split on first colon only)
     colon = userinfo.index(":")
-    user     = userinfo[:colon]
-    password = userinfo[colon + 1:]
+    user     = unquote(userinfo[:colon])
+    password = unquote(userinfo[colon + 1:])
 
     # host:port / dbname
     if "/" in hostinfo:
         host_port, dbname = hostinfo.rsplit("/", 1)
-        dbname = dbname.split("?")[0]   # strip any ?sslmode=... suffix
+        dbname = unquote(dbname.split("?")[0])  # strip any ?sslmode=... suffix
     else:
         host_port = hostinfo
         dbname = "postgres"
