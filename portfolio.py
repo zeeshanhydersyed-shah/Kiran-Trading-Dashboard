@@ -17,12 +17,15 @@ Portfolio candidates are Stage 2 stocks ranked by composite score:
 """
 
 import logging
+import os
 import pandas as pd
 import numpy as np
 from collections import defaultdict
 
-from database import get_conn
+from database import get_conn, get_index_prices, get_sector_price_data_300d_active
 from config import EXCLUDED_SECTORS
+
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,18 @@ MIN_HISTORY = MA30W + MA4W    # minimum rows needed per symbol
 
 
 def _get_price_history() -> pd.DataFrame:
-    """Fetch full price history joined to sectors, excluded sectors removed."""
+    """Fetch price history joined to sectors, excluded sectors removed.
+    In PG mode uses get_sector_price_data_300d_active (420 cal days ≈ 300 trading days,
+    sufficient for MA30W=150). In SQLite mode uses raw conn for full history."""
+    if _PG_URL:
+        raw = get_sector_price_data_300d_active()
+        if not raw:
+            return pd.DataFrame(columns=["symbol", "sector", "date", "close"])
+        df = pd.DataFrame(raw)[["symbol", "sector", "date", "close"]]
+        df = df[~df["sector"].isin(EXCLUDED_SECTORS)]
+        df = df[df["close"].notna() & (pd.to_numeric(df["close"], errors="coerce") > 0)]
+        df["date"] = pd.to_datetime(df["date"])
+        return df.reset_index(drop=True)
     excl_ph = ",".join(["?"] * len(EXCLUDED_SECTORS))
     with get_conn() as conn:
         rows = conn.execute(
@@ -54,6 +68,14 @@ def _get_price_history() -> pd.DataFrame:
 
 def _get_index_history() -> pd.Series:
     """Fetch KSE-100 daily closes, indexed by date."""
+    if _PG_URL:
+        rows = get_index_prices("KSE-100")
+        if not rows:
+            return pd.Series(dtype=float)
+        df = pd.DataFrame(rows)[["date", "close"]]
+        df = df[df["close"].notna()]
+        df["date"] = pd.to_datetime(df["date"])
+        return df.sort_values("date").set_index("date")["close"].astype(float)
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT date, close FROM index_prices "

@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import logging
 import sys
@@ -6,6 +7,16 @@ from datetime import datetime, date
 import pandas as pd
 import numpy as np
 from config import DB_PATH, DFC_SYMBOLS, EXCLUDED_SECTORS
+
+# Load .env for standalone runs (dashboard already bridges secrets → os.environ).
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=False)
+except ImportError:
+    pass
+
+# Detect PG mode once at import time — same logic as database.py override block.
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -704,53 +715,55 @@ def run_recovery_signals() -> dict:
                  f"triggered={len(triggered_rows)} "
                  f"watchlist={len(watchlist_rows)}")
 
-        # Write to DB
-        conn = get_conn()
-        conn.execute(
-            "DELETE FROM recovery_signals WHERE as_of_date = ?",
-            (as_of_date,))
-
-        rows_written = 0
+        # Write to DB — route to PG when SUPABASE_DB_URL is set
         all_rows = triggered_rows + watchlist_rows
-        for r in all_rows:
-            conn.execute("""
-                INSERT INTO recovery_signals (
-                    as_of_date, symbol, sector, list_type,
-                    close, drawdown_pct, base_days,
-                    base_range_pct, vol_ratio_today,
-                    base_high, dist_pct, avg_vol_m,
-                    triggered_date, fresh, trigger_close,
-                    trigger_vol_x, current_close, move_pct,
-                    pre_high, kse_regime_ok
-                ) VALUES (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-                )
-            """, (
-                as_of_date,
-                r.get("symbol"),
-                r.get("sector"),
-                r.get("list_type"),
-                r.get("close"),
-                r.get("drawdown_pct"),
-                r.get("base_days"),
-                r.get("base_range_pct"),
-                r.get("vol_ratio_today"),
-                r.get("base_high"),
-                r.get("dist_pct"),
-                r.get("avg_vol_m"),
-                r.get("triggered_date"),
-                r.get("fresh"),
-                r.get("trigger_close"),
-                r.get("trigger_vol_x"),
-                r.get("current_close"),
-                r.get("move_pct"),
-                r.get("pre_high"),
-                r.get("kse_regime_ok"),
-            ))
-            rows_written += 1
-
-        conn.commit()
-        conn.close()
+        if _PG_URL:
+            from database_pg import write_recovery_signals as _pg_write
+            rows_written = _pg_write(all_rows, as_of_date)
+        else:
+            conn = get_conn()
+            conn.execute(
+                "DELETE FROM recovery_signals WHERE as_of_date = ?",
+                (as_of_date,))
+            rows_written = 0
+            for r in all_rows:
+                conn.execute("""
+                    INSERT INTO recovery_signals (
+                        as_of_date, symbol, sector, list_type,
+                        close, drawdown_pct, base_days,
+                        base_range_pct, vol_ratio_today,
+                        base_high, dist_pct, avg_vol_m,
+                        triggered_date, fresh, trigger_close,
+                        trigger_vol_x, current_close, move_pct,
+                        pre_high, kse_regime_ok
+                    ) VALUES (
+                        ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                    )
+                """, (
+                    as_of_date,
+                    r.get("symbol"),
+                    r.get("sector"),
+                    r.get("list_type"),
+                    r.get("close"),
+                    r.get("drawdown_pct"),
+                    r.get("base_days"),
+                    r.get("base_range_pct"),
+                    r.get("vol_ratio_today"),
+                    r.get("base_high"),
+                    r.get("dist_pct"),
+                    r.get("avg_vol_m"),
+                    r.get("triggered_date"),
+                    r.get("fresh"),
+                    r.get("trigger_close"),
+                    r.get("trigger_vol_x"),
+                    r.get("current_close"),
+                    r.get("move_pct"),
+                    r.get("pre_high"),
+                    r.get("kse_regime_ok"),
+                ))
+                rows_written += 1
+            conn.commit()
+            conn.close()
 
         log.info(f"run_recovery_signals: wrote {rows_written} rows")
         log.info("=== run_recovery_signals COMPLETE ===")
@@ -781,21 +794,28 @@ def run_portfolio_signals() -> dict:
     log.info("=== run_portfolio_signals START ===")
     try:
         # STEP A: Load sector ranks from sector_signals (latest date)
-        conn = get_conn()
-        latest_sector_date = conn.execute(
-            "SELECT MAX(date) FROM sector_signals"
-        ).fetchone()[0]
-
-        sector_rows = conn.execute("""
-            SELECT sector, rs_rank, composite_score
-            FROM sector_signals
-            WHERE date = ?
-            ORDER BY rs_rank
-        """, (latest_sector_date,)).fetchall()
-        conn.close()
+        if _PG_URL:
+            from database_pg import get_sector_signals_latest
+            raw_sector_rows = get_sector_signals_latest()
+            latest_sector_date = raw_sector_rows[0]["date"] if raw_sector_rows else None
+            sector_rows_dicts = raw_sector_rows
+        else:
+            conn = get_conn()
+            latest_sector_date = conn.execute(
+                "SELECT MAX(date) FROM sector_signals"
+            ).fetchone()[0]
+            sector_rows_dicts = [
+                dict(r) for r in conn.execute("""
+                    SELECT sector, rs_rank, composite_score
+                    FROM sector_signals
+                    WHERE date = ?
+                    ORDER BY rs_rank
+                """, (latest_sector_date,)).fetchall()
+            ]
+            conn.close()
 
         # Build sector_df matching what dashboard passes in
-        sector_df = pd.DataFrame([dict(r) for r in sector_rows])
+        sector_df = pd.DataFrame(sector_rows_dicts)
         if not sector_df.empty:
             sector_df = sector_df.rename(columns={"rs_rank": "rank"})
             # Add momentum label — derive from composite_score
@@ -828,50 +848,75 @@ def run_portfolio_signals() -> dict:
         log.info(f"run_portfolio_signals: as_of_date={as_of_date} "
                  f"symbols={len(port_df)}")
 
-        # STEP C: Write to portfolio_signals
-        conn = get_conn()
-        conn.execute(
-            "DELETE FROM portfolio_signals WHERE as_of_date = ?",
-            (as_of_date,))
-
-        rows_written = 0
-        for _, row in port_df.iterrows():
-            conn.execute("""
-                INSERT INTO portfolio_signals (
-                    as_of_date, symbol, sector,
-                    latest_close, latest_date,
-                    ma10w, ma30w, dist_from_30w_pct,
-                    stage, stage_label,
-                    rs_30d, rs_10d, rs_trend,
-                    sector_rank, sector_momentum,
-                    composite_score, recommendation, rank
-                ) VALUES (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-                )
-            """, (
-                as_of_date,
-                str(row["symbol"]),
-                str(row["sector"])            if pd.notna(row.get("sector"))            else None,
-                float(row["latest_close"])    if pd.notna(row.get("latest_close"))      else None,
-                str(row["latest_date"])       if pd.notna(row.get("latest_date"))       else None,
-                float(row["ma10w"])           if pd.notna(row.get("ma10w"))             else None,
-                float(row["ma30w"])           if pd.notna(row.get("ma30w"))             else None,
-                float(row["dist_from_30w_pct"]) if pd.notna(row.get("dist_from_30w_pct")) else None,
-                int(row["stage"])             if pd.notna(row.get("stage"))             else None,
-                str(row["stage_label"])       if pd.notna(row.get("stage_label"))       else None,
-                float(row["rs_30d"])          if pd.notna(row.get("rs_30d"))            else None,
-                float(row["rs_10d"])          if pd.notna(row.get("rs_10d"))            else None,
-                str(row["rs_trend"])          if pd.notna(row.get("rs_trend"))          else None,
-                int(row["sector_rank"])       if pd.notna(row.get("sector_rank"))       else None,
-                str(row["sector_momentum"])   if pd.notna(row.get("sector_momentum"))   else None,
-                float(row["composite_score"]) if pd.notna(row.get("composite_score"))   else None,
-                str(row["recommendation"])    if pd.notna(row.get("recommendation"))    else None,
-                int(row["rank"])              if pd.notna(row.get("rank"))              else None,
-            ))
-            rows_written += 1
-
-        conn.commit()
-        conn.close()
+        # STEP C: Write to portfolio_signals — route to PG when SUPABASE_DB_URL is set
+        if _PG_URL:
+            from database_pg import write_portfolio_signals as _pg_write
+            port_rows = [
+                {
+                    "as_of_date":        as_of_date,
+                    "symbol":            str(row["symbol"]),
+                    "sector":            str(row["sector"])            if pd.notna(row.get("sector"))            else None,
+                    "latest_close":      float(row["latest_close"])    if pd.notna(row.get("latest_close"))      else None,
+                    "latest_date":       str(row["latest_date"])       if pd.notna(row.get("latest_date"))       else None,
+                    "ma10w":             float(row["ma10w"])           if pd.notna(row.get("ma10w"))             else None,
+                    "ma30w":             float(row["ma30w"])           if pd.notna(row.get("ma30w"))             else None,
+                    "dist_from_30w_pct": float(row["dist_from_30w_pct"]) if pd.notna(row.get("dist_from_30w_pct")) else None,
+                    "stage":             int(row["stage"])             if pd.notna(row.get("stage"))             else None,
+                    "stage_label":       str(row["stage_label"])       if pd.notna(row.get("stage_label"))       else None,
+                    "rs_30d":            float(row["rs_30d"])          if pd.notna(row.get("rs_30d"))            else None,
+                    "rs_10d":            float(row["rs_10d"])          if pd.notna(row.get("rs_10d"))            else None,
+                    "rs_trend":          str(row["rs_trend"])          if pd.notna(row.get("rs_trend"))          else None,
+                    "sector_rank":       int(row["sector_rank"])       if pd.notna(row.get("sector_rank"))       else None,
+                    "sector_momentum":   str(row["sector_momentum"])   if pd.notna(row.get("sector_momentum"))   else None,
+                    "composite_score":   float(row["composite_score"]) if pd.notna(row.get("composite_score"))   else None,
+                    "recommendation":    str(row["recommendation"])    if pd.notna(row.get("recommendation"))    else None,
+                    "rank":              int(row["rank"])              if pd.notna(row.get("rank"))              else None,
+                }
+                for _, row in port_df.iterrows()
+            ]
+            rows_written = _pg_write(port_rows, as_of_date)
+        else:
+            conn = get_conn()
+            conn.execute(
+                "DELETE FROM portfolio_signals WHERE as_of_date = ?",
+                (as_of_date,))
+            rows_written = 0
+            for _, row in port_df.iterrows():
+                conn.execute("""
+                    INSERT INTO portfolio_signals (
+                        as_of_date, symbol, sector,
+                        latest_close, latest_date,
+                        ma10w, ma30w, dist_from_30w_pct,
+                        stage, stage_label,
+                        rs_30d, rs_10d, rs_trend,
+                        sector_rank, sector_momentum,
+                        composite_score, recommendation, rank
+                    ) VALUES (
+                        ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                    )
+                """, (
+                    as_of_date,
+                    str(row["symbol"]),
+                    str(row["sector"])            if pd.notna(row.get("sector"))            else None,
+                    float(row["latest_close"])    if pd.notna(row.get("latest_close"))      else None,
+                    str(row["latest_date"])       if pd.notna(row.get("latest_date"))       else None,
+                    float(row["ma10w"])           if pd.notna(row.get("ma10w"))             else None,
+                    float(row["ma30w"])           if pd.notna(row.get("ma30w"))             else None,
+                    float(row["dist_from_30w_pct"]) if pd.notna(row.get("dist_from_30w_pct")) else None,
+                    int(row["stage"])             if pd.notna(row.get("stage"))             else None,
+                    str(row["stage_label"])       if pd.notna(row.get("stage_label"))       else None,
+                    float(row["rs_30d"])          if pd.notna(row.get("rs_30d"))            else None,
+                    float(row["rs_10d"])          if pd.notna(row.get("rs_10d"))            else None,
+                    str(row["rs_trend"])          if pd.notna(row.get("rs_trend"))          else None,
+                    int(row["sector_rank"])       if pd.notna(row.get("sector_rank"))       else None,
+                    str(row["sector_momentum"])   if pd.notna(row.get("sector_momentum"))   else None,
+                    float(row["composite_score"]) if pd.notna(row.get("composite_score"))   else None,
+                    str(row["recommendation"])    if pd.notna(row.get("recommendation"))    else None,
+                    int(row["rank"])              if pd.notna(row.get("rank"))              else None,
+                ))
+                rows_written += 1
+            conn.commit()
+            conn.close()
 
         log.info(f"run_portfolio_signals: wrote {rows_written} rows")
         log.info("=== run_portfolio_signals COMPLETE ===")

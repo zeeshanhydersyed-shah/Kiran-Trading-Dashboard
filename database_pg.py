@@ -1092,3 +1092,83 @@ def evaluate_paper_trades() -> dict:
                 results["losses"] += 1
 
     return results
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SIGNAL ENGINE — PG WRITE HELPERS
+# Called by signal_engine.py when SUPABASE_DB_URL is set.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_sector_signals_latest() -> list[dict]:
+    """Latest date's rows from sector_signals. Used by run_portfolio_signals.
+    composite_score cast to DOUBLE PRECISION so pandas quantile() works without Decimal errors."""
+    sql = """
+        SELECT date, sector, rs_rank,
+               CAST(composite_score AS DOUBLE PRECISION) AS composite_score
+        FROM sector_signals
+        WHERE date = (SELECT MAX(date) FROM sector_signals)
+        ORDER BY rs_rank
+    """
+    with get_conn() as conn:
+        return _fetchall(conn, sql)
+
+
+def write_recovery_signals(rows: list[dict], as_of_date: str) -> int:
+    """DELETE existing rows for as_of_date, then batch-INSERT new ones. Returns row count.
+    Converts numpy scalars to native Python types so psycopg2 can serialize them."""
+    if not rows:
+        return 0
+    from psycopg2.extras import execute_values
+
+    _bool_cols = {"fresh", "kse_regime_ok"}
+
+    def _py(col, v):
+        """numpy scalar → native Python; int → bool for BOOLEAN PG columns."""
+        v = v.item() if hasattr(v, "item") else v
+        if col in _bool_cols and v is not None:
+            return bool(v)
+        return v
+
+    cols = [
+        "as_of_date", "symbol", "sector", "list_type",
+        "close", "drawdown_pct", "base_days", "base_range_pct", "vol_ratio_today",
+        "base_high", "dist_pct", "avg_vol_m", "triggered_date", "fresh",
+        "trigger_close", "trigger_vol_x", "current_close", "move_pct",
+        "pre_high", "kse_regime_ok",
+    ]
+    sql_ins = f"INSERT INTO recovery_signals ({', '.join(cols)}) VALUES %s"
+    # as_of_date is not in the row dicts — use the explicit parameter for that column
+    vals = [
+        tuple(as_of_date if c == "as_of_date" else _py(c, r.get(c)) for c in cols)
+        for r in rows
+    ]
+    with get_conn() as conn:
+        _exec(conn, "DELETE FROM recovery_signals WHERE as_of_date = %s", (as_of_date,))
+        with conn.cursor() as cur:
+            execute_values(cur, sql_ins, vals)
+    return len(vals)
+
+
+def write_portfolio_signals(rows: list[dict], as_of_date: str) -> int:
+    """DELETE existing rows for as_of_date, then batch-INSERT new ones. Returns row count.
+    Converts numpy scalars to native Python types so psycopg2 can serialize them."""
+    if not rows:
+        return 0
+    from psycopg2.extras import execute_values
+
+    def _py(v):
+        return v.item() if hasattr(v, "item") else v
+
+    cols = [
+        "as_of_date", "symbol", "sector", "latest_close", "latest_date",
+        "ma10w", "ma30w", "dist_from_30w_pct", "stage", "stage_label",
+        "rs_30d", "rs_10d", "rs_trend", "sector_rank", "sector_momentum",
+        "composite_score", "recommendation", "rank",
+    ]
+    sql_ins = f"INSERT INTO portfolio_signals ({', '.join(cols)}) VALUES %s"
+    vals = [tuple(_py(r.get(c)) for c in cols) for r in rows]
+    with get_conn() as conn:
+        _exec(conn, "DELETE FROM portfolio_signals WHERE as_of_date = %s", (as_of_date,))
+        with conn.cursor() as cur:
+            execute_values(cur, sql_ins, vals)
+    return len(vals)

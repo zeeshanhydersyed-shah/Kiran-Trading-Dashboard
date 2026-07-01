@@ -48,7 +48,7 @@ from database import (
     evaluate_paper_trades,
 )
 from processor import run_analysis
-from stm_sr_integration import enrich_stm_with_sr_zones
+# from stm_sr_integration import enrich_stm_with_sr_zones  # dead — STM page removed
 from config import DB_PATH, DFC_SYMBOLS
 
 # Gracefully handle missing optional imports
@@ -3148,6 +3148,54 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
                              use_container_width=True, hide_index=True)
         else:
             st.info(f"No price data for {chosen_symbol}.")
+
+        with st.expander("Understanding the Price History Summary"):
+            st.markdown("""
+**Overview**
+
+The coloured banner above summarises the current technical state of the selected stock based on signals computed from daily price data. It combines relative strength, breakout status, and proximity to the key pivot level into a single at-a-glance indicator.
+
+---
+
+**Color Meaning**
+
+| Color | Label | What it means |
+|---|---|---|
+| 🟢 Green | **Breakout** | The stock fired a breakout signal today (closed above its pivot high) **and** is outperforming the KSE-100 index over the past 20 days. Highest-conviction state. |
+| 🟡 Amber | **Near Pivot** | The stock is within 5% of its pivot high but has not broken out yet (or RS is negative). A setup that is coiling near resistance — watch for a breakout. |
+| 🔵 Blue | **RS Positive** | The stock is outperforming the KSE-100 over 20 days but is not near its pivot or in breakout. Showing strength in the background. |
+| ⚪ Gray | **Lagging** | The stock is underperforming the KSE-100 and is not near a pivot. Avoid until relative strength improves. |
+
+Colors are applied in order: Green is checked first, then Amber, then Blue. A stock cannot be both Green and Amber simultaneously — Breakout takes priority.
+
+---
+
+**Score**
+
+The **Score** (labelled *Score* in the banner) measures how much the stock has outperformed or underperformed the KSE-100 index over the **last 20 trading days**.
+
+*Formula (high level):* Stock's 20-day % return minus KSE-100's 20-day % return.
+
+| Score | Interpretation |
+|---|---|
+| **Above +10** | Strong outperformer — stock is running significantly ahead of the market |
+| **+1 to +10** | Mild outperformance — trending with the market but doing better |
+| **0** | Exactly matching the index |
+| **−1 to −10** | Mild underperformance |
+| **Below −10** | Significant laggard — stock is losing ground relative to the market |
+
+A **positive score** is the minimum bar for a quality setup. A **negative score** disqualifies the breakout label even if the BOS signal fired.
+
+---
+
+**Notes**
+
+- The Score is a raw percentage difference, not a rank or normalised value. It can go above +20 or below −20 during volatile periods.
+- The 20-day window is approximately one calendar month of trading days.
+- RS Rank (shown as *RS #n*) is a separate ranking: rank 1 = strongest stock in the universe by this same score. A low rank number combined with a high positive score is the ideal combination.
+- Sector Rank (*Sec #n*) shows where the stock's sector sits in the sector RS ranking — prefer stocks in top-ranked (low-numbered) sectors.
+- This panel only appears when today's signal data exists for the selected symbol.
+""")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
