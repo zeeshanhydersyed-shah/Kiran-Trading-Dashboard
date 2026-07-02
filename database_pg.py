@@ -350,7 +350,10 @@ def get_prices_df(symbol: str, limit: int = 60) -> list[dict]:
 def get_latest_scraped_date() -> str | None:
     with get_conn() as conn:
         row = _fetchone(conn, "SELECT MAX(date) AS d FROM prices")
-    return row["d"] if row else None
+    if not row or row["d"] is None:
+        return None
+    d = row["d"]
+    return d.isoformat() if hasattr(d, "isoformat") else str(d)
 
 
 def get_latest_stock_date() -> str | None:
@@ -362,13 +365,20 @@ def get_latest_index_date() -> str | None:
     """Return the most recent date in the index_prices table, or None."""
     with get_conn() as conn:
         row = _fetchone(conn, "SELECT MAX(date) AS d FROM index_prices")
-    return row["d"] if row else None
+    if not row or row["d"] is None:
+        return None
+    d = row["d"]
+    return d.isoformat() if hasattr(d, "isoformat") else str(d)
 
 
 def get_price_date_range() -> tuple[str | None, str | None]:
     with get_conn() as conn:
         row = _fetchone(conn, "SELECT MIN(date) AS mn, MAX(date) AS mx FROM prices")
-    return (row["mn"], row["mx"]) if row else (None, None)
+    if not row:
+        return (None, None)
+    def _s(v):
+        return v.isoformat() if v is not None and hasattr(v, "isoformat") else (str(v) if v is not None else None)
+    return (_s(row["mn"]), _s(row["mx"]))
 
 
 def get_latest_prices() -> list[tuple]:
@@ -1033,7 +1043,7 @@ def evaluate_paper_trades() -> dict:
 
         for price_row in prices:
             close = float(price_row["close"])
-            current_date = price_row["date"]
+            current_date = str(price_row["date"])  # psycopg2 returns datetime.date; callers need str
 
             if direction == "LONG":
                 if close <= stop_loss:
