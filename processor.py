@@ -291,18 +291,18 @@ def generate_support_reversal_setups(
 
         # Calculate 200-day SMA
         grp["ma200"] = grp["close"].rolling(200, min_periods=1).mean()
-        grp["atr"] = compute_atr_pct(grp["close"].tolist())
+        grp["atr"] = compute_atr_pct([float(v) for v in grp["close"]])
 
         # Get latest candle (most recent)
         latest_idx = len(grp) - 1
         latest = grp.iloc[latest_idx]
 
-        close = latest["close"]
-        open_p = latest.get("open", close)
-        high = latest.get("high", close)
-        low = latest.get("low", close)
-        ma200 = latest["ma200"]
-        atr_pct = latest.get("atr", 0)
+        close  = float(latest["close"])
+        open_p = float(latest.get("open", close))
+        high   = float(latest.get("high", close))
+        low    = float(latest.get("low", close))
+        ma200  = float(latest["ma200"])
+        atr_pct = float(latest.get("atr", 0))
 
         # Skip if missing OHLC
         if pd.isna([close, high, low, ma200]).any():
@@ -333,9 +333,9 @@ def generate_support_reversal_setups(
             continue
 
         prev = grp.iloc[latest_idx - 1]
-        prev_high = prev.get("high", prev["close"])
-        prev_low = prev.get("low", prev["close"])
-        prev_close = prev["close"]
+        prev_high  = float(prev.get("high", prev["close"]))
+        prev_low   = float(prev.get("low", prev["close"]))
+        prev_close = float(prev["close"])
 
         if pd.isna([prev_high, prev_low, prev_close]).any():
             continue
@@ -354,14 +354,14 @@ def generate_support_reversal_setups(
         # ── Calculate stock performance (for ML features) ──
         # 30-day performance
         if latest_idx >= 30:
-            close_30d_ago = grp.iloc[max(0, latest_idx - 30)]["close"]
+            close_30d_ago = float(grp.iloc[max(0, latest_idx - 30)]["close"])
             stock_perf_30d = ((close - close_30d_ago) / close_30d_ago * 100) if close_30d_ago > 0 else 0
         else:
             stock_perf_30d = 0
 
         # 10-day performance
         if latest_idx >= 10:
-            close_10d_ago = grp.iloc[max(0, latest_idx - 10)]["close"]
+            close_10d_ago = float(grp.iloc[max(0, latest_idx - 10)]["close"])
             stock_perf_10d = ((close - close_10d_ago) / close_10d_ago * 100) if close_10d_ago > 0 else 0
         else:
             stock_perf_10d = 0

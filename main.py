@@ -232,7 +232,11 @@ def cmd_update():
         logger.warning("Leaders deep scan hook failed: %s", exc)
 
     # Auto-save today's support reversal setups
-    result = run_analysis()
+    try:
+        result = run_analysis()
+    except Exception as exc:
+        logger.warning("run_analysis hook failed: %s", exc)
+        result = None
     if result:
         auto_save_setups_with_source(
             result.get("support_reversal_setups", []),
