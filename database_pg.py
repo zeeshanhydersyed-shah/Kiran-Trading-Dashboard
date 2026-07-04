@@ -277,23 +277,27 @@ def upsert_sectors(rows: list[tuple[str, str]]):
 def upsert_prices(rows: list[tuple]):
     normalised = []
     for r in rows:
-        if len(r) >= 6:
+        if len(r) >= 7:
+            sym, dt, high, low, close, vol, open_ = r[0], r[1], r[2], r[3], r[4], r[5], r[6]
+        elif len(r) == 6:
             sym, dt, high, low, close, vol = r[0], r[1], r[2], r[3], r[4], r[5]
+            open_ = None
         elif len(r) == 4:
             sym, dt, close, vol = r[0], r[1], r[2], r[3]
-            high, low = None, None
+            high, low, open_ = None, None, None
         else:
             sym, dt, close = r[0], r[1], r[2]
-            high, low, vol = None, None, None
-        normalised.append((sym, dt, high, low, close, vol))
+            high, low, vol, open_ = None, None, None, None
+        normalised.append((sym, dt, high, low, close, vol, open_))
 
     sql = """
-        INSERT INTO prices (symbol, date, high, low, close, volume)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO prices (symbol, date, high, low, close, volume, open)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (symbol, date) DO UPDATE
             SET high   = COALESCE(EXCLUDED.high,   prices.high),
                 low    = COALESCE(EXCLUDED.low,    prices.low),
-                volume = COALESCE(EXCLUDED.volume, prices.volume)
+                volume = COALESCE(EXCLUDED.volume, prices.volume),
+                open   = COALESCE(EXCLUDED.open,   prices.open)
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -303,11 +307,12 @@ def upsert_prices(rows: list[tuple]):
 
 def upsert_index_prices(rows: list[tuple]):
     sql = """
-        INSERT INTO index_prices (symbol, date, high, low, close)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO index_prices (symbol, date, high, low, close, open)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (symbol, date) DO UPDATE
             SET high = COALESCE(EXCLUDED.high, index_prices.high),
-                low  = COALESCE(EXCLUDED.low,  index_prices.low)
+                low  = COALESCE(EXCLUDED.low,  index_prices.low),
+                open = COALESCE(EXCLUDED.open, index_prices.open)
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
