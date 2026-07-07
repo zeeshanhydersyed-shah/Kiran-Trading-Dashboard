@@ -246,12 +246,20 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
 
     Returns:
         sector_rows : list of (symbol, sector)
-        price_rows  : list of (symbol, date_str, close)
+        price_rows  : list of (symbol, date_str, high, low, close, volume, open)
+        index_rows  : list of (symbol, date_str, high, low, close, open)
 
     Table structure (single large <table>):
       - Section header row   : 2 TDs, second contains "(Number of traded...)"
       - Column header row    : first TD text == "Symbol"
       - Stock data row       : 8 TDs -> Symbol, Company, Open, High, Low, Close, Change, Vol
+
+    Open (cells[2]) is captured here as of 2026-07 -- it was present in every
+    response all along but never extracted (see docs/DATA_ACQUISITION_ARCHITECTURE.md
+    for the historical-data project that backfilled the resulting gap). It
+    follows the same fallback convention as High/Low: if the cell is blank or
+    unparseable, default to close rather than leave it missing, matching
+    existing behavior for this scraper.
     """
     soup = BeautifulSoup(html, "html.parser")
     tables = soup.find_all("table")
@@ -265,9 +273,9 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
     rows = data_table.find_all("tr")
 
     current_sector: str | None = None
-    sector_rows:  list[tuple[str, str]]           = []
-    price_rows:   list[tuple[str, str, float, float, float, int]] = []
-    index_rows:   list[tuple[str, str, float, float, float]]      = []
+    sector_rows:  list[tuple[str, str]]                          = []
+    price_rows:   list[tuple[str, str, float, float, float, int, float]] = []
+    index_rows:   list[tuple[str, str, float, float, float, float]]      = []
     date_str = target_date.strftime("%Y-%m-%d")
 
     for row in rows:
@@ -293,6 +301,7 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
         # Capture KSE-100 and siblings into index_prices
         if len(cells) == 8 and current_sector == "Market Indexes":
             symbol     = cells[0].get_text(strip=True)
+            open_text  = cells[2].get_text(strip=True).replace(",", "")
             high_text  = cells[3].get_text(strip=True).replace(",", "")
             low_text   = cells[4].get_text(strip=True).replace(",", "")
             close_text = cells[5].get_text(strip=True).replace(",", "")
@@ -303,7 +312,11 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
                     low   = float(low_text)   if low_text   else close
                     high  = max(high, close)
                     low   = min(low,  close)
-                    index_rows.append((symbol, date_str, high, low, close))
+                    try:
+                        open_ = float(open_text) if open_text else close
+                    except ValueError:
+                        open_ = close
+                    index_rows.append((symbol, date_str, high, low, close, open_))
                 except ValueError:
                     pass
             continue
@@ -312,6 +325,7 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
         # Columns: Symbol, Company, Open, High, Low, Close, Change, Vol
         if len(cells) == 8 and current_sector and current_sector != "Market Indexes":
             symbol     = cells[0].get_text(strip=True)
+            open_text  = cells[2].get_text(strip=True).replace(",", "")
             high_text  = cells[3].get_text(strip=True).replace(",", "")
             low_text   = cells[4].get_text(strip=True).replace(",", "")
             close_text = cells[5].get_text(strip=True).replace(",", "")
@@ -345,12 +359,17 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
             low  = min(low,  close)
 
             try:
+                open_ = float(open_text) if open_text else close
+            except ValueError:
+                open_ = close
+
+            try:
                 volume = int(float(vol_text)) if vol_text else 0
             except (ValueError, OverflowError):
                 volume = 0
 
             sector_rows.append((symbol, current_sector))
-            price_rows.append((symbol, date_str, high, low, close, volume))
+            price_rows.append((symbol, date_str, high, low, close, volume, open_))
 
     return sector_rows, price_rows, index_rows
 

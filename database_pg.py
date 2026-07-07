@@ -306,6 +306,18 @@ def upsert_prices(rows: list[tuple]):
 
 
 def upsert_index_prices(rows: list[tuple]):
+    normalised = []
+    for r in rows:
+        if len(r) >= 6:
+            sym, dt, high, low, close, open_ = r[0], r[1], r[2], r[3], r[4], r[5]
+        elif len(r) == 5:
+            sym, dt, high, low, close = r[0], r[1], r[2], r[3], r[4]
+            open_ = None
+        else:
+            sym, dt, close = r[0], r[1], r[2]
+            high, low, open_ = None, None, None
+        normalised.append((sym, dt, high, low, close, open_))
+
     sql = """
         INSERT INTO index_prices (symbol, date, high, low, close, open)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -316,7 +328,7 @@ def upsert_index_prices(rows: list[tuple]):
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.executemany(sql, rows)
+            cur.executemany(sql, normalised)
     logger.debug("Upserted %d index price rows", len(rows))
 
 
