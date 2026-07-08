@@ -144,17 +144,28 @@ def cmd_update():
 
     # Append new prices to prices_adjusted and flag corporate action suspects
     try:
-        import sqlite3
-        from apply_price_adjustments import (
-            ensure_suspects_table,
-            append_new_prices_adjusted,
-            auto_detect_suspects,
-        )
-        con = sqlite3.connect(DB_PATH)
-        ensure_suspects_table(con)
-        append_new_prices_adjusted(con)
-        n_suspects = auto_detect_suspects(con)
-        con.close()
+        _pa_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+        if _pa_pg_url:
+            from database_pg import (
+                ensure_suspects_table_pg,
+                append_new_prices_adjusted_pg,
+                auto_detect_suspects_pg,
+            )
+            ensure_suspects_table_pg()
+            append_new_prices_adjusted_pg()
+            n_suspects = auto_detect_suspects_pg()
+        else:
+            import sqlite3
+            from apply_price_adjustments import (
+                ensure_suspects_table,
+                append_new_prices_adjusted,
+                auto_detect_suspects,
+            )
+            con = sqlite3.connect(DB_PATH)
+            ensure_suspects_table(con)
+            append_new_prices_adjusted(con)
+            n_suspects = auto_detect_suspects(con)
+            con.close()
         if n_suspects > 0:
             logger.warning("Corporate action suspects flagged: %d — review required.", n_suspects)
         else:

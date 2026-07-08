@@ -1716,3 +1716,130 @@ def upsert_flows_pg(rows: list[tuple]) -> None:
     with get_conn() as conn:
         with conn.cursor() as cur:
             execute_values(cur, sql, rows)
+
+
+# ── PRICES_ADJUSTED / CORPORATE ACTION SUSPECTS ───────────────────────────────
+
+def ensure_suspects_table_pg() -> None:
+    """No-op in PG mode — corporate_action_suspects already exists in Supabase."""
+    pass
+
+
+def append_new_prices_adjusted_pg() -> int:
+    """Append new rows from prices into prices_adjusted (no adjustment applied).
+
+    Uses a single INSERT...SELECT — both tables are in the same Postgres DB so
+    no Python-level fetch+insert loop is needed.  Returns the number of rows
+    appended (0 if already up to date).
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(date)::text FROM prices_adjusted")
+            last_adjusted = cur.fetchone()[0]
+
+            if last_adjusted is None:
+                print("prices_adjusted is empty — skipping incremental append (run full rebuild first)")
+                return 0
+
+            cur.execute("SELECT COUNT(*) FROM prices WHERE date > %s", (last_adjusted,))
+            count = cur.fetchone()[0]
+
+            if count == 0:
+                print("prices_adjusted is up to date")
+                return 0
+
+            cur.execute(
+                "SELECT MIN(date)::text, MAX(date)::text FROM prices WHERE date > %s",
+                (last_adjusted,),
+            )
+            min_date, max_date = cur.fetchone()
+
+            cur.execute(
+                "INSERT INTO prices_adjusted SELECT * FROM prices WHERE date > %s",
+                (last_adjusted,),
+            )
+
+    print(f"Appended {count:,} rows for dates {min_date} to {max_date}")
+    return count
+
+
+def auto_detect_suspects_pg() -> int:
+    """Scan newly appended prices_adjusted rows for corporate action suspects.
+
+    Uses a LAG window function to compare each row's close to the previous
+    trading day's close for the same symbol — equivalent to the SQLite loop
+    in auto_detect_suspects().  Only symbols present in stock_metadata are
+    scanned.  Existing (symbol, suspect_date) pairs are silently skipped via
+    ON CONFLICT DO NOTHING.
+
+    Returns the number of new suspect rows inserted.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(suspect_date)::text FROM corporate_action_suspects")
+            last_flagged = cur.fetchone()[0]
+
+            if last_flagged is None:
+                # Safety net: scan the last 5 distinct trading dates
+                cur.execute("""
+                    SELECT date::text FROM (
+                        SELECT DISTINCT date FROM prices_adjusted ORDER BY date DESC LIMIT 5
+                    ) sub ORDER BY date ASC LIMIT 1
+                """)
+                row = cur.fetchone()
+                scan_from = row[0] if row else None
+            else:
+                scan_from = last_flagged
+
+            if scan_from is None:
+                print("No data in prices_adjusted to scan.")
+                return 0
+
+            # LAG over the full window (including scan_from itself) so the first
+            # date after scan_from has a valid prev_close to compare against.
+            # Only INSERT suspects where date > scan_from.
+            cur.execute("""
+                WITH lookback AS (
+                    SELECT pa.symbol, pa.date, pa.close,
+                           LAG(pa.close) OVER (
+                               PARTITION BY pa.symbol ORDER BY pa.date
+                           ) AS prev_close
+                    FROM prices_adjusted pa
+                    JOIN stock_metadata sm ON pa.symbol = sm.symbol
+                    WHERE pa.date >= %s
+                ),
+                suspects AS (
+                    SELECT symbol, date,
+                           prev_close   AS close_before,
+                           close        AS close_after,
+                           (close - prev_close) / prev_close * 100.0 AS drop_pct
+                    FROM lookback
+                    WHERE date > %s
+                      AND prev_close IS NOT NULL
+                      AND prev_close > 0
+                      AND (close - prev_close) / prev_close * 100.0 < -12.0
+                )
+                INSERT INTO corporate_action_suspects
+                    (symbol, suspect_date, close_before, close_after,
+                     drop_pct, likely_category, status)
+                SELECT
+                    symbol, date, close_before, close_after, drop_pct,
+                    CASE
+                        WHEN drop_pct < -40 THEN 'DROP_50'
+                        WHEN drop_pct < -28 THEN 'DROP_33'
+                        WHEN drop_pct < -20 THEN 'DROP_25'
+                        ELSE                     'DROP_OTHER'
+                    END,
+                    'PENDING'
+                FROM suspects
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM corporate_action_suspects cas
+                    WHERE cas.symbol = suspects.symbol
+                      AND cas.suspect_date = suspects.date
+                )
+            """, (scan_from, scan_from))
+
+            new_suspects = cur.rowcount
+
+    print(f"auto_detect_suspects_pg: {new_suspects} new suspect(s) flagged")
+    return new_suspects
