@@ -1890,6 +1890,36 @@ def auto_detect_suspects_pg() -> int:
     return new_suspects
 
 
+def rebuild_symbol_adjusted_pg(symbol: str, ex_date: str, adjustment_factor: float) -> int:
+    """Applies a single corporate action factor to one symbol's pre-event rows.
+
+    Postgres twin of apply_price_adjustments.rebuild_symbol_adjusted() -- %s
+    placeholders instead of ?, no connection parameter (self-contained via
+    get_conn(), matching append_new_prices_adjusted_pg / auto_detect_suspects_pg
+    above). prices_adjusted.open/high/low/close are NUMERIC(18,6), not double
+    precision, so unlike E10.3's get_regime_definitions_pg() fix, no ::numeric
+    cast is needed before ROUND() -- verified directly against live Supabase:
+    psycopg2 sends a plain Python float as an untyped numeric literal, so
+    numeric_col * factor stays numeric and ROUND(numeric, 4) resolves as-is.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE prices_adjusted
+                SET open  = ROUND(open  * %s, 4),
+                    high  = ROUND(high  * %s, 4),
+                    low   = ROUND(low   * %s, 4),
+                    close = ROUND(close * %s, 4)
+                WHERE symbol = %s AND date < %s
+            """, (adjustment_factor, adjustment_factor, adjustment_factor, adjustment_factor,
+                  symbol, ex_date))
+            rows_updated = cur.rowcount
+
+    print(f"{symbol} — {rows_updated:,} rows adjusted "
+          f"(factor={adjustment_factor:.4f}, ex_date={ex_date})")
+    return rows_updated
+
+
 # ── ROLLING TRIM ───────────────────────────────────────────────────────────────
 
 # Confirmed date columns (verified against Supabase schema 2026-07-08):

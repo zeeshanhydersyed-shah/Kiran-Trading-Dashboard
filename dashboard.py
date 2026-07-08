@@ -7900,26 +7900,46 @@ elif cur == PAGES[17]:  # Data Health
                     with _dh_btn1:
                         if st.button("✅ Confirm", key=f"dh_confirm_{_dh_sym}_{_dh_date}"):
                             try:
-                                from apply_price_adjustments import rebuild_symbol_adjusted
-                                from stock_signals import recompute_symbol_signals
                                 _dh_factor = _dh_ca / _dh_cb
-                                _dh_adj_con = sqlite3.connect(_dh_db)
-                                rebuild_symbol_adjusted(_dh_adj_con, _dh_sym, _dh_date, _dh_factor)
-                                _dh_adj_con.execute(
-                                    """UPDATE corporate_action_suspects
-                                       SET status = 'CONFIRMED',
-                                           confirmed_action = ?,
-                                           adjustment_factor = ?,
-                                           confirmed_at = ?
-                                       WHERE symbol = ? AND suspect_date = ?""",
-                                    (_dh_action, _dh_factor,
-                                     _dh_dt.now().isoformat(),
-                                     _dh_sym, _dh_date)
-                                )
-                                _dh_adj_con.commit()
-                                _dh_adj_con.close()
-                                recompute_symbol_signals(_dh_sym)
-                                st.success(f"{_dh_sym} adjusted and signals recomputed.")
+                                _dh_now = _dh_dt.now().isoformat()
+
+                                if _PG_URL:
+                                    from database_pg import rebuild_symbol_adjusted_pg
+                                    from dashboard_pg import mark_dh_confirmed_pg
+                                    rebuild_symbol_adjusted_pg(_dh_sym, _dh_date, _dh_factor)
+                                    mark_dh_confirmed_pg(
+                                        _dh_sym, _dh_date, _dh_action, _dh_factor, _dh_now
+                                    )
+                                else:
+                                    from apply_price_adjustments import rebuild_symbol_adjusted
+                                    _dh_adj_con = sqlite3.connect(_dh_db)
+                                    rebuild_symbol_adjusted(_dh_adj_con, _dh_sym, _dh_date, _dh_factor)
+                                    _dh_adj_con.execute(
+                                        """UPDATE corporate_action_suspects
+                                           SET status = 'CONFIRMED',
+                                               confirmed_action = ?,
+                                               adjustment_factor = ?,
+                                               confirmed_at = ?
+                                           WHERE symbol = ? AND suspect_date = ?""",
+                                        (_dh_action, _dh_factor, _dh_now, _dh_sym, _dh_date)
+                                    )
+                                    _dh_adj_con.commit()
+                                    _dh_adj_con.close()
+
+                                # Isolated on purpose: recompute_symbol_signals() is
+                                # 100% SQLite-only (no Postgres port yet -- separate
+                                # future stage). The adjustment + CONFIRMED status
+                                # above have already committed either way, so a
+                                # failure here must not read as "nothing happened."
+                                try:
+                                    from stock_signals import recompute_symbol_signals
+                                    recompute_symbol_signals(_dh_sym)
+                                    st.success(f"{_dh_sym} adjusted and signals recomputed.")
+                                except Exception as _dh_sig_err:
+                                    st.warning(
+                                        f"{_dh_sym} adjusted and confirmed, but stock_signals "
+                                        f"recompute failed (not yet Postgres-ported): {_dh_sig_err}"
+                                    )
                                 st.rerun()
                             except Exception as _dh_e:
                                 st.error(f"Error: {_dh_e}")

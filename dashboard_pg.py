@@ -49,10 +49,20 @@ shape must be matched exactly to avoid breaking untouched downstream code:
     the SQLite path already produces (same convention as get_kv_latest_pg
     etc. above); close_before/close_after/drop_pct/adjustment_factor are
     coerced to float64 via _coerce_numeric for the same reason.
-    mark_dh_false_positive_pg()'s confirmed_at param is set from
-    datetime.now().isoformat() by the caller -- its 'T'-separated ISO 8601
-    format is accepted natively as a Postgres timestamp literal, no fix
-    needed (unlike the bare-year case above).
+    mark_dh_false_positive_pg() / mark_dh_confirmed_pg()'s confirmed_at
+    param is set from datetime.now().isoformat() by the caller -- its
+    'T'-separated ISO 8601 format is accepted natively as a Postgres
+    timestamp literal, no fix needed (unlike the bare-year case above).
+    The Confirm button's rebuild_symbol_adjusted_pg() (the harder half of
+    this stage -- a function signature change, not a dashboard query) lives
+    in database_pg.py alongside its sibling append_new_prices_adjusted_pg /
+    auto_detect_suspects_pg, not here -- see that file for its notes.
+    recompute_symbol_signals() (stock_signals.py), also called by the
+    Confirm button, is NOT ported here -- it's 100% SQLite-only with its
+    own internal pipeline (_load_kse100, _process_trading_dates, etc.) and
+    no Postgres port anywhere yet. dashboard.py isolates that call in its
+    own try/except so a real, committed adjustment doesn't read as a
+    failure just because the signal recompute can't run under Postgres.
 """
 
 from datetime import datetime
@@ -623,3 +633,17 @@ def mark_dh_false_positive_pg(symbol: str, ex_date: str, confirmed_at: str) -> N
                     confirmed_at = %s
                 WHERE symbol = %s AND suspect_date = %s
             """, (confirmed_at, symbol, ex_date))
+
+
+def mark_dh_confirmed_pg(symbol: str, ex_date: str, action: str,
+                          factor: float, confirmed_at: str) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE corporate_action_suspects
+                SET status = 'CONFIRMED',
+                    confirmed_action = %s,
+                    adjustment_factor = %s,
+                    confirmed_at = %s
+                WHERE symbol = %s AND suspect_date = %s
+            """, (action, factor, confirmed_at, symbol, ex_date))
