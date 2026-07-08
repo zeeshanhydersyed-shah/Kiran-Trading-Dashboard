@@ -22,6 +22,11 @@ shape must be matched exactly to avoid breaking untouched downstream code:
     columns to float64 (consumers call .mean()/.sum() directly on them,
     e.g. move_pct, without the explicit float() guard the setup_log-reading
     functions below already have).
+  - get_regime_status_pg() (E10.2): deliberately does NOT cast `date` to
+    text -- verified (not assumed) that both dashboard.py call sites pass
+    the returned date through fmt_date(), which wraps its argument in
+    str(d) before parsing, so a native datetime.date round-trips exactly
+    like a SQLite string. No other code path touches this value.
 """
 
 import pandas as pd
@@ -194,3 +199,35 @@ def get_portfolio_signals_pg() -> tuple:
     df = pd.DataFrame(rows, columns=cols)
     df = _coerce_numeric(df, _PORTFOLIO_NUMERIC_COLS)
     return df, latest
+
+
+def get_regime_status_pg() -> tuple | None:
+    """PG sibling of dashboard.py's _get_regime_status() (E10.2 merge).
+    Returns (current_regime, latest_date, days_since) or None.
+
+    Deliberately recomputes from full history rather than reading
+    market_regime.regime_days -- that column is currently non-idempotent
+    across same-date re-runs (confirmed ~2x inflated on both Supabase and
+    local) and must not be trusted until regime.py's increment logic is
+    fixed separately.
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT date, regime FROM market_regime ORDER BY date")
+        rows = cur.fetchall()
+
+    if not rows:
+        return None
+
+    dates   = [r[0] for r in rows]
+    regimes = [r[1] for r in rows]
+    last_transition_idx = None
+    for i in range(len(regimes) - 1, 0, -1):
+        if regimes[i] != regimes[i - 1]:
+            last_transition_idx = i
+            break
+    days_since = (
+        len(dates) - 1 - last_transition_idx
+        if last_transition_idx is not None else len(dates) - 1
+    )
+    return regimes[-1], dates[-1], days_since

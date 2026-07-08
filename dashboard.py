@@ -835,6 +835,47 @@ def kpi(label, value, sub, color):
 BLUE = "#3b82f6"
 
 
+@st.cache_data(ttl=300)
+def _get_regime_status():
+    """Shared data-fetch for the sidebar regime widget and the global regime
+    header (E10.2 merge — both independently ran the identical query and
+    days-since-transition algorithm before this).
+
+    Returns (current_regime, latest_date, days_since) or None if
+    market_regime has no data.
+
+    Deliberately recomputes from full history every call rather than
+    reading market_regime.regime_days — that column is currently
+    non-idempotent across same-date re-runs (confirmed ~2x inflated on both
+    Supabase and local as of 2026-07-08) and must not be trusted until
+    regime.py's increment logic is fixed separately.
+    """
+    if _PG_URL:
+        from dashboard_pg import get_regime_status_pg
+        return get_regime_status_pg()
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT date, regime FROM market_regime ORDER BY date"
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return None
+
+    dates   = [r[0] for r in rows]
+    regimes = [r[1] for r in rows]
+    last_transition_idx = None
+    for i in range(len(regimes) - 1, 0, -1):
+        if regimes[i] != regimes[i - 1]:
+            last_transition_idx = i
+            break
+    days_since = (
+        len(dates) - 1 - last_transition_idx
+        if last_transition_idx is not None else len(dates) - 1
+    )
+    return regimes[-1], dates[-1], days_since
+
+
 # ── Session state — active page ───────────────────────────────────────────────
 if "page" not in st.session_state:
     st.session_state.page = PAGES[0]
@@ -895,31 +936,15 @@ with st.sidebar:
     st.divider()
 
     # ── Live regime widget (global — visible on every page) ───────────────────
-    # Queries market_regime directly each render so the value is never stale.
+    # E10.2: shared, cached data-fetch (_get_regime_status) — was a standalone
+    # uncached query here, now merged with the header's identical query below.
     try:
-        import sqlite3 as _sqlite3
-        _rc = _sqlite3.connect(DB_PATH)
-        _regime_rows = _rc.execute(
-            "SELECT date, regime FROM market_regime ORDER BY date"
-        ).fetchall()
-        _rc.close()
+        _regime_status = _get_regime_status()
     except Exception:
-        _regime_rows = []
+        _regime_status = None
 
-    if _regime_rows:
-        _r_dates   = [r[0] for r in _regime_rows]
-        _r_regimes = [r[1] for r in _regime_rows]
-        _r_last_transition_idx = None
-        for _ri in range(len(_r_regimes) - 1, 0, -1):
-            if _r_regimes[_ri] != _r_regimes[_ri - 1]:
-                _r_last_transition_idx = _ri
-                break
-        _r_current  = _r_regimes[-1]
-        _r_latest_d = _r_dates[-1]
-        _r_days_since = (
-            len(_r_dates) - 1 - _r_last_transition_idx
-            if _r_last_transition_idx is not None else len(_r_dates) - 1
-        )
+    if _regime_status:
+        _r_current, _r_latest_d, _r_days_since = _regime_status
         _r_regime_color = {
             "TRENDING_UP":   "#22c55e",
             "VOLATILE":      "#f59e0b",
@@ -1103,25 +1128,13 @@ except Exception:
     pass
 
 # ── Regime conditions header (global — every page, no exceptions) ─────────────
-# Queries market_regime live on every render; never cached or stale.
+# E10.2: shared, cached data-fetch (_get_regime_status) — was a standalone
+# uncached query here, now merged with the sidebar widget's identical query above.
 try:
-    import sqlite3 as _sq_rh
-    _rh_con = _sq_rh.connect(DB_PATH)
-    _rh_rows = _rh_con.execute(
-        "SELECT date, regime FROM market_regime ORDER BY date"
-    ).fetchall()
-    _rh_con.close()
+    _rh_status = _get_regime_status()
 
-    if _rh_rows:
-        _rh_dates   = [r[0] for r in _rh_rows]
-        _rh_regimes = [r[1] for r in _rh_rows]
-        _rh_last_t  = None
-        for _rh_i in range(len(_rh_regimes) - 1, 0, -1):
-            if _rh_regimes[_rh_i] != _rh_regimes[_rh_i - 1]:
-                _rh_last_t = _rh_i
-                break
-        _rh_regime     = _rh_regimes[-1]
-        _rh_days_since = (len(_rh_dates) - 1 - _rh_last_t) if _rh_last_t is not None else (len(_rh_dates) - 1)
+    if _rh_status:
+        _rh_regime, _rh_latest_date, _rh_days_since = _rh_status
 
         if _rh_regime == "TRENDING_UP":
             if _rh_days_since >= 6:
@@ -1207,7 +1220,7 @@ try:
             f"<span style='font-size:0.85rem; font-weight:700; color:{_rh_color}; white-space:nowrap;'>"
             f"{_rh_label}{_rh_extra}</span>"
             f"<span style='font-size:0.72rem; color:#94a3b8; white-space:nowrap;'>"
-            f"{_rh_days_since}d since last regime change &nbsp;·&nbsp; as of {fmt_date(_rh_dates[-1])}"
+            f"{_rh_days_since}d since last regime change &nbsp;·&nbsp; as of {fmt_date(_rh_latest_date)}"
             f"</span>"
             f"{_kelly_html}"
             f"</div>",
