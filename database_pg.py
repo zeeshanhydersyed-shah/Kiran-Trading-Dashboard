@@ -1276,6 +1276,49 @@ def write_market_regime(
             ))
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DAYS_TO_NEAREST_TRANSITION BACKFILL — PG HELPERS
+# Called by backfill_regime_columns.py when DATABASE_URL / SUPABASE_DB_URL is set.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_market_regime_series_pg() -> list[tuple[str, str]]:
+    """Return [(date_str, regime), ...] for every market_regime row, ordered ASC."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT date::text, regime FROM market_regime ORDER BY date")
+        return cur.fetchall()
+
+
+def get_pending_days_to_nearest_pg() -> list[tuple[int, str]]:
+    """Return [(id, created_date), ...] for trade_setups rows still missing
+    days_to_nearest_transition but with regime_at_entry already populated
+    (i.e. created_date is known to exist in market_regime)."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, created_date::text FROM trade_setups
+            WHERE days_to_nearest_transition IS NULL
+              AND regime_at_entry IS NOT NULL
+            """
+        )
+        return cur.fetchall()
+
+
+def update_days_to_nearest_batch_pg(updates: list[tuple[int, int]]) -> int:
+    """Batch-update trade_setups.days_to_nearest_transition.
+    updates: [(days_nearest, id), ...]. Returns the actual number of rows
+    affected per psycopg2's cur.rowcount (verified reliable for executemany
+    on this single-table UPDATE shape), not just len(updates)."""
+    if not updates:
+        return 0
+    sql = "UPDATE trade_setups SET days_to_nearest_transition = %s WHERE id = %s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(sql, updates)
+            return cur.rowcount
+
+
 # ── STOCK SIGNALS — PG READ/WRITE HELPERS ────────────────────────────────────
 
 def get_universe_pg() -> dict:
