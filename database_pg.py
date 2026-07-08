@@ -1199,3 +1199,520 @@ def write_portfolio_signals(rows: list[dict], as_of_date: str) -> int:
         with conn.cursor() as cur:
             execute_values(cur, sql_ins, vals)
     return len(vals)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# REGIME HOOK — PG HELPERS
+# Called by regime.py when DATABASE_URL / SUPABASE_DB_URL is set.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_kse100_for_regime(warmup: int = 250) -> tuple[int, list[dict]]:
+    """Return (total_kse100_rows, last <warmup> rows ordered ASC) for regime computation."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM index_prices WHERE symbol = 'KSE-100'")
+        total = cur.fetchone()[0]
+        rows = _fetchall(
+            conn,
+            """
+            SELECT date::text AS date, high, low, close
+            FROM index_prices
+            WHERE symbol = 'KSE-100'
+            ORDER BY date DESC
+            LIMIT %s
+            """,
+            (warmup,),
+        )
+    # _fetchall returns rows DESC; reverse so _compute_indicators sees ASC order
+    return total, list(reversed(rows))
+
+
+def get_latest_market_regime() -> tuple[str, int] | None:
+    """Return (regime, regime_days) of the most recent market_regime row, or None."""
+    with get_conn() as conn:
+        row = _fetchone(
+            conn,
+            "SELECT regime, regime_days FROM market_regime ORDER BY date DESC LIMIT 1",
+        )
+    return (row["regime"], row["regime_days"]) if row else None
+
+
+def write_market_regime(
+    date_str: str,
+    close: float,
+    ema_20: float,
+    ema_50: float,
+    ema_200: float,
+    atr_20: float | None,
+    atr_pct: float | None,
+    return_20d: float | None,
+    regime: str,
+    regime_days: int,
+) -> None:
+    """Upsert one row into market_regime. ON CONFLICT (date) DO UPDATE overwrites all indicators."""
+    sql = """
+        INSERT INTO market_regime
+            (date, close, ema_20, ema_50, ema_200,
+             atr_20, atr_pct, return_20d, regime, regime_days, notes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL)
+        ON CONFLICT (date) DO UPDATE
+            SET close      = EXCLUDED.close,
+                ema_20     = EXCLUDED.ema_20,
+                ema_50     = EXCLUDED.ema_50,
+                ema_200    = EXCLUDED.ema_200,
+                atr_20     = EXCLUDED.atr_20,
+                atr_pct    = EXCLUDED.atr_pct,
+                return_20d = EXCLUDED.return_20d,
+                regime     = EXCLUDED.regime,
+                regime_days= EXCLUDED.regime_days
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                date_str, close, ema_20, ema_50, ema_200,
+                atr_20, atr_pct, return_20d, regime, regime_days,
+            ))
+
+
+# ── STOCK SIGNALS — PG READ/WRITE HELPERS ────────────────────────────────────
+
+def get_universe_pg() -> dict:
+    """Returns {symbol: sector} for all rows in stock_metadata."""
+    with get_conn() as conn:
+        rows = _fetchall(conn, "SELECT symbol, sector FROM stock_metadata")
+    return {r["symbol"]: r["sector"] for r in rows}
+
+
+def get_kse100_for_signals(from_date: str, to_date: str) -> list:
+    """Returns [(date_str, close_float), ...] ordered by date ASC."""
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            "SELECT date::text AS date, CAST(close AS DOUBLE PRECISION) AS close "
+            "FROM index_prices WHERE symbol = 'KSE-100' "
+            "AND date BETWEEN %s AND %s ORDER BY date",
+            (from_date, to_date),
+        )
+    return [(r["date"], r["close"]) for r in rows]
+
+
+def get_prices_adjusted_for_signals(symbols: set, from_date: str, to_date: str) -> dict:
+    """Returns {symbol: [(date_str, close_float), ...]} ordered by date ASC per symbol."""
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            "SELECT symbol, date::text AS date, CAST(close AS DOUBLE PRECISION) AS close "
+            "FROM prices_adjusted WHERE symbol = ANY(%s) "
+            "AND date BETWEEN %s AND %s ORDER BY symbol, date",
+            (list(symbols), from_date, to_date),
+        )
+    result: dict = {}
+    for r in rows:
+        sym = r["symbol"]
+        if sym not in result:
+            result[sym] = []
+        result[sym].append((r["date"], r["close"]))
+    return result
+
+
+def get_prices_adjusted_with_volume(symbols: set, from_date: str, to_date: str) -> dict:
+    """Returns {symbol: [(date_str, close_float, volume, high_float), ...]} ordered by date ASC."""
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            "SELECT symbol, date::text AS date, "
+            "CAST(close AS DOUBLE PRECISION) AS close, volume, "
+            "CAST(high AS DOUBLE PRECISION) AS high "
+            "FROM prices_adjusted WHERE symbol = ANY(%s) "
+            "AND date BETWEEN %s AND %s ORDER BY symbol, date",
+            (list(symbols), from_date, to_date),
+        )
+    result: dict = {}
+    for r in rows:
+        sym = r["symbol"]
+        if sym not in result:
+            result[sym] = []
+        result[sym].append((r["date"], r["close"], r["volume"], r["high"]))
+    return result
+
+
+def get_stock_signals_max_date_pg() -> str | None:
+    """Returns MAX(date) from stock_signals as 'YYYY-MM-DD' string, or None."""
+    with get_conn() as conn:
+        row = _fetchone(conn, "SELECT MAX(date)::text AS d FROM stock_signals")
+    if row and row["d"]:
+        d = row["d"]
+        return d.isoformat() if hasattr(d, "isoformat") else str(d)
+    return None
+
+
+def get_prices_adjusted_max_date_universe_pg() -> str | None:
+    """Returns MAX(date) from prices_adjusted for universe symbols, or None."""
+    with get_conn() as conn:
+        row = _fetchone(
+            conn,
+            "SELECT MAX(date)::text AS d FROM prices_adjusted "
+            "WHERE symbol IN (SELECT symbol FROM stock_metadata)",
+        )
+    if row and row["d"]:
+        d = row["d"]
+        return d.isoformat() if hasattr(d, "isoformat") else str(d)
+    return None
+
+
+def get_stock_signals_prev_ranks_pg(date_str: str) -> dict:
+    """Returns {symbol: rs_rank} for the given date."""
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            "SELECT symbol, rs_rank FROM stock_signals WHERE date = %s",
+            (date_str,),
+        )
+    return {r["symbol"]: r["rs_rank"] for r in rows}
+
+
+def get_stock_signals_seeds_pg(date_str: str) -> dict:
+    """Returns {symbol: (base_duration, near_pivot_days)} for accumulation seeds."""
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            "SELECT symbol, base_duration, near_pivot_days FROM stock_signals WHERE date = %s",
+            (date_str,),
+        )
+    return {r["symbol"]: (r["base_duration"] or 0, r["near_pivot_days"] or 0) for r in rows}
+
+
+_SS_BOOL_COLS = frozenset({9, 14, 15, 16, 18, 20, 21})
+# Indices of BOOLEAN columns in the 22-column stock_signals tuple:
+# 9=bos_flag, 14=stage2_bull, 15=close_above_ema50, 16=ema50_slope_pos,
+# 18=overhead_clear, 20=close_above_ema150, 21=ema150_slope_pos
+
+
+def write_stock_signals_batch(batch: list) -> int:
+    """Batch-upsert a list of 22-column stock_signals tuples via execute_values. Returns count."""
+    if not batch:
+        return 0
+    # Supabase stores these as BOOLEAN; psycopg2 rejects int 0/1 for boolean cols.
+    def _norm(row):
+        row = list(row)
+        for i in _SS_BOOL_COLS:
+            if row[i] is not None:
+                row[i] = bool(row[i])
+        return tuple(row)
+    batch = [_norm(r) for r in batch]
+    from psycopg2.extras import execute_values
+    sql = """
+        INSERT INTO stock_signals
+            (date, symbol, rs_score_20, rs_score_50, rs_rank, rs_rank_prev,
+             rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d,
+             pivot_high, pivot_distance_pct, stage2_bull,
+             close_above_ema50, ema50_slope_pos, base_duration, overhead_clear, near_pivot_days,
+             close_above_ema150, ema150_slope_pos)
+        VALUES %s
+        ON CONFLICT (date, symbol) DO UPDATE SET
+            rs_score_20        = EXCLUDED.rs_score_20,
+            rs_score_50        = EXCLUDED.rs_score_50,
+            rs_rank            = EXCLUDED.rs_rank,
+            rs_rank_prev       = EXCLUDED.rs_rank_prev,
+            rank_change        = EXCLUDED.rank_change,
+            sector_rs_rank     = EXCLUDED.sector_rs_rank,
+            base_tightness     = EXCLUDED.base_tightness,
+            bos_flag           = EXCLUDED.bos_flag,
+            vol_contraction    = EXCLUDED.vol_contraction,
+            avg_vol_10d        = EXCLUDED.avg_vol_10d,
+            pivot_high         = EXCLUDED.pivot_high,
+            pivot_distance_pct = EXCLUDED.pivot_distance_pct,
+            stage2_bull        = EXCLUDED.stage2_bull,
+            close_above_ema50  = EXCLUDED.close_above_ema50,
+            ema50_slope_pos    = EXCLUDED.ema50_slope_pos,
+            base_duration      = EXCLUDED.base_duration,
+            overhead_clear     = EXCLUDED.overhead_clear,
+            near_pivot_days    = EXCLUDED.near_pivot_days,
+            close_above_ema150 = EXCLUDED.close_above_ema150,
+            ema150_slope_pos   = EXCLUDED.ema150_slope_pos
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            execute_values(cur, sql, batch)
+    logger.debug("Upserted %d stock_signals rows", len(batch))
+    return len(batch)
+
+
+# ── SECTOR SIGNALS — PG READ/WRITE HELPERS ───────────────────────────────────
+
+def get_prices_adjusted_max_date_pg() -> str | None:
+    """Returns MAX(date) from prices_adjusted (all symbols), or None."""
+    with get_conn() as conn:
+        row = _fetchone(conn, "SELECT MAX(date)::text AS d FROM prices_adjusted")
+    if row and row["d"]:
+        d = row["d"]
+        return d.isoformat() if hasattr(d, "isoformat") else str(d)
+    return None
+
+
+def get_sector_signals_count_for_date_pg(date_str: str) -> int:
+    """Returns row count in sector_signals for the given date."""
+    with get_conn() as conn:
+        row = _fetchone(conn, "SELECT COUNT(*) AS n FROM sector_signals WHERE date = %s", (date_str,))
+    return row["n"] if row else 0
+
+
+def get_prices_warmup_with_sector_pg(target_date: str) -> list:
+    """Returns 60-trading-day price warmup joined with sector, as list of dicts.
+
+    Columns: date (str), symbol, close (float), volume, sector.
+    """
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            """
+            SELECT pa.date::text AS date, pa.symbol,
+                   CAST(pa.close AS DOUBLE PRECISION) AS close,
+                   pa.volume, sm.sector
+            FROM prices_adjusted pa
+            JOIN stock_metadata sm ON pa.symbol = sm.symbol
+            WHERE pa.date IN (
+                SELECT DISTINCT date FROM prices_adjusted
+                WHERE date <= %s
+                ORDER BY date DESC
+                LIMIT 60
+            )
+              AND pa.close IS NOT NULL
+              AND pa.close > 0
+              AND sm.sector IS NOT NULL
+            ORDER BY pa.symbol, pa.date
+            """,
+            (target_date,),
+        )
+    return rows
+
+
+def get_kse100_warmup_pg(target_date: str) -> list:
+    """Returns KSE-100 closes for the same 60-day warmup window, as list of dicts.
+
+    Columns: date (str), kse_close (float).
+    """
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            """
+            SELECT date::text AS date, CAST(close AS DOUBLE PRECISION) AS kse_close
+            FROM index_prices
+            WHERE symbol = 'KSE-100'
+              AND date IN (
+                  SELECT DISTINCT date FROM prices_adjusted
+                  WHERE date <= %s
+                  ORDER BY date DESC
+                  LIMIT 60
+              )
+            ORDER BY date
+            """,
+            (target_date,),
+        )
+    return rows
+
+
+def get_regime_for_date_pg(date_str: str) -> str | None:
+    """Returns regime text for the given date, or None."""
+    with get_conn() as conn:
+        row = _fetchone(conn, "SELECT regime FROM market_regime WHERE date = %s", (date_str,))
+    return row["regime"] if row else None
+
+
+def get_market_cap_pg() -> dict:
+    """Returns {symbol: market_cap_m} from stock_market_cap."""
+    with get_conn() as conn:
+        rows = _fetchall(conn, "SELECT symbol, market_cap_m FROM stock_market_cap")
+    return {r["symbol"]: (float(r["market_cap_m"]) if r["market_cap_m"] is not None else 0.0)
+            for r in rows}
+
+
+def get_active_symbols_pg() -> set:
+    """Returns set of active symbols from stock_metadata (is_active = TRUE).
+
+    Note: active_stocks_on_date is not in Supabase — this is the correct fallback.
+    """
+    with get_conn() as conn:
+        rows = _fetchall(conn, "SELECT symbol FROM stock_metadata WHERE is_active = TRUE")
+    return {r["symbol"] for r in rows}
+
+
+def get_sector_signals_prev_ranks_sector_pg(date_str: str) -> dict:
+    """Returns {sector: rs_rank} from the most recent sector_signals date before date_str."""
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            "SELECT sector, rs_rank FROM sector_signals "
+            "WHERE date = (SELECT MAX(date) FROM sector_signals WHERE date < %s)",
+            (date_str,),
+        )
+    return {r["sector"]: r["rs_rank"] for r in rows}
+
+
+def get_sector_rs_history_pg(date_str: str) -> dict:
+    """Returns {sector: max_rs_score_20} for the 30-day window ending the day before date_str."""
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            "SELECT sector, MAX(CAST(rs_score_20 AS DOUBLE PRECISION)) AS max_rs "
+            "FROM sector_signals "
+            "WHERE date < %s AND date >= %s::date - INTERVAL '30 days' "
+            "GROUP BY sector",
+            (date_str, date_str),
+        )
+    return {
+        r["sector"]: float(r["max_rs"]) if r["max_rs"] is not None else None
+        for r in rows
+    }
+
+
+def write_sector_signals_batch_pg(rows: list) -> int:
+    """Upsert sector_signals rows (18-column main insert). Returns count.
+
+    Each row dict must have keys matching the 18 INSERT columns.
+    flow_* columns are left untouched here; updated separately via
+    update_sector_flow_signals_pg().
+    """
+    if not rows:
+        return 0
+    from psycopg2.extras import execute_values
+    sql = """
+        INSERT INTO sector_signals
+            (date, sector, rs_score_20, rs_score_50, rs_rank, rs_rank_prev,
+             breadth_score, adv_dec_ratio, vol_ratio, rs_inflection,
+             regime, composite_score,
+             sector_ema50, sector_above_ema, sector_ema_slope,
+             sector_stage, sector_pivot_dist_pct, sector_rs_new_high)
+        VALUES %s
+        ON CONFLICT (date, sector) DO UPDATE SET
+            rs_score_20           = EXCLUDED.rs_score_20,
+            rs_score_50           = EXCLUDED.rs_score_50,
+            rs_rank               = EXCLUDED.rs_rank,
+            rs_rank_prev          = EXCLUDED.rs_rank_prev,
+            breadth_score         = EXCLUDED.breadth_score,
+            adv_dec_ratio         = EXCLUDED.adv_dec_ratio,
+            vol_ratio             = EXCLUDED.vol_ratio,
+            rs_inflection         = EXCLUDED.rs_inflection,
+            regime                = EXCLUDED.regime,
+            composite_score       = EXCLUDED.composite_score,
+            sector_ema50          = EXCLUDED.sector_ema50,
+            sector_above_ema      = EXCLUDED.sector_above_ema,
+            sector_ema_slope      = EXCLUDED.sector_ema_slope,
+            sector_stage          = EXCLUDED.sector_stage,
+            sector_pivot_dist_pct = EXCLUDED.sector_pivot_dist_pct,
+            sector_rs_new_high    = EXCLUDED.sector_rs_new_high
+    """
+    batch = [
+        (
+            r["date"], r["sector"],
+            r.get("rs_score_20"), r.get("rs_score_50"),
+            r.get("rs_rank"), r.get("rs_rank_prev"),
+            r.get("breadth_score"), r.get("adv_dec_ratio"), r.get("vol_ratio"),
+            int(r.get("rs_inflection", 0) or 0),
+            r.get("regime"),
+            float(r["composite_score"]) if r.get("composite_score") is not None else None,
+            r.get("sector_ema50"), r.get("sector_above_ema"),
+            r.get("sector_ema_slope"), r.get("sector_stage"),
+            r.get("sector_pivot_dist_pct"),
+            int(r.get("rs_new_high", 0) or 0),
+        )
+        for r in rows
+    ]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            execute_values(cur, sql, batch)
+    logger.debug("Upserted %d sector_signals rows", len(batch))
+    return len(batch)
+
+
+def get_market_flows_pg(date_str: str) -> list:
+    """Returns market_flows rows (REGULAR market, up to date_str) for flow computation.
+
+    Columns: date (str), sector, client_type, net_value (float).
+    Empty list when market_flows has no data.
+    """
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            "SELECT date::text AS date, sector, client_type, "
+            "CAST(net_value AS DOUBLE PRECISION) AS net_value "
+            "FROM market_flows WHERE market_type = 'REGULAR' AND date <= %s ORDER BY date",
+            (date_str,),
+        )
+    return rows
+
+
+def update_sector_flow_signals_pg(date_str: str, flow_rows: list) -> None:
+    """UPDATE flow_* columns in sector_signals for date_str.
+
+    Each dict in flow_rows: {sector, flow_smart_net_5d, flow_smart_net_20d,
+                              flow_retail_net_5d, flow_retail_net_20d, flow_direction}.
+    """
+    if not flow_rows:
+        return
+    sql = """
+        UPDATE sector_signals
+        SET flow_smart_net_5d   = %s,
+            flow_smart_net_20d  = %s,
+            flow_retail_net_5d  = %s,
+            flow_retail_net_20d = %s,
+            flow_direction      = %s
+        WHERE date = %s AND sector = %s
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for r in flow_rows:
+                cur.execute(sql, (
+                    r["flow_smart_net_5d"],
+                    r["flow_smart_net_20d"],
+                    r["flow_retail_net_5d"],
+                    r["flow_retail_net_20d"],
+                    r["flow_direction"],
+                    date_str,
+                    r["sector"],
+                ))
+
+
+# ── MARKET FLOWS ──────────────────────────────────────────────────────────────
+
+def upsert_flows_pg(rows: list[tuple]) -> None:
+    """Upsert market_flows rows to Supabase.
+
+    Each tuple must be 12-element, matching the SQLite upsert_flows() order:
+      (date, flow_type, client_type, sector, market_type,
+       buy_volume, buy_value, sell_volume, sell_value,
+       net_volume, net_value, usd_net)
+
+    UNIQUE constraint is (date, flow_type, client_type, sector, market_type).
+    """
+    if not rows:
+        return
+    # Deduplicate on unique key (date, flow_type, client_type, sector, market_type)
+    # — keep last occurrence per key so ON CONFLICT DO UPDATE doesn't see the same
+    # key twice within one execute_values batch (which PostgreSQL rejects).
+    seen: dict[tuple, tuple] = {}
+    for row in rows:
+        key = (row[0], row[1], row[2], row[3], row[4])  # date/type/client/sector/market
+        seen[key] = row
+    rows = list(seen.values())
+
+    from psycopg2.extras import execute_values
+    sql = """
+        INSERT INTO market_flows
+            (date, flow_type, client_type, sector, market_type,
+             buy_volume, buy_value, sell_volume, sell_value,
+             net_volume, net_value, usd_net)
+        VALUES %s
+        ON CONFLICT (date, flow_type, client_type, sector, market_type)
+        DO UPDATE SET
+            buy_volume  = EXCLUDED.buy_volume,
+            buy_value   = EXCLUDED.buy_value,
+            sell_volume = EXCLUDED.sell_volume,
+            sell_value  = EXCLUDED.sell_value,
+            net_volume  = EXCLUDED.net_volume,
+            net_value   = EXCLUDED.net_value,
+            usd_net     = EXCLUDED.usd_net
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            execute_values(cur, sql, rows)

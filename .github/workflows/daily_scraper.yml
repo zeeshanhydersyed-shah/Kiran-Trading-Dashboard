@@ -30,6 +30,9 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+
       - name: Run daily update
         run: python main.py --update
         # --update: scrapes new dates since last DB record, then auto-saves trade setups

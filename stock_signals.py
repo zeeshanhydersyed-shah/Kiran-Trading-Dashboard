@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import logging
 import bisect
@@ -9,6 +10,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 DB = str(Path(__file__).parent / 'psx_data.db')
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 
 def _load_universe(conn):
@@ -190,13 +192,15 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
                             stock_prices, symbol_sector, prev_ranks,
                             stock_prices_vol=None, pivot_lookup=None,
                             base_duration_seed: dict | None = None,
-                            near_pivot_seed: dict | None = None):
+                            near_pivot_seed: dict | None = None,
+                            write_fn=None):
+    # write_fn: None → use SQLite conn for writes; callable → PG mode, called as write_fn(batch)
     stock_date_lists = {sym: [p[0] for p in prices] for sym, prices in stock_prices.items()}
     vol_date_lists = (
         {sym: [p[0] for p in prices] for sym, prices in stock_prices_vol.items()}
         if stock_prices_vol else {}
     )
-    cur = conn.cursor()
+    cur = conn.cursor() if conn is not None else None
     date_count = 0
     # Seed from prior day's values so base_duration accumulates across runs
     base_duration_tracker: dict = defaultdict(int)
@@ -374,34 +378,40 @@ def _process_trading_dates(conn, trading_dates, kse_list, kse_date_idx,
             ):
                 row['sector_rs_rank'] = srank
 
-        cur.executemany(
-            "INSERT OR REPLACE INTO stock_signals "
-            "(date, symbol, rs_score_20, rs_score_50, rs_rank, rs_rank_prev, "
-            "rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d, "
-            "pivot_high, pivot_distance_pct, stage2_bull, "
-            "close_above_ema50, ema50_slope_pos, base_duration, overhead_clear, near_pivot_days, "
-            "close_above_ema150, ema150_slope_pos) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (date, r['symbol'], r['rs_score_20'], r['rs_score_50'],
-                 r['rs_rank'], r['rs_rank_prev'], r['rank_change'], r['sector_rs_rank'],
-                 r.get('base_tightness'), r.get('bos_flag'), r.get('vol_contraction'),
-                 r.get('avg_vol_10d'), r.get('pivot_high'), r.get('pivot_distance_pct'),
-                 r.get('stage2_bull'),
-                 r.get('close_above_ema50'), r.get('ema50_slope_pos'),
-                 r.get('base_duration'), r.get('overhead_clear'), r.get('near_pivot_days'),
-                 r.get('close_above_ema150'), r.get('ema150_slope_pos'))
-                for r in rows
-            ],
-        )
+        batch = [
+            (date, r['symbol'], r['rs_score_20'], r['rs_score_50'],
+             r['rs_rank'], r['rs_rank_prev'], r['rank_change'], r['sector_rs_rank'],
+             r.get('base_tightness'), r.get('bos_flag'), r.get('vol_contraction'),
+             r.get('avg_vol_10d'), r.get('pivot_high'), r.get('pivot_distance_pct'),
+             r.get('stage2_bull'),
+             r.get('close_above_ema50'), r.get('ema50_slope_pos'),
+             r.get('base_duration'), r.get('overhead_clear'), r.get('near_pivot_days'),
+             r.get('close_above_ema150'), r.get('ema150_slope_pos'))
+            for r in rows
+        ]
+        if write_fn is not None:
+            write_fn(batch)
+        else:
+            cur.executemany(
+                "INSERT OR REPLACE INTO stock_signals "
+                "(date, symbol, rs_score_20, rs_score_50, rs_rank, rs_rank_prev, "
+                "rank_change, sector_rs_rank, base_tightness, bos_flag, vol_contraction, avg_vol_10d, "
+                "pivot_high, pivot_distance_pct, stage2_bull, "
+                "close_above_ema50, ema50_slope_pos, base_duration, overhead_clear, near_pivot_days, "
+                "close_above_ema150, ema150_slope_pos) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                batch,
+            )
         prev_ranks.update({r['symbol']: r['rs_rank'] for r in rows})
 
         date_count += 1
         if date_count % 100 == 0:
-            conn.commit()
+            if conn is not None:
+                conn.commit()
             logger.info(f"  {date_count} dates processed, current: {date}")
 
-    conn.commit()  # flush remainder
+    if conn is not None:
+        conn.commit()  # flush remainder
     return date_count
 
 
@@ -428,7 +438,82 @@ def backfill_stock_signals(start_date: str, end_date: str) -> None:
         conn.close()
 
 
+def _append_latest_stock_signals_pg() -> None:
+    from database_pg import (
+        get_universe_pg,
+        get_kse100_for_signals,
+        get_prices_adjusted_for_signals,
+        get_prices_adjusted_with_volume,
+        get_stock_signals_max_date_pg,
+        get_prices_adjusted_max_date_universe_pg,
+        get_stock_signals_prev_ranks_pg,
+        get_stock_signals_seeds_pg,
+        write_stock_signals_batch,
+    )
+
+    last_inserted = get_stock_signals_max_date_pg()
+    last_prices = get_prices_adjusted_max_date_universe_pg()
+
+    if not last_prices:
+        logger.info("No price data available (PG).")
+        return
+    if last_inserted and last_inserted >= last_prices:
+        logger.info(f"stock_signals already up to date at {last_inserted} (PG).")
+        return
+
+    start_date = last_inserted or '2015-01-01'
+    end_date = last_prices
+    logger.info(f"Appending stock_signals (PG): {start_date} → {end_date}")
+
+    symbol_sector = get_universe_pg()
+    lookback_start = (
+        datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=120)
+    ).strftime('%Y-%m-%d')
+
+    kse_list = get_kse100_for_signals(lookback_start, end_date)
+    kse_date_idx = {row[0]: i for i, row in enumerate(kse_list)}
+
+    stock_prices = get_prices_adjusted_for_signals(
+        set(symbol_sector.keys()), lookback_start, end_date
+    )
+
+    prev_ranks = {}
+    if last_inserted:
+        prev_ranks = get_stock_signals_prev_ranks_pg(last_inserted)
+
+    logger.info("Loading full price+volume history from PG (needed for pivot/BT/VC)...")
+    stock_prices_vol = get_prices_adjusted_with_volume(
+        set(symbol_sector.keys()), '2015-01-01', end_date
+    )
+    logger.info("Price+volume history loaded.")
+
+    pivot_lookup = _build_pivot_lookup(stock_prices_vol)
+
+    base_dur_seed: dict = {}
+    _npd_seed: dict = {}
+    if last_inserted:
+        seeds = get_stock_signals_seeds_pg(last_inserted)
+        base_dur_seed = {sym: v[0] for sym, v in seeds.items()}
+        _npd_seed    = {sym: v[1] for sym, v in seeds.items()}
+
+    trading_dates = [row[0] for row in kse_list if row[0] > start_date]
+    total = _process_trading_dates(
+        None,  # conn unused in PG mode
+        trading_dates, kse_list, kse_date_idx,
+        stock_prices, symbol_sector, prev_ranks,
+        stock_prices_vol=stock_prices_vol,
+        pivot_lookup=pivot_lookup,
+        base_duration_seed=base_dur_seed,
+        near_pivot_seed=_npd_seed,
+        write_fn=write_stock_signals_batch,
+    )
+    logger.info(f"Append complete (PG): {total} dates processed.")
+
+
 def append_latest_stock_signals() -> None:
+    if _PG_URL:
+        _append_latest_stock_signals_pg()
+        return
     conn = sqlite3.connect(DB)
     try:
         _ensure_new_stock_columns(conn)

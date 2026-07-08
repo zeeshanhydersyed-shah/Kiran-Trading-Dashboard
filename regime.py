@@ -8,6 +8,7 @@ the latest date into market_regime.
 """
 
 import logging
+import os
 import sqlite3
 
 import pandas as pd
@@ -16,6 +17,8 @@ DB = "psx_data.db"
 logger = logging.getLogger(__name__)
 
 WARMUP = 250  # rows pulled for EWM warm-up; only the last row is written
+
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 
 def _compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -60,6 +63,55 @@ def _classify(row: pd.Series, position_in_full_history: int) -> str:
 
 
 def append_latest_regime() -> None:
+    if _PG_URL:
+        _append_latest_regime_pg()
+    else:
+        _append_latest_regime_sqlite()
+
+
+def _append_latest_regime_pg() -> None:
+    from database_pg import get_kse100_for_regime, get_latest_market_regime, write_market_regime
+
+    total_rows, kse_rows = get_kse100_for_regime(WARMUP)
+    if not kse_rows:
+        logger.warning("Regime hook (PG): no KSE-100 data found.")
+        return
+
+    df = pd.DataFrame(kse_rows)
+    df["date"] = pd.to_datetime(df["date"])
+    df["high"]  = df["high"].astype(float)
+    df["low"]   = df["low"].astype(float)
+    df["close"] = df["close"].astype(float)
+    df = _compute_indicators(df)
+
+    row = df.iloc[-1]
+    date_str = row["date"].strftime("%Y-%m-%d")
+
+    position = total_rows - 1
+    regime = _classify(row, position)
+
+    prev = get_latest_market_regime()
+    if prev and prev[0] == regime:
+        regime_days = prev[1] + 1
+    else:
+        regime_days = 1
+
+    write_market_regime(
+        date_str,
+        float(row["close"]),
+        float(row["ema_20"]),
+        float(row["ema_50"]),
+        float(row["ema_200"]),
+        float(row["atr_20"])     if pd.notna(row["atr_20"])     else None,
+        float(row["atr_pct"])    if pd.notna(row["atr_pct"])    else None,
+        float(row["return_20d"]) if pd.notna(row["return_20d"]) else None,
+        regime,
+        regime_days,
+    )
+    logger.info("Regime logged (PG): %s -> %s (day %d)", date_str, regime, regime_days)
+
+
+def _append_latest_regime_sqlite() -> None:
     conn = sqlite3.connect(DB)
     try:
         # Total KSE-100 rows — needed to determine whether we're still in

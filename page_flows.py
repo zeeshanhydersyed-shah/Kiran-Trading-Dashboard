@@ -730,11 +730,52 @@ def scrape_bulk(
     }
 
 
+def scrape_flows_today(date_str: str | None = None) -> dict:
+    """Programmatic (non-Streamlit) entry point for nightly flow scraping.
+
+    Scrapes FIPI + LIPI for `date_str` (defaults to today) and writes rows
+    to market_flows — Supabase when DATABASE_URL/SUPABASE_DB_URL is set,
+    otherwise local SQLite.
+
+    Returns the same summary dict as scrape_bulk().
+    """
+    import time as _time
+    from datetime import date as _date
+
+    _PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+
+    if date_str is None:
+        date_str = _date.today().isoformat()
+
+    targets = [("FIPI", FIPI_URL), ("LIPI", LIPI_URL)]
+    rows_saved = 0
+    failed = 0
+
+    for flow_type, url in targets:
+        rows = _scrape_flow_page(url, flow_type, date_str, date_str)
+        if rows:
+            if _PG_URL:
+                from database_pg import upsert_flows_pg
+                upsert_flows_pg(rows)
+            else:
+                upsert_flows(rows)
+            rows_saved += len(rows)
+        else:
+            failed += 1
+        _time.sleep(1.0)
+
+    return {
+        "dates_attempted": date_str,
+        "rows_saved":      rows_saved,
+        "failed":          failed,
+    }
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # DECISION SIGNALS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def compute_signals(roll10: pd.DataFrame, roll5: pd.DataFrame, roll20: pd.DataFrame) -> list[dict]:
+def compute_signals(roll10: pd.DataFrame, roll5: pd.DataFrame, roll20: pd.DataFrame, roll20_days: int = 20) -> list[dict]:
     """
     Broad observation signals from rolling flow pivots.
     All logic is directional (sign of net) — no hard value thresholds
@@ -832,7 +873,7 @@ def compute_signals(roll10: pd.DataFrame, roll5: pd.DataFrame, roll20: pd.DataFr
                 "type": "⚡ Flow Reversal",
                 "sector": sector,
                 "detail": (
-                    f"20d net: {_v(total_20)} · 5d net: {_v(total_5)}\n"
+                    f"{roll20_days}d net: {_v(total_20)} · 5d net: {_v(total_5)}\n"
                     f"Sustained outflow is turning — early buying hint, watch for follow-through."
                 ),
                 "severity": "positive", "tier": 2,
@@ -975,7 +1016,7 @@ _SMART_CLIENTS_INTEL = {
     "NBFC", "BROKER PROPRIETARY TRADING",
 }
 
-_INTEL_LOG_PATH = os.path.join(os.path.dirname(__file__), "sector_flows_log.csv")
+_INTEL_LOG_PATH = os.path.join(os.path.dirname(__file__), "sector_flows_log.csv")  # legacy — kept for CSV seed only
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -1108,6 +1149,9 @@ def _intel_pattern_stats(df: pd.DataFrame, mask: pd.Series, horizon: str = "ret_
         avg = float(sub.mean() * 100)
         _, p = _stats.ttest_1samp(sub, 0)
         return {"n": len(sub), "win_rate": wr, "avg_ret": round(avg, 2), "p": round(float(p), 4)}
+    except ImportError:
+        st.warning("scipy is not installed — pattern significance stats unavailable. Run: `pip install scipy`")
+        return {"n": 0, "win_rate": None, "avg_ret": None, "p": None}
     except Exception:
         return {"n": 0, "win_rate": None, "avg_ret": None, "p": None}
 
@@ -1230,36 +1274,52 @@ def _intel_generate_signals(agg: pd.DataFrame, prices: pd.DataFrame) -> list[dic
     return signals
 
 
+def _intel_seed_csv_if_needed():
+    """One-time import: if the DB table is empty and the legacy CSV exists locally, seed it."""
+    import database as db
+    try:
+        db.init_flows_signal_log()
+        existing = db.get_flow_signal_journal()
+        if existing:
+            return  # already populated
+        if not os.path.exists(_INTEL_LOG_PATH):
+            return
+        csv_df = pd.read_csv(_INTEL_LOG_PATH)
+        if csv_df.empty:
+            return
+        signals = csv_df.to_dict("records")
+        # Normalise column name mismatch: CSV uses 'buy_ratio_3d', dict key same
+        db.upsert_flow_signals(signals)
+    except Exception:
+        pass  # never block page render over seeding
+
+
 def _intel_save_signals(signals: list[dict]):
-    """Upsert signals into sector_flows_log.csv."""
-    new_df = pd.DataFrame(signals)
-    if os.path.exists(_INTEL_LOG_PATH):
-        existing = pd.read_csv(_INTEL_LOG_PATH)
-        keys = set(zip(existing["date"].astype(str), existing["sector"], existing["signal_type"]))
-        to_add = new_df[~new_df.apply(
-            lambda r: (r["date"], r["sector"], r["signal_type"]) in keys, axis=1
-        )]
-        if not to_add.empty:
-            combined = pd.concat([existing, to_add], ignore_index=True)
-            combined.to_csv(_INTEL_LOG_PATH, index=False)
-    else:
-        new_df.to_csv(_INTEL_LOG_PATH, index=False)
+    """Persist new signals to Supabase/SQLite — skips duplicates."""
+    import database as db
+    try:
+        db.init_flows_signal_log()
+        db.upsert_flow_signals(signals)
+    except Exception:
+        pass  # degraded gracefully — signals still shown in-session
 
 
 def _intel_validate_signals(agg: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
-    """Fill in fwd_5d_actual for matured PENDING signals and mark WIN/LOSS."""
-    if not os.path.exists(_INTEL_LOG_PATH):
+    """Fill fwd_5d_actual for matured PENDING signals and mark WIN/LOSS in the DB."""
+    import database as db
+    try:
+        rows = db.get_flow_signal_journal()
+    except Exception:
         return pd.DataFrame()
 
-    journal = pd.read_csv(_INTEL_LOG_PATH)
-    if journal.empty:
-        return journal
+    if not rows:
+        return pd.DataFrame()
 
+    journal = pd.DataFrame(rows)
     sp = prices.rename(columns={"sector": "psx_sector"}).sort_values(["psx_sector", "date"])
     today = pd.Timestamp.today()
-    changed = False
 
-    for idx, row in journal.iterrows():
+    for _, row in journal.iterrows():
         if str(row.get("outcome", "")) != "PENDING":
             continue
         try:
@@ -1282,18 +1342,20 @@ def _intel_validate_signals(agg: pd.DataFrame, prices: pd.DataFrame) -> pd.DataF
             continue
 
         ret5 = round((fwd["close"].iloc[4] / base["close"].iloc[-1] - 1) * 100, 2)
-        journal.at[idx, "fwd_5d_actual"] = ret5
         if row["signal_type"] == "DISTRIBUTION_WARNING":
             outcome = "WIN" if ret5 < -1 else ("LOSS" if ret5 > 1 else "BREAKEVEN")
         else:
             outcome = "WIN" if ret5 > 1 else ("LOSS" if ret5 < -1 else "BREAKEVEN")
-        journal.at[idx, "outcome"] = outcome
-        changed = True
+        try:
+            db.update_flow_signal_outcome(int(row["id"]), ret5, outcome)
+        except Exception:
+            pass
 
-    if changed:
-        journal.to_csv(_INTEL_LOG_PATH, index=False)
-
-    return journal
+    # Re-fetch after updates so the caller sees current state
+    try:
+        return pd.DataFrame(db.get_flow_signal_journal())
+    except Exception:
+        return journal
 
 
 def _stat_badge(s: dict) -> str:
@@ -1318,12 +1380,14 @@ def _render_intelligence_section(available: list, n_dates: int):
     st.caption(
         "Correlates FIPI/LIPI flows with subsequent price performance. "
         "Hunts for statistically validated patterns. Confidence builds over 6–8 weeks. "
-        "Signals are auto-saved to `sector_flows_log.csv` for validation."
+        "Signals are persisted in Supabase for validation across sessions."
     )
 
     if n_dates < 3:
         st.info("Need at least 3 days of flows data. Keep scraping daily.")
         return
+
+    _intel_seed_csv_if_needed()  # one-time migration from legacy CSV
 
     with st.spinner("Running intelligence engine…"):
         agg    = _intel_load_flows_agg()
@@ -1518,7 +1582,7 @@ def _render_intelligence_section(available: list, n_dates: int):
     with tab_journal:
         st.caption("All generated signals with outcomes as they mature (5-day window).")
 
-        if not os.path.exists(_INTEL_LOG_PATH) or journal.empty:
+        if journal.empty:
             st.info("No signals logged yet. Run the engine for a few days.")
         else:
             # Summary stats
@@ -2194,7 +2258,7 @@ def render_flows_page():
         roll10 = _rolling_sector_pivot(10)
         roll20 = _rolling_sector_pivot(min(20, n_dates))
 
-        signals = compute_signals(roll10, roll5, roll20)
+        signals = compute_signals(roll10, roll5, roll20, roll20_days=min(20, n_dates))
 
         if not signals:
             st.success("✅ No active signals. Flow picture looks neutral across all sectors.")
@@ -2269,20 +2333,24 @@ def render_flows_page():
     # SECTION 6 — UIN SETTLEMENT ANALYSIS
     _render_settlement_section()
 
-    st.caption(
-        "**Reading guide** | "
-        "FIPI = Foreign Corporates + Foreign Individuals + Overseas Pakistanis | "
-        "LIPI = Banks/DFI + Companies + Insurance + NBFC + Broker Prop + Mutual Funds + Individuals | "
-        "Smart Money = Foreign Corporates, Insurance, Banks/DFI, Companies, NBFC, Broker Prop "
-        "(principal capital / informed) | "
-        "Sentiment/Retail = Overseas Pakistanis, Foreign Individuals, Individuals, Mutual Funds "
-        "(diaspora/retail -- high volume, NOT informationally driven) | "
-        "🟢🟢 Strong Buy = FIPI + LIPI both net positive · "
-        "🟢 Accumulation = foreigners selling, local companies absorbing · "
-        "⚡ Flow Reversal = 20d net negative turning positive in 5d · "
-        "🔵 Foreign Buying = FIPI positive, locals neutral · "
-        "🟡 Local Accumulation = LIPI companies buying, FIPI out · "
-        "🔴 Distribution = both FIPI + LIPI net sellers · "
-        "⚠️ Exit Watch = institutions selling into your active position. "
-        "**Signals are observations only** — accumulate 4+ weeks of data before acting on them."
-    )
+    with st.expander("📖 Reading Guide"):
+        st.markdown(
+            "**Investor categories**\n\n"
+            "- **FIPI** — Foreign Corporates · Foreign Individuals · Overseas Pakistanis\n"
+            "- **LIPI** — Banks/DFI · Companies · Insurance · NBFC · Broker Prop · Mutual Funds · Individuals\n"
+            "- **Smart Money** — Foreign Corporates, Insurance, Banks/DFI, Companies, NBFC, Broker Prop "
+            "(principal capital / informed)\n"
+            "- **Sentiment/Retail** — Overseas Pakistanis, Foreign Individuals, Individuals, Mutual Funds "
+            "(diaspora/retail — high volume, NOT informationally driven)\n\n"
+            "**Signal meanings**\n\n"
+            "| Signal | Meaning |\n"
+            "|---|---|\n"
+            "| 🟢🟢 Strong Buy | FIPI + Smart LIPI both net positive |\n"
+            "| 🟢 Accumulation | Foreigners selling, local smart money absorbing |\n"
+            "| ⚡ Flow Reversal | Rolling net was negative, turning positive in 5d |\n"
+            "| 🔵 Foreign Buying | FIPI positive, locals not yet following |\n"
+            "| 🟡 Local Accumulation | Smart LIPI buying, FIPI absent |\n"
+            "| 🔴 Distribution | Both FIPI + LIPI net sellers |\n"
+            "| ⚠️ Exit Watch | Institutions selling into your active position |\n\n"
+            "**Signals are observations only** — accumulate 4+ weeks of data before acting on them."
+        )

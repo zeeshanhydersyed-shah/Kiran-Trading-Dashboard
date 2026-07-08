@@ -181,6 +181,18 @@ def cmd_update():
     except Exception as exc:
         logger.warning("days_to_nearest_transition backfill hook failed: %s", exc)
 
+    # Scrape today's FIPI / LIPI flows so sector_signals can use them
+    try:
+        from page_flows import scrape_flows_today
+        flow_result = scrape_flows_today()
+        logger.info(
+            "Flow scrape complete — rows_saved=%d, failed=%d",
+            flow_result["rows_saved"],
+            flow_result["failed"],
+        )
+    except Exception as exc:
+        logger.warning("Flow scrape hook failed: %s", exc)
+
     # Append today's sector signals
     try:
         sector_signals.append_latest_sector_signals()
