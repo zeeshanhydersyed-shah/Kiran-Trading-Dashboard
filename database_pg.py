@@ -662,23 +662,25 @@ def save_trade_setup(s: dict) -> int:
         RETURNING id
     """
     # days_to_nearest_transition requires future data — left NULL at insert time
+    # _n(): cast numpy scalars to native Python so psycopg2 can serialize them.
+    def _n(v): return v.item() if hasattr(v, "item") else v
     with get_conn() as conn:
         regime_at_entry, days_since = _get_regime_context(conn, s["created_date"])
         with conn.cursor() as cur:
             cur.execute(sql, (
                 s["created_date"], s["direction"], s["symbol"], s["sector"],
                 s.get("sector_momentum", "—"),
-                s.get("stock_perf_30d", 0.0), s.get("stock_perf_10d", 0.0),
-                s.get("latest_close", 0.0),
-                s.get("support_level"), s.get("resistance_level"),
-                s["entry_price"], s["stop_loss"],
-                s.get("target_1r", 0.0), s.get("target_2r", 0.0),
-                s.get("risk_pct", 0.0), s.get("atr_pct", 0.0),
+                _n(s.get("stock_perf_30d", 0.0)), _n(s.get("stock_perf_10d", 0.0)),
+                _n(s.get("latest_close", 0.0)),
+                _n(s.get("support_level")), _n(s.get("resistance_level")),
+                _n(s["entry_price"]), _n(s["stop_loss"]),
+                _n(s.get("target_1r", 0.0)), _n(s.get("target_2r", 0.0)),
+                _n(s.get("risk_pct", 0.0)), _n(s.get("atr_pct", 0.0)),
                 s.get("status", "Pending"), s.get("notes", ""),
-                s.get("quality_score", 0),
+                _n(s.get("quality_score", 0)),
                 json.dumps(s.get("quality_checks", {}), default=str),
-                s.get("range_width_pct"), s.get("range_window"),
-                s.get("sector_rank"), s.get("breadth_score"),
+                _n(s.get("range_width_pct")), _n(s.get("range_window")),
+                _n(s.get("sector_rank")), _n(s.get("breadth_score")),
                 s.get("source", "System"),
                 s.get("trade_execution", "Paper"),
                 regime_at_entry, days_since,
@@ -1843,3 +1845,42 @@ def auto_detect_suspects_pg() -> int:
 
     print(f"auto_detect_suspects_pg: {new_suspects} new suspect(s) flagged")
     return new_suspects
+
+
+# ── ROLLING TRIM ───────────────────────────────────────────────────────────────
+
+# Confirmed date columns (verified against Supabase schema 2026-07-08):
+_TRIM_TABLES: list[tuple[str, str]] = [
+    ("prices",              "date"),
+    ("prices_adjusted",     "date"),
+    ("stock_signals",       "date"),
+    ("setup_log",           "setup_date"),
+    ("symbol_active_dates", "date"),
+]
+
+
+def trim_old_rows_pg() -> dict[str, int]:
+    """Delete rows older than 2 years from the five large Supabase tables.
+
+    Uses CURRENT_DATE - INTERVAL '2 years' as the cutoff so the window
+    rolls forward automatically each night.  Each table is trimmed in its
+    own transaction; a failure on one table does not affect the others.
+
+    Returns a dict of {table_name: rows_deleted}.
+    Local SQLite (psx_data.db) is the permanent full-history archive —
+    these deletions only affect the rolling Supabase operational copy.
+    """
+    results: dict[str, int] = {}
+    for tbl, date_col in _TRIM_TABLES:
+        try:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"DELETE FROM {tbl}"
+                        f" WHERE {date_col} < CURRENT_DATE - INTERVAL '2 years'"
+                    )
+                    results[tbl] = cur.rowcount
+        except Exception as exc:
+            results[tbl] = -1
+            print(f"trim_old_rows_pg: error on {tbl}: {exc}")
+    return results

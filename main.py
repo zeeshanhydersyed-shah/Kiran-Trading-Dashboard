@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date, datetime
 
@@ -123,6 +124,20 @@ def cmd_update():
             logger.info("Leaders deep scan updated.")
         except Exception as exc:
             logger.warning("Leaders deep scan hook failed: %s", exc)
+        # Rolling trim runs on every night, including no-new-data nights
+        try:
+            _trim_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+            if _trim_pg_url:
+                from database_pg import trim_old_rows_pg
+                trim_results = trim_old_rows_pg()
+                total_trimmed = sum(n for n in trim_results.values() if n >= 0)
+                detail = ", ".join(f"{t}={n}" for t, n in trim_results.items())
+                if total_trimmed > 0:
+                    logger.info("Rolling trim complete: %d rows deleted (%s)", total_trimmed, detail)
+                else:
+                    logger.info("Rolling trim: nothing to delete (all tables within 2-year window).")
+        except Exception as exc:
+            logger.warning("Rolling trim hook failed: %s", exc)
         return
 
     logger.info("Update: scraping %d new date(s) since %s…", len(new_dates), latest_str)
@@ -278,6 +293,23 @@ def cmd_update():
         logger.info("Market breadth oscillator data updated.")
     except Exception as exc:
         logger.warning("Breadth oscillator update failed: %s", exc)
+
+    # Rolling trim — delete rows older than 2 years from large Supabase tables.
+    # Runs LAST so trimming never races against any earlier step's reads.
+    # Failure is logged but never crashes the pipeline.
+    try:
+        _trim_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+        if _trim_pg_url:
+            from database_pg import trim_old_rows_pg
+            trim_results = trim_old_rows_pg()
+            total_trimmed = sum(n for n in trim_results.values() if n >= 0)
+            detail = ", ".join(f"{t}={n}" for t, n in trim_results.items())
+            if total_trimmed > 0:
+                logger.info("Rolling trim complete: %d rows deleted (%s)", total_trimmed, detail)
+            else:
+                logger.info("Rolling trim: nothing to delete (all tables within 2-year window).")
+    except Exception as exc:
+        logger.warning("Rolling trim hook failed: %s", exc)
 
 
 def cmd_report():
