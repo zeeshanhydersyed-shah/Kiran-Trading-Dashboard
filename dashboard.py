@@ -37,6 +37,8 @@ try:
 except Exception:
     pass  # no secrets configured — falls back to SQLite
 
+_PG_URL = _os.environ.get("DATABASE_URL") or _os.environ.get("SUPABASE_DB_URL")
+
 from database import (
     init_db, get_price_date_range, count_prices, count_sectors,
     get_latest_stock_date, get_latest_index_date,
@@ -1080,6 +1082,9 @@ st.markdown(
 # ── Corporate action suspects warning pill ────────────────────────────────
 @st.cache_data(ttl=300)
 def _get_corporate_action_count():
+    if _PG_URL:
+        from dashboard_pg import get_corporate_action_count_pg
+        return get_corporate_action_count_pg()
     import sqlite3 as _sq
     from config import DB_PATH as _banner_db
     conn = _sq.connect(_banner_db)
@@ -1299,6 +1304,9 @@ cur = st.session_state.page
 
 @st.cache_data(ttl=300)
 def _kv_latest():
+    if _PG_URL:
+        from dashboard_pg import get_kv_latest_pg
+        return get_kv_latest_pg()
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     row = con.execute(
@@ -1323,6 +1331,9 @@ def _load_mv_index():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _sh_load_filter_opts():
+    if _PG_URL:
+        from dashboard_pg import get_sh_filter_opts_pg
+        return get_sh_filter_opts_pg()
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA cache_size=-32000")
     regimes = [r[0] for r in conn.execute(
@@ -1339,6 +1350,9 @@ def _sh_load_filter_opts():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _sh_load_perf(regime, sector, setup_type):
+    if _PG_URL:
+        from dashboard_pg import get_sh_perf_pg
+        return get_sh_perf_pg(regime, sector, setup_type)
     q = """
         SELECT
             setup_type, regime, sector,
@@ -1376,6 +1390,9 @@ def _sh_load_perf(regime, sector, setup_type):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _sh_load_symbol(symbol):
+    if _PG_URL:
+        from dashboard_pg import get_sh_symbol_pg
+        return get_sh_symbol_pg(symbol)
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA cache_size=-32000")
     summary = conn.execute(
@@ -5336,6 +5353,9 @@ Frequency 2.5× higher, EV drops 74%. The 30% threshold is load-bearing — loos
 
     @st.cache_data(ttl=300, show_spinner=False)
     def _load_recovery_signals():
+        if _PG_URL:
+            from dashboard_pg import get_recovery_signals_pg
+            return get_recovery_signals_pg()
         conn = _rec_sq.connect(_rec_db)
         conn.execute("PRAGMA cache_size=-32000")
         latest = conn.execute(
@@ -5644,6 +5664,9 @@ elif st.session_state.page == PAGES[10]:
 
     @st.cache_data(ttl=300, show_spinner=False)
     def _load_portfolio_signals():
+        if _PG_URL:
+            from dashboard_pg import get_portfolio_signals_pg
+            return get_portfolio_signals_pg()
         conn = _port_sq.connect(_port_db)
         conn.execute("PRAGMA cache_size=-32000")
         latest = conn.execute(
