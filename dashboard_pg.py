@@ -39,7 +39,19 @@ shape must be matched exactly to avoid breaking untouched downstream code:
     %(price_date)s -- genuine dialect differences the original Task 0 audit's
     grep missed (it only checked for julianday/printf/GROUP_CONCAT/
     datetime('now')/strftime, not SQLite's date() function).
+  - E10.4 (Data Health page read sites): get_dh_summary_pg()'s "Confirmed
+    This Year" count cannot reuse the SQLite query's `confirmed_at >= ?`
+    with a bare year string ("2026") -- corporate_action_suspects.confirmed_at
+    is TIMESTAMP in Postgres (TEXT in SQLite), and Postgres rejects "2026" as
+    an invalid timestamp literal. Verified live: fails with bare year,
+    succeeds with "{year}-01-01". suspect_date/confirmed_at are cast to
+    ::text in the DataFrame-returning queries to match the plain strings
+    the SQLite path already produces (same convention as get_kv_latest_pg
+    etc. above); close_before/close_after/drop_pct/adjustment_factor are
+    coerced to float64 via _coerce_numeric for the same reason.
 """
+
+from datetime import datetime
 
 import pandas as pd
 
@@ -537,3 +549,62 @@ def get_explorer_data_pg():
 
     ex_df = pd.DataFrame(rows, columns=cols)
     return latest, ex_df
+
+
+# ── E10.4: Data Health page ────────────────────────────────────────────────────
+
+def get_dh_summary_pg() -> tuple[int, int, str]:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM corporate_action_suspects WHERE status = 'PENDING'"
+        )
+        pending = cur.fetchone()[0]
+
+        cur.execute(
+            "SELECT COUNT(*) FROM corporate_action_suspects "
+            "WHERE status = 'CONFIRMED' AND confirmed_at >= %s",
+            (f"{datetime.now().year}-01-01",),
+        )
+        confirmed = cur.fetchone()[0]
+
+        cur.execute("SELECT MAX(suspect_date)::text FROM corporate_action_suspects")
+        last_checked = cur.fetchone()[0] or "—"
+
+    return pending, confirmed, last_checked
+
+
+def get_dh_pending_df_pg() -> pd.DataFrame:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, symbol, suspect_date::text AS suspect_date,
+                   close_before, close_after, drop_pct, likely_category
+            FROM corporate_action_suspects
+            WHERE status = 'PENDING'
+            ORDER BY suspect_date DESC
+        """)
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+
+    df = pd.DataFrame(rows, columns=cols)
+    df = _coerce_numeric(df, ["close_before", "close_after", "drop_pct"])
+    return df
+
+
+def get_dh_history_df_pg() -> pd.DataFrame:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT symbol, suspect_date::text AS suspect_date, drop_pct, likely_category,
+                   confirmed_action, adjustment_factor, confirmed_at::text AS confirmed_at, status
+            FROM corporate_action_suspects
+            WHERE status IN ('CONFIRMED', 'FALSE_POSITIVE')
+            ORDER BY confirmed_at DESC
+        """)
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+
+    df = pd.DataFrame(rows, columns=cols)
+    df = _coerce_numeric(df, ["drop_pct", "adjustment_factor"])
+    return df

@@ -7798,145 +7798,169 @@ elif cur == PAGES[17]:  # Data Health
 
     st.markdown("### 🏥 Data Health — Corporate Action Review")
 
-    _dh_con = sqlite3.connect(_dh_db)
-    try:
-        # ── Section 1: Summary metrics ─────────────────────────────────────
-        _dh_pending = _dh_con.execute(
-            "SELECT COUNT(*) FROM corporate_action_suspects WHERE status = 'PENDING'"
-        ).fetchone()[0]
+    def _dh_load_summary():
+        if _PG_URL:
+            from dashboard_pg import get_dh_summary_pg
+            return get_dh_summary_pg()
+        _con = sqlite3.connect(_dh_db)
+        try:
+            pending = _con.execute(
+                "SELECT COUNT(*) FROM corporate_action_suspects WHERE status = 'PENDING'"
+            ).fetchone()[0]
+            confirmed = _con.execute(
+                "SELECT COUNT(*) FROM corporate_action_suspects "
+                "WHERE status = 'CONFIRMED' AND confirmed_at >= ?",
+                (str(_dh_dt.now().year),)
+            ).fetchone()[0]
+            last_checked = _con.execute(
+                "SELECT MAX(suspect_date) FROM corporate_action_suspects"
+            ).fetchone()[0] or "—"
+        finally:
+            _con.close()
+        return pending, confirmed, last_checked
 
-        _dh_confirmed = _dh_con.execute(
-            "SELECT COUNT(*) FROM corporate_action_suspects "
-            "WHERE status = 'CONFIRMED' AND confirmed_at >= ?",
-            (str(_dh_dt.now().year),)
-        ).fetchone()[0]
-
-        _dh_last_checked = _dh_con.execute(
-            "SELECT MAX(suspect_date) FROM corporate_action_suspects"
-        ).fetchone()[0] or "—"
-
-        _dh_c1, _dh_c2, _dh_c3 = st.columns(3)
-        _dh_c1.metric("⚠️ Pending Review", _dh_pending)
-        _dh_c2.metric("✅ Confirmed This Year", _dh_confirmed)
-        _dh_c3.metric("🔍 Last Checked", _dh_last_checked)
-
-        st.markdown("---")
-
-        # ── Section 2: Tabs ────────────────────────────────────────────────
-        _dh_tab_pending, _dh_tab_history = st.tabs(["⚠️ Pending Review", "📋 History"])
-
-        # ── Tab 1: Pending Review ──────────────────────────────────────────
-        with _dh_tab_pending:
-            _dh_pending_df = pd.read_sql_query("""
+    def _dh_load_pending_df():
+        if _PG_URL:
+            from dashboard_pg import get_dh_pending_df_pg
+            return get_dh_pending_df_pg()
+        _con = sqlite3.connect(_dh_db)
+        try:
+            return pd.read_sql_query("""
                 SELECT id, symbol, suspect_date, close_before, close_after,
                        drop_pct, likely_category
                 FROM corporate_action_suspects
                 WHERE status = 'PENDING'
                 ORDER BY suspect_date DESC
-            """, _dh_con)
+            """, _con)
+        finally:
+            _con.close()
 
-            if _dh_pending_df.empty:
-                st.success("No pending corporate actions — all clear.")
-            else:
-                st.dataframe(
-                    _dh_pending_df.rename(columns={
-                        "symbol": "Symbol", "suspect_date": "Date",
-                        "close_before": "Close Before", "close_after": "Close After",
-                        "drop_pct": "Drop %", "likely_category": "Likely Type"
-                    }).drop(columns=["id"]),
-                    use_container_width=True, hide_index=True
-                )
-
-                st.markdown("---")
-                st.markdown("**Review each suspect:**")
-
-                for _, _dh_row in _dh_pending_df.iterrows():
-                    _dh_sym  = _dh_row["symbol"]
-                    _dh_date = _dh_row["suspect_date"]
-                    _dh_cb   = _dh_row["close_before"]
-                    _dh_ca   = _dh_row["close_after"]
-
-                    with st.expander(f"{_dh_sym}  ·  {_dh_date}  ·  {_dh_row['drop_pct']:.1f}%  ·  {_dh_row['likely_category']}"):
-                        _dh_action = st.selectbox(
-                            "Action Type",
-                            ["Dividend", "Bonus", "Right Share"],
-                            key=f"dh_action_{_dh_sym}_{_dh_date}"
-                        )
-                        _dh_btn1, _dh_btn2 = st.columns(2)
-
-                        with _dh_btn1:
-                            if st.button("✅ Confirm", key=f"dh_confirm_{_dh_sym}_{_dh_date}"):
-                                try:
-                                    from apply_price_adjustments import rebuild_symbol_adjusted
-                                    from stock_signals import recompute_symbol_signals
-                                    _dh_factor = _dh_ca / _dh_cb
-                                    _dh_adj_con = sqlite3.connect(_dh_db)
-                                    rebuild_symbol_adjusted(_dh_adj_con, _dh_sym, _dh_date, _dh_factor)
-                                    _dh_adj_con.execute(
-                                        """UPDATE corporate_action_suspects
-                                           SET status = 'CONFIRMED',
-                                               confirmed_action = ?,
-                                               adjustment_factor = ?,
-                                               confirmed_at = ?
-                                           WHERE symbol = ? AND suspect_date = ?""",
-                                        (_dh_action, _dh_factor,
-                                         _dh_dt.now().isoformat(),
-                                         _dh_sym, _dh_date)
-                                    )
-                                    _dh_adj_con.commit()
-                                    _dh_adj_con.close()
-                                    recompute_symbol_signals(_dh_sym)
-                                    st.success(f"{_dh_sym} adjusted and signals recomputed.")
-                                    st.rerun()
-                                except Exception as _dh_e:
-                                    st.error(f"Error: {_dh_e}")
-
-                        with _dh_btn2:
-                            if st.button("❌ False Positive", key=f"dh_fp_{_dh_sym}_{_dh_date}"):
-                                try:
-                                    _dh_fp_con = sqlite3.connect(_dh_db)
-                                    _dh_fp_con.execute(
-                                        """UPDATE corporate_action_suspects
-                                           SET status = 'FALSE_POSITIVE',
-                                               confirmed_at = ?
-                                           WHERE symbol = ? AND suspect_date = ?""",
-                                        (_dh_dt.now().isoformat(), _dh_sym, _dh_date)
-                                    )
-                                    _dh_fp_con.commit()
-                                    _dh_fp_con.close()
-                                    st.info(f"{_dh_sym} marked as false positive.")
-                                    st.rerun()
-                                except Exception as _dh_e:
-                                    st.error(f"Error: {_dh_e}")
-
-        # ── Tab 2: History ─────────────────────────────────────────────────
-        with _dh_tab_history:
-            _dh_hist_df = pd.read_sql_query("""
+    def _dh_load_history_df():
+        if _PG_URL:
+            from dashboard_pg import get_dh_history_df_pg
+            return get_dh_history_df_pg()
+        _con = sqlite3.connect(_dh_db)
+        try:
+            return pd.read_sql_query("""
                 SELECT symbol, suspect_date, drop_pct, likely_category,
                        confirmed_action, adjustment_factor, confirmed_at, status
                 FROM corporate_action_suspects
                 WHERE status IN ('CONFIRMED', 'FALSE_POSITIVE')
                 ORDER BY confirmed_at DESC
-            """, _dh_con)
+            """, _con)
+        finally:
+            _con.close()
 
-            if _dh_hist_df.empty:
-                st.info("No confirmed or dismissed events yet.")
-            else:
-                _dh_hist_df["adjustment_factor"] = _dh_hist_df["adjustment_factor"].apply(
-                    lambda x: f"{x:.4f}" if pd.notna(x) else "—"
-                )
-                _dh_hist_df["drop_pct"] = _dh_hist_df["drop_pct"].apply(
-                    lambda x: f"{x:.1f}%" if pd.notna(x) else "—"
-                )
-                st.dataframe(
-                    _dh_hist_df.rename(columns={
-                        "symbol": "Symbol", "suspect_date": "Date",
-                        "drop_pct": "Drop %", "likely_category": "Category",
-                        "confirmed_action": "Action", "adjustment_factor": "Factor",
-                        "confirmed_at": "Confirmed At", "status": "Status"
-                    }),
-                    use_container_width=True, hide_index=True
-                )
+    # ── Section 1: Summary metrics ─────────────────────────────────────────
+    _dh_pending, _dh_confirmed, _dh_last_checked = _dh_load_summary()
 
-    finally:
-        _dh_con.close()
+    _dh_c1, _dh_c2, _dh_c3 = st.columns(3)
+    _dh_c1.metric("⚠️ Pending Review", _dh_pending)
+    _dh_c2.metric("✅ Confirmed This Year", _dh_confirmed)
+    _dh_c3.metric("🔍 Last Checked", _dh_last_checked)
+
+    st.markdown("---")
+
+    # ── Section 2: Tabs ────────────────────────────────────────────────────
+    _dh_tab_pending, _dh_tab_history = st.tabs(["⚠️ Pending Review", "📋 History"])
+
+    # ── Tab 1: Pending Review ────────────────────────────────────────────────
+    with _dh_tab_pending:
+        _dh_pending_df = _dh_load_pending_df()
+
+        if _dh_pending_df.empty:
+            st.success("No pending corporate actions — all clear.")
+        else:
+            st.dataframe(
+                _dh_pending_df.rename(columns={
+                    "symbol": "Symbol", "suspect_date": "Date",
+                    "close_before": "Close Before", "close_after": "Close After",
+                    "drop_pct": "Drop %", "likely_category": "Likely Type"
+                }).drop(columns=["id"]),
+                use_container_width=True, hide_index=True
+            )
+
+            st.markdown("---")
+            st.markdown("**Review each suspect:**")
+
+            for _, _dh_row in _dh_pending_df.iterrows():
+                _dh_sym  = _dh_row["symbol"]
+                _dh_date = _dh_row["suspect_date"]
+                _dh_cb   = _dh_row["close_before"]
+                _dh_ca   = _dh_row["close_after"]
+
+                with st.expander(f"{_dh_sym}  ·  {_dh_date}  ·  {_dh_row['drop_pct']:.1f}%  ·  {_dh_row['likely_category']}"):
+                    _dh_action = st.selectbox(
+                        "Action Type",
+                        ["Dividend", "Bonus", "Right Share"],
+                        key=f"dh_action_{_dh_sym}_{_dh_date}"
+                    )
+                    _dh_btn1, _dh_btn2 = st.columns(2)
+
+                    with _dh_btn1:
+                        if st.button("✅ Confirm", key=f"dh_confirm_{_dh_sym}_{_dh_date}"):
+                            try:
+                                from apply_price_adjustments import rebuild_symbol_adjusted
+                                from stock_signals import recompute_symbol_signals
+                                _dh_factor = _dh_ca / _dh_cb
+                                _dh_adj_con = sqlite3.connect(_dh_db)
+                                rebuild_symbol_adjusted(_dh_adj_con, _dh_sym, _dh_date, _dh_factor)
+                                _dh_adj_con.execute(
+                                    """UPDATE corporate_action_suspects
+                                       SET status = 'CONFIRMED',
+                                           confirmed_action = ?,
+                                           adjustment_factor = ?,
+                                           confirmed_at = ?
+                                       WHERE symbol = ? AND suspect_date = ?""",
+                                    (_dh_action, _dh_factor,
+                                     _dh_dt.now().isoformat(),
+                                     _dh_sym, _dh_date)
+                                )
+                                _dh_adj_con.commit()
+                                _dh_adj_con.close()
+                                recompute_symbol_signals(_dh_sym)
+                                st.success(f"{_dh_sym} adjusted and signals recomputed.")
+                                st.rerun()
+                            except Exception as _dh_e:
+                                st.error(f"Error: {_dh_e}")
+
+                    with _dh_btn2:
+                        if st.button("❌ False Positive", key=f"dh_fp_{_dh_sym}_{_dh_date}"):
+                            try:
+                                _dh_fp_con = sqlite3.connect(_dh_db)
+                                _dh_fp_con.execute(
+                                    """UPDATE corporate_action_suspects
+                                       SET status = 'FALSE_POSITIVE',
+                                           confirmed_at = ?
+                                       WHERE symbol = ? AND suspect_date = ?""",
+                                    (_dh_dt.now().isoformat(), _dh_sym, _dh_date)
+                                )
+                                _dh_fp_con.commit()
+                                _dh_fp_con.close()
+                                st.info(f"{_dh_sym} marked as false positive.")
+                                st.rerun()
+                            except Exception as _dh_e:
+                                st.error(f"Error: {_dh_e}")
+
+    # ── Tab 2: History ───────────────────────────────────────────────────────
+    with _dh_tab_history:
+        _dh_hist_df = _dh_load_history_df()
+
+        if _dh_hist_df.empty:
+            st.info("No confirmed or dismissed events yet.")
+        else:
+            _dh_hist_df["adjustment_factor"] = _dh_hist_df["adjustment_factor"].apply(
+                lambda x: f"{x:.4f}" if pd.notna(x) else "—"
+            )
+            _dh_hist_df["drop_pct"] = _dh_hist_df["drop_pct"].apply(
+                lambda x: f"{x:.1f}%" if pd.notna(x) else "—"
+            )
+            st.dataframe(
+                _dh_hist_df.rename(columns={
+                    "symbol": "Symbol", "suspect_date": "Date",
+                    "drop_pct": "Drop %", "likely_category": "Category",
+                    "confirmed_action": "Action", "adjustment_factor": "Factor",
+                    "confirmed_at": "Confirmed At", "status": "Status"
+                }),
+                use_container_width=True, hide_index=True
+            )
