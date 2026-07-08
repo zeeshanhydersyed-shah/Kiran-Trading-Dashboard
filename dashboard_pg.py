@@ -27,6 +27,18 @@ shape must be matched exactly to avoid breaking untouched downstream code:
     the returned date through fmt_date(), which wraps its argument in
     str(d) before parsing, so a native datetime.date round-trips exactly
     like a SQLite string. No other code path touches this value.
+  - E10.3 (7 functions below): none of these cast any date value to text
+    either -- traced every "latest date" scalar each function returns and
+    confirmed each one is either passed through fmt_date() or interpolated
+    directly into an f-string (which calls str() on it implicitly, giving
+    the same ISO-format result for a datetime.date as for a SQLite string).
+    None of the DataFrames these functions return include a raw `date`
+    column that reaches the UI. get_rotation_radar_data_pg() also replaces
+    SQLite's date(?, '-N days') with `%s::date - INTERVAL 'N days'` and
+    converts the SQLite named-parameter style (:price_date) to psycopg2's
+    %(price_date)s -- genuine dialect differences the original Task 0 audit's
+    grep missed (it only checked for julianday/printf/GROUP_CONCAT/
+    datetime('now')/strftime, not SQLite's date() function).
 """
 
 import pandas as pd
@@ -231,3 +243,297 @@ def get_regime_status_pg() -> tuple | None:
         if last_transition_idx is not None else len(dates) - 1
     )
     return regimes[-1], dates[-1], days_since
+
+
+# ── E10.3 PG siblings ────────────────────────────────────────────────────────
+
+def get_market_gates_sectors_pg():
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(date) FROM sector_signals")
+        latest = cur.fetchone()[0]
+        cur.execute(
+            """
+            SELECT sector, rs_rank, rs_score_20, composite_score,
+                   breadth_score, rs_inflection
+            FROM sector_signals
+            WHERE date = %s
+              AND rs_rank IS NOT NULL
+            ORDER BY rs_rank ASC
+            """,
+            (latest,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+    sectors = pd.DataFrame(rows, columns=cols)
+    return latest, sectors
+
+
+def get_rotation_radar_data_pg():
+    with get_conn() as conn:
+        cur = conn.cursor()
+
+        cur.execute("SELECT MAX(date) FROM sector_signals")
+        latest_rr = cur.fetchone()[0]
+
+        cur.execute(
+            "SELECT MAX(date) FROM sector_signals WHERE flow_direction IS NOT NULL"
+        )
+        latest_flow = cur.fetchone()[0]
+
+        cur.execute(
+            """
+            SELECT
+                ss.sector,
+                ss.rs_score_20, ss.rs_score_50, ss.rs_rank,
+                ss.breadth_score, ss.adv_dec_ratio, ss.vol_ratio,
+                ss.rs_inflection, ss.composite_score, ss.regime,
+                ss.sector_stage, ss.sector_above_ema,
+                ss.sector_ema_slope, ss.sector_pivot_dist_pct,
+                COALESCE(sf.flow_direction,     NULL) AS flow_direction,
+                COALESCE(sf.flow_smart_net_5d,  NULL) AS flow_smart_net_5d,
+                COALESCE(sf.flow_smart_net_20d, NULL) AS flow_smart_net_20d
+            FROM sector_signals ss
+            LEFT JOIN sector_signals sf
+                ON sf.sector = ss.sector
+               AND sf.date   = %(flow_date)s
+            WHERE ss.date = %(price_date)s
+            ORDER BY ss.composite_score DESC
+            """,
+            {"price_date": latest_rr, "flow_date": latest_flow or latest_rr},
+        )
+        rr_rows = cur.fetchall()
+        rr_cols = [d[0] for d in cur.description]
+
+        # rr_hist: dead data (see module docstring) -- ported faithfully for
+        # parity with the pre-extraction SQLite behavior, not because it's
+        # displayed anywhere.
+        cur.execute(
+            """
+            SELECT date, sector, rs_score_20, rs_rank
+            FROM sector_signals
+            WHERE date >= %s::date - INTERVAL '30 days'
+            ORDER BY sector, date
+            """,
+            (latest_rr,),
+        )
+        hist_rows = cur.fetchall()
+        hist_cols = [d[0] for d in cur.description]
+
+        cur.execute(
+            """
+            SELECT sector, rs_rank as rank_10d
+            FROM sector_signals
+            WHERE date = (
+                SELECT date FROM sector_signals
+                WHERE date <= %s::date - INTERVAL '10 days'
+                ORDER BY date DESC LIMIT 1
+            )
+            """,
+            (latest_rr,),
+        )
+        rank_10d_rows = cur.fetchall()
+        rank_10d_cols = [d[0] for d in cur.description]
+
+    rr_df = pd.DataFrame(rr_rows, columns=rr_cols)
+    rr_hist = pd.DataFrame(hist_rows, columns=hist_cols)
+    rank_10d_ago = pd.DataFrame(rank_10d_rows, columns=rank_10d_cols)
+    return latest_rr, latest_flow, rr_df, rr_hist, rank_10d_ago
+
+
+def get_history_sector_ranks_pg():
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(date) FROM sector_signals")
+        latest = cur.fetchone()[0]
+        cur.execute(
+            """
+            SELECT sector, rs_rank, composite_score
+            FROM sector_signals
+            WHERE date = %s AND rs_rank IS NOT NULL
+            ORDER BY rs_rank ASC
+            """,
+            (latest,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+    ranks = pd.DataFrame(rows, columns=cols)
+    return latest, ranks
+
+
+def get_history_symbol_sectors_pg():
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT symbol, sector FROM sectors WHERE sector IS NOT NULL")
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def get_regime_analysis_pg():
+    sql = """
+        WITH labeled AS (
+            SELECT
+                CASE
+                    WHEN regime_at_entry = 'TRENDING_UP'
+                         AND (days_since_last_transition IS NULL OR days_since_last_transition >= 6)
+                         THEN 'Stable uptrend — favorable conditions'
+                    WHEN regime_at_entry = 'TRENDING_UP'
+                         AND days_since_last_transition BETWEEN 3 AND 5
+                         THEN 'Uptrend settling — moderate caution'
+                    WHEN regime_at_entry = 'TRENDING_UP'
+                         AND days_since_last_transition <= 2
+                         THEN 'Uptrend just started — proceed carefully'
+                    WHEN regime_at_entry = 'VOLATILE'
+                         THEN 'Choppy conditions — selective only'
+                    WHEN regime_at_entry = 'RANGING'
+                         THEN 'Narrow range — low activity expected'
+                    WHEN regime_at_entry = 'TRENDING_DOWN'
+                         THEN 'Down / Short setups only'
+                END AS condition_label,
+                outcome,
+                actual_pl_pct,
+                actual_pl_pkr
+            FROM trade_setups
+            WHERE source = 'Actual'
+              AND outcome IN ('Win', 'Loss', 'Breakeven')
+        )
+        SELECT
+            condition_label                                                              AS "Conditions",
+            COUNT(*)                                                                     AS "Trades",
+            SUM(CASE WHEN outcome = 'Win'  THEN 1 ELSE 0 END)                           AS "Wins",
+            SUM(CASE WHEN outcome = 'Loss' THEN 1 ELSE 0 END)                           AS "Losses",
+            ROUND(
+                100.0 * SUM(CASE WHEN outcome = 'Win' THEN 1 ELSE 0 END)
+                / NULLIF(SUM(CASE WHEN outcome IN ('Win','Loss') THEN 1 ELSE 0 END), 0),
+                1
+            )                                                                            AS "Win Rate %",
+            ROUND(AVG(actual_pl_pct), 2)                                                AS "Avg Return %",
+            ROUND(SUM(COALESCE(actual_pl_pkr, 0)), 0)                                   AS "Net PnL (PKR)"
+        FROM labeled
+        WHERE condition_label IS NOT NULL
+        GROUP BY condition_label
+        ORDER BY "Trades" DESC
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def get_regime_definitions_pg():
+    sql = """
+        WITH labeled AS (
+            SELECT
+                CASE
+                    WHEN ts.regime_at_entry = 'TRENDING_UP'
+                         AND (ts.days_since_last_transition IS NULL
+                              OR ts.days_since_last_transition >= 6)
+                         THEN 'Stable uptrend — favorable conditions'
+                    WHEN ts.regime_at_entry = 'TRENDING_UP'
+                         AND ts.days_since_last_transition BETWEEN 3 AND 5
+                         THEN 'Uptrend settling — moderate caution'
+                    WHEN ts.regime_at_entry = 'TRENDING_UP'
+                         AND ts.days_since_last_transition <= 2
+                         THEN 'Uptrend just started — proceed carefully'
+                    WHEN ts.regime_at_entry = 'VOLATILE'
+                         THEN 'Choppy conditions — selective only'
+                    WHEN ts.regime_at_entry = 'RANGING'
+                         THEN 'Narrow range — low activity expected'
+                    WHEN ts.regime_at_entry = 'TRENDING_DOWN'
+                         THEN 'Down / Short setups only'
+                END                           AS condition_label,
+                ts.regime_at_entry,
+                ts.days_since_last_transition,
+                mr.ema_20,
+                mr.ema_50,
+                mr.ema_200,
+                mr.atr_pct,
+                mr.return_20d
+            FROM trade_setups ts
+            LEFT JOIN market_regime mr ON ts.created_date = mr.date
+            WHERE ts.source = 'Actual'
+              AND ts.regime_at_entry IS NOT NULL
+        )
+        SELECT
+            condition_label,
+            regime_at_entry,
+            MIN(CASE WHEN days_since_last_transition IS NOT NULL
+                     THEN days_since_last_transition END)                AS min_days,
+            MAX(days_since_last_transition)                               AS max_days,
+            SUM(CASE WHEN days_since_last_transition IS NULL
+                     THEN 1 ELSE 0 END)                                  AS null_days_n,
+            ROUND(AVG(CASE WHEN ema_20 IS NOT NULL AND ema_50 IS NOT NULL
+                           THEN (ema_20 - ema_50) / ema_50 * 100 END)::numeric, 2) AS avg_ema20_vs_50_pct,
+            ROUND(AVG(CASE WHEN ema_50 IS NOT NULL AND ema_200 IS NOT NULL
+                           THEN (ema_50 - ema_200) / ema_200 * 100 END)::numeric, 2) AS avg_ema50_vs_200_pct,
+            ROUND(AVG(atr_pct),    2)                                    AS avg_atr_pct,
+            ROUND(AVG(return_20d), 2)                                    AS avg_return_20d,
+            COUNT(*)                                                      AS n
+        FROM labeled
+        WHERE condition_label IS NOT NULL
+        GROUP BY condition_label, regime_at_entry
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def get_explorer_data_pg():
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(date) FROM stock_signals")
+        latest = cur.fetchone()[0]
+
+        cur.execute(
+            """
+            WITH date_5ago AS (
+                SELECT date FROM sector_signals
+                WHERE date < %s
+                ORDER BY date DESC
+                LIMIT 1 OFFSET 4
+            ),
+            sec_5d AS (
+                SELECT sector, rs_rank AS rs_rank_5d
+                FROM sector_signals
+                WHERE date = (SELECT date FROM date_5ago)
+            )
+            SELECT ss.symbol, s.sector,
+                   ss.rs_score_20, ss.rs_rank, ss.rs_rank_prev, ss.rank_change,
+                   ss.sector_rs_rank, ss.base_tightness, ss.pivot_distance_pct,
+                   ss.bos_flag, ss.avg_vol_10d, ss.vol_contraction, ss.pivot_high,
+                   ss.stage2_bull,
+                   ss.close_above_ema50, ss.ema50_slope_pos,
+                   ss.close_above_ema150, ss.ema150_slope_pos,
+                   ss.base_duration, ss.overhead_clear, ss.near_pivot_days,
+                   p.close AS current_close,
+                   sec.rs_rank              AS sec_global_rank,
+                   sec.sector_stage         AS sec_stage,
+                   sec.sector_above_ema     AS sec_above_ema,
+                   sec.sector_ema_slope     AS sec_ema_slope,
+                   sec.sector_pivot_dist_pct AS sec_pivot_dist,
+                   sec.rs_inflection        AS sec_rs_inflection,
+                   sec.sector_rs_new_high   AS sec_rs_new_high,
+                   sec5.rs_rank_5d          AS sec_rs_rank_5d
+            FROM stock_signals ss
+            JOIN sectors s ON ss.symbol = s.symbol
+            LEFT JOIN prices p
+                ON p.symbol = ss.symbol AND p.date = ss.date
+            LEFT JOIN sector_signals sec
+                ON sec.date = ss.date AND sec.sector = s.sector
+            LEFT JOIN sec_5d sec5 ON sec5.sector = s.sector
+            WHERE ss.date = %s
+            ORDER BY ss.rs_rank ASC
+            """,
+            (latest, latest),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+
+    ex_df = pd.DataFrame(rows, columns=cols)
+    return latest, ex_df
