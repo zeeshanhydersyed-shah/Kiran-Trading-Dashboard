@@ -41,6 +41,10 @@ jobs:
         run: python main.py --update
         # --update: scrapes new dates since last DB record, then auto-saves trade setups
 
+      - name: Health Check
+        run: python health_check.py
+        # E9: connection-is-real, staleness-chain, freshness-floor, flows T+2, rolling-trim sanity
+
       - name: Notify on failure
         if: failure()
         run: |
