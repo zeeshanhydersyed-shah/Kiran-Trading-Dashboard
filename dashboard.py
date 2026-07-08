@@ -7927,16 +7927,21 @@ elif cur == PAGES[17]:  # Data Health
                     with _dh_btn2:
                         if st.button("❌ False Positive", key=f"dh_fp_{_dh_sym}_{_dh_date}"):
                             try:
-                                _dh_fp_con = sqlite3.connect(_dh_db)
-                                _dh_fp_con.execute(
-                                    """UPDATE corporate_action_suspects
-                                       SET status = 'FALSE_POSITIVE',
-                                           confirmed_at = ?
-                                       WHERE symbol = ? AND suspect_date = ?""",
-                                    (_dh_dt.now().isoformat(), _dh_sym, _dh_date)
-                                )
-                                _dh_fp_con.commit()
-                                _dh_fp_con.close()
+                                _dh_now = _dh_dt.now().isoformat()
+                                if _PG_URL:
+                                    from dashboard_pg import mark_dh_false_positive_pg
+                                    mark_dh_false_positive_pg(_dh_sym, _dh_date, _dh_now)
+                                else:
+                                    _dh_fp_con = sqlite3.connect(_dh_db)
+                                    _dh_fp_con.execute(
+                                        """UPDATE corporate_action_suspects
+                                           SET status = 'FALSE_POSITIVE',
+                                               confirmed_at = ?
+                                           WHERE symbol = ? AND suspect_date = ?""",
+                                        (_dh_now, _dh_sym, _dh_date)
+                                    )
+                                    _dh_fp_con.commit()
+                                    _dh_fp_con.close()
                                 st.info(f"{_dh_sym} marked as false positive.")
                                 st.rerun()
                             except Exception as _dh_e:

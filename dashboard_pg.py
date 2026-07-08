@@ -39,16 +39,20 @@ shape must be matched exactly to avoid breaking untouched downstream code:
     %(price_date)s -- genuine dialect differences the original Task 0 audit's
     grep missed (it only checked for julianday/printf/GROUP_CONCAT/
     datetime('now')/strftime, not SQLite's date() function).
-  - E10.4 (Data Health page read sites): get_dh_summary_pg()'s "Confirmed
-    This Year" count cannot reuse the SQLite query's `confirmed_at >= ?`
-    with a bare year string ("2026") -- corporate_action_suspects.confirmed_at
-    is TIMESTAMP in Postgres (TEXT in SQLite), and Postgres rejects "2026" as
+  - E10.4 (Data Health page): get_dh_summary_pg()'s "Confirmed This Year"
+    count cannot reuse the SQLite query's `confirmed_at >= ?` with a bare
+    year string ("2026") -- corporate_action_suspects.confirmed_at is
+    TIMESTAMP in Postgres (TEXT in SQLite), and Postgres rejects "2026" as
     an invalid timestamp literal. Verified live: fails with bare year,
     succeeds with "{year}-01-01". suspect_date/confirmed_at are cast to
     ::text in the DataFrame-returning queries to match the plain strings
     the SQLite path already produces (same convention as get_kv_latest_pg
     etc. above); close_before/close_after/drop_pct/adjustment_factor are
     coerced to float64 via _coerce_numeric for the same reason.
+    mark_dh_false_positive_pg()'s confirmed_at param is set from
+    datetime.now().isoformat() by the caller -- its 'T'-separated ISO 8601
+    format is accepted natively as a Postgres timestamp literal, no fix
+    needed (unlike the bare-year case above).
 """
 
 from datetime import datetime
@@ -608,3 +612,14 @@ def get_dh_history_df_pg() -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=cols)
     df = _coerce_numeric(df, ["drop_pct", "adjustment_factor"])
     return df
+
+
+def mark_dh_false_positive_pg(symbol: str, ex_date: str, confirmed_at: str) -> None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE corporate_action_suspects
+                SET status = 'FALSE_POSITIVE',
+                    confirmed_at = %s
+                WHERE symbol = %s AND suspect_date = %s
+            """, (confirmed_at, symbol, ex_date))
