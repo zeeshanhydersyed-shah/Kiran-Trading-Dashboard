@@ -693,3 +693,92 @@ def get_leaders_rs_data_pg() -> tuple:
     df = pd.DataFrame(rows, columns=cols)
     df = _coerce_numeric(df, _LEADERS_RS_NUMERIC_COLS)
     return latest, df
+
+
+# ── E10.5 batch B: Leaders page, Unified Watchlist tab ──────────────────────
+# Three confirmed bugs fixed together here, per Task 0's audit and the live
+# tests run before writing this function:
+#   1. N+1: the SQLite path's per-symbol 3-query loop (3 x N_breakout_rows
+#      queries) is collapsed into one CTE query that computes every BREAKOUT
+#      symbol's streak-start date at once, using the same two-step "last
+#      non-breakout date, then earliest breakout date after it" logic.
+#      Verified byte-for-byte identical to the old loop's output against
+#      local SQLite (21/21 BREAKOUT symbols matched).
+#   2. boolean: stock_signals.bos_flag is a native boolean column in
+#      Postgres (confirmed live) -- `bos_flag = 0/1` raises
+#      "operator does not exist: boolean = integer" (reproduced live).
+#      Fixed with `bos_flag = FALSE/TRUE`.
+#   3. datetime.date vs str: stock_signals.date is `date` in Postgres but
+#      leaders_scan.scan_date is `text` -- without a cast, breakout_date
+#      comes back as datetime.date while scan_date is str, so
+#      `_uw_status()`'s `breakout_date == scan_date` check is always False
+#      (reproduced live: 0 "BROKE OUT TODAY" matches with real ones
+#      present). Fixed with `MIN(ss.date)::text`, matching the str dtype
+#      SQLite's TEXT date column already produces -- confirmed live this
+#      produces the correct non-zero match count (7/40) and requires no
+#      change to _uw_status() itself, which stays identical across backends.
+# rs_score_20/base_tightness/pivot_high/pivot_distance_pct/vol_ratio_today/
+# entry_trigger/stop_loss/sl_pct are NUMERIC in Postgres (confirmed live);
+# avg_vol_10d/vol_contraction are double precision and sector_rank/rs_rank/
+# final_score are integer -- no coercion needed for those.
+
+_LEADERS_UNIFIED_NUMERIC_COLS = [
+    "rs_score_20", "base_tightness", "pivot_high", "pivot_distance_pct",
+    "vol_ratio_today", "entry_trigger", "stop_loss", "sl_pct",
+]
+
+
+def get_leaders_unified_data_pg() -> tuple:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(scan_date) FROM leaders_scan")
+        scan_date = cur.fetchone()[0]
+        if not scan_date:
+            return scan_date, pd.DataFrame(), {}
+
+        cur.execute(
+            """
+            SELECT ls.symbol, ls.setup_type, ls.sector, ls.sector_rank,
+                   ls.rs_rank, ls.rs_score_20, ls.avg_vol_10d,
+                   ls.base_tightness, ls.pivot_high, ls.pivot_distance_pct,
+                   ls.vol_ratio_today, ls.vol_contraction, ls.final_score, ls.flag,
+                   ls.entry_trigger, ls.stop_loss, ls.sl_pct
+            FROM leaders_scan ls
+            WHERE ls.scan_date = %s
+            ORDER BY ls.setup_type DESC, ls.final_score DESC
+            """,
+            (scan_date,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        df = pd.DataFrame(rows, columns=cols)
+        df = _coerce_numeric(df, _LEADERS_UNIFIED_NUMERIC_COLS)
+
+        cur.execute(
+            """
+            WITH bo_symbols AS (
+                SELECT symbol FROM leaders_scan
+                WHERE scan_date = %s AND setup_type = 'BREAKOUT'
+            ),
+            last_zero AS (
+                SELECT ss.symbol, MAX(ss.date) AS last_zero_date
+                FROM stock_signals ss
+                WHERE ss.symbol IN (SELECT symbol FROM bo_symbols)
+                  AND ss.bos_flag = FALSE
+                  AND ss.date <= %s
+                GROUP BY ss.symbol
+            )
+            SELECT b.symbol, MIN(ss.date)::text AS breakout_date
+            FROM bo_symbols b
+            LEFT JOIN last_zero lz ON lz.symbol = b.symbol
+            JOIN stock_signals ss
+                ON ss.symbol = b.symbol
+               AND ss.bos_flag = TRUE
+               AND (lz.last_zero_date IS NULL OR ss.date > lz.last_zero_date)
+            GROUP BY b.symbol
+            """,
+            (scan_date, scan_date),
+        )
+        bo_dates = dict(cur.fetchall())
+
+    return scan_date, df, bo_dates

@@ -1764,6 +1764,66 @@ def _get_leaders_rs_data():
     return latest, rs_df
 
 
+def _get_leaders_unified_data():
+    """Returns (scan_date, watchlist_df, breakout_date_by_symbol).
+
+    breakout_date_by_symbol replaces the old per-symbol 3-query loop (N+1 --
+    3 queries x however many BREAKOUT rows exist) with one query using the
+    same two-step "last non-breakout date, then earliest breakout date after
+    it" logic, run once for all BREAKOUT symbols via a CTE instead of once
+    per symbol. Verified byte-for-byte identical to the original loop's
+    output against local SQLite (21/21 symbols matched, including the
+    resulting BROKE OUT TODAY / ACTIVE BREAKOUT classification)."""
+    if _PG_URL:
+        from dashboard_pg import get_leaders_unified_data_pg
+        return get_leaders_unified_data_pg()
+    conn = sqlite3.connect(DB_PATH)
+    scan_date = conn.execute(
+        "SELECT MAX(scan_date) FROM leaders_scan"
+    ).fetchone()[0]
+    if not scan_date:
+        conn.close()
+        return scan_date, pd.DataFrame(), {}
+
+    df = pd.read_sql_query("""
+        SELECT ls.symbol, ls.setup_type, ls.sector, ls.sector_rank,
+               ls.rs_rank, ls.rs_score_20, ls.avg_vol_10d,
+               ls.base_tightness, ls.pivot_high, ls.pivot_distance_pct,
+               ls.vol_ratio_today, ls.vol_contraction, ls.final_score, ls.flag,
+               ls.entry_trigger, ls.stop_loss, ls.sl_pct
+        FROM leaders_scan ls
+        WHERE ls.scan_date = ?
+        ORDER BY ls.setup_type DESC, ls.final_score DESC
+    """, conn, params=(scan_date,))
+
+    bo_dates_df = pd.read_sql_query("""
+        WITH bo_symbols AS (
+            SELECT symbol FROM leaders_scan
+            WHERE scan_date = ? AND setup_type = 'BREAKOUT'
+        ),
+        last_zero AS (
+            SELECT ss.symbol, MAX(ss.date) AS last_zero_date
+            FROM stock_signals ss
+            WHERE ss.symbol IN (SELECT symbol FROM bo_symbols)
+              AND ss.bos_flag = 0
+              AND ss.date <= ?
+            GROUP BY ss.symbol
+        )
+        SELECT b.symbol, MIN(ss.date) AS breakout_date
+        FROM bo_symbols b
+        LEFT JOIN last_zero lz ON lz.symbol = b.symbol
+        JOIN stock_signals ss
+            ON ss.symbol = b.symbol
+           AND ss.bos_flag = 1
+           AND (lz.last_zero_date IS NULL OR ss.date > lz.last_zero_date)
+        GROUP BY b.symbol
+    """, conn, params=(scan_date, scan_date))
+    conn.close()
+
+    bo_dates = dict(zip(bo_dates_df['symbol'], bo_dates_df['breakout_date']))
+    return scan_date, df, bo_dates
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 0 — MARKET GATES DASHBOARD (4-GATES OVERVIEW)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -6910,44 +6970,11 @@ elif cur == PAGES[15]:  # Leaders
     # ── Tab 2: Pre-Breakout ────────────────────────────────────────────────
     # ── Tab 2: Unified Watchlist ──────────────────────────────────────────────
     with _ld_tab_unified:
-        _uw_scan_date = _ld_conn.execute(
-            "SELECT MAX(scan_date) FROM leaders_scan"
-        ).fetchone()[0]
+        _uw_scan_date, _uw_df, _uw_bo_dates = _get_leaders_unified_data()
 
         if not _uw_scan_date:
             st.info("No scan data yet — will populate after next pipeline run.")
         else:
-            _uw_df = pd.read_sql_query("""
-                SELECT ls.symbol, ls.setup_type, ls.sector, ls.sector_rank,
-                       ls.rs_rank, ls.rs_score_20, ls.avg_vol_10d,
-                       ls.base_tightness, ls.pivot_high, ls.pivot_distance_pct,
-                       ls.vol_ratio_today, ls.vol_contraction, ls.final_score, ls.flag,
-                       ls.entry_trigger, ls.stop_loss, ls.sl_pct
-                FROM leaders_scan ls
-                WHERE ls.scan_date = ?
-                ORDER BY ls.setup_type DESC, ls.final_score DESC
-            """, _ld_conn, params=(_uw_scan_date,))
-
-            # Compute breakout_date for BREAKOUT rows (reuses streak logic)
-            _uw_bo_dates = {}
-            for _uw_sym in _uw_df[_uw_df['setup_type'] == 'BREAKOUT']['symbol'].tolist():
-                _uw_last_zero = _ld_conn.execute(
-                    "SELECT MAX(date) FROM stock_signals"
-                    " WHERE symbol = ? AND bos_flag = 0 AND date <= ?",
-                    (_uw_sym, _uw_scan_date),
-                ).fetchone()[0]
-                if _uw_last_zero is None:
-                    _uw_bo_dates[_uw_sym] = _ld_conn.execute(
-                        "SELECT MIN(date) FROM stock_signals WHERE symbol = ? AND bos_flag = 1",
-                        (_uw_sym,),
-                    ).fetchone()[0]
-                else:
-                    _uw_bo_dates[_uw_sym] = _ld_conn.execute(
-                        "SELECT MIN(date) FROM stock_signals"
-                        " WHERE symbol = ? AND date > ? AND bos_flag = 1",
-                        (_uw_sym, _uw_last_zero),
-                    ).fetchone()[0]
-
             def _uw_status(row):
                 if row['setup_type'] == 'PRE_BREAKOUT':
                     return 'COILING'
