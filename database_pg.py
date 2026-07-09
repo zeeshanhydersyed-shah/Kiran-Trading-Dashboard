@@ -290,6 +290,13 @@ def upsert_prices(rows: list[tuple]):
             high, low, vol, open_ = None, None, None, None
         normalised.append((sym, dt, high, low, close, vol, open_))
 
+    # close is only overwritable for a symbol's most recent date on record --
+    # once a newer date exists for that symbol, older dates' close become
+    # permanently frozen. Preserves the original "close is settled" protection
+    # for historical data while allowing a same-day re-run to correct a close
+    # caught before the source fully finalized (see 2026-07-08 KSE-100
+    # incident: a 14:53 PKT scrape landed a stale index close, and the old
+    # unconditional freeze meant no later run that day could fix it).
     sql = """
         INSERT INTO prices (symbol, date, high, low, close, volume, open)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -297,7 +304,12 @@ def upsert_prices(rows: list[tuple]):
             SET high   = COALESCE(EXCLUDED.high,   prices.high),
                 low    = COALESCE(EXCLUDED.low,    prices.low),
                 volume = COALESCE(EXCLUDED.volume, prices.volume),
-                open   = COALESCE(EXCLUDED.open,   prices.open)
+                open   = COALESCE(EXCLUDED.open,   prices.open),
+                close  = CASE
+                             WHEN EXCLUDED.date = (SELECT MAX(date) FROM prices WHERE symbol = EXCLUDED.symbol)
+                             THEN COALESCE(EXCLUDED.close, prices.close)
+                             ELSE prices.close
+                         END
     """
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -318,13 +330,20 @@ def upsert_index_prices(rows: list[tuple]):
             high, low, open_ = None, None, None
         normalised.append((sym, dt, high, low, close, open_))
 
+    # close is only overwritable for a symbol's most recent date on record --
+    # see upsert_prices() above for the full rationale, same mechanism here.
     sql = """
         INSERT INTO index_prices (symbol, date, high, low, close, open)
         VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (symbol, date) DO UPDATE
-            SET high = COALESCE(EXCLUDED.high, index_prices.high),
-                low  = COALESCE(EXCLUDED.low,  index_prices.low),
-                open = COALESCE(EXCLUDED.open, index_prices.open)
+            SET high  = COALESCE(EXCLUDED.high, index_prices.high),
+                low   = COALESCE(EXCLUDED.low,  index_prices.low),
+                open  = COALESCE(EXCLUDED.open, index_prices.open),
+                close = CASE
+                            WHEN EXCLUDED.date = (SELECT MAX(date) FROM index_prices WHERE symbol = EXCLUDED.symbol)
+                            THEN COALESCE(EXCLUDED.close, index_prices.close)
+                            ELSE index_prices.close
+                        END
     """
     with get_conn() as conn:
         with conn.cursor() as cur:

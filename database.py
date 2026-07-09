@@ -174,32 +174,57 @@ def upsert_prices(rows: list[tuple]):
     Insert price rows.
     Accepts tuples of varying length:
       3-tuple : (symbol, date, close)
-      4-tuple : (symbol, date, close, volume)             -- legacy
-      6-tuple : (symbol, date, high, low, close, volume)  -- current format
+      4-tuple : (symbol, date, close, volume)                     -- legacy
+      6-tuple : (symbol, date, high, low, close, volume)          -- pre-2026-07 format
+      7-tuple : (symbol, date, high, low, close, volume, open)    -- current format
 
-    On conflict: fills in NULL high/low/volume but never overwrites existing
-    close (close is the anchor price; scraper guarantees it is correct).
+    On conflict: fills in NULL high/low/volume. close is only overwritable
+    for a symbol's most recent date on record -- once a newer date exists
+    for that symbol, older dates' close become permanently frozen. This
+    preserves the original "close is settled, never touch it" protection
+    for historical data while allowing a same-day re-run to correct a
+    close caught before the source fully finalized (see 2026-07-08 KSE-100
+    incident: a 14:53 PKT scrape landed a stale index close, and the old
+    unconditional freeze meant no later run that day could fix it).
+
+    open is handled the opposite way round from high/low/volume on purpose:
+    COALESCE(prices.open, excluded.open) -- the EXISTING value wins if one is
+    already present, only filling when currently NULL. This project already
+    did a careful, independently-verified historical backfill of `open`
+    (see docs/DATA_ACQUISITION_ARCHITECTURE.md / docs/DECISIONS.md); a plain
+    re-scrape of an already-populated date must never silently overwrite that.
+    In normal daily operation this never matters (new dates start NULL), but
+    it protects against a re-run or retry of an already-populated date.
     """
     normalised = []
     for r in rows:
-        if len(r) >= 6:
+        if len(r) >= 7:
+            sym, dt, high, low, close, vol, opn = r[0], r[1], r[2], r[3], r[4], r[5], r[6]
+        elif len(r) == 6:
             sym, dt, high, low, close, vol = r[0], r[1], r[2], r[3], r[4], r[5]
+            opn = None
         elif len(r) == 4:
             sym, dt, close, vol = r[0], r[1], r[2], r[3]
-            high, low = None, None
+            high, low, opn = None, None, None
         else:
             sym, dt, close = r[0], r[1], r[2]
-            high, low, vol = None, None, None
-        normalised.append((sym, dt, high, low, close, vol))
+            high, low, vol, opn = None, None, None, None
+        normalised.append((sym, dt, high, low, close, vol, opn))
 
     with get_conn() as conn:
         conn.executemany(
-            """INSERT INTO prices (symbol, date, high, low, close, volume)
-               VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO prices (symbol, date, high, low, close, volume, open)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(symbol, date) DO UPDATE
                    SET high   = COALESCE(excluded.high,   prices.high),
                        low    = COALESCE(excluded.low,    prices.low),
-                       volume = COALESCE(excluded.volume, prices.volume)""",
+                       volume = COALESCE(excluded.volume, prices.volume),
+                       open   = COALESCE(prices.open,     excluded.open),
+                       close  = CASE
+                                    WHEN excluded.date = (SELECT MAX(date) FROM prices WHERE symbol = excluded.symbol)
+                                    THEN COALESCE(excluded.close, prices.close)
+                                    ELSE prices.close
+                                END""",
             normalised,
         )
     logger.debug("Upserted %d price rows", len(rows))
@@ -208,17 +233,36 @@ def upsert_prices(rows: list[tuple]):
 def upsert_index_prices(rows: list[tuple]):
     """
     Insert/update index OHLC rows.
-    Accepts 5-tuples: (symbol, date, high, low, close)
-    On conflict: fills NULL high/low but never overwrites close.
+    Accepts 5-tuples: (symbol, date, high, low, close)              -- pre-2026-07 format
+    Accepts 6-tuples: (symbol, date, high, low, close, open)         -- current format
+    On conflict: fills NULL high/low. close is only overwritable for a
+    symbol's most recent date on record (see upsert_prices docstring for
+    the full rationale -- same mechanism applies here).
+    open follows the same existing-value-wins rule as upsert_prices (see there).
     """
+    normalised = []
+    for r in rows:
+        if len(r) >= 6:
+            sym, dt, high, low, close, opn = r[0], r[1], r[2], r[3], r[4], r[5]
+        else:
+            sym, dt, high, low, close = r[0], r[1], r[2], r[3], r[4]
+            opn = None
+        normalised.append((sym, dt, high, low, close, opn))
+
     with get_conn() as conn:
         conn.executemany(
-            """INSERT INTO index_prices (symbol, date, high, low, close)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO index_prices (symbol, date, high, low, close, open)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(symbol, date) DO UPDATE
                    SET high  = COALESCE(excluded.high, index_prices.high),
-                       low   = COALESCE(excluded.low,  index_prices.low)""",
-            rows,
+                       low   = COALESCE(excluded.low,  index_prices.low),
+                       open  = COALESCE(index_prices.open, excluded.open),
+                       close = CASE
+                                   WHEN excluded.date = (SELECT MAX(date) FROM index_prices WHERE symbol = excluded.symbol)
+                                   THEN COALESCE(excluded.close, index_prices.close)
+                                   ELSE index_prices.close
+                               END""",
+            normalised,
         )
     logger.debug("Upserted %d index price rows", len(rows))
 

@@ -110,6 +110,33 @@ def cmd_update():
 
     if not new_dates:
         logger.info("Database is already up to date (latest: %s).", latest_str)
+
+        # Same-day self-correction: today's row already exists, but the scrape
+        # that wrote it may have caught the source before it fully finalized
+        # (e.g. a run shortly after PSX's ~15:30 PKT close). Re-fetch and
+        # re-upsert just that one date so a later same-day run can still fix
+        # it. upsert_prices/upsert_index_prices only allow close to change for
+        # a symbol's most-recent date on record, so this is safe to call
+        # unconditionally — it's a no-op for any date that already has a
+        # newer date on record. Deliberately narrow: does not touch
+        # cleanup_ghost_dates, prices_adjusted/suspects, regime, sector/stock
+        # signals, setup_log, agent, or leaders scan — those stay skipped
+        # exactly as before when there is genuinely nothing new.
+        if latest_date == date_cls.today():
+            try:
+                session = build_session()
+                prev_prices = get_latest_prices()
+                sector_rows, price_rows, index_rows = scrape_date_range(
+                    [latest_date], session, prev_prices=prev_prices
+                )
+                upsert_sectors(sector_rows)
+                upsert_prices(price_rows)
+                if index_rows:
+                    upsert_index_prices(index_rows)
+                logger.info("Same-day re-check complete for %s.", latest_date)
+            except Exception as exc:
+                logger.warning("Same-day re-check failed: %s", exc)
+
         # Still run analysis to auto-save today's support reversal setups if not yet saved
         result = run_analysis()
         if result:
