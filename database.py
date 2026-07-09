@@ -516,6 +516,55 @@ def get_prices_for_breadth() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_prices_for_breadth_recent(days: int = 700) -> list[dict]:
+    """Return symbol/date/close rows from the last `days` calendar days only.
+
+    Purpose-built for load_weinstein_data() (Market Gates page). weinstein.py's
+    compute_breadth_series() docstring states a minimum of ma_period +
+    z_lookback ~= 302 trading days, but that's only enough for
+    compute_breadth_series() itself -- WeinsteinIndicator.generate_signals()
+    applies further EMA smoothing (fast_smoothing=5, signal_smoothing=13) and
+    its own 252-day z-score window ON TOP of the breadth series, which needs
+    materially more lead-in to converge. Verified directly, not assumed from
+    the trading-day math: at 480 calendar days, breadth (pct_above_ma) matched
+    the unfiltered query exactly (0.0 diff), but signal_line/z_histogram
+    differed by up to 0.034 -- a real numerical error from insufficient
+    warmup, not floating-point noise. Swept wider windows against the live
+    unfiltered query until convergence: 600 days -> diffs ~1e-7 (regime
+    classification already identical); 700 days -> diffs ~1e-12 (pure
+    float64 roundoff, unavoidable at any window size). 700 is used for a
+    comfortable margin beyond that convergence point, still ~1/6th the row
+    count of the unfiltered get_prices_for_breadth() query.
+
+    Deliberately a SEPARATE function, not a filter added to
+    get_prices_for_breadth() itself -- market_breadth_oscillator.py also
+    calls that function and computes a 200-period EMA (ewm, adjust=False)
+    from it. An EMA's early value seeds every value after it, so truncating
+    its input history would silently shift the entire downstream EMA
+    series, not just the edge rows -- exactly the failure mode to avoid,
+    for a caller this change was never meant to touch.
+
+    The cutoff date is computed in Python (not via SQL date arithmetic) so
+    this function's query text needs no _PG_URL branch -- date >= ? on
+    SQLite becomes date >= %s on Postgres with the same computed value,
+    unlike SQLite's date(?, '-N days') which has no Postgres equivalent.
+    """
+    import pandas as pd
+    from datetime import date as _date, timedelta as _timedelta
+
+    with get_conn() as conn:
+        max_date = conn.execute("SELECT MAX(date) FROM prices").fetchone()[0]
+        if not max_date:
+            return []
+        cutoff = (_date.fromisoformat(max_date) - _timedelta(days=days)).isoformat()
+        df = pd.read_sql_query(
+            "SELECT symbol, date, close FROM prices WHERE date >= ? ORDER BY symbol, date",
+            conn,
+            params=(cutoff,),
+        )
+    return df.to_dict("records")
+
+
 def count_prices() -> int:
     with get_conn() as conn:
         return conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
@@ -1115,6 +1164,7 @@ if _PG_URL:
         get_sector_price_data_60d_active,
         get_sector_price_data_300d_active,
         get_prices_for_breadth,
+        get_prices_for_breadth_recent,
         count_prices,
         count_sectors,
         save_trade_setup,

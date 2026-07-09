@@ -356,10 +356,10 @@ def load_weinstein_data() -> dict:
     """
     import traceback as _tb
     try:
-        from database import get_prices_for_breadth, get_index_prices
+        from database import get_prices_for_breadth_recent, get_index_prices
         from weinstein import compute_breadth_series, WeinsteinIndicator, PSX_DEFAULTS
 
-        raw_prices = get_prices_for_breadth()
+        raw_prices = get_prices_for_breadth_recent()
         if not raw_prices:
             return {"error": "No price data available."}
 

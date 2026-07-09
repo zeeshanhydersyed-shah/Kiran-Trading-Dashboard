@@ -577,6 +577,34 @@ def get_prices_for_breadth() -> list[dict]:
         return _fetchall(conn, "SELECT symbol, date, close FROM prices ORDER BY symbol, date")
 
 
+def get_prices_for_breadth_recent(days: int = 700) -> list[dict]:
+    """PG sibling of database.py's get_prices_for_breadth_recent() -- same
+    700-day rationale documented there (verified by direct comparison
+    against the unfiltered query: 480 days left signal_line/z_histogram
+    off by up to 0.034 from insufficient EMA/z-score warmup; 700 days
+    converges to ~1e-12, pure float roundoff). Cutoff computed in Python so the
+    query text (date >= %s) needs no dialect-specific date arithmetic.
+    close is NUMERIC here -- comes back as Decimal via _fetchall's
+    RealDictCursor, same as get_prices_for_breadth() above; load_weinstein_
+    data() already runs pd.to_numeric() on this column for every caller
+    regardless of backend, so this is a safe uniform-column coercion, not
+    a Decimal/float64 arithmetic mix."""
+    from datetime import date as _date, timedelta as _timedelta
+
+    with get_conn() as conn:
+        max_date = _fetchone(conn, "SELECT MAX(date) AS d FROM prices")
+        max_date = max_date["d"] if max_date else None
+        if not max_date:
+            return []
+        max_date_obj = max_date if isinstance(max_date, _date) else _date.fromisoformat(max_date)
+        cutoff = (max_date_obj - _timedelta(days=days)).isoformat()
+        return _fetchall(
+            conn,
+            "SELECT symbol, date, close FROM prices WHERE date >= %s ORDER BY symbol, date",
+            (cutoff,),
+        )
+
+
 def count_prices() -> int:
     with get_conn() as conn:
         row = _fetchone(conn, "SELECT COUNT(*) AS n FROM prices")
