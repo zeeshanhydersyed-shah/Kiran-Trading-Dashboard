@@ -872,3 +872,151 @@ def get_leaders_deepscan_data_pg() -> tuple:
         audit_df = _coerce_numeric(audit_df, _LEADERS_DEEPSCAN_AUDIT_NUMERIC_COLS)
 
     return scan_date, picks_df, audit_df
+
+
+# ── E10.5 batch D: Leaders page, Radar tab (minus _rd_trajectory) ───────────
+# Same date/text JOIN bug as batch C, same fix, applied at all three sites
+# in this batch that join sector_signals to a leaders_scan/leaders_top_picks
+# scan_date column: sector_signals.date is `date`, leaders_scan.scan_date
+# and leaders_top_picks.scan_date are both `text` (confirmed live) --
+# `sec.date = ls.scan_date` / `sec.date = lp.scan_date` raise "operator
+# does not exist: date = text". Fixed the same way, same direction, at all
+# three sites: cast the text side (`::date`), not the date side -- kept
+# consistent with batch C's get_leaders_deepscan_data_pg() rather than
+# drifting to a different cast direction site to site.
+# _rd_trajectory() itself (its own raw-cursor 30-day-history query, and the
+# Decimal/float64 arithmetic bug inside it) is NOT touched here -- that's
+# batch E, reviewed on its own as planned. sec_rows_df's `composite` column
+# (sector_signals.composite_score) is still coerced to float64 below like
+# every other NUMERIC column in this batch, since that's the correct
+# foundation for batch E to build on -- but note this means the interim
+# state between batch D and E has _rd_trajectory() CRASHING under _PG_URL,
+# not degrading gracefully: verified live (sqlite3.connect() against a
+# fresh/nonexistent path, same shape _ld_conn would have on Streamlit
+# Cloud) that the query inside it raises
+# "sqlite3.OperationalError: no such table: sector_signals" uncaught --
+# there's no try/except around _ld_conn.execute() there, only
+# `if not hist: return "—"` for the empty-*result* case, which is never
+# reached because the exception fires first. This crashes the Step 2
+# render (the .apply(_rd_trajectory, ...) call), not just the Trajectory
+# column, until batch E ports that function too. Not a blocker for this
+# batch -- nothing is deployed to Streamlit Cloud yet, E10 finishes before
+# deployment starts -- but the fix lands in batch E, not here.
+# rs_score_20/rs_score_50/base_tightness/pivot_distance_pct/pivot_high/
+# vol_ratio_today/nearest_overhead_pct/entry_trigger/stop_loss/sl_pct
+# (leaders_scan) and breadth_score/composite_score (sector_signals) are all
+# NUMERIC in Postgres (confirmed live) -- coerced via _coerce_numeric.
+# avg_vol_10d/sector_composite are double precision; sector_rank/rs_rank/
+# sector_rs_rank/rank_change/vol_rejection_flag/rs_inflection/raw_score/
+# penalty/final_score are integer, and RANK() OVER's rank_today is bigint
+# -- none of those need coercion.
+
+_LEADERS_RADAR_CANDS_NUMERIC_COLS = [
+    "rs_score_20", "rs_score_50", "base_tightness", "pivot_distance_pct",
+    "pivot_high", "vol_ratio_today", "nearest_overhead_pct",
+    "entry_trigger", "stop_loss", "sl_pct", "breadth_score",
+]
+
+_LEADERS_RADAR_SEC_ROWS_NUMERIC_COLS = ["composite", "breadth_score"]
+
+_LEADERS_RADAR_TOP_PICKS_NUMERIC_COLS = _LEADERS_DEEPSCAN_PICKS_NUMERIC_COLS
+
+
+def get_leaders_radar_data_pg() -> tuple:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(scan_date) FROM leaders_scan")
+        rd_date = cur.fetchone()[0]
+        if not rd_date:
+            return rd_date, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+        cur.execute(
+            """
+            SELECT ls.symbol, ls.sector, ls.sector_rank, ls.rs_rank,
+                   ls.sector_rs_rank, ls.rs_score_20, ls.rs_score_50,
+                   ls.rank_change, ls.avg_vol_10d, ls.base_tightness,
+                   ls.pivot_distance_pct, ls.pivot_high, ls.vol_ratio_today,
+                   ls.vol_rejection_flag, ls.rs_inflection, ls.nearest_overhead_pct,
+                   ls.sector_composite, ls.raw_score, ls.penalty, ls.final_score,
+                   ls.flag, ls.entry_trigger, ls.stop_loss, ls.sl_pct,
+                   sec.breadth_score, sec.regime
+            FROM leaders_scan ls
+            LEFT JOIN sector_signals sec
+                ON sec.sector = ls.sector AND sec.date = ls.scan_date::date
+            WHERE ls.scan_date = %s AND ls.setup_type = 'PRE_BREAKOUT'
+            ORDER BY ls.final_score DESC
+            """,
+            (rd_date,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        cands_df = pd.DataFrame(rows, columns=cols)
+        cands_df = _coerce_numeric(cands_df, _LEADERS_RADAR_CANDS_NUMERIC_COLS)
+
+        cur.execute(
+            """
+            SELECT ls.symbol, ls.sector, ls.sector_rank, ls.rs_rank,
+                   ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+                   ls.avg_vol_10d, ls.base_tightness, ls.pivot_distance_pct,
+                   ls.pivot_high, ls.vol_ratio_today, ls.vol_rejection_flag,
+                   ls.rs_inflection, ls.nearest_overhead_pct,
+                   ls.sector_composite, ls.final_score, ls.flag,
+                   ls.entry_trigger, ls.stop_loss, ls.sl_pct,
+                   sec.breadth_score, sec.regime
+            FROM leaders_scan ls
+            LEFT JOIN sector_signals sec
+                ON sec.sector = ls.sector AND sec.date = ls.scan_date::date
+            WHERE ls.scan_date = %s AND ls.setup_type = 'BREAKOUT'
+            ORDER BY ls.final_score DESC
+            """,
+            (rd_date,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        bos_df = pd.DataFrame(rows, columns=cols)
+        bos_df = _coerce_numeric(bos_df, _LEADERS_RADAR_CANDS_NUMERIC_COLS)
+
+        cur.execute(
+            """
+            SELECT ss.sector, ss.composite_score AS composite, ss.breadth_score, ss.rs_rank,
+                   ss.rs_inflection, ss.regime,
+                   RANK() OVER (ORDER BY ss.composite_score DESC) AS rank_today
+            FROM sector_signals ss
+            WHERE ss.date = %s
+            ORDER BY rank_today
+            """,
+            (rd_date,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        sec_rows_df = pd.DataFrame(rows, columns=cols)
+        sec_rows_df = _coerce_numeric(sec_rows_df, _LEADERS_RADAR_SEC_ROWS_NUMERIC_COLS)
+
+        cur.execute(
+            """
+            SELECT lp.rank, lp.setup_type, lp.symbol, lp.sector, lp.sector_rank,
+                   lp.entry_trigger, lp.stop_loss, lp.sl_pct,
+                   lp.vol_ratio_today, lp.key_reason, lp.flag,
+                   ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+                   ls.base_tightness, ls.rs_inflection, ls.vol_rejection_flag,
+                   ls.nearest_overhead_pct, ls.avg_vol_10d,
+                   ls.pivot_distance_pct, ls.final_score,
+                   sec.breadth_score
+            FROM leaders_top_picks lp
+            JOIN leaders_scan ls
+                ON ls.scan_date = lp.scan_date
+               AND ls.setup_type = lp.setup_type
+               AND ls.symbol = lp.symbol
+            LEFT JOIN sector_signals sec
+                ON sec.sector = lp.sector AND sec.date = lp.scan_date::date
+            WHERE lp.scan_date = %s
+            ORDER BY lp.setup_type DESC, lp.rank ASC
+            """,
+            (rd_date,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        top_picks_df = pd.DataFrame(rows, columns=cols)
+        top_picks_df = _coerce_numeric(top_picks_df, _LEADERS_RADAR_TOP_PICKS_NUMERIC_COLS)
+
+    return rd_date, cands_df, bos_df, sec_rows_df, top_picks_df

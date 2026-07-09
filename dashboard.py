@@ -1872,6 +1872,87 @@ def _get_leaders_deepscan_data():
     return scan_date, picks_df, audit_df
 
 
+def _get_leaders_radar_data():
+    """Returns (rd_date, cands_df, bos_df, sec_rows_df, top_picks_df) for the
+    Radar tab. sec_rows_df is unfiltered here -- the .isin(all_sectors)
+    filter stays inline at the call site since it depends on candidate data
+    computed after this returns. _rd_trajectory()'s own 30-day-history query
+    is intentionally NOT included -- that's batch E, reviewed on its own."""
+    if _PG_URL:
+        from dashboard_pg import get_leaders_radar_data_pg
+        return get_leaders_radar_data_pg()
+    conn = sqlite3.connect(DB_PATH)
+    rd_date = conn.execute(
+        "SELECT MAX(scan_date) FROM leaders_scan"
+    ).fetchone()[0]
+    if not rd_date:
+        conn.close()
+        return rd_date, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    cands_df = pd.read_sql_query("""
+        SELECT ls.symbol, ls.sector, ls.sector_rank, ls.rs_rank,
+               ls.sector_rs_rank, ls.rs_score_20, ls.rs_score_50,
+               ls.rank_change, ls.avg_vol_10d, ls.base_tightness,
+               ls.pivot_distance_pct, ls.pivot_high, ls.vol_ratio_today,
+               ls.vol_rejection_flag, ls.rs_inflection, ls.nearest_overhead_pct,
+               ls.sector_composite, ls.raw_score, ls.penalty, ls.final_score,
+               ls.flag, ls.entry_trigger, ls.stop_loss, ls.sl_pct,
+               sec.breadth_score, sec.regime
+        FROM leaders_scan ls
+        LEFT JOIN sector_signals sec
+            ON sec.sector = ls.sector AND sec.date = ls.scan_date
+        WHERE ls.scan_date = ? AND ls.setup_type = 'PRE_BREAKOUT'
+        ORDER BY ls.final_score DESC
+    """, conn, params=(rd_date,))
+
+    bos_df = pd.read_sql_query("""
+        SELECT ls.symbol, ls.sector, ls.sector_rank, ls.rs_rank,
+               ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+               ls.avg_vol_10d, ls.base_tightness, ls.pivot_distance_pct,
+               ls.pivot_high, ls.vol_ratio_today, ls.vol_rejection_flag,
+               ls.rs_inflection, ls.nearest_overhead_pct,
+               ls.sector_composite, ls.final_score, ls.flag,
+               ls.entry_trigger, ls.stop_loss, ls.sl_pct,
+               sec.breadth_score, sec.regime
+        FROM leaders_scan ls
+        LEFT JOIN sector_signals sec
+            ON sec.sector = ls.sector AND sec.date = ls.scan_date
+        WHERE ls.scan_date = ? AND ls.setup_type = 'BREAKOUT'
+        ORDER BY ls.final_score DESC
+    """, conn, params=(rd_date,))
+
+    sec_rows_df = pd.read_sql_query("""
+        SELECT ss.sector, ss.composite_score AS composite, ss.breadth_score, ss.rs_rank,
+               ss.rs_inflection, ss.regime,
+               RANK() OVER (ORDER BY ss.composite_score DESC) AS rank_today
+        FROM sector_signals ss
+        WHERE ss.date = ?
+        ORDER BY rank_today
+    """, conn, params=(rd_date,))
+
+    top_picks_df = pd.read_sql_query("""
+        SELECT lp.rank, lp.setup_type, lp.symbol, lp.sector, lp.sector_rank,
+               lp.entry_trigger, lp.stop_loss, lp.sl_pct,
+               lp.vol_ratio_today, lp.key_reason, lp.flag,
+               ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+               ls.base_tightness, ls.rs_inflection, ls.vol_rejection_flag,
+               ls.nearest_overhead_pct, ls.avg_vol_10d,
+               ls.pivot_distance_pct, ls.final_score,
+               sec.breadth_score
+        FROM leaders_top_picks lp
+        JOIN leaders_scan ls
+            ON ls.scan_date = lp.scan_date
+           AND ls.setup_type = lp.setup_type
+           AND ls.symbol = lp.symbol
+        LEFT JOIN sector_signals sec
+            ON sec.sector = lp.sector AND sec.date = lp.scan_date
+        WHERE lp.scan_date = ?
+        ORDER BY lp.setup_type DESC, lp.rank ASC
+    """, conn, params=(rd_date,))
+    conn.close()
+    return rd_date, cands_df, bos_df, sec_rows_df, top_picks_df
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 0 — MARKET GATES DASHBOARD (4-GATES OVERVIEW)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -7347,47 +7428,11 @@ elif cur == PAGES[15]:  # Leaders
 
     # ── Tab 5: Pre-Breakout Radar ─────────────────────────────────────────────
     with _ld_tab_radar:
-        _rd_date = _ld_conn.execute(
-            "SELECT MAX(scan_date) FROM leaders_scan"
-        ).fetchone()[0]
+        _rd_date, _rd_cands, _rd_bos, _rd_sec_rows_raw, _rd_top_picks = _get_leaders_radar_data()
 
         if not _rd_date:
             st.info("No radar data yet — run the pipeline first.")
         else:
-            # ── Load all PRE_BREAKOUT candidates ──────────────────────────────
-            _rd_cands = pd.read_sql_query("""
-                SELECT ls.symbol, ls.sector, ls.sector_rank, ls.rs_rank,
-                       ls.sector_rs_rank, ls.rs_score_20, ls.rs_score_50,
-                       ls.rank_change, ls.avg_vol_10d, ls.base_tightness,
-                       ls.pivot_distance_pct, ls.pivot_high, ls.vol_ratio_today,
-                       ls.vol_rejection_flag, ls.rs_inflection, ls.nearest_overhead_pct,
-                       ls.sector_composite, ls.raw_score, ls.penalty, ls.final_score,
-                       ls.flag, ls.entry_trigger, ls.stop_loss, ls.sl_pct,
-                       sec.breadth_score, sec.regime
-                FROM leaders_scan ls
-                LEFT JOIN sector_signals sec
-                    ON sec.sector = ls.sector AND sec.date = ls.scan_date
-                WHERE ls.scan_date = ? AND ls.setup_type = 'PRE_BREAKOUT'
-                ORDER BY ls.final_score DESC
-            """, _ld_conn, params=(_rd_date,))
-
-            # ── Load BREAKOUT candidates ──────────────────────────────────────
-            _rd_bos = pd.read_sql_query("""
-                SELECT ls.symbol, ls.sector, ls.sector_rank, ls.rs_rank,
-                       ls.rs_score_20, ls.rs_score_50, ls.rank_change,
-                       ls.avg_vol_10d, ls.base_tightness, ls.pivot_distance_pct,
-                       ls.pivot_high, ls.vol_ratio_today, ls.vol_rejection_flag,
-                       ls.rs_inflection, ls.nearest_overhead_pct,
-                       ls.sector_composite, ls.final_score, ls.flag,
-                       ls.entry_trigger, ls.stop_loss, ls.sl_pct,
-                       sec.breadth_score, sec.regime
-                FROM leaders_scan ls
-                LEFT JOIN sector_signals sec
-                    ON sec.sector = ls.sector AND sec.date = ls.scan_date
-                WHERE ls.scan_date = ? AND ls.setup_type = 'BREAKOUT'
-                ORDER BY ls.final_score DESC
-            """, _ld_conn, params=(_rd_date,))
-
             _rd_n = len(_rd_cands) + len(_rd_bos)
             _rd_regime = _rd_cands['regime'].iloc[0] if not _rd_cands.empty and pd.notna(_rd_cands['regime'].iloc[0]) else "—"
 
@@ -7456,15 +7501,7 @@ elif cur == PAGES[15]:  # Leaders
             _rd_all_sectors = list(dict.fromkeys(_rd_all_sectors))
 
             if _rd_all_sectors:
-                _rd_sec_rows = pd.read_sql_query("""
-                    SELECT ss.sector, ss.composite_score AS composite, ss.breadth_score, ss.rs_rank,
-                           ss.rs_inflection, ss.regime,
-                           RANK() OVER (ORDER BY ss.composite_score DESC) AS rank_today
-                    FROM sector_signals ss
-                    WHERE ss.date = ?
-                    ORDER BY rank_today
-                """, _ld_conn, params=(_rd_date,))
-                _rd_sec_rows = _rd_sec_rows[_rd_sec_rows['sector'].isin(_rd_all_sectors)]
+                _rd_sec_rows = _rd_sec_rows_raw[_rd_sec_rows_raw['sector'].isin(_rd_all_sectors)]
 
                 # Generate trajectory text from 30-day sector history
                 def _rd_trajectory(sector, composite_today):
@@ -7605,26 +7642,6 @@ elif cur == PAGES[15]:  # Leaders
 
             # ── STEP 5: Top 3 picks ───────────────────────────────────────────
             st.markdown("#### Step 5 — Top 3 Picks")
-
-            _rd_top_picks = pd.read_sql_query("""
-                SELECT lp.rank, lp.setup_type, lp.symbol, lp.sector, lp.sector_rank,
-                       lp.entry_trigger, lp.stop_loss, lp.sl_pct,
-                       lp.vol_ratio_today, lp.key_reason, lp.flag,
-                       ls.rs_score_20, ls.rs_score_50, ls.rank_change,
-                       ls.base_tightness, ls.rs_inflection, ls.vol_rejection_flag,
-                       ls.nearest_overhead_pct, ls.avg_vol_10d,
-                       ls.pivot_distance_pct, ls.final_score,
-                       sec.breadth_score
-                FROM leaders_top_picks lp
-                JOIN leaders_scan ls
-                    ON ls.scan_date = lp.scan_date
-                   AND ls.setup_type = lp.setup_type
-                   AND ls.symbol = lp.symbol
-                LEFT JOIN sector_signals sec
-                    ON sec.sector = lp.sector AND sec.date = lp.scan_date
-                WHERE lp.scan_date = ?
-                ORDER BY lp.setup_type DESC, lp.rank ASC
-            """, _ld_conn, params=(_rd_date,))
 
             if _rd_top_picks.empty:
                 st.info("No picks met the minimum score threshold today.")
