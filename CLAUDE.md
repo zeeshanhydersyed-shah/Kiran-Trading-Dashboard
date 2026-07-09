@@ -144,6 +144,49 @@ because they affect live trading-signal correctness on Cloud.
   double-counts `regime_days` on re-run, then the recompute-from-history
   workaround in `get_regime_status_pg()` can be removed.
 
+## Deferred / Not Started
+
+Different category from "Known Gaps" above — those are shipped-but-imperfect.
+This is work that was scoped and explicitly deferred, not yet attempted.
+
+### E8.7 — Postgres port of `backfill_setup_log.py` and `leaders_scan.py`
+
+- **What's deferred:** neither file has any `_PG_URL` awareness. Both
+  unconditionally call `sqlite3.connect(config.DB_PATH)`. Deferred in favor
+  of E9 (health checks) and E10 (dashboard PG-branching).
+- **Confirmed root cause:** `config.DB_PATH` (`psx_data.db`) is gitignored
+  and untracked (`git ls-files` / `git check-ignore` both confirm) — a
+  fresh GitHub Actions checkout has no file there at all.
+- **Confirmed actual behavior** (not inferred from code shape — read real
+  GitHub Actions log output, run #52, job 85838775199, 2026-07-08, a run
+  that took the full scrape path, not the early-return "already up to
+  date" shortcut):
+  ```
+  WARNING setup_log hook failed: no such table: stock_signals
+  WARNING Leaders deep scan hook failed: no such table: stock_signals
+  ```
+  Both fail at the same first query (`SELECT MAX(date) FROM stock_signals`)
+  against the fresh, empty local SQLite file `sqlite3.connect()` creates,
+  are caught by `main.py`'s per-hook `try/except Exception: logger.warning(...)`,
+  and the pipeline continues. This is a genuinely caught, logged warning —
+  not a silent write to a throwaway file that then vanishes.
+- **`leaders_scan` and `leaders_top_picks` tables already exist in Postgres
+  with real data** (164 and 9 rows respectively, checked directly against
+  live Supabase) — corrects an earlier wrong assumption that they didn't
+  exist at all. `setup_log` likewise has 43,269 Postgres rows. All three
+  were populated once by `migrate_to_supabase.py`'s initial SQLite→Supabase
+  copy (that script's table list explicitly includes all three; commit
+  `bdbfc6d`) and have sat frozen since — confirmed, not guessed, since both
+  hooks fail at their very first query, before ever reaching a write to
+  either table. `stock_signals` itself is also currently stale in Postgres
+  (last updated 2026-06-30 per a live run's "already up to date" log line,
+  vs. prices current through 2026-07-08) — a separate, already-partially-
+  tracked staleness question, not part of this deferred item.
+- **To start this work:** port `backfill_setup_log.py`'s `append_setup_log_today()`
+  and `leaders_scan.py`'s `run_all()` (and the tables they write) to
+  Postgres, following the established `_pg`-suffixed sibling-function
+  convention used throughout `database_pg.py` / `dashboard_pg.py`.
+
 ## Historical data — BI PostgreSQL merge
 
 ### Source
