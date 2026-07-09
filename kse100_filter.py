@@ -46,11 +46,13 @@ class KSE100Filter:
         try:
             from database import get_conn
             with get_conn() as conn:
-                rows = conn.execute(
+                cur = conn.cursor()
+                cur.execute(
                     """SELECT date, close FROM index_prices
                        WHERE symbol = 'KSE-100'
                        ORDER BY date"""
-                ).fetchall()
+                )
+                rows = cur.fetchall()
             if not rows:
                 return pd.DataFrame(columns=["date", "close", "ma50"])
 
@@ -100,19 +102,26 @@ class KSE100Filter:
             return {"available": False}
 
         row = past.iloc[-1]
-        close = row["close"]
+        # close comes back as decimal.Decimal on Postgres (numeric column type)
+        # vs. plain float on SQLite -- cast to float here so every downstream
+        # calculation and the returned dict are consistently float, regardless
+        # of backend. Same root cause as the _load() cursor fix: this function
+        # never ran to completion against Postgres before that fix landed, so
+        # this mismatch was never exercised.
+        close = float(row["close"])
         ma50  = row["ma50"]
 
         if pd.isna(ma50):
             return {"available": True, "close": close, "ma50": None,
                     "above_ma50": None, "pct_vs_ma50": None}
 
+        ma50 = float(ma50)
         pct = (close - ma50) / ma50 * 100
 
         # 30-trading-day performance
         perf_30d = None
         if len(past) > 30:
-            base_close = past.iloc[-31]["close"]
+            base_close = float(past.iloc[-31]["close"])
             if base_close and base_close > 0:
                 perf_30d = round((close - base_close) / base_close * 100, 1)
 
