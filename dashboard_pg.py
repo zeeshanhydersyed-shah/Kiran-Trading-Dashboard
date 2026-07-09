@@ -1020,3 +1020,39 @@ def get_leaders_radar_data_pg() -> tuple:
         top_picks_df = _coerce_numeric(top_picks_df, _LEADERS_RADAR_TOP_PICKS_NUMERIC_COLS)
 
     return rd_date, cands_df, bos_df, sec_rows_df, top_picks_df
+
+
+# ── E10.5 batch E: Leaders page, _rd_trajectory() -- the confirmed live bug ─
+# The one bug this whole port started from: sector_signals.composite_score
+# is NUMERIC in Postgres (confirmed live). Fetched via pd.read_sql_query
+# (batch D's get_leaders_radar_data_pg(), sec_rows_df's `composite` column,
+# coerced to float64 via _coerce_numeric) it becomes numpy.float64; fetched
+# via a raw cursor with no cast (as _rd_trajectory()'s own history query did
+# before this batch) it stays decimal.Decimal. `trend = composite_today -
+# vals[0]` mixed the two and raised TypeError -- reproduced live before this
+# fix existed, and confirmed via a second live test that the *comparisons*
+# a few lines later (composite_today > avg30 / < avg30) do NOT also raise
+# (numpy.float64 is a float subclass, and Decimal-vs-float comparison has
+# been supported since Python 3.2 -- only Decimal arithmetic with float
+# raises). So this is a genuinely single-line fix: only the subtraction
+# line needed a type change, not the whole function.
+# Fixed the same way database_pg.py's get_sector_signals_latest() already
+# fixes the identical column for a different caller: CAST(composite_score
+# AS DOUBLE PRECISION) in the query itself, so psycopg2 returns a native
+# float directly -- no Decimal anywhere in the result, on either side of
+# the eventual subtraction. Verified the cast expression is character-for-
+# character identical to that existing function, not just equivalent.
+
+def get_sector_composite_history_pg(sector: str, before_date: str) -> list:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT CAST(composite_score AS DOUBLE PRECISION)
+            FROM sector_signals
+            WHERE sector = %s AND date < %s
+            ORDER BY date DESC LIMIT 30
+            """,
+            (sector, before_date),
+        )
+        return cur.fetchall()

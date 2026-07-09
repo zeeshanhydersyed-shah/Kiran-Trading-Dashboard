@@ -1953,6 +1953,35 @@ def _get_leaders_radar_data():
     return rd_date, cands_df, bos_df, sec_rows_df, top_picks_df
 
 
+def _get_sector_composite_history(sector, before_date):
+    """30-day trailing composite_score history for one sector, called once
+    per sector from _rd_trajectory() (Radar tab, Step 2). Returns the same
+    shape sqlite3's .fetchall() always has -- a list of 1-tuples -- so
+    _rd_trajectory()'s own unwrapping line (`[r[0] for r in hist ...]`)
+    needs no change on either backend.
+
+    This is the fix for the confirmed Decimal - numpy.float64 TypeError:
+    composite_score is NUMERIC in Postgres, so an uncast raw-cursor fetch
+    returns Decimal while composite_today (fed from
+    _get_leaders_radar_data()'s sec_rows_df, already coerced to float64 by
+    batch D) is a plain float. Casting composite_score to DOUBLE PRECISION
+    in the query itself makes psycopg2 return a native float directly, no
+    Decimal involved at any point -- verified identical to the existing
+    convention in database_pg.py's get_sector_signals_latest(), not just
+    assumed to match it."""
+    if _PG_URL:
+        from dashboard_pg import get_sector_composite_history_pg
+        return get_sector_composite_history_pg(sector, before_date)
+    conn = sqlite3.connect(DB_PATH)
+    hist = conn.execute("""
+        SELECT composite_score FROM sector_signals
+        WHERE sector=? AND date < ?
+        ORDER BY date DESC LIMIT 30
+    """, (sector, before_date)).fetchall()
+    conn.close()
+    return hist
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 0 — MARKET GATES DASHBOARD (4-GATES OVERVIEW)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -7021,9 +7050,6 @@ elif False:  # Minervini page removed — killed (N=29 proxy, 86% BREAKOUT overl
     pass
 
 elif cur == PAGES[15]:  # Leaders
-    import sqlite3
-    from config import DB_PATH as _ld_db
-
     st.markdown("### 🏆 Leaders — Stock Signal Board")
 
     _ld_tab_rs, _ld_tab_unified, _ld_tab_scan, _ld_tab_radar = st.tabs([
@@ -7032,9 +7058,6 @@ elif cur == PAGES[15]:  # Leaders
         "🔬 Deep Scan",
         "📡 Radar"
     ])
-
-    # ── shared connection: tabs 2-4 still use this directly (batches B-D) ───
-    _ld_conn = sqlite3.connect(_ld_db)
 
     # ── Tab 1: RS Leaders ──────────────────────────────────────────────────
     with _ld_tab_rs:
@@ -7505,11 +7528,7 @@ elif cur == PAGES[15]:  # Leaders
 
                 # Generate trajectory text from 30-day sector history
                 def _rd_trajectory(sector, composite_today):
-                    hist = _ld_conn.execute("""
-                        SELECT composite_score FROM sector_signals
-                        WHERE sector=? AND date < ?
-                        ORDER BY date DESC LIMIT 30
-                    """, (sector, _rd_date)).fetchall()
+                    hist = _get_sector_composite_history(sector, _rd_date)
                     if not hist: return "—"
                     vals = [r[0] for r in hist if r[0] is not None]
                     if not vals: return "—"
@@ -7679,8 +7698,6 @@ elif cur == PAGES[15]:  # Leaders
                         f'<em>{_rd_flag}</em></div>',
                         unsafe_allow_html=True
                     )
-
-    _ld_conn.close()
 
 elif cur == PAGES[16]:  # Setup History
     st.header('📋 Setup History')
