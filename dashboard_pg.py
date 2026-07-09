@@ -782,3 +782,93 @@ def get_leaders_unified_data_pg() -> tuple:
         bo_dates = dict(cur.fetchall())
 
     return scan_date, df, bo_dates
+
+
+# ── E10.5 batch C: Leaders page, Deep Scan tab ──────────────────────────────
+# Two confirmed bugs fixed, per Task 0's audit and the live tests run before
+# writing this function:
+#   1. date/text JOIN: sector_signals.date is `date` but
+#      leaders_top_picks.scan_date is `text` -- `sec.date = lp.scan_date`
+#      raises "operator does not exist: date = text" (reproduced live).
+#      Fixed by casting the text side: `sec.date = lp.scan_date::date`.
+#   2. SQLite dialect: `date('now', '-10 days')` doesn't exist in Postgres.
+#      Replaced with `(CURRENT_DATE - INTERVAL '10 days')::date::text` --
+#      the extra ::date strips the time component INTERVAL subtraction adds
+#      (confirmed live: without it you get a timestamp-with-time string,
+#      which still happens to compare correctly against plain-date text
+#      values due to lexicographic prefix ordering, but that's fragile, not
+#      a real fix -- the explicit ::date makes the cutoff an actual
+#      'YYYY-MM-DD' string matching what scan_date (text) already holds).
+# entry_trigger/stop_loss/sl_pct/vol_ratio_today (leaders_top_picks),
+# rs_score_20/rs_score_50/base_tightness/nearest_overhead_pct/
+# pivot_distance_pct (leaders_scan), and breadth_score (sector_signals) are
+# all NUMERIC in Postgres (confirmed live) -- coerced via _coerce_numeric.
+# fwd_return_5d/10d/20d (leaders_top_picks) are also NUMERIC -- same
+# treatment for the audit query. avg_vol_10d is double precision;
+# rank/sector_rank/rank_change/rs_inflection/vol_rejection_flag/
+# final_score/triggered are all integer -- none of those need coercion.
+
+_LEADERS_DEEPSCAN_PICKS_NUMERIC_COLS = [
+    "entry_trigger", "stop_loss", "sl_pct", "vol_ratio_today",
+    "rs_score_20", "rs_score_50", "base_tightness", "nearest_overhead_pct",
+    "pivot_distance_pct", "breadth_score",
+]
+
+_LEADERS_DEEPSCAN_AUDIT_NUMERIC_COLS = [
+    "entry_trigger", "sl_pct", "fwd_return_5d", "fwd_return_10d", "fwd_return_20d",
+]
+
+
+def get_leaders_deepscan_data_pg() -> tuple:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(scan_date) FROM leaders_scan")
+        scan_date = cur.fetchone()[0]
+        if not scan_date:
+            return scan_date, pd.DataFrame(), pd.DataFrame()
+
+        cur.execute(
+            """
+            SELECT lp.rank, lp.setup_type, lp.symbol, lp.sector, lp.sector_rank,
+                   lp.entry_trigger, lp.stop_loss, lp.sl_pct,
+                   lp.vol_ratio_today, lp.key_reason, lp.flag,
+                   ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+                   ls.base_tightness, ls.rs_inflection, ls.vol_rejection_flag,
+                   ls.nearest_overhead_pct, ls.avg_vol_10d,
+                   ls.pivot_distance_pct, ls.final_score,
+                   sec.breadth_score
+            FROM leaders_top_picks lp
+            JOIN leaders_scan ls
+                ON ls.scan_date = lp.scan_date
+               AND ls.setup_type = lp.setup_type
+               AND ls.symbol = lp.symbol
+            LEFT JOIN sector_signals sec
+                ON sec.sector = lp.sector AND sec.date = lp.scan_date::date
+            WHERE lp.scan_date = %s
+            ORDER BY lp.setup_type DESC, lp.rank ASC
+            """,
+            (scan_date,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        picks_df = pd.DataFrame(rows, columns=cols)
+        picks_df = _coerce_numeric(picks_df, _LEADERS_DEEPSCAN_PICKS_NUMERIC_COLS)
+
+        cur.execute(
+            """
+            SELECT scan_date, setup_type, rank, symbol, sector,
+                   entry_trigger, sl_pct,
+                   triggered, trigger_date,
+                   fwd_return_5d, fwd_return_10d, fwd_return_20d,
+                   outcome_label, key_reason, flag
+            FROM leaders_top_picks
+            WHERE scan_date <= (CURRENT_DATE - INTERVAL '10 days')::date::text
+            ORDER BY scan_date DESC, setup_type, rank
+            """
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+        audit_df = pd.DataFrame(rows, columns=cols)
+        audit_df = _coerce_numeric(audit_df, _LEADERS_DEEPSCAN_AUDIT_NUMERIC_COLS)
+
+    return scan_date, picks_df, audit_df

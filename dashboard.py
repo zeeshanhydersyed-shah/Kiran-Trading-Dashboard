@@ -1824,6 +1824,54 @@ def _get_leaders_unified_data():
     return scan_date, df, bo_dates
 
 
+def _get_leaders_deepscan_data():
+    """Returns (scan_date, picks_df, audit_df) for the Deep Scan tab."""
+    if _PG_URL:
+        from dashboard_pg import get_leaders_deepscan_data_pg
+        return get_leaders_deepscan_data_pg()
+    conn = sqlite3.connect(DB_PATH)
+    scan_date = conn.execute(
+        "SELECT MAX(scan_date) FROM leaders_scan"
+    ).fetchone()[0]
+    if not scan_date:
+        conn.close()
+        return scan_date, pd.DataFrame(), pd.DataFrame()
+
+    # Join top_picks with scan detail + sector breadth
+    picks_df = pd.read_sql_query("""
+        SELECT lp.rank, lp.setup_type, lp.symbol, lp.sector, lp.sector_rank,
+               lp.entry_trigger, lp.stop_loss, lp.sl_pct,
+               lp.vol_ratio_today, lp.key_reason, lp.flag,
+               ls.rs_score_20, ls.rs_score_50, ls.rank_change,
+               ls.base_tightness, ls.rs_inflection, ls.vol_rejection_flag,
+               ls.nearest_overhead_pct, ls.avg_vol_10d,
+               ls.pivot_distance_pct, ls.final_score,
+               sec.breadth_score
+        FROM leaders_top_picks lp
+        JOIN leaders_scan ls
+            ON ls.scan_date = lp.scan_date
+           AND ls.setup_type = lp.setup_type
+           AND ls.symbol = lp.symbol
+        LEFT JOIN sector_signals sec
+            ON sec.sector = lp.sector AND sec.date = lp.scan_date
+        WHERE lp.scan_date = ?
+        ORDER BY lp.setup_type DESC, lp.rank ASC
+    """, conn, params=(scan_date,))
+
+    audit_df = pd.read_sql_query("""
+        SELECT scan_date, setup_type, rank, symbol, sector,
+               entry_trigger, sl_pct,
+               triggered, trigger_date,
+               fwd_return_5d, fwd_return_10d, fwd_return_20d,
+               outcome_label, key_reason, flag
+        FROM leaders_top_picks
+        WHERE scan_date <= date('now', '-10 days')
+        ORDER BY scan_date DESC, setup_type, rank
+    """, conn)
+    conn.close()
+    return scan_date, picks_df, audit_df
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 0 — MARKET GATES DASHBOARD (4-GATES OVERVIEW)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -7058,9 +7106,7 @@ elif cur == PAGES[15]:  # Leaders
 
     # ── Tab 3: Deep Scan ──────────────────────────────────────────────────────
     with _ld_tab_scan:
-        _ds_scan_date = _ld_conn.execute(
-            "SELECT MAX(scan_date) FROM leaders_scan"
-        ).fetchone()[0]
+        _ds_scan_date, _ds_all_picks, _ds_audit = _get_leaders_deepscan_data()
 
         if not _ds_scan_date:
             st.info("No deep scan data yet — will populate after next pipeline run.")
@@ -7212,27 +7258,6 @@ elif cur == PAGES[15]:  # Leaders
 
             # ── Today's Picks ─────────────────────────────────────────────────
             with _ds_picks_tab:
-                # Join top_picks with scan detail + sector breadth
-                _ds_all_picks = pd.read_sql_query("""
-                    SELECT lp.rank, lp.setup_type, lp.symbol, lp.sector, lp.sector_rank,
-                           lp.entry_trigger, lp.stop_loss, lp.sl_pct,
-                           lp.vol_ratio_today, lp.key_reason, lp.flag,
-                           ls.rs_score_20, ls.rs_score_50, ls.rank_change,
-                           ls.base_tightness, ls.rs_inflection, ls.vol_rejection_flag,
-                           ls.nearest_overhead_pct, ls.avg_vol_10d,
-                           ls.pivot_distance_pct, ls.final_score,
-                           sec.breadth_score
-                    FROM leaders_top_picks lp
-                    JOIN leaders_scan ls
-                        ON ls.scan_date = lp.scan_date
-                       AND ls.setup_type = lp.setup_type
-                       AND ls.symbol = lp.symbol
-                    LEFT JOIN sector_signals sec
-                        ON sec.sector = lp.sector AND sec.date = lp.scan_date
-                    WHERE lp.scan_date = ?
-                    ORDER BY lp.setup_type DESC, lp.rank ASC
-                """, _ld_conn, params=(_ds_scan_date,))
-
                 for _ds_type, _ds_label, _ds_icon in [
                     ("PRE_BREAKOUT", "Pre-Breakout", "🎯"),
                     ("BREAKOUT",     "Breakout",     "🚀"),
@@ -7249,17 +7274,6 @@ elif cur == PAGES[15]:  # Leaders
             with _ds_audit_tab:
                 st.caption("Picks from ≥10 days ago with outcomes filled. "
                            "'NOT_TRIGGERED' = pre-breakout pivot was never hit in 20 sessions.")
-
-                _ds_audit = pd.read_sql_query("""
-                    SELECT scan_date, setup_type, rank, symbol, sector,
-                           entry_trigger, sl_pct,
-                           triggered, trigger_date,
-                           fwd_return_5d, fwd_return_10d, fwd_return_20d,
-                           outcome_label, key_reason, flag
-                    FROM leaders_top_picks
-                    WHERE scan_date <= date('now', '-10 days')
-                    ORDER BY scan_date DESC, setup_type, rank
-                """, _ld_conn)
 
                 if _ds_audit.empty:
                     st.info("Audit data builds up after 10 days. Check back then.")
