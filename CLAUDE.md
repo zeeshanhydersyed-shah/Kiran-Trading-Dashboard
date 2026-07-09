@@ -90,6 +90,60 @@ Setups exclude: derivatives, futures (regex `-JAN/-FEB/...`), and 14 sectors inc
 - **Secrets** — all credentials in Streamlit secrets, accessed via `st.secrets`
 - **Model files** — `kiran_model.pkl` and `kiran_model_features.pkl` are in the repo (committed), so they are available on Cloud
 
+## Known Gaps: Postgres Parity
+
+Things that work under SQLite but are either wrong or deliberately blocked
+under Postgres/Streamlit Cloud. Tracked here, not just in a commit message,
+because they affect live trading-signal correctness on Cloud.
+
+### `stock_signals` recompute has no Postgres port (Data Health Confirm button)
+
+- **What's missing:** `recompute_symbol_signals(symbol)` in `stock_signals.py`
+  is 100% SQLite-only (`sqlite3.connect(DB)` hardcoded, no `_PG_URL` branch),
+  and its own internal pipeline (`_load_kse100`, `_load_stock_prices`,
+  `_load_stock_prices_with_volume`, `_build_pivot_lookup`,
+  `_process_trading_dates`) has no Postgres port anywhere either.
+- **Why it matters:** when a corporate-action suspect is confirmed on the
+  Data Health page, `prices_adjusted` gets retroactively corrected for all
+  dates before the ex_date. Every `stock_signals` row in that same window
+  (RS rank, base tightness, pivot/breakout levels, EMA stage flags) was
+  computed from the old, wrong prices and needs the same full delete+rebuild
+  `recompute_symbol_signals()` does — an incremental append can't fix it.
+- **Not self-healing:** the nightly pipeline's `append_latest_stock_signals()`
+  / `_append_latest_stock_signals_pg()` only compute new dates after
+  `MAX(date) FROM stock_signals` — verified by reading both implementations,
+  they never revisit an existing row. No GitHub Actions workflow calls
+  `recompute_symbol_signals` or any full-history rebuild either. So if this
+  ran on Postgres, the affected symbol's `stock_signals` would stay wrong
+  indefinitely, silently feeding the Explorer page, RS_LEADER/BREAKOUT setup
+  generation, and `setup_log` — with no path to sync a local SQLite fix back
+  to Supabase.
+- **Current handling (as of E10.4):** rather than ship a partial write, the
+  Data Health page's Confirm button hard-blocks entirely when `_PG_URL` is
+  set — it writes to neither `prices_adjusted` nor
+  `corporate_action_suspects` on Postgres, and shows an error explaining why.
+  The SQLite path (local use) is unaffected and still does the full fix.
+  `rebuild_symbol_adjusted_pg()` (database_pg.py) and `mark_dh_confirmed_pg()`
+  (dashboard_pg.py) are implemented and tested against live Supabase, but are
+  currently dead code from the dashboard's perspective — not called until
+  this gap closes and the hard block is lifted.
+- **To close this gap:** port `recompute_symbol_signals()` and its
+  dependency chain to Postgres (a substantially larger piece of work than a
+  single dashboard site — most of `stock_signals.py`'s computation pipeline),
+  then remove the hard block in `dashboard.py`'s Confirm button and wire
+  `rebuild_symbol_adjusted_pg()` / `mark_dh_confirmed_pg()` back in.
+
+### `market_regime.regime_days` is non-idempotent
+
+- **What's wrong:** the `regime_days` column has been confirmed ~2x inflated
+  on both Supabase and (separately) locally across same-date re-runs.
+- **Current handling:** `get_regime_status_pg()` (`dashboard_pg.py`, E10.2)
+  deliberately recomputes `days_since` from full history instead of trusting
+  the stored column. See that function's docstring for the full detail.
+- **To close this gap:** find and fix whatever in the regime-write path
+  double-counts `regime_days` on re-run, then the recompute-from-history
+  workaround in `get_regime_status_pg()` can be removed.
+
 ## Historical data — BI PostgreSQL merge
 
 ### Source

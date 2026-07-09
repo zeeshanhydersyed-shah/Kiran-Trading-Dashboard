@@ -1901,6 +1901,16 @@ def rebuild_symbol_adjusted_pg(symbol: str, ex_date: str, adjustment_factor: flo
     cast is needed before ROUND() -- verified directly against live Supabase:
     psycopg2 sends a plain Python float as an untyped numeric literal, so
     numeric_col * factor stays numeric and ROUND(numeric, 4) resolves as-is.
+    Tested directly against live Supabase (backup/apply/verify/restore on a
+    real symbol's price rows) -- this function itself is correct.
+
+    NOT currently called from dashboard.py's Confirm button -- that button
+    hard-blocks under _PG_URL instead (see CLAUDE.md "Known Gaps: Postgres
+    parity") because recompute_symbol_signals() (stock_signals.py), which
+    the Confirm button also needs to call, has no Postgres port and the
+    nightly pipeline never revisits historical stock_signals rows. This
+    function is left in place, tested and ready, for whenever that gap
+    closes and the hard block can be lifted.
     """
     with get_conn() as conn:
         with conn.cursor() as cur:

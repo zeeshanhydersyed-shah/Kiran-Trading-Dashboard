@@ -7899,19 +7899,35 @@ elif cur == PAGES[17]:  # Data Health
 
                     with _dh_btn1:
                         if st.button("✅ Confirm", key=f"dh_confirm_{_dh_sym}_{_dh_date}"):
-                            try:
-                                _dh_factor = _dh_ca / _dh_cb
-                                _dh_now = _dh_dt.now().isoformat()
-
-                                if _PG_URL:
-                                    from database_pg import rebuild_symbol_adjusted_pg
-                                    from dashboard_pg import mark_dh_confirmed_pg
-                                    rebuild_symbol_adjusted_pg(_dh_sym, _dh_date, _dh_factor)
-                                    mark_dh_confirmed_pg(
-                                        _dh_sym, _dh_date, _dh_action, _dh_factor, _dh_now
-                                    )
-                                else:
+                            if _PG_URL:
+                                # Hard-blocked on purpose (see CLAUDE.md "Known Gaps"):
+                                # rebuild_symbol_adjusted_pg() would correctly fix
+                                # prices_adjusted, but recompute_symbol_signals()
+                                # (stock_signals.py) has no Postgres port, and the
+                                # nightly pipeline only appends new dates -- it never
+                                # revisits historical stock_signals rows. Letting
+                                # Confirm through here would leave Explorer /
+                                # RS_LEADER / BREAKOUT / setup_log reading stale
+                                # pre-correction signals for this symbol indefinitely,
+                                # with no way to sync a local fix back. Nothing is
+                                # written below -- neither table is touched.
+                                st.error(
+                                    f"Confirm is disabled on Postgres for {_dh_sym}: "
+                                    f"prices_adjusted could be fixed, but stock_signals "
+                                    f"recompute has no Postgres port yet, and the nightly "
+                                    f"pipeline never revisits historical stock_signals rows "
+                                    f"once written -- this symbol's Explorer/RS_LEADER/"
+                                    f"BREAKOUT/setup_log signals would stay wrong "
+                                    f"indefinitely with no way to sync a local fix back. "
+                                    f"Nothing has been written. Confirm this suspect from a "
+                                    f"local SQLite session instead, or wait for the "
+                                    f"stock_signals Postgres port."
+                                )
+                            else:
+                                try:
                                     from apply_price_adjustments import rebuild_symbol_adjusted
+                                    from stock_signals import recompute_symbol_signals
+                                    _dh_factor = _dh_ca / _dh_cb
                                     _dh_adj_con = sqlite3.connect(_dh_db)
                                     rebuild_symbol_adjusted(_dh_adj_con, _dh_sym, _dh_date, _dh_factor)
                                     _dh_adj_con.execute(
@@ -7921,28 +7937,17 @@ elif cur == PAGES[17]:  # Data Health
                                                adjustment_factor = ?,
                                                confirmed_at = ?
                                            WHERE symbol = ? AND suspect_date = ?""",
-                                        (_dh_action, _dh_factor, _dh_now, _dh_sym, _dh_date)
+                                        (_dh_action, _dh_factor,
+                                         _dh_dt.now().isoformat(),
+                                         _dh_sym, _dh_date)
                                     )
                                     _dh_adj_con.commit()
                                     _dh_adj_con.close()
-
-                                # Isolated on purpose: recompute_symbol_signals() is
-                                # 100% SQLite-only (no Postgres port yet -- separate
-                                # future stage). The adjustment + CONFIRMED status
-                                # above have already committed either way, so a
-                                # failure here must not read as "nothing happened."
-                                try:
-                                    from stock_signals import recompute_symbol_signals
                                     recompute_symbol_signals(_dh_sym)
                                     st.success(f"{_dh_sym} adjusted and signals recomputed.")
-                                except Exception as _dh_sig_err:
-                                    st.warning(
-                                        f"{_dh_sym} adjusted and confirmed, but stock_signals "
-                                        f"recompute failed (not yet Postgres-ported): {_dh_sig_err}"
-                                    )
-                                st.rerun()
-                            except Exception as _dh_e:
-                                st.error(f"Error: {_dh_e}")
+                                    st.rerun()
+                                except Exception as _dh_e:
+                                    st.error(f"Error: {_dh_e}")
 
                     with _dh_btn2:
                         if st.button("❌ False Positive", key=f"dh_fp_{_dh_sym}_{_dh_date}"):

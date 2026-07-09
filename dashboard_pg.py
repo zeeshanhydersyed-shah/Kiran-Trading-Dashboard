@@ -57,12 +57,16 @@ shape must be matched exactly to avoid breaking untouched downstream code:
     this stage -- a function signature change, not a dashboard query) lives
     in database_pg.py alongside its sibling append_new_prices_adjusted_pg /
     auto_detect_suspects_pg, not here -- see that file for its notes.
-    recompute_symbol_signals() (stock_signals.py), also called by the
+    recompute_symbol_signals() (stock_signals.py), also needed by the
     Confirm button, is NOT ported here -- it's 100% SQLite-only with its
     own internal pipeline (_load_kse100, _process_trading_dates, etc.) and
-    no Postgres port anywhere yet. dashboard.py isolates that call in its
-    own try/except so a real, committed adjustment doesn't read as a
-    failure just because the signal recompute can't run under Postgres.
+    no Postgres port anywhere yet. Rather than let the button run a partial
+    write (fix prices_adjusted, leave stock_signals stale indefinitely --
+    the nightly pipeline never revisits historical stock_signals rows),
+    dashboard.py hard-blocks Confirm entirely under _PG_URL and calls
+    neither this function nor rebuild_symbol_adjusted_pg. See CLAUDE.md
+    "Known Gaps: Postgres parity" for the full writeup. mark_dh_confirmed_pg
+    below is untouched and tested, ready for when that gap closes.
 """
 
 from datetime import datetime
@@ -637,6 +641,9 @@ def mark_dh_false_positive_pg(symbol: str, ex_date: str, confirmed_at: str) -> N
 
 def mark_dh_confirmed_pg(symbol: str, ex_date: str, action: str,
                           factor: float, confirmed_at: str) -> None:
+    """Tested and correct, but NOT currently called by dashboard.py -- the
+    Confirm button hard-blocks under _PG_URL instead. See module docstring
+    above / CLAUDE.md "Known Gaps: Postgres parity" for why."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
