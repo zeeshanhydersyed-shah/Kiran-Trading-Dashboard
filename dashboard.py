@@ -1738,6 +1738,32 @@ def _get_explorer_data():
     return latest, ex_df
 
 
+# ── E10.5 batch A: extracted data-fetch function (was inline in page-render code) ─
+
+def _get_leaders_rs_data():
+    if _PG_URL:
+        from dashboard_pg import get_leaders_rs_data_pg
+        return get_leaders_rs_data_pg()
+    conn = sqlite3.connect(DB_PATH)
+    latest = conn.execute(
+        "SELECT MAX(date) FROM stock_signals"
+    ).fetchone()[0]
+    rs_df = pd.read_sql_query("""
+        SELECT ss.symbol, sm.sector,
+               ss.rs_score_20, ss.rs_score_50,
+               ss.rs_rank, ss.rank_change, ss.sector_rs_rank,
+               ss.avg_vol_10d
+        FROM stock_signals ss
+        JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = ?
+          AND ss.avg_vol_10d > 200000
+          AND ss.rs_rank IS NOT NULL
+        ORDER BY ss.rs_rank ASC
+    """, conn, params=(latest,))
+    conn.close()
+    return latest, rs_df
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 0 — MARKET GATES DASHBOARD (4-GATES OVERVIEW)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -6818,28 +6844,13 @@ elif cur == PAGES[15]:  # Leaders
         "📡 Radar"
     ])
 
-    # ── shared query: latest date ──────────────────────────────────────────
+    # ── shared connection: tabs 2-4 still use this directly (batches B-D) ───
     _ld_conn = sqlite3.connect(_ld_db)
-    _ld_latest = _ld_conn.execute(
-        "SELECT MAX(date) FROM stock_signals"
-    ).fetchone()[0]
 
     # ── Tab 1: RS Leaders ──────────────────────────────────────────────────
     with _ld_tab_rs:
+        _ld_latest, _ld_rs_df = _get_leaders_rs_data()
         st.markdown(f"**Latest date:** {_ld_latest} &nbsp;|&nbsp; Liquid stocks only (Avg Vol 10d > 200K)")
-
-        _ld_rs_df = pd.read_sql_query("""
-            SELECT ss.symbol, sm.sector,
-                   ss.rs_score_20, ss.rs_score_50,
-                   ss.rs_rank, ss.rank_change, ss.sector_rs_rank,
-                   ss.avg_vol_10d
-            FROM stock_signals ss
-            JOIN stock_metadata sm ON ss.symbol = sm.symbol
-            WHERE ss.date = ?
-              AND ss.avg_vol_10d > 200000
-              AND ss.rs_rank IS NOT NULL
-            ORDER BY ss.rs_rank ASC
-        """, _ld_conn, params=(_ld_latest,))
 
         st.markdown("#### 🌍 Top 20 — Market-Wide RS Leaders")
         if _ld_rs_df.empty:

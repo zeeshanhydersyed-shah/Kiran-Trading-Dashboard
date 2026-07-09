@@ -654,3 +654,42 @@ def mark_dh_confirmed_pg(symbol: str, ex_date: str, action: str,
                     confirmed_at = %s
                 WHERE symbol = %s AND suspect_date = %s
             """, (action, factor, confirmed_at, symbol, ex_date))
+
+
+# ── E10.5 batch A: Leaders page, RS Leaders tab ─────────────────────────────
+# rs_score_20/rs_score_50 are NUMERIC in Postgres (confirmed live against
+# information_schema.columns) -- coerced via _coerce_numeric to match the
+# float64 dtype SQLite already produces, same convention as
+# get_recovery_signals_pg() above. rs_rank/rank_change/sector_rs_rank are
+# native integer and avg_vol_10d is double precision -- no coercion needed.
+# `latest` is not cast to text: its only consumer is an f-string
+# interpolation (str() implicit), same no-cast case as the E10.3 functions.
+
+_LEADERS_RS_NUMERIC_COLS = ["rs_score_20", "rs_score_50"]
+
+
+def get_leaders_rs_data_pg() -> tuple:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(date) FROM stock_signals")
+        latest = cur.fetchone()[0]
+        cur.execute(
+            """
+            SELECT ss.symbol, sm.sector,
+                   ss.rs_score_20, ss.rs_score_50,
+                   ss.rs_rank, ss.rank_change, ss.sector_rs_rank,
+                   ss.avg_vol_10d
+            FROM stock_signals ss
+            JOIN stock_metadata sm ON ss.symbol = sm.symbol
+            WHERE ss.date = %s
+              AND ss.avg_vol_10d > 200000
+              AND ss.rs_rank IS NOT NULL
+            ORDER BY ss.rs_rank ASC
+            """,
+            (latest,),
+        )
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
+    df = pd.DataFrame(rows, columns=cols)
+    df = _coerce_numeric(df, _LEADERS_RS_NUMERIC_COLS)
+    return latest, df
