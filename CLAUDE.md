@@ -144,6 +144,43 @@ because they affect live trading-signal correctness on Cloud.
   double-counts `regime_days` on re-run, then the recompute-from-history
   workaround in `get_regime_status_pg()` can be removed.
 
+### Post-gap rows carry stale `regime_days`/`rs_rank_prev` from the 2026-07 Postgres-dispatch outage
+
+- **What's wrong:** `market_regime`/`sector_signals` on Supabase had zero
+  Postgres dispatch for several hooks until commits `a6b9e15`/`b999ed4`
+  landed (2026-07-09), leaving `market_regime` missing 2026-07-01/02/03/06
+  and `sector_signals` missing the same four dates plus 07-07. Both gaps
+  were backfilled by direct `INSERT` of local SQLite's already-correct rows
+  (local was never affected -- it doesn't dispatch through the same PG-only
+  path). But `regime.py`'s `regime_days` and `sector_signals.py`'s
+  `rs_rank_prev`/`rs_inflection` are both computed at write time from a
+  lookup against whatever the table's own latest/prior row happens to be
+  (`ORDER BY date DESC LIMIT 1` and `MAX(date) WHERE date < target`,
+  respectively) -- not from a portable snapshot. So the rows Cloud already
+  had *after* the gap (`market_regime` 07-07/08/09, `sector_signals`
+  07-08/09) were written while the gap still existed, and their
+  `regime_days`/`rs_rank_prev` reference whatever predated the whole missing
+  stretch, not the true immediately-prior trading day. Confirmed: Cloud's
+  07-07 `regime_days` = 23 vs local's correct 29. The backfill INSERT only
+  targets the missing dates themselves (whose own stored values are correct
+  snapshots from local's gap-free history) -- it does not and cannot
+  retroactively fix rows that already existed across the gap boundary.
+- **Current handling:** left as-is, not blocking. The sidebar's actual
+  days-since-change display (`get_regime_status_pg()`) ignores the stored
+  `regime_days` column entirely (see the entry above) and recomputes from a
+  row-count scan over `regime` text values, so this scar is inert for that
+  specific display. `sector_signals.rs_rank_prev`/`rs_inflection` for the
+  07-08/07-09 boundary rows are not currently known to feed anything that's
+  been verified against this staleness -- not audited as part of this fix.
+- **To close this gap:** either recompute `regime_days` and
+  `rs_rank_prev`/`rs_inflection` for the specific boundary rows
+  (`market_regime` 07-07 onward, `sector_signals` 07-08 onward) against the
+  now-complete history, or accept it as permanently stale scar tissue if
+  nothing actually reads those columns for those dates. Check whether
+  anything downstream of `rs_inflection` (e.g. setup generation, Explorer
+  page) consumes the 07-08/07-09 `sector_signals` rows before assuming it's
+  safe to ignore.
+
 ## Deferred / Not Started
 
 Different category from "Known Gaps" above — those are shipped-but-imperfect.
