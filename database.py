@@ -552,10 +552,20 @@ def get_sector_price_data_60d_active() -> list[dict]:
 
 
 def get_prices_for_breadth() -> list[dict]:
-    """Return all symbol/date/close rows for Weinstein breadth computation."""
+    """Return symbol/date/close rows for Weinstein breadth computation.
+
+    Restricted to stock_metadata's tracked-equity universe -- prices also
+    contains futures contracts and govt paper (FUTURE CONTRACTS / Unknown
+    Sector), which were silently included here before this filter and
+    inflated Long/Short counts by ~150/day (confirmed: unfiltered count was
+    more than double the correct value on every one of the last 5 trading
+    days checked, both backends).
+    """
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT symbol, date, close FROM prices ORDER BY symbol, date"
+            """SELECT symbol, date, close FROM prices
+               WHERE symbol IN (SELECT symbol FROM stock_metadata)
+               ORDER BY symbol, date"""
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -592,6 +602,9 @@ def get_prices_for_breadth_recent(days: int = 700) -> list[dict]:
     this function's query text needs no _PG_URL branch -- date >= ? on
     SQLite becomes date >= %s on Postgres with the same computed value,
     unlike SQLite's date(?, '-N days') which has no Postgres equivalent.
+
+    Restricted to stock_metadata's tracked-equity universe, same as
+    get_prices_for_breadth() -- see that function's docstring for why.
     """
     import pandas as pd
     from datetime import date as _date, timedelta as _timedelta
@@ -602,7 +615,9 @@ def get_prices_for_breadth_recent(days: int = 700) -> list[dict]:
             return []
         cutoff = (_date.fromisoformat(max_date) - _timedelta(days=days)).isoformat()
         df = pd.read_sql_query(
-            "SELECT symbol, date, close FROM prices WHERE date >= ? ORDER BY symbol, date",
+            """SELECT symbol, date, close FROM prices
+               WHERE date >= ? AND symbol IN (SELECT symbol FROM stock_metadata)
+               ORDER BY symbol, date""",
             conn,
             params=(cutoff,),
         )

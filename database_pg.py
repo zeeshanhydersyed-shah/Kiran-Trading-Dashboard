@@ -591,9 +591,20 @@ def get_sector_price_data_60d_active() -> list[dict]:
 
 
 def get_prices_for_breadth() -> list[dict]:
-    """Return all symbol/date/close rows for Weinstein breadth computation."""
+    """Return symbol/date/close rows for Weinstein breadth computation.
+
+    Restricted to stock_metadata's tracked-equity universe -- see the
+    SQLite sibling's docstring (database.py) for why: prices also contains
+    futures contracts and govt paper, which inflated Long/Short counts by
+    ~150/day before this filter, confirmed on this backend too.
+    """
     with get_conn() as conn:
-        return _fetchall(conn, "SELECT symbol, date, close FROM prices ORDER BY symbol, date")
+        return _fetchall(
+            conn,
+            """SELECT symbol, date, close FROM prices
+               WHERE symbol IN (SELECT symbol FROM stock_metadata)
+               ORDER BY symbol, date""",
+        )
 
 
 def get_prices_for_breadth_recent(days: int = 700) -> list[dict]:
@@ -607,7 +618,8 @@ def get_prices_for_breadth_recent(days: int = 700) -> list[dict]:
     RealDictCursor, same as get_prices_for_breadth() above; load_weinstein_
     data() already runs pd.to_numeric() on this column for every caller
     regardless of backend, so this is a safe uniform-column coercion, not
-    a Decimal/float64 arithmetic mix."""
+    a Decimal/float64 arithmetic mix. Restricted to stock_metadata's
+    tracked-equity universe, same as get_prices_for_breadth() above."""
     from datetime import date as _date, timedelta as _timedelta
 
     with get_conn() as conn:
@@ -619,7 +631,9 @@ def get_prices_for_breadth_recent(days: int = 700) -> list[dict]:
         cutoff = (max_date_obj - _timedelta(days=days)).isoformat()
         return _fetchall(
             conn,
-            "SELECT symbol, date, close FROM prices WHERE date >= %s ORDER BY symbol, date",
+            """SELECT symbol, date, close FROM prices
+               WHERE date >= %s AND symbol IN (SELECT symbol FROM stock_metadata)
+               ORDER BY symbol, date""",
             (cutoff,),
         )
 
