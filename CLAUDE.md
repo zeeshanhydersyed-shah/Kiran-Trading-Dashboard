@@ -286,6 +286,89 @@ Do NOT import these in dashboard.py — they are not available on Streamlit Clou
 
 ---
 
+## Recent Changes (July 2026)
+
+### Follow-up fixes: live scraper + CSV/live-table drift (2026-07-04)
+
+The two items flagged when the Open project first closed are now both fixed.
+Full detail: `docs/DECISIONS.md` (2026-07-04, "Two remaining gaps closed" entry).
+
+- **`scraper.py` now captures Open going forward.** `parse_market_summary()`
+  extracts `cells[2]` for stock and index rows. `database.py`'s
+  `upsert_prices()`/`upsert_index_prices()` write it with
+  `COALESCE(prices.open, excluded.open)` — existing values always win, only
+  NULL gets filled. Verified against a live fetch matching already-confirmed
+  production data exactly; the actual first live brand-new-date scrape
+  hasn't happened yet as of this entry (next trading day is 2026-07-06) —
+  worth a quick spot-check after that runs.
+- **`corporate_action_suspects_clean.csv` vs. live-table drift is fixed**,
+  not just documented. `apply_price_adjustments.py --all` now merges
+  CONFIRMED live-table events automatically. Verified via full-table SHA-256
+  checksum match before/after re-running the rebuild with the fix — byte
+  -identical to the manually-corrected state. No backfill needed.
+
+### Open Price Project Complete — prices_adjusted.open Populated (2026-07-04)
+
+Phase 5 done: `apply_price_adjustments.py --all` rebuilt `prices_adjusted`
+from the Open-populated `prices` table. `prices_adjusted.open` non-null count:
+462,377 → **1,572,584**, now exactly matching `prices.open`. Full detail:
+`docs/DECISIONS.md` (2026-07-04, "Phase 5" entry).
+
+**Two things worth knowing if you touch `apply_price_adjustments.py` again:**
+- It had a Windows console encoding bug (non-ASCII characters in `print()`
+  crashing under `cp1252`) — fixed, but if it crashes again with
+  `UnicodeEncodeError`, check for new non-ASCII characters in print statements
+  before assuming data corruption. The crash is safe (happens after the
+  uncommitted DROP+recopy, before any adjustment commits) but looks alarming.
+- ~~`corporate_action_suspects_clean.csv` can drift from the live table~~ —
+  **fixed 2026-07-04**, see the entry above this one. `load_events()` now
+  merges live-table CONFIRMED rows automatically; no manual diff-and-reapply
+  needed before a future full rebuild.
+
+### Open Price Import Executed (2026-07-04)
+
+`prices.open` non-null count: 462,377 → **1,572,584**. `index_prices.open`:
+1,528 → **16,406**. Gap-fill only (`WHERE open IS NULL`) — zero existing
+values touched, verified independently after the run. Full detail, exclusion
+counts, and backup location: `docs/DECISIONS.md` (2026-07-04 entry).
+
+**`prices_adjusted.open` is still NULL** — deriving it requires re-running
+`apply_price_adjustments.py`'s existing adjustment logic against the new raw
+values (Phase 5), not yet done. Do not assume `prices_adjusted.open` is
+populated without checking.
+
+Pre-2020 Open values (2005–2019, ~1.07M rows) are "best available,
+unverified" — no independent source exists to check them (BI PostgreSQL only
+covers 2020 onward). 2020–2023 values are unchanged from before and were
+independently verified against BI PostgreSQL (40/40 sample match) prior to
+this import — see `docs/DATA_ACQUISITION_ARCHITECTURE.md`.
+
+### Open Price Acquisition — Architecture Decision (2026-07-03)
+
+Full detail: [`docs/DATA_ACQUISITION_ARCHITECTURE.md`](docs/DATA_ACQUISITION_ARCHITECTURE.md) · [`docs/DECISIONS.md`](docs/DECISIONS.md)
+
+- **Open price was never scraped for 2005–2019** (0% coverage). Confirmed as
+  an implementation oversight, not a source limitation: `scraper.py`'s own
+  docstring documents Open at `cells[2]` in every response row, but
+  `parse_market_summary()` only ever reads `cells[3..5]` (high/low/close).
+  Open sits in the response and is simply never extracted.
+- **2020–2026 Open data (~462K rows) has unverified provenance** — not
+  reproducible from current code (`load_bi_history.py` / `upsert_prices()`
+  never write `open`). Do not treat it as ground truth.
+- `open` column already exists in `prices`, `prices_adjusted`,
+  `index_prices` — no schema change needed. `apply_price_adjustments.py`
+  already multiplies `open` by the adjustment factor alongside
+  high/low/close — no pipeline change needed once raw values exist.
+- **Standing rule going forward:** the production database is research
+  infrastructure and must never be written to by experimental/acquisition
+  scripts. New datasets: acquire independently → validate independently →
+  human review → only then import. See `docs/DATA_ACQUISITION_ARCHITECTURE.md`
+  for the full six-phase separation this applies to.
+- Standalone tool `acquire_open_prices.py` (project root) implements phases
+  1–2 only (acquisition + validation, incl. read-only comparison against
+  `psx_data.db`). It has no write path to the production DB at all. Import
+  is a deliberately separate, not-yet-built utility.
+
 ## Recent Changes (June 2026)
 
 ### Phase 7.2 — Data Health + Pipeline Integrity (2026-06-14)
