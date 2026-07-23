@@ -453,13 +453,11 @@ def run_analysis() -> dict:
         kse_summary.get("above_ma50"),
     )
 
-    # Generate support reversal setups
-    sector_map = dict(zip(df["symbol"], df["sector"]))
-    sector_rank_map = dict(zip(sector_df["sector"], sector_df["rank"]))
-    support_setups = generate_support_reversal_setups(
-        df, sector_map, breadth=breadth, sector_rank_map=sector_rank_map
-    )
-    logger.info(f"Generated {len(support_setups)} support reversal setups")
+    # Support Reversal screener DISABLED 2026-07-23: re-audit found +5.21% was a look-ahead
+    # artefact. Full 21.5-year path-aware retest: -1.88% net across all eras.
+    # See: C:\Users\Lenovo\RESEARCH_LOG.md line 36 for full verdict.
+    support_setups = []
+    logger.info("Support Reversal setups: DISABLED (pattern killed 2026-07-23, -1.88% net)")
 
     return {
         "stock_30d":        stock_30d,

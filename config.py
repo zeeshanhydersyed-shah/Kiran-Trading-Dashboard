@@ -41,18 +41,22 @@ BENCHMARK = {
     "date_range": "2024-2026",
 }
 
-# Support Reversal Pattern Performance (Out-of-sample 2026)
+# Support Reversal Pattern — KILLED 2026-07-23
+# Re-audit found the +5.21% expectancy was a look-ahead artefact: the "trailing stop"
+# never simulated path ordering, retroactively taking max(favorable − 2%, return_20d).
+# Full 21.5-year path-aware retest over all eras: -1.88% net. DEAD.
+# Archive reference: C:\Users\Lenovo\RESEARCH_LOG.md line 36, verdict section.
 SUPPORT_REVERSAL_STATS = {
-    "name": "Support Reversal Pattern",
-    "description": "Rejection candles at 200-MA support in uptrends",
-    "win_rate_pct": 30.5,
-    "loss_rate_pct": 69.5,
-    "profit_factor": 1.95,
-    "ev_pkr": None,  # Varies by position size
-    "risk_reward": 5.03,
-    "expectancy_pct": 5.21,
-    "sample_size": "~1,800 signals",
-    "date_range": "2026 (out-of-sample)",
+    "name": "Support Reversal Pattern [KILLED]",
+    "description": "Rejection candles at 200-MA support — disproven 2026-07-23, -1.88% net full period",
+    "win_rate_pct": 29.1,  # Full-period path-aware, not dead 30.5
+    "loss_rate_pct": 70.9,
+    "profit_factor": None,  # Does not apply to negative EV
+    "ev_pkr": None,
+    "risk_reward": 1.51,  # Full-period, not dead 5.03
+    "expectancy_pct": -1.88,  # Net of costs, not dead +5.21
+    "sample_size": "16,425 filled (full 21.5-year retest)",
+    "date_range": "2005-01-01 → 2026-06-05 (all eras negative)",
 }
 
 # HTTP headers to mimic a browser visit

@@ -146,7 +146,7 @@ div[data-testid="stHorizontalBlock"] > div > div > div > button[kind="primary"] 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=7200, show_spinner=False)  # 2 hours instead of 30 min
+@st.cache_data(ttl=7200, show_spinner="Loading market data...")  # 2 hours instead of 30 min
 def load_data() -> dict:
     init_db()
     data = run_analysis()
@@ -1682,6 +1682,20 @@ def _get_regime_definitions():
     return df
 
 
+# ── Stealth RS (Exploratory — Not Validated) ─────────────────────────────────
+# Locked definition (PRE_BREAKOUT_Specification_v1.0.md Section 12/13) now
+# lives in stealth_rs.py — single source of truth for both backends
+# (compute_stealth_rs() branches internally on _PG_URL; no separate table or
+# batch job — Cloud follows exactly what local SQLite does). Do not
+# re-implement here. Status: DEAD on the locked confirmatory Validation+OOS
+# test (Section 12.8-12.13); a follow-up exploratory (non-confirmatory)
+# re-test found the effect recovers outside "runaway bull" regime (Section
+# 13) — watch-only, not a validated signal, not scheduled for re-test until
+# fresh post-2026-07 data accrues
+# (PI target: year-end).
+from stealth_rs import compute_stealth_rs as _compute_stealth_rs_live
+
+
 def _get_explorer_data():
     if _PG_URL:
         from dashboard_pg import get_explorer_data_pg
@@ -1980,6 +1994,192 @@ def _get_sector_composite_history(sector, before_date):
     """, (sector, before_date)).fetchall()
     conn.close()
     return hist
+
+
+def _render_boring_breakouts_section():
+    """
+    'Boring Breakouts' toggle content — RS_60-conditioned Donchian breakout,
+    manual-execution workflow. Locked spec:
+    boring_study/boring_study_trading_rulebook_v1_2026-07-11.md (Addenda A-C
+    applied). Columns and badge logic are locked; do not add a graded score
+    here (Addendum C: a star rating was investigated and explicitly rejected
+    — granular RS depth and sector-clustering both failed to survive scrutiny).
+    """
+    if _PG_URL:
+        # Hard-blocked on purpose, same reasoning and same pattern as the
+        # Data Health Confirm button (see CLAUDE.md "Known Gaps"):
+        # boring_signals.py is 100% SQLite (sqlite3.connect(DB_PATH)
+        # hardcoded, no _PG_URL branch anywhere in it), and it depends on
+        # stock_metadata/sectors/prices_adjusted being fully populated,
+        # which on Streamlit Cloud they aren't (no local SQLite file exists
+        # there at all -- see CLAUDE.md "Streamlit Cloud constraints").
+        # Letting this through would throw a raw connection error the
+        # moment a user reaches this section. Nothing is written or read
+        # below -- boring_signals is never imported on this path.
+        st.error(
+            "🎯 Boring Breakouts is not available on Streamlit Cloud yet. "
+            "`boring_signals.py` is SQLite-only (no Postgres port) and depends on local "
+            "tables (`stock_metadata`, `sectors`, `prices_adjusted`) that don't exist on "
+            "Cloud's ephemeral filesystem. This section only works when run locally against "
+            "`psx_data.db`. See CLAUDE.md 'Known Gaps' for the Postgres port needed to close this."
+        )
+        return
+
+    from boring_signals import get_boring_signals, mark_executed
+
+    st.caption(
+        "Locked table: Ticker · RS_60 Decile · Breakout Level · Entry Price · "
+        "Stop (trailing) · Status · Action. Breakout Level (1.01× prior high) is the threshold "
+        "that had to be cleared — Entry Price (the close) is often above it, not equal to it. "
+        "Exit is a live HYBRID trailing stop (prior-day low, floored at -8% from entry, "
+        "recomputed daily) — there is no fixed take-profit target in this system. "
+        "Both N=20 and N=60 Donchian definitions are shown (never merged — see rulebook §2). "
+        "This is a watch-and-manually-execute list, not an auto-trader."
+    )
+
+    _bo_df = get_boring_signals()
+    if _bo_df.empty:
+        st.info("No Boring Breakout signals yet. Signals populate via the daily `main.py --update` hook.")
+        return
+
+    _bo_col1, _bo_col2 = st.columns([2, 1])
+    _bo_status_filter = _bo_col1.multiselect(
+        "Status", ["Pending", "Executed", "Target Hit", "Stopped", "Expired"],
+        default=["Pending", "Executed"], key="boring_status_filter",
+    )
+    _bo_confirmed_only = _bo_col2.checkbox(
+        "Strategy Confirmed only", value=True, key="boring_confirmed_only",
+        help="Off shows every Donchian breakout in the eligible universe, including ones that "
+             "fail the RS_60 top-decile or liquidity gate — off by default because those aren't "
+             "trade candidates, just raw scan output.",
+    )
+    _bo_show = _bo_df[_bo_df["status"].isin(_bo_status_filter)].copy() if _bo_status_filter else _bo_df.copy()
+    if _bo_confirmed_only:
+        _bo_show = _bo_show[_bo_show["strategy_confirmed"] == 1]
+
+    if _bo_show.empty:
+        st.info("No signals match the current filters.")
+    else:
+        # Collapse N=20/N=60 rows for the SAME symbol+signal_date into one
+        # displayed row -- both use the identical Close(t) entry and the same
+        # trailing-stop walk (RS_60, decile, and liquidity too; N only
+        # changes which Donchian window confirmed the breakout), so two rows
+        # here would just be the same real-world trade shown twice.
+        # Underlying rows stay separate in the database (each keeps its own
+        # id) for research/audit fidelity; only the display and the Execute
+        # action are collapsed.
+        _bo_show["confirmed_badge"] = _bo_show["strategy_confirmed"].apply(
+            lambda v: "✅ Confirmed" if v == 1 else "❌ No Fit"
+        )
+        _bo_grouped = (
+            _bo_show.groupby(["symbol", "signal_date"], as_index=False)
+            .agg(
+                ids=("id", list),
+                lookback_n=("lookback_n", lambda s: "+".join(str(int(x)) for x in sorted(s))),
+                rs_60_decile=("rs_60_decile", "first"),
+                confirmed_badge=("confirmed_badge", "first"),
+                # breakout_level CAN differ between N=20/N=60 (each has its own prior-high
+                # window) even though trigger_price/current_stop can't (those only depend
+                # on Close(t) and the shared trailing-stop walk) -- take the higher
+                # (stricter) threshold when they differ.
+                breakout_level=("breakout_level", "max"),
+                trigger_price=("trigger_price", "first"),
+                current_stop=("current_stop", "first"),
+                status=("status", "first"),
+            )
+        )
+
+        # current_stop is NULL until update_open_signal_statuses() has
+        # successfully processed this row at least once (a brand-new row
+        # from the same run cycle, or a row whose symbol hit a data gap) --
+        # render that explicitly rather than letting a NULL silently show
+        # as blank or coerce to 0, which would look like "stop = 0", not
+        # "not computed yet."
+        _bo_grouped["stop_display"] = _bo_grouped["current_stop"].apply(
+            lambda v: f"{v:.2f}" if pd.notna(v) else "Not yet computed"
+        )
+
+        _bo_editor_cols = [
+            "symbol", "signal_date", "lookback_n", "rs_60_decile", "confirmed_badge",
+            "breakout_level", "trigger_price", "stop_display", "status",
+        ]
+        _bo_editor_names = [
+            "Ticker", "Fire Date", "N", "RS_60 Decile", "Strategy Fit",
+            "Breakout Level", "Entry Price", "Stop (trailing)", "Status",
+        ]
+        _bo_disp = _bo_grouped[_bo_editor_cols].copy()
+        _bo_disp.columns = _bo_editor_names
+        _bo_disp["Mark Executed"] = False  # action column -- checked rows get executed on submit
+
+        _bo_edited = st.data_editor(
+            _bo_disp,
+            column_config={
+                "Breakout Level": st.column_config.NumberColumn(
+                    format="%.2f", help="1.01 x prior N-day high -- the level that had to be "
+                                         "cleared. Entry Price (the close) is often above this, "
+                                         "not equal to it -- that's expected, not a contradiction."),
+                "Entry Price": st.column_config.NumberColumn(format="%.2f"),
+                "Stop (trailing)": st.column_config.TextColumn(
+                    help="Live HYBRID trailing stop: prior-day low, ratcheting up, floored at "
+                         "-8% from entry. Updates daily via update_open_signal_statuses() -- "
+                         "not a fixed entry-day level. 'Not yet computed' means this row hasn't "
+                         "been processed by that function yet, not that there's no stop."),
+                "Mark Executed": st.column_config.CheckboxColumn(
+                    help="Check and press Execute Marked below to record this trade as taken."
+                ),
+            },
+            disabled=["Ticker", "Fire Date", "N", "RS_60 Decile", "Strategy Fit", "Breakout Level",
+                      "Entry Price", "Stop (trailing)", "Status"],
+            hide_index=True, use_container_width=True, height=360, key="boring_editor",
+        )
+
+        if st.button("Execute Marked", key="boring_execute_btn"):
+            _to_execute_rows = _bo_edited[_bo_edited["Mark Executed"] == True]
+            _n_signals = 0
+            for _pos in _to_execute_rows.index:
+                for _sig_id in _bo_grouped.loc[_pos, "ids"]:
+                    mark_executed(int(_sig_id))
+                    _n_signals += 1
+            if _n_signals:
+                st.success(f"Marked {len(_to_execute_rows)} trade(s) ({_n_signals} underlying signal row(s)) as Executed.")
+                st.rerun()
+            else:
+                st.info("No rows checked.")
+
+    # Resolved (Stopped) history -- deliberately outside/after the open-positions
+    # if/else above, so it renders regardless of whether the main table is empty.
+    # Read-only: nothing here is actionable on an already-resolved trade, so no
+    # Mark Executed checkbox, no data_editor, no Execute button.
+    with st.expander("Resolved (Stopped)", expanded=False):
+        _bo_stopped = get_boring_signals(status="Stopped")
+        if _bo_confirmed_only:
+            _bo_stopped = _bo_stopped[_bo_stopped["strategy_confirmed"] == 1]
+
+        if _bo_stopped.empty:
+            st.info("No resolved (Stopped) signals yet.")
+        else:
+            _bo_stopped_grouped = (
+                _bo_stopped.groupby(["symbol", "signal_date"], as_index=False)
+                .agg(
+                    lookback_n=("lookback_n", lambda s: "+".join(str(int(x)) for x in sorted(s))),
+                    trigger_price=("trigger_price", "first"),
+                    current_stop=("current_stop", "first"),
+                    status=("status", "first"),
+                    resolution_date=("resolution_date", "first"),
+                )
+                # groupby re-sorts by the group keys -- re-apply the "most recent
+                # fire date first" order the underlying query already had before
+                # capping, rather than assuming groupby preserved it.
+                .sort_values("signal_date", ascending=False)
+                .head(30)
+            )
+            _res_cols = ["symbol", "signal_date", "lookback_n", "trigger_price",
+                         "current_stop", "status", "resolution_date"]
+            _res_names = ["Ticker", "Fire Date", "N", "Entry Price",
+                          "Stop (final)", "Status", "Resolution Date"]
+            _res_disp = _bo_stopped_grouped[_res_cols].copy()
+            _res_disp.columns = _res_names
+            st.dataframe(_res_disp, hide_index=True, use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3106,8 +3306,6 @@ elif cur == PAGES[5]:  # Trade Log
                         st.rerun()
 
 
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 3 — EXPLORER
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3226,6 +3424,38 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
     _ex_edge = False       # superseded by Weinstein screener
     _ex_short = False      # disabled — negative EV on PSX; gated behind TRENDING_DOWN for future use
 
+    # Stealth RS — watch-only toggle, filters the same main table below
+    # (like Weinstein Watchlist does), but mutually exclusive with it — the
+    # two are never combined/stacked (see _ex_stealth_active below). Reuses
+    # sec_global_rank<=8 (Market Gate's confirmed field) as a PRACTICAL
+    # pre-filter only, per PI decision — this combination has never been
+    # tested. No scoring/ranking logic; not wired into leaders_scan.py,
+    # kiran_voice.py, or agent.py.
+    _ex_stealth_rs = st.toggle(
+        "🔬 Stealth RS (Exploratory — Not Validated)",
+        key="exp_stealth_rs",
+    )
+    if _ex_stealth_rs:
+        st.caption(
+            "⚠️ **Exploratory research signal — not yet confirmed on out-of-sample data. "
+            "The sec_global_rank≤8 restriction is a practical trading-workflow filter, not "
+            "a tested combination. Not a trading recommendation. Under observation, "
+            "scheduled for re-evaluation with fresh data.**"
+        )
+
+    # Boring Breakouts -- RS_60-conditioned Donchian breakout, manual-execution
+    # workflow. Independent of Weinstein/Stealth RS: its column set (Trigger/
+    # Target/Stop/Status/Action) doesn't fit the shared screener table above,
+    # so it renders its own section instead of filtering the same table.
+    # Locked spec: boring_study_trading_rulebook_v1_2026-07-11.md (Addenda A-C).
+    _ex_boring = st.toggle(
+        "🎯 Boring Breakouts — RS_60-conditioned Donchian (manual execution)",
+        key="exp_boring",
+    )
+    if _ex_boring:
+        _render_boring_breakouts_section()
+        st.divider()
+
     # Sector filter + sort controls in one row
     _fc1, _fc2, _fc3, _fc4 = st.columns([2, 2, 1, 1])
     _ex_sectors = ["All sectors"] + sorted(_ex_df["sector"].dropna().unique().tolist())
@@ -3252,6 +3482,26 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
         else _ex_df[_ex_df["sector"] == _ex_sel_sec]
     ).copy()
 
+    # Stealth RS is mutually exclusive with Weinstein Watchlist — never
+    # combined/stacked, matching the original isolation requirement, but now
+    # filters the SAME main table/empty-state instead of a separate one.
+    # If a user somehow enables both, Weinstein takes priority and a notice
+    # is shown (see below) rather than silently intersecting the two.
+    _ex_stealth_active = _ex_stealth_rs and not _ex_weinstein
+    if _ex_stealth_active:
+        # Single code path for both backends — compute_stealth_rs() branches
+        # internally on _PG_URL (SQLite locally, Postgres on Cloud), same
+        # live per-page-load query either way. No separate precomputed
+        # table/batch job: Cloud follows exactly what local SQLite does.
+        _stealth_symbols = _ex_filtered["symbol"].tolist()
+        _stealth_counts = _compute_stealth_rs_live(_ex_latest, _stealth_symbols)
+        _ex_filtered["stealth_count"] = _ex_filtered["symbol"].map(_stealth_counts).fillna(0).astype(int)
+    if _ex_weinstein and _ex_stealth_rs:
+        st.warning(
+            "Weinstein Watchlist and Stealth RS cannot be combined — showing Weinstein Watchlist. "
+            "Turn off Weinstein to view Stealth RS."
+        )
+
     # Weinstein top-down watchlist
     if _ex_weinstein:
         _total_before_w = len(_ex_filtered)
@@ -3268,20 +3518,39 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
             (_ex_filtered["ema150_slope_pos"].fillna(0) == 1) &
             # [5] RS rank improving — moving up the leaderboard
             (_ex_filtered["rank_change"].fillna(-999) > 0) &
-            # [6] RS leader in its sector (top 5)
-            (_ex_filtered["sector_rs_rank"].fillna(999) <= 5) &
-            # [7] Coiling near pivot ≥7 consecutive days (0–15% below pivot high)
+            # [6] Coiling near pivot ≥7 consecutive days (0–15% below pivot high)
+            # (former [6] "RS leader in its sector (top 5)" / sector_rs_rank<=5
+            # removed 2026-07-10 — confirmed reversed/dead per S-003, see
+            # PRE_BREAKOUT_Specification_v1.0.md Session Summary)
             (_ex_filtered["near_pivot_days"].fillna(0) >= 7) &
             # Liquid
             (_ex_filtered["avg_vol_10d"] > 200_000)
         ]
         _ex_filtered = _ex_filtered.sort_values(
-            ["sec_global_rank", "sector_rs_rank", "rs_rank"], ascending=True
+            ["sec_global_rank", "rs_rank"], ascending=True
         )
         st.caption(
             f"📖 Weinstein Watchlist — **{len(_ex_filtered)}** stocks · "
             f"Sector Stage 2 · Global top-8 sector · Stock above rising 150EMA · "
-            f"RS↑ · Sector top 5 · Coiling ≥7d"
+            f"RS↑ · Coiling ≥7d"
+        )
+
+    # Stealth RS (Exploratory — Not Validated). Filters the SAME main table/
+    # empty-state as every other toggle here. Uses the locked Section 12
+    # stealth-count definition (unmodified) AND sec_global_rank<=8 (Market
+    # Gate's confirmed field, reused as-is — same fillna(999)<=8 convention
+    # as the Weinstein block above) as a practical, untested pre-filter per
+    # PI decision. Watch-only: no scoring/ranking logic, not wired into
+    # leaders_scan.py, kiran_voice.py, or agent.py.
+    elif _ex_stealth_active:
+        _ex_filtered = _ex_filtered[
+            (_ex_filtered["stealth_count"] >= 2) &
+            (_ex_filtered["sec_global_rank"].fillna(999) <= 8)
+        ]
+        st.caption(
+            f"🔬 Stealth RS (Exploratory, not validated) — **{len(_ex_filtered)}** stocks · "
+            f"stealth count ≥2 (locked Section 12 definition) · sector sec_global_rank ≤8 "
+            f"(practical filter, untested combination — see caption above)"
         )
 
     # Stage 4 short screener — disabled: negative EV on PSX at all tested windows.
@@ -3338,18 +3607,27 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
     _stage_icon_map = {"Stage 2": "🟢", "Stage 3": "🟡", "Stage 4": "🔴", "Stage 1": "⚪"}
     _ex_show["sec_stage_fmt"] = _ex_show["sec_stage"].map(_stage_icon_map).fillna("—")
 
-    _ex_disp = _ex_show[[
+    _ex_disp_cols  = [
         "symbol", "sector", "sec_stage_fmt", "rs_rank", "rs_score_20",
         "rank_chg_fmt", "sector_rs_rank",
         "base_tightness", "near_pivot_days", "pivot_distance_pct",
         "overhead_clear", "bos", "avg_vol_10d", "current_close"
-    ]].copy()
-    _ex_disp.columns = [
+    ]
+    _ex_disp_names = [
         "Symbol", "Sector", "Sec Stage", "RS Rank", "RS Score",
         "Rank Δ", "Sec Rank",
         "BBW%", "Piv Days", "Pivot Dist%",
         "OH Clear", "BOS", "Vol 10d", "Close"
     ]
+    if _ex_stealth_active:
+        # Plain, unweighted, informational columns only — not part of any
+        # scoring/sort logic (the sort dropdown above never offers either
+        # column, so a user cannot rank by them from this table).
+        _ex_disp_cols  += ["stealth_count", "sec_global_rank"]
+        _ex_disp_names += ["Stealth Count", "Sec Global Rank"]
+
+    _ex_disp = _ex_show[_ex_disp_cols].copy()
+    _ex_disp.columns = _ex_disp_names
     st.dataframe(
         _ex_disp.style.format({
             "RS Score":    "{:+.1f}",
@@ -3358,6 +3636,7 @@ The short screener was audited against the book directly (Ch.7). Key finding: We
             "OH Clear":    lambda v: "✅" if v == 1 else ("❌" if v == 0 else "—"),
             "Pivot Dist%": lambda v: f"{v:+.1f}%" if pd.notna(v) else "—",
             "Vol 10d":     lambda v: f"{v/1e6:.2f}M" if pd.notna(v) and v >= 1e6 else (f"{v:,.0f}" if pd.notna(v) else "—"),
+            "Sec Global Rank": lambda v: f"{int(v)}" if pd.notna(v) else "—",
             "Close":       lambda v: f"{v:.2f}" if pd.notna(v) else "—",
         }),
         use_container_width=True, hide_index=True, height=400,
@@ -3531,7 +3810,7 @@ A **positive score** is the minimum bar for a quality setup. A **negative score*
 # PAGE 6 — ANALYTICS
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[6]:  # Analytics
-    from config import BENCHMARK, SUPPORT_REVERSAL_STATS
+    from config import BENCHMARK
 
     # Ensure portfolio tables exist
     init_db()
@@ -3645,22 +3924,22 @@ elif cur == PAGES[6]:  # Analytics
     st.markdown("### 📊 vs Benchmark")
     st.caption(
         f"Compare your current performance (from {n_total} closed trades) "
-        f"to your benchmark ({BENCHMARK['sample_size']}) and Support Reversal pattern ({SUPPORT_REVERSAL_STATS['sample_size']})"
+        f"to your benchmark ({BENCHMARK['sample_size']})"
     )
 
-    comp_cols = st.columns(3)
+    comp_cols = st.columns(2)
 
     # Build comparison dataframe
     metrics_list = [
-        ("Win Rate %", f"{win_rate*100:.1f}%", f"{BENCHMARK['win_rate_pct']:.1f}%", f"{SUPPORT_REVERSAL_STATS['win_rate_pct']:.1f}%"),
-        ("Profit Factor", f"{profit_factor:.2f}x", f"{BENCHMARK['profit_factor']:.2f}x", f"{SUPPORT_REVERSAL_STATS['profit_factor']:.2f}x"),
-        ("Risk:Reward", f"{avg_rr:.2f}x", f"{BENCHMARK['risk_reward']:.2f}x", f"{SUPPORT_REVERSAL_STATS['risk_reward']:.2f}x"),
-        ("Expectancy %", f"{expectancy_pct:+.2f}%", f"{BENCHMARK['expectancy_pct']:+.2f}%", f"{SUPPORT_REVERSAL_STATS['expectancy_pct']:+.2f}%"),
+        ("Win Rate %", f"{win_rate*100:.1f}%", f"{BENCHMARK['win_rate_pct']:.1f}%"),
+        ("Profit Factor", f"{profit_factor:.2f}x", f"{BENCHMARK['profit_factor']:.2f}x"),
+        ("Risk:Reward", f"{avg_rr:.2f}x", f"{BENCHMARK['risk_reward']:.2f}x"),
+        ("Expectancy %", f"{expectancy_pct:+.2f}%", f"{BENCHMARK['expectancy_pct']:+.2f}%"),
     ]
 
     comp_df = pd.DataFrame(
         metrics_list,
-        columns=["Metric", "Your Current", f"{BENCHMARK['name']}", f"{SUPPORT_REVERSAL_STATS['name']}"]
+        columns=["Metric", "Your Current", f"{BENCHMARK['name']}"]
     )
 
     with comp_cols[0]:
@@ -3672,11 +3951,6 @@ elif cur == PAGES[6]:  # Analytics
         st.markdown(f"**{BENCHMARK['name']}**")
         st.metric("Win Rate", f"{BENCHMARK['win_rate_pct']:.1f}%", label_visibility="collapsed")
         st.metric("Expectancy %", f"{BENCHMARK['expectancy_pct']:+.2f}%", label_visibility="collapsed")
-
-    with comp_cols[2]:
-        st.markdown(f"**{SUPPORT_REVERSAL_STATS['name']}**")
-        st.metric("Win Rate", f"{SUPPORT_REVERSAL_STATS['win_rate_pct']:.1f}%", label_visibility="collapsed")
-        st.metric("Expectancy %", f"{SUPPORT_REVERSAL_STATS['expectancy_pct']:+.2f}%", label_visibility="collapsed")
 
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.dataframe(comp_df, use_container_width=True, hide_index=True)
@@ -5266,8 +5540,8 @@ elif cur == PAGES[8]:  # Setup Perf
         axis=1
     )
 
-    # Source selector — lets auditors filter by screener
-    _sp_sources = ["System", "Support Reversal"]
+    # Source selector — Support Reversal disabled 2026-07-23 (pattern killed, -1.88% net)
+    _sp_sources = ["System"]
     _sp_src_sel = st.multiselect(
         "📊 Screener source",
         _sp_sources,
