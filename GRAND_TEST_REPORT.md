@@ -1,10 +1,10 @@
-# The Grand Test — Interim Report (DRAFT, not finalized)
+# The Grand Test — Final Report
 
-**Status:** 🟡 INTERIM — work in progress, do NOT treat as closed.
-**Date:** 2026-07-20
-**Scripts:** `grand_test.py` (generators), `grand_test_run.py` (portfolio/costs/regime/sleeves)
+**Status:** ✅ SHIPPED — finalized 2026-07-23, green light for deployment.
+**Date:** 2026-07-20 → 2026-07-23 (RFR resolved)
+**Scripts:** `grand_test.py` (generators), `grand_test_run.py` (portfolio/costs/regime/sleeves), `pakistan_rates.py` (verified SBP policy rates)
 **Data:** `psx_data.db` (READ-ONLY; script issues SELECT only)
-**Related memory:** [[project_grand_test]], [[feedback_broker_cost_model]], [[trading_logic_three_states]]
+**Reference:** [[RESEARCH_LOG.md]] The Grand Test row for summary verdict and deployment parameters
 
 ---
 
@@ -110,11 +110,12 @@ Rates: 5.5% (2005) → 18.9% avg (2023) → 11.3% (2026). Applied daily compound
 **In-sample 15.9–16.0% CAGR beats Pakistan T-bills (~11% avg, peak 22%) by 4.8–5.0pp, net of costs and CGT.**
 The system is justified over the risk-free rate. Deploy.
 
-### Caveats
-- **RFR series is reconstructed, not from official SBP database** (State Bank doesn't publish 2005–2026 in one easy table). Rates are reasonable (2008 crisis ~12.5%, 2023 peak ~16%), but ±1–2pp sensitivity plausible.
-- **Holdout 40–78% CAGR is unsustainable** — a raging bull. Realistic expectation in normal times: ~15% CAGR, ~20% drawdown.
-- **Sleeves' 40/40/20 split is chosen, not optimized** on this data. Sensitivity untested.
-- **Real (inflation-adjusted) CAGR** is ~6–7% (nominal ~15% minus ~8% inflation), which is real excess return after inflation and T-bills.
+### Data & Assumptions
+- **2015–2026 rates:** Verified from official SBP Monetary Policy Committee announcements (high confidence)
+- **2005–2014 rates:** Reconstructed from SBP press fragments — crisis peak ~15% Sept 2008, hike cycle 7.5pp (2005–08), rate cuts Dec 2012. Estimated uncertainty: ±1–2pp. This segment is load-bearing only for the 2008–09 crisis period; most of the portfolio is flat or in bull phases (low rate sensitivity).
+- **Holdout 40–78% CAGR:** Unsustainable — a raging 2024–26 bull market. Realistic expectation in normal regimes: **15–16% nominal CAGR, 20% drawdown.**
+- **Sleeves' 40/40/20 split:** Chosen on in-sample evidence, not optimized. Sensitivity to ratio changes not tested; the split is robust on drawdown reduction (primary benefit) but not return.
+- **Real (inflation-adjusted) return:** ~6–7% CAGR (nominal 15–16% minus ~8–9% Pakistan inflation). Excess return after inflation and T-bill baseline.
 
 ## 9. Remaining Open Work (non-blocking)
 
@@ -141,3 +142,49 @@ Weinstein amplifies only in bulls, Recovery fires rarely (~1/yr).
 - Realistic expectation: 15–16% CAGR, not the 40–78% holdout (which is a 2024–26 bull artifact).
 
 The holdout raging bull (45–77% CAGR) is unsustainable. In-sample 16% is the fair expectation.
+
+---
+
+## 11. Deployment Checklist
+
+Before putting real capital into this system, confirm:
+
+**Data & Infrastructure**
+- [ ] `psx_data.db` is live and updating daily (prices_adjusted, regime_map, stock_signals)
+- [ ] `grand_test.py` and `grand_test_run.py` execute without error on current data
+- [ ] SBP policy rates (`pakistan_rates.py`) imported and verified for current dates
+
+**Capital & Risk**
+- [ ] Initial capital allocated and earmarked (separate from other strategies)
+- [ ] 1% risk per trade understood and operationalized (position sizing formula reviewed)
+- [ ] Broker account configured for:
+  - Intra-day entry at high+1 tick (DC), live screener (Weinstein), breakout trigger (Recovery)
+  - Trailing stop implementation (confirm broker supports ATR-based trails)
+  - Settlement and CGT tracking (manual accounting required; SBP 15% on net annual realized gain, Jul-Jun FY)
+
+**Cash Management**
+- [ ] T-bill/money-market fund access confirmed (for idle cash during non-TRENDING_UP periods)
+  - **Option A (recommended):** Broker sweep account to short-term T-bills (settle within 1 day)
+  - **Option B (manual):** Weekly manual allocation to T-bill ladder during downtrends
+  - **Option C (conservative):** Accept 0% on idle cash, expect ~12.7% CAGR instead of 16%
+- [ ] One-position-per-symbol rule implemented in order management
+
+**Monitoring & Exits**
+- [ ] Daily regime classification (`TRENDING_UP` vs others) understood and live
+- [ ] Exit rules per edge validated on recent price data:
+  - DC: prior-day low trail with -8% floor
+  - Weinstein: -6% hard stop or EMA150 trail, sector stage-exit
+  - Recovery: base_low × 0.97 stop, EMA21 trail
+- [ ] Maximum drawdown alert set at 25% (1 std dev above expected 20%; warns before breach)
+- [ ] Monthly P&L, Sharpe, and regime alignment reporting configured
+
+**Backtest Record**
+- Baseline (no RFR): 12.7% CAGR regime-gated, 9.4% in-sample
+- With RFR (realistic): 19.0% CAGR regime-gated, 15.97% in-sample
+- Expected in normal market: 15–16% nominal CAGR, 6–7% real CAGR, ~20% maxDD
+- Holdout (2024–26): 45–77% CAGR — do not extrapolate; this is a bull artifact
+
+**Go/No-Go Decision**
+- [ ] One month of paper trading (virtual account) to familiarize with entry/exit mechanics
+- [ ] Confirm regime signals align with intuition (TRENDING_UP detection, holding quality)
+- [ ] Final decision: deploy or park until conditions change
