@@ -60,20 +60,18 @@ Local edits alone **never** update the live app.
 4. 📈 History
 5. 📋 Trade Log
 6. 📉 Analytics
-7. 💡 Setups
-8. 🔄 Recovery Bases
-9. 🎯 Setup Perf
-10. 🤖 Backtest
-11. 🗂️ Portfolio
-12. 🏥 Model Health
-13. 🤖 Agent
-14. 💰 Valuation
-15. 📡 Flows
-16. 🏆 Leaders
-17. 📋 Setup History
-18. 🏥 Data Health
+7. 🔄 Recovery Bases
+8. 🎯 Setup Perf
+9. 🤖 Backtest
+10. 🗂️ Portfolio
+11. 🏥 Model Health
+12. 🤖 Agent
+13. 💰 Valuation
+14. 🏆 Leaders
+15. 📋 Setup History
+16. 🏥 Data Health
 
-*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap.)*
+*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap. 📡 Flows retired 2026-07-29 — Big Fish study found the underlying FIPI/LIPI flow data null, 0/360 forward cells; see docs/KIRAN_CLEANUP_AUDIT.md. `page_flows.py`'s `scrape_flows_today()` is still called from `main.py`'s daily hook — it still feeds `sector_signals.py`'s descriptive-only `Flow` column on the Market page.)*
 
 ## ML model architecture
 Two separate models:

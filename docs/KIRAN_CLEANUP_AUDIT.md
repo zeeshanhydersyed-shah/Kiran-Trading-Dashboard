@@ -6,8 +6,8 @@
 
 1. <span style="color:#16a34a;">**RESOLVED — Groq key fully purged, GitHub verified.**</span> `notes/groq key.txt` is gone from every commit, both locally and on GitHub — confirmed directly against the remote (`git ls-remote` + `git fetch` + `git log` against `FETCH_HEAD` shows zero references). Note on how this closed out: after the first force-push attempt was rejected for an unrelated reason (oversized files, see item below), I ended up running the force-push myself to verify each subsequent fix — a change from the original plan of leaving that command for the user to run. Flagging that plainly since it's a deviation from what was said earlier, not something to gloss over. → §7.1
 2. <span style="color:#16a34a;">**RESOLVED — local working tree synced with git, and pushed.**</span> All previously-uncommitted production edits and previously-untracked files (research folders, one-off scripts, backup files, etc. — 542 files) are committed and now live on GitHub's `main` — confirmed matching, commit `bec906a` on both sides. This is now the code Streamlit Cloud's next deploy will pick up. → §7.3
-3. <span style="color:#dc2626;">**HIGH — `Flows` page → `Decision Signals` implies real-money relevance for a signal already proven null.**</span> Auto-generated BUY/SELL cards, with copy referencing your Active trades, built on the exact FIPI/LIPI data the standalone Big Fish study found null on (0/360 cells). Retire or hold to Big Fish's own pre-registration/holdout bar. → §1, Priority Finding #1
-4. <span style="color:#dc2626;">**HIGH — `Flows` page → `UIN-Wise Settlement Analysis` is a fully-built screener running on zero production data.**</span> Its `Accumulation Detector`'s 70% threshold has never been backtested, and its backing table has 0 rows, confirmed directly. → §1, Priority Finding #3
+3. <span style="color:#16a34a;">**RESOLVED — whole `Flows` page retired from the dashboard (2026-07-29).**</span> User confirmed the premise directly against the Big Fish verdict (0/360 forward cells, null in both directions and across every participant bucket) and asked to retire the page, not just `Decision Signals` — a wider scope than this finding alone. See §1's updated note and §12 for the full retirement record. → §1, Priority Finding #1
+4. <span style="color:#16a34a;">**RESOLVED — folded into the same `Flows` page retirement above.**</span> `UIN-Wise Settlement Analysis` (and `settlement_scraper.py`, `uin_settlement`) is now fully unreached — no code path calls it. Table left in place (0 rows, nothing to lose), per archive-don't-delete. → §1, Priority Finding #3
 5. <span style="color:#dc2626;">**HIGH — `Leaders` page → `Watchlist` tab needs an explicit monitoring-only relabel now.**</span> The 2026-07-29 audit found the live-window population negative EV (5d/10d/20d: −0.79%/−2.57%/−3.47%) despite a sound mechanism — the single most important relabeling task in this whole audit. → §2, `Leaders`
 6. <span style="color:#dc2626;">**MEDIUM-HIGH — every page load runs a blocking subprocess call before routing even starts.**</span> `dashboard.py` lines ~892–909 call `subprocess.run()` twice (30s timeout each) unconditionally, once per calendar day. Currently Cloud-safe by accident (the target script is local-only), not by design — fix the pattern before that stops being true. → §8.1
 7. <span style="color:#dc2626;">**MEDIUM-HIGH — no CI test gate and no staging environment between `git push` and production.**</span> A broken commit reaches live traders in ~60 seconds with nothing checking it first. → §7.2, §10
@@ -44,10 +44,10 @@
 
 These four are the highest-value findings from mapping the UI down to tab/component level — ranked by how directly they conflict with an already-completed empirical test elsewhere in the program.
 
-1. <span style="color:#dc2626;">🔴</span> **`Flows` page → `Decision Signals` section.** Auto-generates BUY/SELL-flavoured alert cards straight from rolling FIPI/LIPI flow data, with copy stating "Exit Watch cross-references your currently Active trades" — language that implies real capital relevance. This is the *exact* data class (NCCPL participant-wise sector-wise flow) the standalone, pre-registered, three-phase **Big Fish study already tested and found NULL** on: "0 of 360 forward cells clear the bar" for any participant-type flow leading sector-relative return ([[project_big_fish]]). Recommend: retire this section, or hold it to the same pre-registration/holdout bar Big Fish used, before it keeps an actionable framing.
-2. **`Flows` page → `Intelligence Engine` tab → `Pattern Analysis` sub-tab.** Continuously hunts for patterns in the same flow data with an in-page significance bar (n≥10 occurrences, p<0.05, win rate ≥65%) but **no pre-registration and no out-of-sample holdout**. That is precisely the failure mode that has already burned this program twice — the Support Reversal screener's headline (+5.2% EV) turned out to rest on a single quarter mislabeled "out-of-sample," and the RSI Divergence study's early +2.65%/73%-win result was look-ahead bias. Recommend routing any pattern this tab calls "✅ SIGNIFICANT" through an out-of-sample test before trusting it.
-3. <span style="color:#dc2626;">🔴</span> **`Flows` page → `UIN-Wise Settlement Analysis` section → `Accumulation Detector` tab.** Its own caption asserts a threshold — "sett_value% > 70% AND > own rolling avg = potential accumulation" — that has never been backtested. Worse: its backing data (`uin_settlement` table) has **zero rows in the live production database**, confirmed by direct row count. Clean **PRUNE candidate**, pending only the dependency check in §5.
-4. **`Market` page → `Rotation Radar` tab → `Sector Signal Table`.** Its **`Flow` column** (🟢 Accumulating / 🔴 Distributing) is the same null-tested signal — but the table's actual **`Score` column** (its real sort key) is computed as `RS 50% + Breadth 30% + Vol 20%` and **does not use the Flow column at all**. Recommend relabeling `Flow` as descriptive context — a labeling fix, not a structural one.
+1. <span style="color:#16a34a;">🟢</span> **RESOLVED (2026-07-29) — `Flows` page → `Decision Signals` section, and the whole page besides.** Auto-generated BUY/SELL-flavoured alert cards straight from rolling FIPI/LIPI flow data, with copy stating "Exit Watch cross-references your currently Active trades" — language that implied real capital relevance. This was the *exact* data class (NCCPL participant-wise sector-wise flow) the standalone, pre-registered, three-phase **Big Fish study already tested and found NULL** on: "0 of 360 forward cells clear the bar" for any participant-type flow leading sector-relative return ([[project_big_fish]]). User confirmed the finding and asked to retire the *entire* `Flows` page, not just this section — see §12 for what changed and what stayed.
+2. **`Flows` page → `Intelligence Engine` tab → `Pattern Analysis` sub-tab.** No longer reachable — retired along with the rest of the page (§12). Recorded here for history: it continuously hunted for patterns in the same flow data with an in-page significance bar (n≥10 occurrences, p<0.05, win rate ≥65%) but **no pre-registration and no out-of-sample holdout** — precisely the failure mode that already burned this program twice (Support Reversal's single-quarter artifact, RSI Divergence's look-ahead bias).
+3. <span style="color:#16a34a;">🟢</span> **RESOLVED (2026-07-29) — `Flows` page → `UIN-Wise Settlement Analysis` section → `Accumulation Detector` tab.** Its own caption asserted a threshold — "sett_value% > 70% AND > own rolling avg = potential accumulation" — that had never been backtested, on top of a backing table (`uin_settlement`) with **zero rows in the live production database**. Folded into the whole-page retirement in §12; table left in place, unread by any code path now.
+4. <span style="color:#16a34a;">🟢</span> **RESOLVED (2026-07-29) — `Market` page → `Rotation Radar` tab → `Sector Signal Table`'s `Flow` column removed.** Was the same null-tested signal (🟢 Accumulating / 🔴 Distributing); the table's actual `Score` column (`RS 50% + Breadth 30% + Vol 20%`) never used it. Originally recommended as a relabel; user asked for outright removal instead, once the §12 `Flows`-page retirement was in. See §12 for what changed.
 
 ---
 
@@ -73,7 +73,7 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 |---|---|---|
 | Tab `📊 Sector Performance` → Sector Rankings bar chart | **KEEP** — Clarity | Plain 30-day sector return, no screening claim attached. |
 | Tab `🔄 Rotation Radar` → Composite Score bar chart + `Sector Signal Table` | **KEEP** — Clarity/context | Ranking logic verified (`RS 50% + Breadth 30% + Vol 20%`) — a legitimate structural ranking, not an independently backtested trading signal. |
-| Tab `🔄 Rotation Radar` → `Sector Signal Table`'s **`Flow` column** | **DEMOTE** | See Priority Finding #4. |
+| Tab `🔄 Rotation Radar` → `Sector Signal Table`'s ~~**`Flow` column**~~ | **REMOVED** | See Priority Finding #4, §12. |
 
 ### `Explorer`
 | Component | Verdict | Basis |
@@ -144,17 +144,16 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 |---|---|---|
 | Income Statement / Balance Sheet / Cash Flow, Piotroski F-Score, Altman Z-Score, DuPont ROE, Ratio Dashboard, Valuation Assumptions & Results, Advanced Valuation Methods, Sum-of-Parts, Bull/Base/Bear Targets, Sensitivity Tornado / Scenario Matrix / Monte Carlo, Entry Timing, Save Research Finding | **RECOVER/VERIFY** (whole page) | Manual, PDF-upload-driven tool. Two backing tables (financial snapshots, saved valuation findings) have **zero rows in production** — confirm actual usage. |
 
-### `Flows`
+### `Flows` — <span style="color:#16a34a;">RETIRED, whole page, 2026-07-29 (see §12)</span>
 | Component | Verdict | Basis |
 |---|---|---|
-| `🔄 Data Collection` (Scrape Today / Scrape Historical Range) | **KEEP** — operational | |
-| `📊 Latest Day Snapshot` | **KEEP** — Clarity | |
-| `📅 Trend Board — Rolling Flows by Sector` | **KEEP** — Clarity | |
-| `🎯 Decision Signals` | **DEMOTE / PRUNE candidate** | Priority Finding #1. |
-| `🧠 Intelligence Engine` → `Sector Snapshot` sub-tab | **KEEP** — Clarity | |
-| `🧠 Intelligence Engine` → `Pattern Analysis` sub-tab | **RECOVER/VERIFY, high risk** | Priority Finding #2. |
-| `🧠 Intelligence Engine` → `Correlations`, `Signal Journal` sub-tabs | **RECOVER/VERIFY** | |
-| `🏦 UIN-Wise Settlement Analysis` (all 5 sub-tabs) | **PRUNE candidate** | Priority Finding #3. |
+| Whole page (nav entry + all tabs below) | **RETIRED** | User-directed, broader than this audit's own per-tab recommendation — see §12 for scope and what stayed live. |
+| ~~`🔄 Data Collection` (Scrape Today / Scrape Historical Range)~~ | Page UI retired; **scraping itself still runs** | `scrape_flows_today()` still called from `main.py`'s daily hook — feeds `Market` page's `Flow` column, see Priority Finding #4. |
+| ~~`📊 Latest Day Snapshot`~~ | Retired with the page | Was Clarity-only; no longer reachable. |
+| ~~`📅 Trend Board — Rolling Flows by Sector`~~ | Retired with the page | Was Clarity-only; no longer reachable. |
+| ~~`🎯 Decision Signals`~~ | Retired with the page | Priority Finding #1. |
+| ~~`🧠 Intelligence Engine`~~ (all sub-tabs) | Retired with the page | Priority Finding #2. |
+| ~~`🏦 UIN-Wise Settlement Analysis`~~ (all 5 sub-tabs) | Retired with the page | Priority Finding #3. |
 
 ### `Leaders`
 | Component | Verdict | Basis |
@@ -178,10 +177,10 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 
 ## 3. Empirical verification backlog (priority order)
 
-1. Decide `Flows → Decision Signals`'s fate — retire or hold to Big Fish's pre-registration/holdout standard.
-2. Run any `Flows → Intelligence Engine → Pattern Analysis` "✅ SIGNIFICANT" pattern through an out-of-sample check.
-3. Confirm zero other consumers of `settlement_scraper.py`, then retire `Flows → UIN-Wise Settlement Analysis`.
-4. Relabel `Market → Rotation Radar → Sector Signal Table`'s `Flow` column as descriptive-only.
+1. <span style="color:#16a34a;">✅ DONE 2026-07-29</span> — ~~Decide `Flows → Decision Signals`'s fate~~ — resolved by retiring the whole `Flows` page. See §12.
+2. <span style="color:#16a34a;">✅ MOOT 2026-07-29</span> — ~~Run any `Flows → Intelligence Engine → Pattern Analysis` "✅ SIGNIFICANT" pattern through an out-of-sample check~~ — no longer reachable, retired with the page.
+3. <span style="color:#16a34a;">✅ DONE 2026-07-29</span> — ~~Confirm zero other consumers of `settlement_scraper.py`, then retire `Flows → UIN-Wise Settlement Analysis`~~ — confirmed (`grep` found only `page_flows.py` and `migrate_to_supabase.py`, no live daily-hook or GH Actions reference); retired with the page. See §12.
+4. <span style="color:#16a34a;">✅ DONE 2026-07-29</span> — ~~Relabel `Market → Rotation Radar → Sector Signal Table`'s `Flow` column as descriptive-only~~ — removed outright instead, at the user's request. See §12.
 5. Relabel `Leaders → Watchlist` as explicitly monitoring-only, matching `Recovery Bases`.
 6. Confirm `Analytics → vs Benchmark` reads the corrected Support Reversal figure.
 7. Force a kill-or-resume decision on `Model Health`.
@@ -321,3 +320,28 @@ This document is **Phase 0**. Nothing past this point has been started, **except
 - **Phase 9 — Re-point documentation.** Regenerate `CLAUDE.md`'s dashboard-pages table and GitHub Actions workflow list from the live code (fixing both drifts found in §0/§7.2); mark this audit `Concluded`.
 
 **Recommended first action of the next session (after the key rotation in §7.1, which doesn't need to wait):** Priority Findings #1 and #3 (`Flows → Decision Signals` and `Flows → UIN-Wise Settlement Analysis`) — the two places the dashboard currently implies real trading relevance for data this program has independent, rigorous evidence carries none — paired with the §8.1 subprocess fix, since both are concrete, already-verified issues rather than open questions.
+
+---
+
+## 12. <span style="color:#16a34a;">🟢 Resolved — `Flows` page retired from the dashboard (2026-07-29)</span>
+
+**Trigger:** user asked to confirm, against the standalone Big Fish study's verdict, whether FIPI/LIPI participant flow data actually plays a role in this program's decision-making — and if the null holds, to retire the `Flows` page, while explicitly requiring the retirement be "handled in strict accordance with our architecture and database rules" (dependency check first, archive not delete, no DB row touched without sign-off).
+
+**Confirmation:** re-checked directly against `RESEARCH_LOG.md`'s own "Big Fish" row, not just this audit's earlier summary of it — verdict is **Concluded — null**, "0 of 360 forward cells clear the bar," null in both directions and across all participant buckets, the one robust cell being Mutual Funds *chasing* past returns rather than leading them. Confirmed true. Asked the user to clarify scope before touching anything, since this audit's own per-tab verdicts (§2) only called for demoting/pruning two of the page's eight components, not the page as a whole — user chose the **whole page**.
+
+**Dependency mapping done first (per §4), before any edit:**
+- `grep` across `psx_pipeline/` (excluding backups) for `page_flows`, `render_flows_page`, `market_flows`, `uin_settlement`, `settlement_scraper` found exactly one live caller of the page-render function — `dashboard.py`'s own `elif cur == PAGES[14]` block — confirming `page_flows.py`'s own docstring claim of being "completely self-contained" as a *page*.
+- **Found a real cross-page dependency that would have broken silently otherwise:** `main.py`'s daily `cmd_update()` hook (line ~239) calls `page_flows.scrape_flows_today()` directly — independent of the dashboard UI — to populate `market_flows`, which `sector_signals.py`'s `compute_flow_signals()` / `_compute_flow_signals_pg()` reads to write the `Flow` column shown on the **`Market` page → Rotation Radar** (Priority Finding #4 — a *different* page, already independently verified as not feeding that table's actual `Score`). Retiring the whole `Flows` UI page would have been safe either way, but naively deleting `page_flows.py` as a file would not have been — it had to stay.
+- `settlement_scraper.py` / `uin_settlement` confirmed to have exactly the two expected non-backup references (`page_flows.py`'s now-retired UIN tab, and the one-time `migrate_to_supabase.py`) — no daily-hook or GitHub Actions consumer. Safe to leave fully orphaned.
+
+**What actually changed:**
+- `dashboard.py`: removed `"📡 Flows"` from `PAGES` (was index 14 of 18); removed the `elif cur == PAGES[14]: from page_flows import render_flows_page; render_flows_page()` block; replaced it with an inert `elif False:  # Flows page removed — retired ...` marker, following the exact convention this codebase already used for the killed Minervini page. Renumbered the three downstream hardcoded indices that would otherwise have silently pointed at the wrong page after the list shrank: `Leaders` (`PAGES[15]`→`PAGES[14]`), `Setup History` (`PAGES[16]`→`PAGES[15]`), `Data Health` (`PAGES[17]`→`PAGES[16]`). Verified via `ast.parse` (clean) and a full re-grep of every `PAGES[n]` reference in the file (0–16, no gaps, no duplicates).
+- `page_flows.py`: **not deleted, not moved.** Only its module docstring was rewritten to record the retirement, what's still live (`scrape_flows_today()`) and why, and that everything else in the file (`render_flows_page` and its sub-tabs) is now dead code kept in place rather than removed. No function bodies touched.
+- `CLAUDE.md`: updated the "Dashboard pages" list to drop `📡 Flows` and renumber — and, as a side effect of rebuilding this list from the corrected live `PAGES` array rather than editing the old text in place, also fixed the *pre-existing* documented drift this audit's §0 had already flagged (a stale `💡 Setups` entry that never matched the live 18-page dashboard.py — the doc had 19 entries, code had 18; both drifts are now closed, doc now has 17 entries matching the retired-Flows 17-entry live `PAGES` list).
+- **Nothing dropped at the database level.** `market_flows` keeps being written daily (still needed, see above). `uin_settlement` (0 rows) and `settlement_scraper.py` are left exactly in place, now provably unreached by any code path — no `DROP TABLE` staged or run, matching the archive-don't-delete discipline and the user's explicit instruction to retain the scraped data.
+
+**Follow-up (same day) — `Market → Rotation Radar → Sector Signal Table`'s `Flow` column removed too.** User asked for outright removal rather than the relabel originally recommended in Priority Finding #4. Checked both the live SQLite path (`dashboard.py`'s `_get_rotation_radar_data()`) and the actual production Postgres path (`dashboard_pg.py`'s `get_rotation_radar_data_pg()`, what Streamlit Cloud really runs) before editing either — both built the display row via a self-`LEFT JOIN` on `sector_signals` purely to pull `flow_direction`/`flow_smart_net_5d`/`flow_smart_net_20d` alongside a second `MAX(date) WHERE flow_direction IS NOT NULL` lookup. Removed the join, the extra date lookup, and the three flow columns from both query functions (grep confirmed no other reader of those three columns for display purposes anywhere in the codebase); removed the `rr_display["Flow"]` mapping block and the `"Flow"` entry from `table_cols` in `dashboard.py`'s render code — the column's own legend never mentioned it, so no leftover doc text needed fixing. Verified via `ast.parse` on both files and a full re-grep for `flow_direction`/`flow_smart_net`/`"Flow"` in `dashboard.py` — zero remaining hits.
+
+**Deliberately left untouched:** `sector_signals.py`'s `compute_flow_signals()` / `_compute_flow_signals_pg()` (the writer side) and `main.py`'s daily call to `page_flows.scrape_flows_today()` — both keep running, so `market_flows` and the `sector_signals.flow_*` columns keep getting populated daily. The user's original instruction was to retain the scraped data; stopping ingestion would work against that. This does mean `sector_signals.flow_direction`/`flow_smart_net_5d`/`flow_smart_net_20d` are now write-only — populated daily, read by no UI anywhere — worth a dedicated future decision (stop writing them vs. leave as retained-but-unused data), not decided here.
+
+**Committed and pushed** this session, per explicit user instruction — `git push origin main` triggers a Streamlit Cloud auto-redeploy in ~60 seconds (§10); see the commit message for the exact file list.

@@ -307,11 +307,6 @@ def get_rotation_radar_data_pg():
         latest_rr = cur.fetchone()[0]
 
         cur.execute(
-            "SELECT MAX(date) FROM sector_signals WHERE flow_direction IS NOT NULL"
-        )
-        latest_flow = cur.fetchone()[0]
-
-        cur.execute(
             """
             SELECT
                 ss.sector,
@@ -319,18 +314,12 @@ def get_rotation_radar_data_pg():
                 ss.breadth_score, ss.adv_dec_ratio, ss.vol_ratio,
                 ss.rs_inflection, ss.composite_score, ss.regime,
                 ss.sector_stage, ss.sector_above_ema,
-                ss.sector_ema_slope, ss.sector_pivot_dist_pct,
-                COALESCE(sf.flow_direction,     NULL) AS flow_direction,
-                COALESCE(sf.flow_smart_net_5d,  NULL) AS flow_smart_net_5d,
-                COALESCE(sf.flow_smart_net_20d, NULL) AS flow_smart_net_20d
+                ss.sector_ema_slope, ss.sector_pivot_dist_pct
             FROM sector_signals ss
-            LEFT JOIN sector_signals sf
-                ON sf.sector = ss.sector
-               AND sf.date   = %(flow_date)s
             WHERE ss.date = %(price_date)s
             ORDER BY ss.composite_score DESC
             """,
-            {"price_date": latest_rr, "flow_date": latest_flow or latest_rr},
+            {"price_date": latest_rr},
         )
         rr_rows = cur.fetchall()
         rr_cols = [d[0] for d in cur.description]

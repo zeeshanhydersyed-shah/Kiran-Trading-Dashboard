@@ -1,27 +1,31 @@
 """
 page_flows.py — FIPI / LIPI Institutional Flow Tracker
 =======================================================
-Completely self-contained page. Creates its own `market_flows` table.
-Never touches any existing table (read-only cross-reference with trade_setups
-for the Exit Watch signal).
+RETIRED as a dashboard page (2026-07-29). The standalone, pre-registered
+Big Fish study (C:\\Users\\Lenovo\\big_fish\\) found this exact data class —
+NCCPL participant-wise sector-wise flow — has no predictive relationship to
+sector-relative return: 0 of 360 forward cells cleared the significance bar,
+null in both directions and across every participant bucket. See
+docs/KIRAN_CLEANUP_AUDIT.md, Priority Findings #1 and #3, and
+RESEARCH_LOG.md's "Big Fish" row. dashboard.py no longer imports
+`render_flows_page` (its old PAGES entry and routing block were removed).
+
+Still live: `scrape_flows_today()` is still called directly by main.py's
+daily `cmd_update()` hook, independent of this page's UI. It feeds the
+`market_flows` table, which sector_signals.py reads to compute the
+descriptive-only `Flow` column shown on the Market page → Rotation Radar
+(that column is NOT part of the page's actual Score, per Priority Finding
+#4 — a labeling matter, unrelated to this retirement). Do not remove
+`scrape_flows_today()` or its dependencies without re-checking that hook.
+
+Everything else below (`render_flows_page` and all its sub-tabs — Latest
+Day Snapshot, Trend Board, Decision Signals, Intelligence Engine, UIN-Wise
+Settlement Analysis) is dead code, kept in place rather than deleted per
+this project's archive-don't-delete discipline. A future dedicated pass
+can split the live scraper out into its own module and archive the rest.
 
 Data source : khistocks.com FIPI / LIPI sector-wise pages
               (NCCPL settlement data, delayed)
-
-Sections
---------
-1. Data Collection  — scrape today or a historical range
-2. Today's Snapshot — who bought / sold what sector
-3. Trend Board      — rolling 5 / 10 / 20-day heatmap by sector
-4. Decision Signals — Accumulation · Flow Reversal · Distribution · Exit Watch
-
-Wire into dashboard.py
------------------------
-Add "📡 Flows" to the PAGES list and at the bottom of dashboard.py:
-
-    elif cur == PAGES[16]:        # adjust index as needed
-        from page_flows import render_flows_page
-        render_flows_page()
 """
 
 import os

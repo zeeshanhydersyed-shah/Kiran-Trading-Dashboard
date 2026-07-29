@@ -786,7 +786,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "📡 Flows", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
 
 
 def fmt_date(d) -> str:
@@ -1482,11 +1482,6 @@ def _get_rotation_radar_data():
         "SELECT MAX(date) as d FROM sector_signals", conn
     ).iloc[0]["d"]
 
-    latest_flow = pd.read_sql_query(
-        "SELECT MAX(date) as d FROM sector_signals WHERE flow_direction IS NOT NULL",
-        conn
-    ).iloc[0]["d"]
-
     rr_df = pd.read_sql_query("""
         SELECT
             ss.sector,
@@ -1494,17 +1489,11 @@ def _get_rotation_radar_data():
             ss.breadth_score, ss.adv_dec_ratio, ss.vol_ratio,
             ss.rs_inflection, ss.composite_score, ss.regime,
             ss.sector_stage, ss.sector_above_ema,
-            ss.sector_ema_slope, ss.sector_pivot_dist_pct,
-            COALESCE(sf.flow_direction,     NULL) AS flow_direction,
-            COALESCE(sf.flow_smart_net_5d,  NULL) AS flow_smart_net_5d,
-            COALESCE(sf.flow_smart_net_20d, NULL) AS flow_smart_net_20d
+            ss.sector_ema_slope, ss.sector_pivot_dist_pct
         FROM sector_signals ss
-        LEFT JOIN sector_signals sf
-            ON sf.sector = ss.sector
-           AND sf.date   = :flow_date
-        WHERE ss.date = :price_date
+        WHERE ss.date = ?
         ORDER BY ss.composite_score DESC
-    """, conn, params={"price_date": latest_rr, "flow_date": latest_flow or latest_rr})
+    """, conn, params=(latest_rr,))
 
     # rr_hist: fetched for a 30-day RS sparkline that no longer exists in the
     # render code -- kept for parity with the pre-extraction behavior (dead
@@ -2612,15 +2601,6 @@ elif cur == PAGES[2]:  # Market
                 axis=1,
             )
 
-            # Flow direction display
-            rr_display["Flow"] = rr_display["flow_direction"].map({
-                "ACCUMULATING": "🟢 Accumulating",
-                "DISTRIBUTING": "🔴 Distributing",
-                "RECOVERING":   "🔵 Recovering",
-                "FADING":       "🟡 Fading",
-                "NEUTRAL":      "➖ Neutral",
-            }).fillna("— no data")
-
             # Inflection flag display
             rr_display["signal"] = rr_display["rs_inflection"].apply(
                 lambda v: "🔥" if v == 1 else ""
@@ -2659,7 +2639,6 @@ elif cur == PAGES[2]:  # Market
                 "sector":          "Sector",
                 "Stage":           "Stage",
                 "Pivot%":          "→Pivot",
-                "Flow":            "Flow",
                 "signal":          "🔥",
                 "trend":           "RS Trend",
                 "rs_score_20":     "RS-20",
@@ -7308,22 +7287,19 @@ elif cur == PAGES[13]:  # Valuation
     render_valuation_page()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE — 📡 Flows   (FIPI / LIPI Institutional Flow Tracker)
-# ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[14]:  # Flows
-    from page_flows import render_flows_page
-    render_flows_page()
-
-
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 
 
 elif False:  # Minervini page removed — killed (N=29 proxy, 86% BREAKOUT overlap, <5 signals/yr)
     pass
 
-elif cur == PAGES[15]:  # Leaders
+elif False:  # Flows page removed — retired 2026-07-29 (Big Fish study: FIPI/LIPI participant
+    # flow found NULL, 0/360 forward cells clear the bar; see docs/KIRAN_CLEANUP_AUDIT.md,
+    # Priority Findings #1 and #3). page_flows.py's scrape_flows_today() is kept and still
+    # runs from main.py's daily hook — sector_signals.py's Flow column on the Market page
+    # (Rotation Radar) still reads market_flows, and that column is unaffected by this.
+    pass
+
+elif cur == PAGES[14]:  # Leaders
     st.markdown("### 🏆 Leaders — Stock Signal Board")
 
     _ld_tab_rs, _ld_tab_unified, _ld_tab_scan, _ld_tab_radar = st.tabs([
@@ -7973,7 +7949,7 @@ elif cur == PAGES[15]:  # Leaders
                         unsafe_allow_html=True
                     )
 
-elif cur == PAGES[16]:  # Setup History
+elif cur == PAGES[15]:  # Setup History
     st.header('📋 Setup History')
     tab1, tab2 = st.tabs(['📊 Screen Performance', '🔍 Stock Lookup'])
 
@@ -8151,7 +8127,7 @@ elif cur == PAGES[16]:  # Setup History
                     hide_index=True
                 )
 
-elif cur == PAGES[17]:  # Data Health
+elif cur == PAGES[16]:  # Data Health
     import sqlite3
     from config import DB_PATH as _dh_db
     from datetime import datetime as _dh_dt
