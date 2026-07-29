@@ -1517,7 +1517,7 @@ def _get_rotation_radar_data():
     """, conn, params=(latest_rr,))
 
     conn.close()
-    return latest_rr, latest_flow, rr_df, rr_hist, rank_10d_ago
+    return latest_rr, rr_df, rr_hist, rank_10d_ago
 
 
 def _get_history_sector_ranks():
@@ -2529,7 +2529,7 @@ elif cur == PAGES[2]:  # Market
     with tab2:
         # ── Rotation Radar ──────────────────────────────────────────
         try:
-            latest_rr, latest_flow, rr_df, rr_hist, rank_10d_ago = _get_rotation_radar_data()
+            latest_rr, rr_df, rr_hist, rank_10d_ago = _get_rotation_radar_data()
 
             # ── Header ──────────────────────────────────────────────
             regime_val = rr_df["regime"].iloc[0] if not rr_df.empty else "—"

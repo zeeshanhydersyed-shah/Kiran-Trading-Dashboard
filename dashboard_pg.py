@@ -357,7 +357,7 @@ def get_rotation_radar_data_pg():
     rr_df = pd.DataFrame(rr_rows, columns=rr_cols)
     rr_hist = pd.DataFrame(hist_rows, columns=hist_cols)
     rank_10d_ago = pd.DataFrame(rank_10d_rows, columns=rank_10d_cols)
-    return latest_rr, latest_flow, rr_df, rr_hist, rank_10d_ago
+    return latest_rr, rr_df, rr_hist, rank_10d_ago
 
 
 def get_history_sector_ranks_pg():
