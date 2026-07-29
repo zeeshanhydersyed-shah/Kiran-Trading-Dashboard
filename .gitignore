@@ -54,5 +54,9 @@ exports/
 
 # Migration script output
 migrate_to_supabase.log
-features_dataset.csv 
-support_signals_20260521_130920.csv 
+features_dataset.csv
+support_signals_20260521_130920.csv
+
+# Large regenerable data exports — exceed/near GitHub's per-file size limits
+open_acquisition_output/open_prices_stocks.csv
+boring_study/boring_donchian_mechanism_dataset.csv
