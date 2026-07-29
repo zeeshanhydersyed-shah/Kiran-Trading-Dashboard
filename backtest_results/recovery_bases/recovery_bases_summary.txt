@@ -1,0 +1,183 @@
+======================================================================
+  RECOVERY BASES BACKTEST -- AGGREGATE STATISTICS
+  Generated: 2026-06-08 17:51
+======================================================================
+
+  [OVERALL]
+    Total signals      : 54
+    Valid (T+1 entry)  : 54
+    Wins (T1+T2)       : 8  (14.8%)
+    Losses (SL)        : 14  (25.9%)
+    Time exits         : 32  (59.3%)
+    Avg win            : +40.33%
+    Avg loss           : -18.80%
+    Avg time exit      : -1.15%
+    Expectancy/trade   : 0.422%
+    Profit factor      : 1.226
+    Avg holding        : 33.4 days
+    Avg MAE            : -11.82%
+    Avg MFE            : 16.84%
+    MAE p50/p75/p90    : -11.80% / -5.83% / -2.90%
+
+--------------------------------------------------
+  TIME-DECAY ANALYSIS
+--------------------------------------------------
+  + 5d  n=  54  win_rate=46.3%  avg_ret=+0.62%
+  +10d  n=  54  win_rate=35.2%  avg_ret=+0.48%
+  +20d  n=  54  win_rate=48.1%  avg_ret=+2.91%
+  +40d  n=  54  win_rate=38.9%  avg_ret=+2.54%
+
+--------------------------------------------------
+  SETUP QUALITY FILTERS
+--------------------------------------------------
+  [Drawdown >= 50%]
+    Total signals      : 9
+    Valid (T+1 entry)  : 9
+    Wins (T1+T2)       : 1  (11.1%)
+    Losses (SL)        : 4  (44.4%)
+    Time exits         : 4  (44.4%)
+    Avg win            : +35.07%
+    Avg loss           : -17.79%
+    Avg time exit      : -0.70%
+    Expectancy/trade   : -4.325%
+    Profit factor      : 0.493
+    Avg holding        : 31.4 days
+    Avg MAE            : -14.04%
+    Avg MFE            : 12.46%
+    MAE p50/p75/p90    : -15.16% / -9.50% / -6.36%
+
+  [Drawdown 30-50%]
+    Total signals      : 31
+    Valid (T+1 entry)  : 31
+    Wins (T1+T2)       : 3  (9.7%)
+    Losses (SL)        : 7  (22.6%)
+    Time exits         : 21  (67.7%)
+    Avg win            : +40.04%
+    Avg loss           : -19.20%
+    Avg time exit      : -2.47%
+    Expectancy/trade   : -2.133%
+    Profit factor      : 0.894
+    Avg holding        : 34.4 days
+    Avg MAE            : -12.48%
+    Avg MFE            : 17.08%
+    MAE p50/p75/p90    : -12.46% / -6.78% / -3.87%
+
+  [Base <= 20 days]
+    Total signals      : 10
+    Valid (T+1 entry)  : 10
+    Wins (T1+T2)       : 0  (0.0%)
+    Losses (SL)        : 3  (30.0%)
+    Time exits         : 7  (70.0%)
+    Avg win            : +0.00%
+    Avg loss           : -17.66%
+    Avg time exit      : -0.08%
+    Expectancy/trade   : -5.352%
+    Profit factor      : 0.000
+    Avg holding        : 36.8 days
+    Avg MAE            : -12.84%
+    Avg MFE            : 14.65%
+    MAE p50/p75/p90    : -10.63% / -9.33% / -7.25%
+
+  [Base > 20 days]
+    Total signals      : 44
+    Valid (T+1 entry)  : 44
+    Wins (T1+T2)       : 8  (18.2%)
+    Losses (SL)        : 11  (25.0%)
+    Time exits         : 25  (56.8%)
+    Avg win            : +40.33%
+    Avg loss           : -19.11%
+    Avg time exit      : -1.44%
+    Expectancy/trade   : 1.734%
+    Profit factor      : 1.535
+    Avg holding        : 32.6 days
+    Avg MAE            : -11.59%
+    Avg MFE            : 17.33%
+    MAE p50/p75/p90    : -12.51% / -4.25% / -2.55%
+
+  [Trigger vol >= 4x]
+    Total signals      : 34
+    Valid (T+1 entry)  : 34
+    Wins (T1+T2)       : 7  (20.6%)
+    Losses (SL)        : 9  (26.5%)
+    Time exits         : 18  (52.9%)
+    Avg win            : +41.63%
+    Avg loss           : -18.72%
+    Avg time exit      : -0.80%
+    Expectancy/trade   : 3.196%
+    Profit factor      : 1.730
+    Avg holding        : 31.9 days
+    Avg MAE            : -11.71%
+    Avg MFE            : 20.30%
+    MAE p50/p75/p90    : -12.51% / -5.58% / -2.78%
+
+  [Trigger vol 2.5-4x]
+    Total signals      : 20
+    Valid (T+1 entry)  : 20
+    Wins (T1+T2)       : 1  (5.0%)
+    Losses (SL)        : 5  (25.0%)
+    Time exits         : 14  (70.0%)
+    Avg win            : +31.20%
+    Avg loss           : -18.95%
+    Avg time exit      : -1.60%
+    Expectancy/trade   : -4.294%
+    Profit factor      : 0.329
+    Avg holding        : 35.8 days
+    Avg MAE            : -12.02%
+    Avg MFE            : 10.94%
+    MAE p50/p75/p90    : -10.37% / -6.50% / -3.61%
+
+  [Base range <= 10%]
+    Total signals      : 1
+    Valid (T+1 entry)  : 1
+    Wins (T1+T2)       : 0  (0.0%)
+    Losses (SL)        : 0  (0.0%)
+    Time exits         : 1  (100.0%)
+    Avg win            : +0.00%
+    Avg loss           : 0.00%
+    Avg time exit      : -13.76%
+    Expectancy/trade   : -13.757%
+    Profit factor      : inf
+    Avg holding        : 40.0 days
+    Avg MAE            : -20.12%
+    Avg MFE            : 9.47%
+    MAE p50/p75/p90    : -20.12% / -20.12% / -20.12%
+
+  [Base range 10-20%]
+    Total signals      : 53
+    Valid (T+1 entry)  : 53
+    Wins (T1+T2)       : 8  (15.1%)
+    Losses (SL)        : 14  (26.4%)
+    Time exits         : 31  (58.5%)
+    Avg win            : +40.33%
+    Avg loss           : -18.80%
+    Avg time exit      : -0.74%
+    Expectancy/trade   : 0.689%
+    Profit factor      : 1.226
+    Avg holding        : 33.2 days
+    Avg MAE            : -11.66%
+    Avg MFE            : 16.98%
+    MAE p50/p75/p90    : -11.15% / -5.68% / -2.82%
+
+--------------------------------------------------
+  MONTHLY SEASONALITY
+--------------------------------------------------
+  Month  1  signals=   4  win_rate=25.0%
+  Month  2  signals=   1  win_rate=0.0%
+  Month  3  signals=   4  win_rate=0.0%
+  Month  4  signals=   5  win_rate=0.0%
+  Month  5  signals=   3  win_rate=33.3%
+  Month  6  signals=   5  win_rate=40.0%
+  Month  7  signals=   5  win_rate=0.0%
+  Month  8  signals=  10  win_rate=10.0%
+  Month  9  signals=   5  win_rate=40.0%
+  Month 10  signals=   1  win_rate=0.0%
+  Month 11  signals=   3  win_rate=33.3%
+  Month 12  signals=   8  win_rate=0.0%
+
+--------------------------------------------------
+  QUARTERLY SEASONALITY
+--------------------------------------------------
+  Q1  signals=   9  win_rate=11.1%
+  Q2  signals=  13  win_rate=23.1%
+  Q3  signals=  20  win_rate=15.0%
+  Q4  signals=  12  win_rate=8.3%

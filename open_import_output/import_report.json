@@ -1,0 +1,52 @@
+{
+  "report_generated_utc": "2026-07-04T10:07:34.002334+00:00",
+  "mode": "EXECUTED",
+  "runtime_seconds": 44.0,
+  "policy": "Option C -- gap-fill only, quality-filtered, additive-only (see docs/DECISIONS.md)",
+  "filters_applied": {
+    "gap_fill_only": "production.open IS NULL",
+    "quality": "valid_numeric=1 AND valid_positive=1",
+    "out_of_range_excluded": "within_hl_range != 0 (rows with unknown H/L allowed through, counted separately)",
+    "open_eq_close_excluded": "ABS(open-close) < 0.001",
+    "anomaly_date_excluded": "2026-06-01"
+  },
+  "stock_prices": {
+    "total_acquired_rows": 1982687,
+    "excluded_invalid_value": 1,
+    "excluded_out_of_range": 107,
+    "excluded_open_eq_close": 319004,
+    "excluded_anomaly_date": 571,
+    "excluded_no_matching_prod_row": 136182,
+    "excluded_prod_already_has_open": 416615,
+    "unverifiable_hl_range_allowed_through": 0,
+    "pre_2020_unverified_candidates": 984473,
+    "final_candidate_count": 1110207
+  },
+  "index_prices": {
+    "total_acquired_rows": 20527,
+    "excluded_invalid_value": 0,
+    "excluded_out_of_range": 100,
+    "excluded_open_eq_close": 78,
+    "excluded_anomaly_date": 5,
+    "excluded_no_matching_prod_row": 3960,
+    "excluded_prod_already_has_open": 1506,
+    "unverifiable_hl_range_allowed_through": 0,
+    "pre_2020_unverified_candidates": 12372,
+    "final_candidate_count": 14878
+  },
+  "pre_2020_note": "984473 stock rows and 12372 index rows before 2020-01-01 are imported as BEST AVAILABLE, UNVERIFIED -- no independent source (BI PostgreSQL only covers 2020 onward) exists to cross-check pre-2020 Open values.",
+  "backup_file": "C:\\Users\\Lenovo\\psx_pipeline\\open_import_output\\psx_data_pre_open_import_20260704T100705Z.db",
+  "backup_sha256": "9cf9f4f46b7ccd9999b909b5b5da85b2b4d3aba9cc906cd5d64e72755d2ba440",
+  "before_counts": {
+    "prices_total": 1821016,
+    "prices_open_non_null": 462377,
+    "index_prices_total": 16553,
+    "index_prices_open_non_null": 1528
+  },
+  "after_counts": {
+    "prices_total": 1821016,
+    "prices_open_non_null": 1572584,
+    "index_prices_total": 16553,
+    "index_prices_open_non_null": 16406
+  }
+}

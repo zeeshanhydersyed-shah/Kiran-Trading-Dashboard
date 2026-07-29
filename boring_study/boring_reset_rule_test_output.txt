@@ -1,0 +1,61 @@
+Original raw occurrence file: 80,744 rows, 1,698 symbols
+Simulated raw fires: 80,763
+VALIDATION: 0 pairs in original file but missing from simulation
+VALIDATION: 19 pairs in simulation but not in original file
+WARNING: simulation does not exactly reproduce the original occurrence file -- results below should be treated with reduced confidence until reconciled.
+
+############################################################################################
+# PART A: clustering rate, before vs after the reset rule
+############################################################################################
+
+K=1: suppressed 63,599 of 80,763 raw fires (78.75%)
+  Surviving occurrences: 17,164
+  Of those, still within N=20 trading days of another same-symbol survivor: 217 (1.26%)  [round-3 baseline on ALL raw occurrences: 90.11%]
+
+K=2: suppressed 69,662 of 80,763 raw fires (86.25%)
+  Surviving occurrences: 11,101
+  Of those, still within N=20 trading days of another same-symbol survivor: 24 (0.22%)  [round-3 baseline on ALL raw occurrences: 90.11%]
+
+############################################################################################
+# PART B: forward EV, suppressed vs surviving occurrences (decile-9 + liquidity-gated population)
+############################################################################################
+Decile-9 + liquidity-gated raw rows: 2,130
+Matched to reset-rule simulation: 2,130 of 2,130 (100.0%; unmatched rows are symbols/dates outside today's prices_adjusted coverage used to build the simulation, or edge-of-history rows)
+Within decile-9+gated population: 43 survive the K=1 reset rule, 2,087 are suppressed
+
+--- ALL decile-9+gated occurrences (baseline, no reset filter) (n=2130) ---
+  CONTROL: n_resolved=2096 censored=34 (1.6%)  gross_mean=1.802%  net_friction_mean=1.602%  net_friction_cgt_mean=0.870%  win_rate=48.8%  median=-6.000%
+  TRAIL_LOW: n_resolved=2121 censored=9 (0.4%)  gross_mean=4.308%  net_friction_mean=4.108%  net_friction_cgt_mean=3.137%  win_rate=46.3%  median=0.000%
+
+--- SURVIVING occurrences (pass the K=1 reset filter) (n=43) ---
+  CONTROL: n_resolved=43 censored=0 (0.0%)  gross_mean=1.814%  net_friction_mean=1.614%  net_friction_cgt_mean=0.881%  win_rate=48.8%  median=-6.000%
+  TRAIL_LOW: n_resolved=43 censored=0 (0.0%)  gross_mean=2.517%  net_friction_mean=2.317%  net_friction_cgt_mean=1.575%  win_rate=37.2%  median=-0.629%
+
+--- SUPPRESSED occurrences (blocked by the K=1 reset filter) (n=2087) ---
+  CONTROL: n_resolved=2053 censored=34 (1.6%)  gross_mean=1.801%  net_friction_mean=1.601%  net_friction_cgt_mean=0.870%  win_rate=48.8%  median=-6.000%
+  TRAIL_LOW: n_resolved=2078 censored=9 (0.4%)  gross_mean=4.345%  net_friction_mean=4.145%  net_friction_cgt_mean=3.169%  win_rate=46.5%  median=0.000%
+
+############################################################################################
+# PART C: signal frequency and same-symbol overlap, decile-9+gated population
+############################################################################################
+Date span: 20.7 years, 298 distinct symbols
+Raw decile-9+gated signals/year (current, unsuppressed): 103.1
+Surviving decile-9+gated signals/year (K=1 reset applied): 2.1
+Reduction: 98.0%
+
+Adjacent same-symbol pairs within N=20 trading days of each other (the round-3 clustering definition): 1483
+  Under CURRENT code: both members of the pair are live signals in 1483 of 1483 cases (100% by construction -- no suppression exists today)
+  Under the K=1 RESET RULE: both members would still both be live signals in 0 of 1483 cases (0.0%)
+
+############################################################################################
+# PART E: does the K=1 reset-rule survivor set match round 4/5's run-collapse first-fire set?
+############################################################################################
+Round 4/5 run-collapse first-fire set (decile-9+gated): 647
+K=1 reset-rule survivor set (decile-9+gated):            43
+Agree (in both sets):                                     43
+Only in run-collapse first-fire (reset rule would suppress this too, or classify differently): 604
+Only in reset-rule survivors (run-collapse treated this as a later occurrence in an existing run, but the reset rule says the symbol had genuinely reset): 0
+
+============================================================================================
+Done.
+============================================================================================

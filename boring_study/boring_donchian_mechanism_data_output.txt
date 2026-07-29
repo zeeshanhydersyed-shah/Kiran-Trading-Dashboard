@@ -1,0 +1,56 @@
+Loading prices_adjusted, market_regime, sectors...
+Loaded 1,824,063 price rows, 2,791 symbols, 5,320 regime days
+
+Building daily market-environment table (breadth, dispersion, participation, correlation)...
+  Daily environment table: 5,319 dates
+  Computing average correlation (20d trailing, vs equal-weighted market)...
+  Correlation merged. Environment table columns: ['date', 'breadth', 'dispersion', 'participation', 'mkt_ret', 'n_stocks', 'avg_correlation']
+  Saved daily environment table: 5,319 rows
+
+Stage A complete.
+
+================================================================================
+Stage B: breakout occurrences x 5 lookbacks, per-(lookback,date) rarity and sector concentration, matched controls, stop-managed returns, base duration, breakout magnitude
+================================================================================
+
+Lookback 10d...
+  111,889 occurrences
+  Matched + computed: 108,047 cumulative rows, dropped this lookback: 359
+
+Lookback 20d...
+  80,744 occurrences
+  Matched + computed: 186,440 cumulative rows, dropped this lookback: 290
+
+Lookback 40d...
+  57,003 occurrences
+  Matched + computed: 242,262 cumulative rows, dropped this lookback: 155
+
+Lookback 60d...
+  46,666 occurrences
+  Matched + computed: 288,146 cumulative rows, dropped this lookback: 99
+
+Lookback 120d...
+  33,385 occurrences
+  Matched + computed: 321,190 cumulative rows, dropped this lookback: 91
+
+
+Final dataset: 321,190 rows
+lookback                  0
+symbol                    0
+date                      0
+regime                    0
+response                  0
+rarity                    0
+sector_concentration      0
+breadth                   0
+dispersion                0
+participation             0
+avg_correlation           0
+trend_persistence         0
+volatility_level          0
+base_duration             0
+breakout_magnitude_pct    0
+dtype: int64
+
+Saved to boring_donchian_mechanism_dataset.csv
+Stage 1 done.

@@ -1,0 +1,55 @@
+﻿Loading BOS signals...
+  3,718 qualifying BOS events
+Loading prices...
+Running forward simulation...
+  3,718 events evaluated
+
+============================================================
+OVERALL  |  Events: 1,513  |  Wins: 314  |  Win Rate: 20.8%
+Expected Value per trade: -1.02%
+============================================================
+
+── BY RS RANK BUCKET (at time of BOS) ──
+           Events   Wins  Win%
+rs_bucket                     
+Top 25       82.0    7.0   8.5
+26-50       298.0   44.0  14.8
+51-100      567.0  109.0  19.2
+101-200     537.0  146.0  27.2
+201+         29.0    8.0  27.6
+
+── BY SECTOR RS RANK (stock's rank within sector at BOS) ──
+            Events   Wins  Win%
+sec_bucket                     
+Top 3        619.0  107.0  17.3
+4-6          415.0   81.0  19.5
+7-10         294.0   70.0  23.8
+11+          185.0   56.0  30.3
+
+── BY BBW% AT TIME OF BOS ──
+            Events   Wins  Win%
+bbw_bucket                     
+<3%            3.0    0.0   0.0
+3-5%          97.0   13.0  13.4
+5-7%         311.0   72.0  23.2
+7-10%       1102.0  229.0  20.8
+
+── BY MARKET REGIME AT TIME OF BOS ──
+               Events   Wins  Win%
+regime                            
+RANGING         469.0   59.0  12.6
+TRENDING_DOWN    72.0    8.0  11.1
+TRENDING_UP     903.0  242.0  26.8
+VOLATILE         69.0    5.0   7.2
+
+── STAGE2_BULL FLAG AT TIME OF BOS ──
+             Events   Wins  Win%
+stage2_bull                     
+0.0           580.0  105.0  18.1
+1.0           922.0  200.0  21.7
+
+── BEST COMBO: stage2=1 + RS rank ≤50 + sector rank ≤8 ──
+Events: 248  Wins: 35  Win%: 14.1%
+Expected Value: -2.61%
+
+Done.

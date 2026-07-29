@@ -1,0 +1,192 @@
+Loading prices_adjusted...
+Loaded 1,824,063 price rows, 2,791 symbols, 5,320 regime-dated days
+
+
+##########################################################################################
+LOOKBACK = 10 days
+##########################################################################################
+Total breakout occurrences (all regimes): 111,889
+
+  Regime: TRENDING_UP     raw occurrences=65,189  matched (same-stock, same-regime control found)=65,162  dropped=27 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        61.59          55.71         +5.88
+  +10%        48.85          42.02         +6.83
+  +20%        34.07          28.60         +5.47
+  +30%        25.54          21.11         +4.43
+  +50%        15.72          12.71         +3.02
+
+  Regime: RANGING         raw occurrences=19,162  matched (same-stock, same-regime control found)=19,137  dropped=25 (0.1%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        55.73          50.03         +5.70
+  +10%        42.69          35.72         +6.97
+  +20%        28.85          23.64         +5.21
+  +30%        21.31          17.42         +3.89
+  +50%        13.14          10.49         +2.65
+
+  Regime: VOLATILE        raw occurrences=19,874  matched (same-stock, same-regime control found)=19,840  dropped=34 (0.2%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        54.27          51.17         +3.11
+  +10%        41.56          37.54         +4.01
+  +20%        28.02          24.68         +3.34
+  +30%        20.75          17.86         +2.90
+  +50%        12.80          10.83         +1.97
+
+  Regime: TRENDING_DOWN   raw occurrences=4,181  matched (same-stock, same-regime control found)=4,175  dropped=6 (0.1%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        48.59          47.04         +1.55
+  +10%        35.22          32.64         +2.58
+  +20%        20.65          20.15         +0.50
+  +30%        14.37          14.79         -0.41
+  +50%        8.60           8.77          -0.17
+
+##########################################################################################
+LOOKBACK = 20 days
+##########################################################################################
+Total breakout occurrences (all regimes): 80,744
+
+  Regime: TRENDING_UP     raw occurrences=51,236  matched (same-stock, same-regime control found)=51,215  dropped=21 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        62.63          55.69         +6.94
+  +10%        49.84          42.06         +7.79
+  +20%        34.76          28.68         +6.08
+  +30%        26.05          21.29         +4.76
+  +50%        16.11          12.75         +3.36
+
+  Regime: RANGING         raw occurrences=12,933  matched (same-stock, same-regime control found)=12,905  dropped=28 (0.2%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        57.32          50.00         +7.31
+  +10%        44.34          35.74         +8.59
+  +20%        30.36          23.17         +7.20
+  +30%        22.70          17.18         +5.52
+  +50%        13.83          10.42         +3.42
+
+  Regime: VOLATILE        raw occurrences=12,410  matched (same-stock, same-regime control found)=12,377  dropped=33 (0.3%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        56.55          52.00         +4.55
+  +10%        44.17          38.35         +5.82
+  +20%        30.32          25.25         +5.07
+  +30%        22.69          18.58         +4.11
+  +50%        14.14          11.31         +2.83
+
+  Regime: TRENDING_DOWN   raw occurrences=2,104  matched (same-stock, same-regime control found)=2,101  dropped=3 (0.1%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        51.55          48.12         +3.43
+  +10%        37.89          34.46         +3.43
+  +20%        22.80          21.42         +1.38
+  +30%        16.33          14.66         +1.67
+  +50%        9.19           9.52          -0.33
+
+##########################################################################################
+LOOKBACK = 40 days
+##########################################################################################
+Total breakout occurrences (all regimes): 57,003
+
+  Regime: TRENDING_UP     raw occurrences=38,993  matched (same-stock, same-regime control found)=38,983  dropped=10 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        63.81          57.03         +6.77
+  +10%        51.23          42.83         +8.40
+  +20%        35.85          29.29         +6.56
+  +30%        26.81          21.68         +5.14
+  +50%        16.59          13.06         +3.54
+
+  Regime: RANGING         raw occurrences=8,626  matched (same-stock, same-regime control found)=8,622  dropped=4 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        59.47          50.31         +9.16
+  +10%        46.96          36.23         +10.72
+  +20%        33.09          23.00         +10.10
+  +30%        24.71          17.18         +7.52
+  +50%        15.17          10.42         +4.75
+
+  Regime: VOLATILE        raw occurrences=7,185  matched (same-stock, same-regime control found)=7,176  dropped=9 (0.1%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        60.09          51.26         +8.83
+  +10%        48.69          37.93         +10.76
+  +20%        34.66          25.94         +8.72
+  +30%        25.85          18.74         +7.11
+  +50%        16.19          11.55         +4.64
+
+  Regime: TRENDING_DOWN   raw occurrences=1,173  matched (same-stock, same-regime control found)=1,172  dropped=1 (0.1%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        54.78          46.50         +8.28
+  +10%        41.55          33.87         +7.68
+  +20%        25.09          22.78         +2.30
+  +30%        17.83          16.38         +1.45
+  +50%        10.58          10.41         +0.17
+
+##########################################################################################
+LOOKBACK = 60 days
+##########################################################################################
+Total breakout occurrences (all regimes): 46,666
+
+  Regime: TRENDING_UP     raw occurrences=33,090  matched (same-stock, same-regime control found)=33,080  dropped=10 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        64.40          55.60         +8.79
+  +10%        51.96          42.12         +9.84
+  +20%        36.39          28.52         +7.86
+  +30%        27.23          21.19         +6.05
+  +50%        16.95          12.53         +4.42
+
+  Regime: RANGING         raw occurrences=6,869  matched (same-stock, same-regime control found)=6,869  dropped=0 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        60.56          49.69         +10.87
+  +10%        48.32          36.05         +12.27
+  +20%        34.31          23.19         +11.12
+  +30%        25.52          17.05         +8.47
+  +50%        15.78          10.29         +5.49
+
+  Regime: VOLATILE        raw occurrences=5,170  matched (same-stock, same-regime control found)=5,168  dropped=2 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        60.81          50.40         +10.42
+  +10%        49.76          37.39         +12.37
+  +20%        35.61          23.88         +11.72
+  +30%        26.54          17.61         +8.93
+  +50%        16.88          10.93         +5.95
+
+  Regime: TRENDING_DOWN   raw occurrences=854  matched (same-stock, same-regime control found)=853  dropped=1 (0.1%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        56.62          47.36         +9.26
+  +10%        44.31          37.16         +7.15
+  +20%        27.20          21.45         +5.74
+  +30%        19.23          16.06         +3.17
+  +50%        10.67          9.38          +1.29
+
+##########################################################################################
+LOOKBACK = 120 days
+##########################################################################################
+Total breakout occurrences (all regimes): 33,385
+
+  Regime: TRENDING_UP     raw occurrences=24,879  matched (same-stock, same-regime control found)=24,834  dropped=45 (0.2%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        65.09          56.46         +8.63
+  +10%        52.86          42.87         +10.00
+  +20%        37.46          29.56         +7.90
+  +30%        28.26          21.77         +6.50
+  +50%        17.67          13.07         +4.60
+
+  Regime: RANGING         raw occurrences=4,446  matched (same-stock, same-regime control found)=4,446  dropped=0 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        61.81          50.60         +11.21
+  +10%        49.62          36.04         +13.58
+  +20%        35.40          23.91         +11.49
+  +30%        26.59          17.82         +8.77
+  +50%        16.69          10.84         +5.85
+
+  Regime: VOLATILE        raw occurrences=3,287  matched (same-stock, same-regime control found)=3,283  dropped=4 (0.1%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        61.87          51.07         +10.80
+  +10%        51.02          37.96         +13.06
+  +20%        36.70          25.99         +10.71
+  +30%        27.43          19.35         +8.08
+  +50%        17.46          12.10         +5.37
+
+  Regime: TRENDING_DOWN   raw occurrences=523  matched (same-stock, same-regime control found)=523  dropped=0 (0.0%)
+  Threshold   Breakout TP%   Control TP%   Improvement (pp)
+  +5%        59.08          46.27         +12.81
+  +10%        45.51          34.99         +10.52
+  +20%        28.30          21.99         +6.31
+  +30%        20.84          14.72         +6.12
+  +50%        11.09          9.94          +1.15
+
+
+Saved full detail to boring_donchian_regime_sweep_detail.csv
+Done.

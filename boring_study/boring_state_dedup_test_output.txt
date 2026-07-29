@@ -1,0 +1,71 @@
+Decile-9 + liquidity-gated raw rows: 2,130
+
+Total occurrences: 2,130
+Survivors: 1,070 (50.23%)
+Suppressed: 1,060 (49.77%)
+
+Direct verification -- survivor open-interval overlaps for the same symbol: 0 (should be 0 by construction; a nonzero count would indicate a simulation bug)
+
+############################################################################################
+# EV comparison: survivors vs suppressed, TRAIL_LOW exit logic
+############################################################################################
+
+--- ALL decile-9+gated occurrences (baseline, no dedup filter) (n=2130) ---
+  n_resolved=2121  censored=9 (0.4%)
+  gross_mean=4.308%  net_friction_mean=4.108%  net_friction_cgt_mean=3.137%
+  win_rate=46.3%  median=0.000%  p25=-3.565%  p75=6.576%
+  avg days held=2.6  median days held=2.0
+
+--- SURVIVING occurrences (pass the state-dedup filter) (n=1070) ---
+  n_resolved=1062  censored=8 (0.7%)
+  gross_mean=3.516%  net_friction_mean=3.316%  net_friction_cgt_mean=2.447%
+  win_rate=46.3%  median=0.000%  p25=-3.611%  p75=5.665%
+  avg days held=2.6  median days held=2.0
+
+--- SUPPRESSED occurrences (hypothetical outcome had they fired anyway) (n=1060) ---
+  n_resolved=1059  censored=1 (0.1%)
+  gross_mean=5.102%  net_friction_mean=4.902%  net_friction_cgt_mean=3.828%
+  win_rate=46.3%  median=0.000%  p25=-3.526%  p75=7.500%
+  avg days held=2.5  median days held=2.0
+
+############################################################################################
+# Frequency
+############################################################################################
+Date span: 20.7 years
+Raw signals/year (current, unsuppressed): 103.1
+Surviving signals/year (state-dedup applied): 51.8
+Reduction: 49.8%
+
+############################################################################################
+# Same-symbol simultaneous-open check (the 1,483-pair test from round 6)
+############################################################################################
+Adjacent same-symbol pairs within N=20 trading days: 1483
+Both members survive the dedup filter (not necessarily simultaneously open): 171 (11.5%)
+Both members SIMULTANEOUSLY OPEN at the same time: 0 (should be 0 by construction)
+
+############################################################################################
+# Resolve-then-immediately-refire pattern
+############################################################################################
+Survivors that are NOT a symbol's first-ever fire (have a defined gap-since-last-resolution): 772 of 1070
+Gap distribution (trading days between prior resolution and this re-fire):
+  median=13.0  p10=1.0  p25=3.0  p75=204.5
+  fraction with gap <= 1 trading day(s): 108 (14.0%)
+  fraction with gap <= 3 trading day(s): 214 (27.7%)
+  fraction with gap <= 5 trading day(s): 277 (35.9%)
+  fraction with gap <= 10 trading day(s): 370 (47.9%)
+
+--- QUICK REFIRES (gap <= 5 trading days since prior resolution) (n=277) ---
+  n_resolved=276  censored=1 (0.4%)
+  gross_mean=3.199%  net_friction_mean=2.999%  net_friction_cgt_mean=2.214%
+  win_rate=51.4%  median=0.465%  p25=-3.259%  p75=6.540%
+  avg days held=2.6  median days held=2.0
+
+--- ORDINARY survivors (first-ever fire, or gap > 5 trading days) (n=793) ---
+  n_resolved=786  censored=7 (0.9%)
+  gross_mean=3.628%  net_friction_mean=3.428%  net_friction_cgt_mean=2.529%
+  win_rate=44.5%  median=-0.039%  p25=-3.714%  p75=5.443%
+  avg days held=2.6  median days held=2.0
+
+============================================================================================
+Done.
+============================================================================================

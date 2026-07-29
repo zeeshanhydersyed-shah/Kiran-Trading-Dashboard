@@ -1,0 +1,37 @@
+{
+  "report_generated_utc": "2026-07-04T08:36:14.220931+00:00",
+  "requested_range": {
+    "start": "2005-01-01",
+    "end": "2026-07-03"
+  },
+  "runtime_minutes": 42.05,
+  "aborted_early": false,
+  "dates": {
+    "done": 5317,
+    "holiday": 293,
+    "failed": 0,
+    "total_tracked_in_staging_db": 5610
+  },
+  "rows": {
+    "total_stock_rows": 1982687,
+    "total_index_rows": 20527,
+    "duplicate_rows_detected": 0
+  },
+  "validation": {
+    "invalid_open_non_numeric": 0,
+    "open_non_positive": 1,
+    "open_outside_high_low_range": 208
+  },
+  "comparison_vs_production_db": {
+    "not_found_in_db": 173315,
+    "high_low_close_mismatches": 21135,
+    "open_mismatches": 3177,
+    "note": "HIGH/LOW mismatches are expected in some volume: production scraper.py clamps high>=close>=low before storing, this tool does not. CLOSE or OPEN mismatches are more likely to indicate a real anomaly worth reviewing."
+  },
+  "output_files": {
+    "stock_csv": "C:\\Users\\Lenovo\\psx_pipeline\\open_acquisition_output\\open_prices_stocks.csv",
+    "stock_csv_sha256": "7d8989c46571a9a30890f4c8185408b7207259972dc0e82819f7f610ed4cf9c6",
+    "index_csv": "C:\\Users\\Lenovo\\psx_pipeline\\open_acquisition_output\\open_prices_indexes.csv",
+    "index_csv_sha256": "c8a926dd7d9bae42ccd139698423fe6ae4ed5f2009e85187833ccede11fcd667"
+  }
+}

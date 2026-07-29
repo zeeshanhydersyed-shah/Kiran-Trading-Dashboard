@@ -1,0 +1,545 @@
+sector,symbol,start,end,kind,outcome,type,boundary_touched,boundary_breached,lfd_touched
+COMMERCIAL BANKS,ABL,1000,1080,ascending,down,1,False,False,False
+COMMERCIAL BANKS,ABL,3640,3720,descending,sequential,4,True,True,True
+PHARMACEUTICALS,ABOT,2520,2600,descending,sequential,4,True,True,True
+PHARMACEUTICALS,ABOT,3840,3920,ascending,down,4,True,True,True
+CEMENT,ACPL,80,160,ascending,up,4,True,True,True
+CEMENT,ACPL,600,680,descending,down,3,True,True,False
+CEMENT,ACPL,2440,2520,ascending,down,1,False,False,False
+CEMENT,ACPL,3720,3800,descending,up,1,False,False,False
+CEMENT,ACPL,3880,3960,ascending,down,4,False,False,True
+TEXTILE COMPOSITE,ADMM,160,240,symmetrical,down,4,False,False,True
+TEXTILE COMPOSITE,ADMM,520,600,descending,down,4,False,False,True
+TEXTILE COMPOSITE,ADMM,1960,2040,descending,up,1,False,False,False
+TEXTILE COMPOSITE,ADMM,2520,2600,ascending,down,4,True,True,True
+ENGINEERING,AGHA,1200,1280,symmetrical,sequential,4,True,True,True
+INSURANCE,AGIC,1280,1360,descending,up,4,False,False,True
+INSURANCE,AGIC,1960,2040,symmetrical,up,4,True,False,True
+INSURANCE,AGIC,2520,2600,ascending,up,4,True,True,True
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1240,1320,descending,up,1,False,False,False
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1400,1480,descending,down,3,True,True,False
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1520,1600,symmetrical,up,2,True,False,False
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1920,2000,symmetrical,down,4,False,False,True
+CHEMICAL,AGL,40,120,descending,sequential,4,True,True,True
+CHEMICAL,AGL,640,720,symmetrical,down,4,True,True,True
+CHEMICAL,AGL,2640,2720,symmetrical,sequential,4,True,True,True
+PHARMACEUTICALS,AGP,1840,1920,descending,up,1,False,False,False
+AUTOMOBILE ASSEMBLER,AGTL,1640,1720,descending,up,4,True,True,True
+AUTOMOBILE ASSEMBLER,AGTL,3680,3760,descending,sequential,4,True,True,True
+AUTOMOBILE ASSEMBLER,AGTL,4480,4560,descending,sequential,4,True,True,True
+FERTILIZER,AHCL,3240,3320,descending,down,2,True,False,False
+INSURANCE,AICL,1800,1880,ascending,sequential,4,True,True,True
+INSURANCE,AICL,3800,3880,descending,up,4,False,False,True
+INSURANCE,AICL,3920,4000,ascending,down,4,True,True,True
+TECHNOLOGY & COMMUNICATION,AIRLINK,160,240,descending,down,4,True,True,True
+COMMERCIAL BANKS,AKBL,1800,1880,ascending,up,3,True,True,False
+MISCELLANEOUS,AKDHL,240,320,descending,whipsaw,4,True,True,True
+MISCELLANEOUS,AKDHL,880,960,descending,whipsaw,4,True,True,True
+MISCELLANEOUS,AKGL,640,720,descending,sequential,4,True,True,True
+INSURANCE,ALAC,2720,2800,symmetrical,down,4,True,False,True
+POWER GENERATION & DISTRIBUTION,ALTN,2200,2280,descending,whipsaw,4,True,True,True
+POWER GENERATION & DISTRIBUTION,ALTN,2400,2480,descending,up,4,True,True,True
+POWER GENERATION & DISTRIBUTION,ALTN,2520,2600,descending,down,1,False,False,False
+POWER GENERATION & DISTRIBUTION,ALTN,2600,2680,symmetrical,up,1,False,False,False
+TEXTILE COMPOSITE,ANL,2360,2440,symmetrical,down,1,False,False,False
+TEXTILE COMPOSITE,ANL,3600,3680,symmetrical,down,2,True,False,False
+TEXTILE COMPOSITE,ANTM,440,520,descending,sequential,4,True,True,True
+OIL & GAS MARKETING COMPANIES,APL,1400,1480,symmetrical,up,2,True,False,False
+OIL & GAS MARKETING COMPANIES,APL,1560,1640,ascending,up,1,False,False,False
+OIL & GAS MARKETING COMPANIES,APL,3160,3240,ascending,down,4,True,False,True
+OIL & GAS MARKETING COMPANIES,APL,3880,3960,descending,up,4,True,True,True
+OIL & GAS MARKETING COMPANIES,APL,3920,4000,descending,sequential,4,True,True,True
+OIL & GAS MARKETING COMPANIES,APL,4120,4200,symmetrical,up,2,True,False,False
+OIL & GAS MARKETING COMPANIES,APL,4640,4720,ascending,up,4,True,True,True
+CHEMICAL,ARPL,4720,4800,ascending,up,4,True,False,True
+TEXTILE COMPOSITE,ARUJ,640,720,symmetrical,up,1,False,False,False
+FOOD & PERSONAL CARE PRODUCTS,ASC,80,160,symmetrical,up,4,True,True,True
+ENGINEERING,ASL,0,80,ascending,down,4,True,False,True
+ENGINEERING,ASL,160,240,descending,whipsaw,4,True,True,True
+ENGINEERING,ASL,1320,1400,descending,down,1,False,False,False
+ENGINEERING,ASL,2400,2480,descending,down,4,False,False,True
+ENGINEERING,ASLPS,360,440,ascending,up,1,False,False,False
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,2600,2680,descending,up,4,False,False,True
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,4040,4120,symmetrical,sequential,4,True,True,True
+INSURANCE,ATIL,1320,1400,ascending,up,4,True,True,True
+INSURANCE,ATIL,2480,2560,descending,up,4,True,True,True
+AUTOMOBILE ASSEMBLER,ATLH,3640,3720,descending,sequential,4,True,True,True
+REFINERY,ATRL,1440,1520,ascending,sequential,4,True,True,True
+REFINERY,ATRL,2560,2640,descending,whipsaw,4,True,True,True
+REFINERY,ATRL,2640,2720,ascending,up,4,True,False,True
+REFINERY,ATRL,5000,5080,ascending,sequential,4,True,True,True
+TECHNOLOGY & COMMUNICATION,AVN,560,640,descending,up,4,True,True,True
+TECHNOLOGY & COMMUNICATION,AVN,1920,2000,ascending,down,1,False,False,False
+TECHNOLOGY & COMMUNICATION,AVN,2200,2280,descending,sequential,4,True,True,True
+COMMERCIAL BANKS,BAFL,1840,1920,ascending,down,4,True,False,True
+COMMERCIAL BANKS,BAFL,3040,3120,ascending,down,4,True,True,True
+COMMERCIAL BANKS,BAFL,3840,3920,ascending,sequential,4,True,True,True
+COMMERCIAL BANKS,BAFL,4520,4600,descending,up,4,True,True,True
+COMMERCIAL BANKS,BAHL,4120,4200,ascending,down,1,False,False,False
+ENGINEERING,BCL,760,840,ascending,down,1,False,False,False
+ENGINEERING,BCL,3400,3480,descending,up,4,False,False,True
+ENGINEERING,BECO,400,480,descending,up,4,True,True,True
+CHEMICAL,BERG,2280,2360,symmetrical,down,3,True,True,False
+CHEMICAL,BERG,2840,2920,symmetrical,down,4,True,False,True
+GLASS & CERAMICS,BGL,3800,3880,symmetrical,whipsaw,4,True,True,True
+TEXTILE COMPOSITE,BHAT,1160,1240,descending,up,2,True,False,False
+TEXTILE COMPOSITE,BHAT,1240,1320,symmetrical,down,1,False,False,False
+COMMERCIAL BANKS,BIPL,2240,2320,symmetrical,sequential,4,True,True,True
+COMMERCIAL BANKS,BIPL,3920,4000,descending,up,4,False,False,True
+FOOD & PERSONAL CARE PRODUCTS,BNL,1280,1360,descending,whipsaw,4,True,True,True
+COMMERCIAL BANKS,BOK,440,520,descending,down,4,True,True,True
+COMMERCIAL BANKS,BOK,3680,3760,ascending,down,4,True,False,True
+COMMERCIAL BANKS,BOK,4280,4360,ascending,sequential,4,True,True,True
+COMMERCIAL BANKS,BOK,4600,4680,symmetrical,up,4,True,True,True
+COMMERCIAL BANKS,BOP,3840,3920,symmetrical,sequential,4,True,True,True
+OIL & GAS MARKETING COMPANIES,BPL,720,800,descending,down,2,True,False,False
+CEMENT,BWCL,1000,1080,symmetrical,whipsaw,4,True,True,True
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,0,80,descending,up,4,False,False,True
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1400,1480,ascending,up,1,False,False,False
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1880,1960,descending,down,4,True,True,True
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,2280,2360,symmetrical,sequential,4,True,True,True
+INSURANCE,CENI,3480,3560,symmetrical,up,3,True,True,False
+PAPER & BOARD,CEPB,840,920,descending,down,4,True,False,True
+PAPER & BOARD,CEPB,1080,1160,ascending,sequential,4,True,True,True
+PAPER & BOARD,CEPB,2200,2280,ascending,sequential,4,True,True,True
+PAPER & BOARD,CEPB,2520,2600,ascending,sequential,4,True,True,True
+TEXTILE COMPOSITE,CHBL,360,440,descending,up,1,False,False,False
+TEXTILE COMPOSITE,CHBL,1560,1640,symmetrical,sequential,4,True,True,True
+CEMENT,CHCC,1120,1200,symmetrical,sequential,4,True,True,True
+CEMENT,CHCC,1560,1640,descending,sequential,4,True,True,True
+CEMENT,CHCC,2280,2360,symmetrical,up,1,False,False,False
+FOOD & PERSONAL CARE PRODUCTS,CLOV,1480,1560,descending,up,1,False,False,False
+REFINERY,CNERGY,2840,2920,descending,sequential,4,True,True,True
+PAPER & BOARD,CPPL,3160,3240,symmetrical,up,2,True,False,False
+PAPER & BOARD,CPPL,4480,4560,ascending,down,2,True,False,False
+TEXTILE COMPOSITE,CRTM,2240,2320,descending,sequential,4,True,True,True
+TEXTILE COMPOSITE,CRTM,3560,3640,descending,up,1,False,False,False
+ENGINEERING,CSAP,4920,5000,descending,up,4,False,False,True
+INSURANCE,CYAN,640,720,descending,up,1,False,False,False
+INSURANCE,CYAN,1840,1920,symmetrical,sequential,4,True,True,True
+INSURANCE,CYAN,4120,4200,descending,up,4,False,False,True
+CHEMICAL,DAAG,840,920,symmetrical,up,2,True,False,False
+CHEMICAL,DAAG,2240,2320,descending,down,4,True,True,True
+CEMENT,DBCI,1840,1920,symmetrical,sequential,4,True,True,True
+CEMENT,DCL,680,760,symmetrical,up,4,True,True,True
+CEMENT,DCL,1560,1640,ascending,down,4,True,True,True
+CEMENT,DCL,2520,2600,ascending,down,1,False,False,False
+CEMENT,DCL,4760,4840,ascending,up,4,True,True,True
+REAL ESTATE INVESTMENT TRUST,DCR,1240,1320,descending,down,4,True,True,True
+AUTOMOBILE ASSEMBLER,DFML,3840,3920,ascending,down,4,True,True,True
+AUTOMOBILE ASSEMBLER,DFML,3880,3960,descending,down,4,False,False,True
+CEMENT,DGKC,680,760,descending,up,1,False,False,False
+CEMENT,DGKC,1480,1560,symmetrical,down,1,False,False,False
+CEMENT,DGKC,2920,3000,ascending,down,3,True,True,False
+CEMENT,DNCC,240,320,ascending,down,4,True,True,True
+CEMENT,DNCC,1440,1520,symmetrical,sequential,4,True,True,True
+CEMENT,DNCC,2160,2240,symmetrical,sequential,4,True,True,True
+CHEMICAL,DOL,680,760,descending,down,4,False,False,True
+CHEMICAL,DOL,3200,3280,descending,whipsaw,4,True,True,True
+CHEMICAL,DOL,3560,3640,symmetrical,down,2,True,False,False
+CHEMICAL,DOL,4080,4160,ascending,sequential,4,True,True,True
+ENGINEERING,DSL,2280,2360,ascending,whipsaw,4,True,True,True
+ENGINEERING,DSL,3080,3160,ascending,sequential,4,True,True,True
+ENGINEERING,DSL,4000,4080,descending,up,3,True,True,False
+ENGINEERING,DSL,4360,4440,descending,down,1,False,False,False
+CHEMICAL,DYNO,400,480,ascending,sequential,4,True,True,True
+CHEMICAL,DYNO,880,960,descending,down,4,True,True,True
+MISCELLANEOUS,ECOP,280,360,descending,down,4,True,True,True
+MISCELLANEOUS,ECOP,1040,1120,ascending,down,4,True,True,True
+MISCELLANEOUS,ECOP,4920,5000,ascending,up,2,True,False,False
+FERTILIZER,EFERT,520,600,descending,down,1,False,False,False
+FERTILIZER,EFERT,1320,1400,ascending,up,4,True,False,True
+INSURANCE,EFUG,1680,1760,symmetrical,up,1,False,False,False
+INSURANCE,EFUG,1800,1880,descending,up,4,False,False,True
+INSURANCE,EFUL,120,200,descending,up,4,False,False,True
+INSURANCE,EFUL,760,840,descending,sequential,4,True,True,True
+INSURANCE,EFUL,2760,2840,symmetrical,sequential,4,True,True,True
+FERTILIZER,ENGRO,80,160,descending,up,1,False,False,False
+FERTILIZER,ENGRO,1280,1360,descending,up,2,True,False,False
+FERTILIZER,ENGRO,1320,1400,ascending,up,2,True,False,False
+FERTILIZER,ENGRO,1840,1920,symmetrical,sequential,4,True,True,True
+FERTILIZER,ENGRO,1880,1960,ascending,up,1,False,False,False
+FERTILIZER,ENGRO,4200,4280,descending,down,4,True,True,True
+CHEMICAL,EPCL,2840,2920,descending,sequential,4,True,True,True
+CHEMICAL,EPCLPS,280,360,descending,up,4,True,True,True
+POWER GENERATION & DISTRIBUTION,EPQL,960,1040,descending,up,4,True,False,True
+POWER GENERATION & DISTRIBUTION,EPQL,1960,2040,symmetrical,sequential,4,True,True,True
+POWER GENERATION & DISTRIBUTION,EPQL,2040,2120,symmetrical,down,4,True,False,True
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4120,4200,descending,up,4,True,True,True
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4160,4240,ascending,down,1,False,False,False
+COMMERCIAL BANKS,FABL,600,680,ascending,down,4,True,False,True
+COMMERCIAL BANKS,FABL,2040,2120,symmetrical,sequential,4,True,True,True
+TEXTILE COMPOSITE,FASM,120,200,descending,down,1,False,False,False
+TEXTILE COMPOSITE,FASM,360,440,symmetrical,up,1,False,False,False
+FERTILIZER,FATIMA,1240,1320,symmetrical,up,1,False,False,False
+FERTILIZER,FATIMA,2080,2160,ascending,down,4,True,True,True
+CEMENT,FCCL,2520,2600,descending,up,4,True,False,True
+CEMENT,FCCL,2560,2640,ascending,sequential,4,True,True,True
+CEMENT,FCCL,3920,4000,symmetrical,none,N/A,,,
+CEMENT,FCCL,5080,5160,ascending,down,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,720,800,descending,up,1,False,False,False
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,1000,1080,descending,down,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,2920,3000,descending,up,2,True,False,False
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3280,3360,symmetrical,sequential,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3480,3560,symmetrical,sequential,4,True,True,True
+CEMENT,FECTC,3520,3600,symmetrical,up,2,True,False,False
+CEMENT,FECTC,4240,4320,descending,down,3,True,True,False
+PHARMACEUTICALS,FEROZ,1240,1320,ascending,sequential,4,True,True,True
+FERTILIZER,FFC,360,440,descending,up,4,True,False,True
+FERTILIZER,FFC,400,480,ascending,down,4,True,False,True
+FERTILIZER,FFC,2760,2840,descending,down,4,True,False,True
+FERTILIZER,FFC,3520,3600,symmetrical,up,2,True,False,False
+FERTILIZER,FFC,4880,4960,symmetrical,down,4,False,False,True
+FOOD & PERSONAL CARE PRODUCTS,FFL,280,360,ascending,sequential,4,True,True,True
+CEMENT,FLYNG,160,240,descending,down,1,False,False,False
+CEMENT,FLYNG,1320,1400,symmetrical,down,3,True,True,False
+CEMENT,FLYNG,3680,3760,descending,down,1,False,False,False
+TEXTILE COMPOSITE,FML,1720,1800,descending,down,4,True,True,True
+AUTOMOBILE ASSEMBLER,GAL,520,600,symmetrical,up,4,False,False,True
+TEXTILE COMPOSITE,GATM,840,920,symmetrical,sequential,4,True,True,True
+TEXTILE COMPOSITE,GATM,1000,1080,ascending,up,4,True,False,True
+TEXTILE COMPOSITE,GFIL,1720,1800,ascending,down,1,False,False,False
+TEXTILE COMPOSITE,GFIL,2840,2920,descending,down,4,True,True,True
+GLASS & CERAMICS,GGGL,1880,1960,ascending,down,4,True,True,True
+CHEMICAL,GGL,1760,1840,descending,down,4,True,True,True
+GLASS & CERAMICS,GHGL,40,120,descending,down,3,True,True,False
+GLASS & CERAMICS,GHGL,1360,1440,ascending,down,4,True,True,True
+GLASS & CERAMICS,GHGL,2480,2560,symmetrical,whipsaw,4,True,True,True
+GLASS & CERAMICS,GHGL,3200,3280,descending,down,3,True,True,False
+GLASS & CERAMICS,GHGL,3880,3960,ascending,down,2,True,False,False
+GLASS & CERAMICS,GHGL,4000,4080,symmetrical,sequential,4,True,True,True
+AUTOMOBILE ASSEMBLER,GHNI,920,1000,symmetrical,down,1,False,False,False
+AUTOMOBILE ASSEMBLER,GHNI,1360,1440,descending,up,2,True,False,False
+AUTOMOBILE ASSEMBLER,GHNI,4040,4120,symmetrical,down,2,True,False,False
+PHARMACEUTICALS,GLAXO,1480,1560,ascending,down,2,True,False,False
+PHARMACEUTICALS,GLAXO,2440,2520,descending,up,4,True,True,True
+PHARMACEUTICALS,GLAXO,2560,2640,ascending,down,4,False,False,True
+PHARMACEUTICALS,GLAXO,3400,3480,symmetrical,down,1,False,False,False
+FOOD & PERSONAL CARE PRODUCTS,GLPL,640,720,symmetrical,sequential,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,GLPL,720,800,ascending,down,4,True,False,True
+AUTOMOBILE PARTS & ACCESSORIES,GTYR,4640,4720,ascending,down,4,False,False,True
+GLASS & CERAMICS,GVGL,720,800,symmetrical,down,4,False,False,True
+CEMENT,GWLC,960,1040,descending,up,4,True,True,True
+CEMENT,GWLC,2720,2800,descending,down,2,True,False,False
+PHARMACEUTICALS,HALEON,0,80,descending,up,4,True,True,True
+OIL & GAS MARKETING COMPANIES,HASCOL,2600,2680,symmetrical,sequential,4,True,True,True
+COMMERCIAL BANKS,HBL,2040,2120,descending,up,1,False,False,False
+COMMERCIAL BANKS,HBL,3200,3280,ascending,sequential,4,True,True,True
+COMMERCIAL BANKS,HBL,3800,3880,descending,sequential,4,True,True,True
+AUTOMOBILE ASSEMBLER,HINO,1840,1920,descending,up,4,True,True,True
+PHARMACEUTICALS,HINOON,680,760,descending,down,4,True,True,True
+COMMERCIAL BANKS,HMB,880,960,descending,up,4,True,True,True
+COMMERCIAL BANKS,HMB,1080,1160,ascending,down,1,False,False,False
+COMMERCIAL BANKS,HMB,4200,4280,descending,up,4,True,True,True
+COMMERCIAL BANKS,HMB,4960,5040,descending,up,2,True,False,False
+OIL & GAS MARKETING COMPANIES,HTL,1560,1640,descending,down,2,True,False,False
+POWER GENERATION & DISTRIBUTION,HUBC,1320,1400,descending,up,1,False,False,False
+TECHNOLOGY & COMMUNICATION,HUMNL,360,440,symmetrical,down,4,False,False,True
+TECHNOLOGY & COMMUNICATION,HUMNL,3640,3720,symmetrical,down,2,True,False,False
+PHARMACEUTICALS,IBLHL,360,440,ascending,up,4,True,True,True
+PHARMACEUTICALS,IBLHL,3320,3400,symmetrical,down,4,True,True,True
+PHARMACEUTICALS,IBLHL,3920,4000,symmetrical,down,3,True,True,False
+INSURANCE,IGIL,2120,2200,descending,down,2,True,False,False
+INSURANCE,IGIL,2640,2720,descending,sequential,4,True,True,True
+TEXTILE COMPOSITE,ILP,800,880,ascending,down,2,True,False,False
+AUTOMOBILE ASSEMBLER,INDU,3000,3080,ascending,down,4,True,False,True
+AUTOMOBILE ASSEMBLER,INDU,3360,3440,ascending,down,4,True,False,True
+FOOD & PERSONAL CARE PRODUCTS,ISIL,1680,1760,symmetrical,down,4,True,True,True
+ENGINEERING,ISL,2560,2640,descending,sequential,4,True,True,True
+ENGINEERING,ISL,2840,2920,symmetrical,sequential,4,True,True,True
+ENGINEERING,ISL,3320,3400,descending,sequential,4,True,True,True
+ENGINEERING,ITTEFAQ,120,200,symmetrical,down,1,False,False,False
+INSURANCE,JGICL,400,480,ascending,up,4,False,False,True
+INSURANCE,JGICL,1120,1200,ascending,up,2,True,False,False
+INSURANCE,JGICL,3640,3720,descending,sequential,4,True,True,True
+INSURANCE,JLICL,720,800,descending,sequential,4,True,True,True
+INSURANCE,JLICL,1560,1640,ascending,up,4,False,False,True
+INSURANCE,JLICL,2160,2240,ascending,down,4,True,True,True
+INSURANCE,JLICL,4200,4280,descending,up,4,False,False,True
+INSURANCE,JLICL,4280,4360,descending,up,2,True,False,False
+COMMERCIAL BANKS,JSBL,160,240,symmetrical,sequential,4,True,True,True
+COMMERCIAL BANKS,JSBL,1200,1280,symmetrical,up,4,True,True,True
+COMMERCIAL BANKS,JSBL,1600,1680,symmetrical,sequential,4,True,True,True
+COMMERCIAL BANKS,JSBL,3240,3320,descending,sequential,4,True,True,True
+COMMERCIAL BANKS,JSBL,3360,3440,ascending,down,4,True,True,True
+TEXTILE COMPOSITE,JUBS,560,640,ascending,sequential,4,True,True,True
+PROPERTY,JVDC,1120,1200,symmetrical,up,1,False,False,False
+PROPERTY,JVDC,1960,2040,symmetrical,up,4,False,False,True
+POWER GENERATION & DISTRIBUTION,KAPCO,1680,1760,symmetrical,up,4,True,False,True
+POWER GENERATION & DISTRIBUTION,KAPCO,2440,2520,ascending,sequential,4,True,True,True
+POWER GENERATION & DISTRIBUTION,KAPCO,2480,2560,ascending,sequential,4,True,True,True
+POWER GENERATION & DISTRIBUTION,KAPCO,3920,4000,symmetrical,sequential,4,True,True,True
+POWER GENERATION & DISTRIBUTION,KAPCO,4200,4280,descending,up,1,False,False,False
+POWER GENERATION & DISTRIBUTION,KAPCO,5160,5240,descending,up,4,False,False,True
+POWER GENERATION & DISTRIBUTION,KEL,3160,3240,ascending,sequential,4,True,True,True
+TEXTILE COMPOSITE,KML,1280,1360,descending,sequential,4,True,True,True
+CEMENT,KOHC,2120,2200,ascending,sequential,3,True,True,False
+CEMENT,KOHC,3800,3880,symmetrical,whipsaw,4,True,True,True
+CEMENT,KOHC,4240,4320,ascending,down,4,True,True,True
+CEMENT,KOHC,4840,4920,ascending,down,4,True,True,True
+POWER GENERATION & DISTRIBUTION,KOHE,2440,2520,ascending,up,4,True,False,True
+POWER GENERATION & DISTRIBUTION,KOHP,3560,3640,ascending,down,3,True,True,False
+TEXTILE COMPOSITE,KOIL,1720,1800,descending,sequential,4,True,True,True
+TEXTILE COMPOSITE,KOIL,3760,3840,descending,whipsaw,4,True,True,True
+TEXTILE COMPOSITE,KOIL,3960,4040,symmetrical,up,4,True,True,True
+TEXTILE COMPOSITE,KTML,2200,2280,descending,sequential,4,True,True,True
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,1120,1200,symmetrical,down,4,True,True,True
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,2200,2280,symmetrical,down,1,False,False,False
+CHEMICAL,LOTCHEM,1000,1080,descending,up,1,False,False,False
+CHEMICAL,LOTCHEM,1720,1800,symmetrical,down,1,False,False,False
+CHEMICAL,LOTCHEM,4400,4480,descending,up,4,True,True,True
+CHEMICAL,LPGL,1640,1720,symmetrical,down,4,True,False,True
+POWER GENERATION & DISTRIBUTION,LPL,80,160,descending,down,4,True,True,True
+POWER GENERATION & DISTRIBUTION,LPL,120,200,descending,down,4,True,False,True
+POWER GENERATION & DISTRIBUTION,LPL,400,480,ascending,down,1,False,False,False
+POWER GENERATION & DISTRIBUTION,LPL,720,800,descending,up,1,False,False,False
+CEMENT,LUCK,2040,2120,descending,up,1,False,False,False
+MISCELLANEOUS,MACFL,560,640,descending,down,4,True,True,True
+MISCELLANEOUS,MACFL,3800,3880,descending,up,4,True,True,True
+PHARMACEUTICALS,MACTER,360,440,symmetrical,sequential,4,True,True,True
+PHARMACEUTICALS,MACTER,1000,1080,symmetrical,down,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,MARI,680,760,symmetrical,whipsaw,4,True,True,True
+COMMERCIAL BANKS,MCB,1280,1360,ascending,up,4,True,False,True
+COMMERCIAL BANKS,MCB,1800,1880,symmetrical,up,4,True,False,True
+COMMERCIAL BANKS,MCB,2080,2160,ascending,whipsaw,4,True,True,True
+COMMERCIAL BANKS,MCB,2120,2200,ascending,down,4,False,False,True
+COMMERCIAL BANKS,MCB,3080,3160,symmetrical,up,1,False,False,False
+COMMERCIAL BANKS,MCB,4120,4200,ascending,down,4,False,False,True
+COMMERCIAL BANKS,MEBL,1000,1080,descending,up,4,True,True,True
+COMMERCIAL BANKS,MEBL,1560,1640,ascending,sequential,4,True,True,True
+COMMERCIAL BANKS,MEBL,2080,2160,ascending,down,4,True,False,True
+COMMERCIAL BANKS,MEBL,2280,2360,descending,up,4,False,False,True
+COMMERCIAL BANKS,MEBL,4800,4880,symmetrical,up,4,True,False,True
+PAPER & BOARD,MERIT,720,800,symmetrical,down,2,True,False,False
+PAPER & BOARD,MERIT,1400,1480,ascending,down,4,True,True,True
+PAPER & BOARD,MERIT,4240,4320,ascending,down,2,True,False,False
+PAPER & BOARD,MERIT,4280,4360,descending,down,2,True,False,False
+FOOD & PERSONAL CARE PRODUCTS,MFFL,2040,2120,ascending,down,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,MFL,520,600,symmetrical,up,4,True,False,True
+FOOD & PERSONAL CARE PRODUCTS,MFL,1240,1320,descending,up,4,False,False,True
+CEMENT,MLCF,1360,1440,symmetrical,down,1,False,False,False
+CEMENT,MLCF,2560,2640,symmetrical,down,4,True,False,True
+CEMENT,MLCF,4080,4160,ascending,down,4,True,True,True
+ENGINEERING,MSCL,1520,1600,descending,whipsaw,4,True,True,True
+TEXTILE COMPOSITE,MSOT,840,920,symmetrical,whipsaw,4,True,True,True
+TEXTILE COMPOSITE,MSOT,960,1040,descending,up,1,False,False,False
+AUTOMOBILE ASSEMBLER,MTL,200,280,symmetrical,up,1,False,False,False
+AUTOMOBILE ASSEMBLER,MTL,1560,1640,descending,up,1,False,False,False
+AUTOMOBILE ASSEMBLER,MTL,3360,3440,symmetrical,sequential,4,True,True,True
+AUTOMOBILE ASSEMBLER,MTL,4160,4240,ascending,down,4,True,True,True
+AUTOMOBILE ASSEMBLER,MTL,5040,5120,ascending,sequential,4,True,True,True
+ENGINEERING,MUGHAL,1120,1200,ascending,sequential,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2600,2680,ascending,sequential,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2800,2880,ascending,up,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,MUREB,3120,3200,descending,up,3,True,True,False
+MISCELLANEOUS,MWMP,760,840,symmetrical,up,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,NATF,680,760,descending,down,4,True,False,True
+FOOD & PERSONAL CARE PRODUCTS,NATF,1120,1200,symmetrical,up,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,NATF,2000,2080,descending,whipsaw,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,NATF,3440,3520,descending,down,4,False,False,True
+COMMERCIAL BANKS,NBP,1320,1400,symmetrical,up,2,True,False,False
+COMMERCIAL BANKS,NBP,1760,1840,descending,down,4,True,False,True
+COMMERCIAL BANKS,NBP,3160,3240,ascending,sequential,4,True,True,True
+COMMERCIAL BANKS,NBP,4840,4920,descending,up,1,False,False,False
+TEXTILE COMPOSITE,NCL,360,440,symmetrical,down,4,True,False,True
+TEXTILE COMPOSITE,NCL,1280,1360,symmetrical,whipsaw,4,True,False,True
+TEXTILE COMPOSITE,NCL,2640,2720,descending,up,2,True,False,False
+TEXTILE COMPOSITE,NCL,3360,3440,symmetrical,down,2,True,False,False
+POWER GENERATION & DISTRIBUTION,NCPL,0,80,symmetrical,down,4,True,True,True
+POWER GENERATION & DISTRIBUTION,NCPL,1240,1320,ascending,whipsaw,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,NESTLE,2720,2800,ascending,up,2,True,False,False
+TECHNOLOGY & COMMUNICATION,NETSOL,1200,1280,ascending,up,4,False,False,True
+CHEMICAL,NICL,2480,2560,ascending,up,4,False,False,True
+CHEMICAL,NICL,2560,2640,ascending,down,1,False,False,False
+TEXTILE COMPOSITE,NML,3400,3480,ascending,down,4,False,False,True
+REFINERY,NRL,2360,2440,ascending,sequential,4,True,True,True
+CHEMICAL,NRSL,4720,4800,ascending,sequential,4,True,True,True
+OIL & GAS MARKETING COMPANIES,OBOY,440,520,symmetrical,down,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,OGDC,360,440,descending,up,4,True,False,True
+OIL & GAS EXPLORATION COMPANIES,OGDC,480,560,ascending,up,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,OGDC,520,600,ascending,down,4,True,False,True
+OIL & GAS EXPLORATION COMPANIES,OGDC,2400,2480,descending,down,1,False,False,False
+OIL & GAS EXPLORATION COMPANIES,OGDC,3760,3840,ascending,down,4,True,False,True
+MISCELLANEOUS,PABC,480,560,symmetrical,up,1,False,False,False
+PROPERTY,PACE,2240,2320,symmetrical,up,1,False,False,False
+CABLE & ELECTRICAL GOODS,PAEL,1000,1080,descending,down,4,True,True,True
+CABLE & ELECTRICAL GOODS,PAEL,2160,2240,symmetrical,up,1,False,False,False
+CABLE & ELECTRICAL GOODS,PAEL,2680,2760,descending,up,4,True,False,True
+CABLE & ELECTRICAL GOODS,PAEL,4200,4280,descending,sequential,4,True,True,True
+CABLE & ELECTRICAL GOODS,PAEL,4240,4320,ascending,sequential,4,True,True,True
+CABLE & ELECTRICAL GOODS,PAEL,4640,4720,symmetrical,up,4,True,True,True
+CABLE & ELECTRICAL GOODS,PAEL,4760,4840,descending,up,4,True,True,True
+CABLE & ELECTRICAL GOODS,PAEL,4800,4880,ascending,up,1,False,False,False
+CABLE & ELECTRICAL GOODS,PAEL,4960,5040,descending,up,2,True,False,False
+TECHNOLOGY & COMMUNICATION,PAKD,40,120,symmetrical,up,4,True,False,True
+TECHNOLOGY & COMMUNICATION,PAKD,600,680,descending,down,4,True,True,True
+TECHNOLOGY & COMMUNICATION,PAKD,2960,3040,symmetrical,down,1,False,False,False
+CHEMICAL,PAKOXY,2080,2160,descending,up,1,False,False,False
+CHEMICAL,PAKOXY,3000,3080,descending,down,4,True,True,True
+CHEMICAL,PAKOXY,3800,3880,descending,up,2,True,False,False
+CHEMICAL,PAKOXY,4400,4480,descending,up,1,False,False,False
+INSURANCE,PAKRI,2280,2360,descending,up,2,True,False,False
+INSURANCE,PAKRI,3680,3760,symmetrical,up,2,True,False,False
+CABLE & ELECTRICAL GOODS,PCAL,1720,1800,symmetrical,sequential,4,True,True,True
+ENGINEERING,PECO,0,80,ascending,up,1,False,False,False
+ENGINEERING,PECO,1560,1640,descending,sequential,4,True,True,True
+TRANSPORT,PIBTL,1640,1720,symmetrical,down,4,True,True,True
+TRANSPORT,PICT,680,760,ascending,sequential,4,True,True,True
+TRANSPORT,PICT,2600,2680,ascending,up,4,True,True,True
+TRANSPORT,PICT,4680,4760,descending,up,4,True,True,True
+TRANSPORT,PICT,4720,4800,descending,down,1,False,False,False
+INSURANCE,PIL,1040,1120,symmetrical,up,4,True,True,True
+INSURANCE,PIL,3080,3160,descending,up,4,True,False,True
+CEMENT,PIOC,2560,2640,descending,up,4,True,False,True
+CEMENT,PIOC,3880,3960,descending,up,4,True,True,True
+CEMENT,PIOC,4480,4560,descending,up,4,False,False,True
+INSURANCE,PKGI,640,720,descending,up,4,True,True,True
+INSURANCE,PKGI,1320,1400,descending,sequential,4,True,True,True
+POWER GENERATION & DISTRIBUTION,PKGP,1440,1520,ascending,up,4,True,True,True
+POWER GENERATION & DISTRIBUTION,PKGP,1960,2040,symmetrical,up,1,False,False,False
+POWER GENERATION & DISTRIBUTION,PKGP,2960,3040,descending,up,4,True,False,True
+POWER GENERATION & DISTRIBUTION,PKGP,3080,3160,ascending,sequential,4,True,True,True
+PAPER & BOARD,PKGS,1000,1080,ascending,sequential,4,True,True,True
+PAPER & BOARD,PKGS,1320,1400,symmetrical,up,4,False,False,True
+PAPER & BOARD,PKGS,3480,3560,symmetrical,up,1,False,False,False
+PAPER & BOARD,PKGS,4040,4120,symmetrical,down,4,True,False,True
+TRANSPORT,PNSC,920,1000,symmetrical,sequential,4,True,True,True
+TRANSPORT,PNSC,1240,1320,descending,sequential,4,True,True,True
+TRANSPORT,PNSC,1280,1360,descending,sequential,4,True,True,True
+TRANSPORT,PNSC,4640,4720,ascending,up,1,False,False,False
+OIL & GAS EXPLORATION COMPANIES,POL,360,440,symmetrical,up,2,True,False,False
+OIL & GAS EXPLORATION COMPANIES,POL,400,480,ascending,sequential,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,POL,1640,1720,ascending,sequential,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,POL,1720,1800,descending,up,1,False,False,False
+OIL & GAS EXPLORATION COMPANIES,POL,2440,2520,descending,sequential,4,True,True,True
+CEMENT,POWER,160,240,ascending,sequential,4,True,True,True
+CEMENT,POWER,4560,4640,descending,up,4,True,True,True
+CEMENT,POWER,4920,5000,symmetrical,up,1,False,False,False
+CEMENT,POWERPS,40,120,symmetrical,up,4,True,True,True
+CEMENT,POWERPS,400,480,symmetrical,up,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,PPL,400,480,ascending,sequential,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,PPL,520,600,ascending,down,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,PPL,1160,1240,ascending,sequential,4,True,True,True
+OIL & GAS EXPLORATION COMPANIES,PPL,2760,2840,ascending,down,4,True,False,True
+OIL & GAS EXPLORATION COMPANIES,PPL,3000,3080,ascending,up,4,True,True,True
+PAPER & BOARD,PPP,80,160,symmetrical,whipsaw,4,True,True,True
+PAPER & BOARD,PPP,320,400,symmetrical,down,4,True,False,True
+CHEMICAL,PPVC,960,1040,symmetrical,up,4,True,False,True
+REFINERY,PRL,1680,1760,symmetrical,down,4,True,False,True
+REFINERY,PRL,2480,2560,descending,down,4,False,False,True
+REFINERY,PRL,2640,2720,symmetrical,up,4,False,False,True
+REFINERY,PRL,2760,2840,descending,down,4,True,True,True
+REFINERY,PRL,2840,2920,ascending,down,4,True,True,True
+REFINERY,PRL,3920,4000,ascending,down,1,False,False,False
+REFINERY,PRL,4120,4200,descending,up,1,False,False,False
+MISCELLANEOUS,PSEL,920,1000,ascending,up,1,False,False,False
+OIL & GAS MARKETING COMPANIES,PSO,1160,1240,ascending,down,1,False,False,False
+OIL & GAS MARKETING COMPANIES,PSO,1200,1280,ascending,down,4,False,False,True
+OIL & GAS MARKETING COMPANIES,PSO,1480,1560,ascending,down,1,False,False,False
+OIL & GAS MARKETING COMPANIES,PSO,1600,1680,descending,up,4,True,False,True
+TECHNOLOGY & COMMUNICATION,PTC,2680,2760,ascending,sequential,4,True,True,True
+TEXTILE COMPOSITE,QUET,1280,1360,symmetrical,up,4,False,False,True
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3400,3480,descending,down,2,True,False,False
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3640,3720,ascending,down,2,True,False,False
+FOOD & PERSONAL CARE PRODUCTS,QUICE,4760,4840,ascending,up,2,True,False,False
+TEXTILE COMPOSITE,REDCO,2040,2120,symmetrical,down,4,True,True,True
+INSURANCE,RICL,840,920,ascending,sequential,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,RMPL,1800,1880,descending,up,4,False,False,True
+FOOD & PERSONAL CARE PRODUCTS,RMPL,2400,2480,descending,down,4,True,True,True
+CHEMICAL,SARC,1320,1400,symmetrical,sequential,4,True,True,True
+AUTOMOBILE ASSEMBLER,SAZEW,2000,2080,descending,up,1,False,False,False
+COMMERCIAL BANKS,SBL,2880,2960,descending,up,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,SCL,1280,1360,symmetrical,down,4,False,False,True
+FOOD & PERSONAL CARE PRODUCTS,SCL,1800,1880,symmetrical,sequential,4,True,True,True
+PHARMACEUTICALS,SEARL,1040,1120,descending,down,4,True,True,True
+PHARMACEUTICALS,SEARL,1280,1360,descending,up,4,True,True,True
+PHARMACEUTICALS,SEARL,1560,1640,descending,up,2,True,False,False
+PHARMACEUTICALS,SEARL,4160,4240,descending,down,1,False,False,False
+PHARMACEUTICALS,SEARL,4640,4720,descending,sequential,4,True,True,True
+POWER GENERATION & DISTRIBUTION,SEL,880,960,descending,up,4,True,True,True
+PAPER & BOARD,SEPL,320,400,symmetrical,up,4,False,False,True
+PAPER & BOARD,SEPL,3760,3840,descending,up,2,True,False,False
+PAPER & BOARD,SEPL,4200,4280,ascending,down,4,True,False,True
+PAPER & BOARD,SEPL,4720,4800,ascending,none,N/A,,,
+OIL & GAS MARKETING COMPANIES,SHEL,480,560,descending,up,1,False,False,False
+OIL & GAS MARKETING COMPANIES,SHEL,960,1040,descending,up,4,True,False,True
+OIL & GAS MARKETING COMPANIES,SHEL,3360,3440,ascending,down,1,False,False,False
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,600,680,ascending,down,4,False,False,True
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3040,3120,descending,up,4,False,False,True
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3320,3400,symmetrical,up,1,False,False,False
+MISCELLANEOUS,SHFA,40,120,descending,sequential,4,True,True,True
+MISCELLANEOUS,SHFA,720,800,descending,down,3,True,True,False
+MISCELLANEOUS,SHFA,1120,1200,descending,up,2,True,False,False
+MISCELLANEOUS,SHFA,4280,4360,descending,sequential,4,True,True,True
+INSURANCE,SHNI,1080,1160,descending,down,4,True,True,True
+COMMERCIAL BANKS,SILK,1320,1400,descending,up,2,True,False,False
+COMMERCIAL BANKS,SILK,1760,1840,ascending,sequential,4,True,True,True
+COMMERCIAL BANKS,SILK,1800,1880,descending,sequential,4,True,True,True
+CHEMICAL,SITC,520,600,symmetrical,up,3,True,True,False
+CHEMICAL,SITC,800,880,ascending,up,4,False,False,True
+CHEMICAL,SITC,3800,3880,descending,sequential,4,True,True,True
+CEMENT,SMCPL,120,200,descending,up,4,False,False,True
+CEMENT,SMCPL,1160,1240,symmetrical,down,4,True,True,True
+CEMENT,SMCPL,2520,2600,ascending,sequential,4,True,True,True
+CEMENT,SMCPL,2640,2720,descending,up,4,True,True,True
+CEMENT,SMCPL,3080,3160,descending,up,4,True,True,True
+COMMERCIAL BANKS,SNBL,1920,2000,descending,up,1,False,False,False
+COMMERCIAL BANKS,SNBL,4280,4360,ascending,down,4,True,True,True
+OIL & GAS MARKETING COMPANIES,SNGP,560,640,descending,down,1,False,False,False
+MISCELLANEOUS,SPEL,680,760,descending,down,4,True,True,True
+POWER GENERATION & DISTRIBUTION,SPWL,920,1000,ascending,down,2,True,False,False
+OIL & GAS MARKETING COMPANIES,SSGC,360,440,descending,sequential,4,True,True,True
+OIL & GAS MARKETING COMPANIES,SSGC,400,480,descending,sequential,4,True,True,True
+OIL & GAS MARKETING COMPANIES,SSGC,520,600,ascending,up,4,True,True,True
+OIL & GAS MARKETING COMPANIES,SSGC,680,760,ascending,sequential,4,True,True,True
+OIL & GAS MARKETING COMPANIES,SSGC,920,1000,ascending,down,4,True,False,True
+OIL & GAS MARKETING COMPANIES,SSGC,2080,2160,descending,up,2,True,False,False
+OIL & GAS MARKETING COMPANIES,SSGC,3000,3080,descending,down,4,True,True,True
+OIL & GAS MARKETING COMPANIES,SSGC,3840,3920,ascending,down,4,True,True,True
+OIL & GAS MARKETING COMPANIES,SSGC,4760,4840,descending,up,1,False,False,False
+OIL & GAS MARKETING COMPANIES,SSGC,5080,5160,symmetrical,down,1,False,False,False
+GLASS & CERAMICS,STCL,3480,3560,symmetrical,down,4,True,True,True
+GLASS & CERAMICS,STCL,3640,3720,symmetrical,up,4,True,False,True
+MISCELLANEOUS,STPL,120,200,symmetrical,down,1,False,False,False
+TECHNOLOGY & COMMUNICATION,SYS,120,200,descending,down,4,True,True,True
+TECHNOLOGY & COMMUNICATION,SYS,2280,2360,descending,up,4,True,False,True
+TECHNOLOGY & COMMUNICATION,TELE,360,440,symmetrical,down,4,True,True,True
+TECHNOLOGY & COMMUNICATION,TELE,3200,3280,ascending,sequential,4,True,True,True
+GLASS & CERAMICS,TGL,3360,3440,descending,up,2,True,False,False
+GLASS & CERAMICS,TGL,3560,3640,descending,sequential,4,True,True,True
+GLASS & CERAMICS,TGL,4280,4360,ascending,sequential,4,True,True,True
+AUTOMOBILE PARTS & ACCESSORIES,THALL,2400,2480,ascending,up,4,True,True,True
+CEMENT,THCCL,880,960,symmetrical,up,4,True,True,True
+CEMENT,THCCL,920,1000,symmetrical,sequential,4,True,True,True
+CEMENT,THCCL,960,1040,descending,up,4,False,False,True
+TEXTILE COMPOSITE,TOWL,360,440,descending,sequential,4,True,True,True
+TEXTILE COMPOSITE,TOWL,1840,1920,ascending,whipsaw,4,True,True,True
+PROPERTY,TPLP,400,480,ascending,down,4,True,True,True
+PROPERTY,TPLP,720,800,descending,sequential,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,TREET,3720,3800,symmetrical,up,1,False,False,False
+TECHNOLOGY & COMMUNICATION,TRG,960,1040,symmetrical,down,4,True,True,True
+TECHNOLOGY & COMMUNICATION,TRG,2320,2400,symmetrical,up,1,False,False,False
+TECHNOLOGY & COMMUNICATION,TRG,3400,3480,descending,down,2,True,False,False
+MISCELLANEOUS,TRIPF,3640,3720,descending,sequential,4,True,True,True
+POWER GENERATION & DISTRIBUTION,TSPL,3400,3480,symmetrical,down,4,True,True,True
+MISCELLANEOUS,UBDL,1000,1080,symmetrical,sequential,4,True,True,True
+COMMERCIAL BANKS,UBL,1600,1680,ascending,up,4,True,False,True
+COMMERCIAL BANKS,UBL,2000,2080,ascending,down,1,False,False,False
+COMMERCIAL BANKS,UBL,2360,2440,ascending,sequential,4,True,True,True
+COMMERCIAL BANKS,UBL,3360,3440,ascending,down,4,True,False,True
+COMMERCIAL BANKS,UBL,4520,4600,descending,up,4,False,False,True
+MISCELLANEOUS,UDPL,2880,2960,symmetrical,up,2,True,False,False
+INSURANCE,UNIC,2480,2560,symmetrical,sequential,4,True,True,True
+INSURANCE,UNIC,2520,2600,symmetrical,up,1,False,False,False
+INSURANCE,UNIC,2680,2760,ascending,sequential,3,True,True,False
+INSURANCE,UNIC,3120,3200,ascending,down,4,True,True,True
+INSURANCE,UNIC,3640,3720,ascending,sequential,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,UPFL,400,480,symmetrical,up,2,True,False,False
+INSURANCE,UVIC,1280,1360,symmetrical,whipsaw,4,True,True,True
+CHEMICAL,WAHN,1080,1160,descending,down,4,True,True,True
+CABLE & ELECTRICAL GOODS,WAVES,920,1000,symmetrical,up,1,False,False,False
+CABLE & ELECTRICAL GOODS,WAVES,3840,3920,symmetrical,up,4,True,False,True
+TECHNOLOGY & COMMUNICATION,WTL,2440,2520,symmetrical,up,4,True,False,True
+TEXTILE COMPOSITE,ZAHID,560,640,symmetrical,sequential,4,True,True,True
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2360,2440,ascending,down,4,False,False,True
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2920,3000,symmetrical,sequential,4,True,True,True

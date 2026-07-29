@@ -1,0 +1,9 @@
+Ticker,User_Ref_Date,Actual_S2_Entry,Delta_Days,Momentum_On_Entry,Perf_30d,Perf_10d
+UBL,2023-06-26,2023-07-03,7,Heating Up,1.9,10.33
+MCB,2023-07-12,2023-07-20,8,Cooling Down,17.1,11.48
+MEBL,2023-07-11,2023-07-31,20,Cooling Down,53.21,18.17
+HBL,2023-07-25,2023-07-31,6,Cooling Down,43.75,24.04
+AKBL,2023-11-12,2023-10-30,-13,Cooling Down,18.21,3.38
+NBP,2023-11-21,2023-11-13,-8,Cooling Down,6.82,5.54
+BOP,2023-11-23,2023-11-27,4,Cooling Down,25.69,13.0
+SECTOR FULL ENTRY,—,2023-11-27,—,Cooling Down,15.45,7.18

@@ -1,0 +1,95 @@
+═════════════════════════════════════════════════════════════════
+📊  SECTOR FLOWS INTELLIGENCE BRIEF — 2026-06-01
+═════════════════════════════════════════════════════════════════
+
+🗂️  TODAY'S SECTOR SNAPSHOT
+─────────────────────────────────────────────────────────────────
+Sector                   BuyR   SmBR  3dAvg Consec   VolZ    1d%    5d%
+─────────────────────────────────────────────────────────────────
+OIL & GAS EXP.          66.2%  66.2%      —     0d      —  -1.6%  +2.5%
+POWER GEN.              60.6%  60.6%      —     0d      —  +0.2%  +2.1%
+FERTILIZER              55.1%  55.1%      —     0d      —  -2.0%  +4.5%
+FOOD & PERSON.          53.2%  53.2%      —     0d      —  -1.0% +46.0%
+TEXTILE COMP.           52.3%  52.3%      —     0d      —  -3.5%  -4.7%
+OIL & GAS MKTG.         51.0%  51.0%      —     0d      —  -1.5%  -9.5%
+CEMENT                  50.9%  50.9%      —     0d      —  -7.9%  -5.2%
+COMM. BANKS             49.9%  49.9%      —     0d      —  -0.7%  +6.5%
+TECH. & COMM.           31.3%  31.3%      —     0d      —  -0.6%  +1.6%
+
+
+🚦  NEW SIGNALS GENERATED TODAY (0 total)
+─────────────────────────────────────────────────────────────────
+  None fired today.
+
+
+🔬  PATTERN ANALYSIS (full history)
+─────────────────────────────────────────────────────────────────
+
+  [ACCUMULATION_DIVERGENCE]
+  Desc    : 3d avg buy_ratio > 62% + sector flat/down in prior 5d
+  5d fwd  :  n=4 — insufficient data
+  10d fwd :  n=2 — insufficient data
+
+  [FLOW_MOMENTUM_TRANSITION]
+  Desc    : buy_ratio flipped from <45% to >60% in 3 days
+  5d fwd  :  n=5 | win%=20% | avg_fwd=-1.79% | p=0.2565 ⚠️  building
+  10d fwd :  n=3 — insufficient data
+
+  [SMART_MONEY_DIVERGENCE]
+  Desc    : Smart money buy_ratio > 60% while total buy_ratio < 50%
+  5d fwd  :  n=0 — insufficient data
+  10d fwd :  n=0 — insufficient data
+
+  [SUSTAINED_ACCUMULATION]
+  Desc    : 3+ consecutive days with buy_ratio > 55%
+  5d fwd  :  n=6 | win%=66% | avg_fwd=1.74% | p=0.2716 ⚠️  building
+  10d fwd :  n=6 | win%=66% | avg_fwd=0.22% | p=0.7638 ⚠️  building
+  20d fwd :  n=0 — insufficient data
+
+  [VOLUME_SPIKE_BUYING]
+  Desc    : Buy volume z-score > 1.5 AND buy_ratio > 60%
+  5d fwd  :  n=5 | win%=60% | avg_fwd=2.35% | p=0.3021 ⚠️  building
+  10d fwd :  n=4 — insufficient data
+
+
+📈  ROLLING BUY_RATIO → FWD_5D CORRELATIONS
+─────────────────────────────────────────────────────────────────
+Sector                    Full     30d     14d  Note
+─────────────────────────────────────────────────────────────────
+FERTILIZER              -0.485  -0.485  -0.455  ← meaningful
+TEXTILE COMP.           -0.332  -0.332  -0.460  ← meaningful
+COMM. BANKS             -0.315  -0.315  -0.377  ← meaningful
+FOOD & PERSON.          +0.061  +0.061  +0.147  
+OIL & GAS MKTG.         +0.051  +0.051  -0.057  
+CEMENT                  +0.047  +0.047  +0.045  
+POWER GEN.              +0.047  +0.047  +0.106  
+TECH. & COMM.           -0.027  -0.027  -0.021  
+OIL & GAS EXP.          -0.004  -0.004  +0.005  
+
+  Interpretation: +ve = buying flows → positive fwd returns.
+  |corr| > 0.20 considered worth tracking.
+
+
+✅  SIGNAL VALIDATION RESULTS
+─────────────────────────────────────────────────────────────────
+  No past signals have matured yet (need ≥5 days).
+
+
+💡  PATTERN INSIGHTS & STORY
+─────────────────────────────────────────────────────────────────
+  Strongest buying  : OIL & GAS EXP., POWER GEN.
+  Strongest selling : TECH. & COMM., COMM. BANKS
+  Smart money top   : OIL & GAS EXP. (smart_buy_ratio=66.2%)
+
+  ⚠️  DATA NOTE: Only 2026-06-01 available for flows correlation.
+  With ~22 days of history, most patterns will show 'building baseline'.
+  Statistical significance requires 10+ occurrences — expect that by ~2026-07-15.
+
+
+🔭  NEXT WATCH POINTS
+─────────────────────────────────────────────────────────────────
+  → TECH. & COMM.: sustained selling (31.3%) — avoid longs
+
+═════════════════════════════════════════════════════════════════
+Engine run: 2026-06-02 06:59:00  |  Flows date: 2026-06-01  |  Sectors tracked: 9
+═════════════════════════════════════════════════════════════════

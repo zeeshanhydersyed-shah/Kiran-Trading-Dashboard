@@ -1,0 +1,12 @@
+Computing trailing upside/downside semi-deviation per symbol...
+Rows: 321,190
+       up_semivol  down_semivol
+count  311139.000    311139.000
+mean        4.042         2.547
+std         7.552         2.064
+min         0.206         0.000
+25%         2.082         1.425
+50%         2.765         1.998
+75%         3.987         2.897
+max       449.365        33.160
+Done.

@@ -35,9 +35,25 @@ from config import (
     INDEX_SYMBOLS,
     CALENDAR_DAYS_BACK,
     SECTOR_OVERRIDES,
+    EXCLUDED_SECTORS,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# PSX futures naming pattern: SYMBOL-MONTH where MONTH is JAN/FEB/.../DEC
+_FUTURES_PATTERN = re.compile(r'^[A-Z0-9]+-[A-Z]{3}$')
+_VALID_MONTHS = {'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'}
+
+def _is_futures_symbol(symbol: str) -> bool:
+    """Check if symbol matches PSX futures naming pattern (SYMBOL-MONTH)."""
+    if not symbol or '-' not in symbol:
+        return False
+    match = _FUTURES_PATTERN.match(symbol)
+    if match:
+        month = symbol.split('-')[1]
+        return month in _VALID_MONTHS
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -201,14 +217,29 @@ def trading_dates_to_scrape(calendar_days: int = CALENDAR_DAYS_BACK) -> list[dat
 def dates_since(last_date: date) -> list[date]:
     """Return weekday dates from the day after `last_date` up to and including today.
 
-    The scraper runs at 16:35 PKT, after PSX closes at 15:30 PKT and after
-    ksestocks.com publishes final data (~16:15-16:30 PKT), so today's date is
-    safe to request.
+    Excludes today if it's requested before PSX's ~15:30 PKT close (~10:30
+    UTC; a 30-minute margin is added on top). The scheduled cron (17:00 UTC)
+    is naturally safe and unaffected by this. This guard exists because a
+    manually-triggered run (workflow_dispatch) is not bound to the schedule
+    and can fire mid-session -- confirmed root cause of the 2026-07-10
+    incident: a ~09:49 UTC manual trigger requested "today" before close,
+    ksestocks.com served its latest-complete-session data (still 07-09's)
+    for that request, and the scraper stored it under the 07-10 label with
+    nothing rejecting the request in the first place. This is a second,
+    independent guard alongside the _is_stale() Decimal/float fix below --
+    that fix stops bad data already fetched from being stored; this one
+    stops the request from being made at all before it's safe to trust.
     """
+    from datetime import datetime, time as dtime, timezone
+
     today = date.today()
+    now_utc = datetime.now(timezone.utc).time()
+    market_close_utc = dtime(11, 0)  # ~15:30 PKT + 30min safety margin
+    max_date = today if now_utc >= market_close_utc else today - timedelta(days=1)
+
     result = []
     d = last_date + timedelta(days=1)
-    while d <= today:
+    while d <= max_date:
         if _is_weekday(d):
             result.append(d)
         d += timedelta(days=1)
@@ -368,6 +399,12 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
             except (ValueError, OverflowError):
                 volume = 0
 
+            # Skip futures symbols (SYMBOL-MONTH pattern like HBL-JAN, UBL-DEC, etc.)
+            # These are derivatives/contracts and not used in current trading strategies
+            if _is_futures_symbol(symbol):
+                logger.debug("Skipping futures symbol %s on %s", symbol, date_str)
+                continue
+
             sector_rows.append((symbol, current_sector))
             price_rows.append((symbol, date_str, high, low, close, volume, open_))
 
@@ -389,8 +426,21 @@ def scrape_date(target_date: date, session: requests.Session) -> tuple[list, lis
 
 
 def _price_fingerprint(p_rows: list) -> dict:
-    """Build {symbol: (high, low, close)} for stale-data comparison."""
-    return {r[0]: (r[2], r[3], r[4]) for r in p_rows if len(r) >= 5}
+    """Build {symbol: (high, low, close)} for stale-data comparison.
+
+    Values are coerced to float. prev_prices (passed in from
+    get_latest_prices()) returns decimal.Decimal for every numeric column
+    when sourced from Postgres, while a fresh scrape's p_rows always holds
+    native float. Decimal(x) == float(x) is False even when x is
+    numerically identical -- Python compares against the float's exact
+    binary value, not its decimal string value -- so without this
+    coercion, curr[sym] == prev[sym] fails for every symbol regardless of
+    actual staleness, and _is_stale() silently always returns False on
+    Postgres. Confirmed root cause of the 2026-07-10 incident: this is why
+    the duplicate-data check never fired even though the freshly-scraped
+    "07-10" data was a 100% match against the real prior day.
+    """
+    return {r[0]: (float(r[2]), float(r[3]), float(r[4])) for r in p_rows if len(r) >= 5}
 
 
 def _is_stale(curr: dict, prev: dict, threshold: float = 0.90) -> bool:

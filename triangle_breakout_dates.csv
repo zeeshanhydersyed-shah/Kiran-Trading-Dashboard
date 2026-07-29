@@ -1,0 +1,545 @@
+symbol,start,end,outcome,breakout_idx_used,breakout_date,date_convention
+ABL,1000,1080,down,1091,2010-05-07,breakout_idx
+ABL,3640,3720,sequential,3721,2021-01-25,breakout_idx (first chronological)
+ABOT,2520,2600,sequential,2604,2016-01-12,breakout_idx (first chronological)
+ABOT,3840,3920,down,3928,2021-08-12,breakout_idx
+ACPL,80,160,up,161,2005-10-05,breakout_idx
+ACPL,600,680,down,695,2007-12-31,breakout_idx
+ACPL,2440,2520,down,2521,2015-09-14,breakout_idx
+ACPL,3720,3800,up,3801,2020-12-08,breakout_idx
+ACPL,3880,3960,down,3961,2021-08-05,breakout_idx
+ADMM,160,240,down,241,2006-03-02,breakout_idx
+ADMM,520,600,down,601,2008-01-07,breakout_idx
+ADMM,1960,2040,up,2041,2014-11-07,breakout_idx
+ADMM,2520,2600,down,2613,2017-07-03,breakout_idx
+AGHA,1200,1280,sequential,1284,2026-01-08,breakout_idx (first chronological)
+AGIC,1280,1360,up,1361,2012-02-22,breakout_idx
+AGIC,1960,2040,up,2046,2015-07-10,breakout_idx
+AGIC,2520,2600,up,2601,2018-02-12,breakout_idx
+AGIL,1240,1320,up,1324,2010-11-24,breakout_idx
+AGIL,1400,1480,down,1481,2011-08-04,breakout_idx
+AGIL,1520,1600,up,1602,2012-03-28,breakout_idx
+AGIL,1920,2000,down,2001,2014-02-26,breakout_idx
+AGL,40,120,sequential,125,2010-10-18,breakout_idx (first chronological)
+AGL,640,720,down,733,2013-06-21,breakout_idx
+AGL,2640,2720,sequential,2721,2022-01-31,breakout_idx (first chronological)
+AGP,1840,1920,up,1932,2025-12-30,breakout_idx
+AGTL,1640,1720,up,1737,2012-11-23,breakout_idx
+AGTL,3680,3760,sequential,3761,2021-03-18,breakout_idx (first chronological)
+AGTL,4480,4560,sequential,4575,2024-08-12,breakout_idx (first chronological)
+AHCL,3240,3320,down,3323,2018-09-07,breakout_idx
+AICL,1800,1880,sequential,1881,2012-11-22,breakout_idx (first chronological)
+AICL,3800,3880,up,3881,2021-01-13,breakout_idx
+AICL,3920,4000,down,4009,2021-07-28,breakout_idx
+AIRLINK,160,240,down,241,2022-09-13,breakout_idx
+AKBL,1800,1880,up,1884,2012-10-19,breakout_idx
+AKDHL,240,320,whipsaw,321,2021-09-21,breakout_idx (first chronological)
+AKDHL,880,960,whipsaw,965,2024-11-26,breakout_idx (first chronological)
+AKGL,640,720,sequential,725,2013-05-27,breakout_idx (first chronological)
+ALAC,2720,2800,down,2801,2024-03-21,breakout_idx
+ALTN,2200,2280,whipsaw,2292,2021-09-06,breakout_idx (first chronological)
+ALTN,2400,2480,up,2481,2022-08-12,breakout_idx
+ALTN,2520,2600,down,2601,2023-02-17,breakout_idx
+ALTN,2600,2680,up,2681,2023-07-12,breakout_idx
+ANL,2360,2440,down,2441,2015-03-02,breakout_idx
+ANL,3600,3680,down,3681,2020-03-02,breakout_idx
+ANTM,440,520,sequential,521,2013-04-05,breakout_idx (first chronological)
+APL,1400,1480,up,1483,2011-05-20,breakout_idx
+APL,1560,1640,up,1644,2012-01-17,breakout_idx
+APL,3160,3240,down,3241,2018-07-05,breakout_idx
+APL,3880,3960,up,3961,2021-06-07,breakout_idx
+APL,3920,4000,sequential,4001,2021-08-05,breakout_idx (first chronological)
+APL,4120,4200,up,4216,2022-06-16,breakout_idx
+APL,4640,4720,up,4722,2024-07-08,breakout_idx
+ARPL,4720,4800,up,4801,2025-08-07,breakout_idx
+ARUJ,640,720,up,721,2014-10-15,breakout_idx
+ASC,80,160,up,171,2016-04-28,breakout_idx
+ASL,0,80,down,87,2012-12-18,breakout_idx
+ASL,160,240,whipsaw,241,2013-08-06,breakout_idx (first chronological)
+ASL,1320,1400,down,1401,2018-05-07,breakout_idx
+ASL,2400,2480,down,2481,2022-09-21,breakout_idx
+ASLPS,360,440,up,448,2015-01-05,breakout_idx
+ATBA,2600,2680,up,2681,2017-01-18,breakout_idx
+ATBA,4040,4120,sequential,4121,2023-02-21,breakout_idx (first chronological)
+ATIL,1320,1400,up,1413,2011-07-13,breakout_idx
+ATIL,2480,2560,up,2570,2016-09-16,breakout_idx
+ATLH,3640,3720,sequential,3721,2022-05-17,breakout_idx (first chronological)
+ATRL,1440,1520,sequential,1530,2011-05-26,breakout_idx (first chronological)
+ATRL,2560,2640,whipsaw,2641,2015-11-24,breakout_idx (first chronological)
+ATRL,2640,2720,up,2721,2016-03-18,breakout_idx
+ATRL,5000,5080,sequential,5081,2025-10-02,breakout_idx (first chronological)
+AVN,560,640,up,643,2016-09-19,breakout_idx
+AVN,1920,2000,down,2001,2022-03-08,breakout_idx
+AVN,2200,2280,sequential,2281,2023-04-27,breakout_idx (first chronological)
+BAFL,1840,1920,down,1924,2013-01-02,breakout_idx
+BAFL,3040,3120,down,3139,2017-11-28,breakout_idx
+BAFL,3840,3920,sequential,3921,2021-01-25,breakout_idx (first chronological)
+BAFL,4520,4600,up,4608,2023-11-06,breakout_idx
+BAHL,4120,4200,down,4208,2022-03-17,breakout_idx
+BCL,760,840,down,845,2011-09-09,breakout_idx
+BCL,3400,3480,up,3481,2024-12-04,breakout_idx
+BECO,400,480,up,496,2022-05-09,breakout_idx
+BERG,2280,2360,down,2362,2015-12-01,breakout_idx
+BERG,2840,2920,down,2934,2018-04-06,breakout_idx
+BGL,3800,3880,whipsaw,3887,2022-11-28,breakout_idx (first chronological)
+BHAT,1160,1240,up,1250,2025-06-27,breakout_idx
+BHAT,1240,1320,down,1321,2025-10-08,breakout_idx
+BIPL,2240,2320,sequential,2327,2015-10-13,breakout_idx (first chronological)
+BIPL,3920,4000,up,4001,2022-11-18,breakout_idx
+BNL,1280,1360,whipsaw,1361,2024-02-13,breakout_idx (first chronological)
+BOK,440,520,down,530,2008-03-06,breakout_idx
+BOK,3680,3760,down,3773,2022-03-17,breakout_idx
+BOK,4280,4360,sequential,4363,2025-02-21,breakout_idx (first chronological)
+BOK,4600,4680,up,4702,2026-07-10,breakout_idx
+BOP,3840,3920,sequential,3921,2021-01-18,breakout_idx (first chronological)
+BPL,720,800,down,802,2011-02-10,breakout_idx
+BWCL,1000,1080,whipsaw,1081,2015-04-16,breakout_idx (first chronological)
+BWHL,0,80,up,81,2005-08-22,breakout_idx
+BWHL,1400,1480,up,1492,2015-08-05,breakout_idx
+BWHL,1880,1960,down,1961,2018-05-30,breakout_idx
+BWHL,2280,2360,sequential,2373,2021-08-31,breakout_idx (first chronological)
+CENI,3480,3560,up,3595,2024-08-28,breakout_idx
+CEPB,840,920,down,921,2009-06-09,breakout_idx
+CEPB,1080,1160,sequential,1179,2010-06-30,breakout_idx (first chronological)
+CEPB,2200,2280,sequential,2284,2014-12-29,breakout_idx (first chronological)
+CEPB,2520,2600,sequential,2601,2016-04-11,breakout_idx (first chronological)
+CHBL,360,440,up,441,2007-05-18,breakout_idx
+CHBL,1560,1640,sequential,1659,2012-07-25,breakout_idx (first chronological)
+CHCC,1120,1200,sequential,1201,2010-02-09,breakout_idx (first chronological)
+CHCC,1560,1640,sequential,1642,2011-12-07,breakout_idx (first chronological)
+CHCC,2280,2360,up,2361,2014-10-31,breakout_idx
+CLOV,1480,1560,up,1561,2014-09-08,breakout_idx
+CNERGY,2840,2920,sequential,2937,2017-01-19,breakout_idx (first chronological)
+CPPL,3160,3240,up,3246,2018-12-20,breakout_idx
+CPPL,4480,4560,down,4561,2024-05-22,breakout_idx
+CRTM,2240,2320,sequential,2326,2017-02-20,breakout_idx (first chronological)
+CRTM,3560,3640,up,3641,2022-08-16,breakout_idx
+CSAP,4920,5000,up,5011,2025-09-12,breakout_idx
+CYAN,640,720,up,721,2009-09-16,breakout_idx
+CYAN,1840,1920,sequential,1928,2015-02-06,breakout_idx (first chronological)
+CYAN,4120,4200,up,4201,2024-10-22,breakout_idx
+DAAG,840,920,up,923,2017-08-07,breakout_idx
+DAAG,2240,2320,down,2322,2025-10-24,breakout_idx
+DBCI,1840,1920,sequential,1922,2013-05-07,breakout_idx (first chronological)
+DCL,680,760,up,768,2008-02-21,breakout_idx
+DCL,1560,1640,down,1641,2011-12-12,breakout_idx
+DCL,2520,2600,down,2605,2015-11-02,breakout_idx
+DCL,4760,4840,up,4854,2024-12-02,breakout_idx
+DCR,1240,1320,down,1331,2020-11-17,breakout_idx
+DFML,3840,3920,down,3930,2021-01-28,breakout_idx
+DFML,3880,3960,down,3961,2021-03-15,breakout_idx
+DGKC,680,760,up,764,2008-02-12,breakout_idx
+DGKC,1480,1560,down,1573,2011-08-03,breakout_idx
+DGKC,2920,3000,down,3015,2017-06-01,breakout_idx
+DNCC,240,320,down,324,2006-06-13,breakout_idx
+DNCC,1440,1520,sequential,1522,2013-07-03,breakout_idx (first chronological)
+DNCC,2160,2240,sequential,2241,2017-05-02,breakout_idx (first chronological)
+DOL,680,760,down,761,2011-12-09,breakout_idx
+DOL,3200,3280,whipsaw,3282,2022-02-11,breakout_idx (first chronological)
+DOL,3560,3640,down,3646,2023-08-07,breakout_idx
+DOL,4080,4160,sequential,4161,2025-09-08,breakout_idx (first chronological)
+DSL,2280,2360,whipsaw,2362,2017-10-13,breakout_idx (first chronological)
+DSL,3080,3160,sequential,3172,2021-01-19,breakout_idx (first chronological)
+DSL,4000,4080,up,4091,2024-10-14,breakout_idx
+DSL,4360,4440,down,4441,2026-03-05,breakout_idx
+DYNO,400,480,sequential,481,2008-03-27,breakout_idx (first chronological)
+DYNO,880,960,down,992,2011-04-18,breakout_idx
+ECOP,280,360,down,376,2006-07-13,breakout_idx
+ECOP,1040,1120,down,1121,2009-12-08,breakout_idx
+ECOP,4920,5000,up,5004,2026-06-11,breakout_idx
+EFERT,520,600,down,601,2016-06-17,breakout_idx
+EFERT,1320,1400,up,1401,2019-09-20,breakout_idx
+EFUG,1680,1760,up,1763,2012-08-31,breakout_idx
+EFUG,1800,1880,up,1881,2013-02-28,breakout_idx
+EFUL,120,200,up,201,2006-06-07,breakout_idx
+EFUL,760,840,sequential,841,2009-09-03,breakout_idx (first chronological)
+EFUL,2760,2840,sequential,2841,2019-04-19,breakout_idx (first chronological)
+ENGRO,80,160,up,161,2005-08-23,breakout_idx
+ENGRO,1280,1360,up,1381,2010-10-13,breakout_idx
+ENGRO,1320,1400,up,1405,2010-11-22,breakout_idx
+ENGRO,1840,1920,sequential,1930,2013-01-02,breakout_idx (first chronological)
+ENGRO,1880,1960,up,1961,2013-02-18,breakout_idx
+ENGRO,4200,4280,down,4284,2022-07-05,breakout_idx
+EPCL,2840,2920,sequential,2923,2020-06-11,breakout_idx (first chronological)
+EPCLPS,280,360,up,364,2025-11-21,breakout_idx
+EPQL,960,1040,up,1053,2019-01-23,breakout_idx
+EPQL,1960,2040,sequential,2045,2023-01-30,breakout_idx (first chronological)
+EPQL,2040,2120,down,2123,2023-05-26,breakout_idx
+EXIDE,4120,4200,up,4221,2025-07-02,breakout_idx
+EXIDE,4160,4240,down,4242,2025-07-31,breakout_idx
+FABL,600,680,down,681,2007-10-04,breakout_idx
+FABL,2040,2120,sequential,2127,2013-11-06,breakout_idx (first chronological)
+FASM,120,200,down,201,2009-03-24,breakout_idx
+FASM,360,440,up,441,2012-09-03,breakout_idx
+FATIMA,1240,1320,up,1323,2015-07-03,breakout_idx
+FATIMA,2080,2160,down,2161,2018-11-26,breakout_idx
+FCCL,2520,2600,up,2612,2015-10-09,breakout_idx
+FCCL,2560,2640,sequential,2647,2015-11-30,breakout_idx (first chronological)
+FCCL,3920,4000,none,4000,2021-05-19,window_end (no breakout occurred)
+FCCL,5080,5160,down,5167,2026-01-29,breakout_idx
+FCEPL,720,800,up,808,2014-11-25,breakout_idx
+FCEPL,1000,1080,down,1093,2016-01-15,breakout_idx
+FCEPL,2920,3000,up,3004,2023-10-04,breakout_idx
+FCEPL,3280,3360,sequential,3384,2025-04-21,breakout_idx (first chronological)
+FCEPL,3480,3560,sequential,3565,2026-01-07,breakout_idx (first chronological)
+FECTC,3520,3600,up,3606,2021-01-06,breakout_idx
+FECTC,4240,4320,down,4323,2024-06-25,breakout_idx
+FEROZ,1240,1320,sequential,1333,2011-07-15,breakout_idx (first chronological)
+FFC,360,440,up,445,2006-10-17,breakout_idx
+FFC,400,480,down,481,2006-12-15,breakout_idx
+FFC,2760,2840,down,2843,2016-09-05,breakout_idx
+FFC,3520,3600,up,3603,2019-10-07,breakout_idx
+FFC,4880,4960,down,4961,2025-03-26,breakout_idx
+FFL,280,360,sequential,372,2009-09-25,breakout_idx (first chronological)
+FLYNG,160,240,down,241,2008-04-22,breakout_idx
+FLYNG,1320,1400,down,1401,2013-02-28,breakout_idx
+FLYNG,3680,3760,down,3761,2022-12-12,breakout_idx
+FML,1720,1800,down,1807,2023-01-12,breakout_idx
+GAL,520,600,up,601,2026-06-10,breakout_idx
+GATM,840,920,sequential,922,2012-08-02,breakout_idx (first chronological)
+GATM,1000,1080,up,1081,2013-05-09,breakout_idx
+GFIL,1720,1800,down,1813,2019-01-02,breakout_idx
+GFIL,2840,2920,down,2923,2025-02-10,breakout_idx
+GGGL,1880,1960,down,1961,2023-05-12,breakout_idx
+GGL,1760,1840,down,1841,2017-06-01,breakout_idx
+GHGL,40,120,down,128,2005-10-05,breakout_idx
+GHGL,1360,1440,down,1442,2011-07-27,breakout_idx
+GHGL,2480,2560,whipsaw,2565,2016-05-27,breakout_idx (first chronological)
+GHGL,3200,3280,down,3292,2019-05-06,breakout_idx
+GHGL,3880,3960,down,3991,2022-03-08,breakout_idx
+GHGL,4000,4080,sequential,4086,2022-08-01,breakout_idx (first chronological)
+GHNI,920,1000,down,1001,2010-08-10,breakout_idx
+GHNI,1360,1440,up,1447,2012-07-05,breakout_idx
+GHNI,4040,4120,down,4121,2023-05-22,breakout_idx
+GLAXO,1480,1560,down,1567,2011-08-05,breakout_idx
+GLAXO,2440,2520,up,2521,2015-06-18,breakout_idx
+GLAXO,2560,2640,down,2641,2015-12-14,breakout_idx
+GLAXO,3400,3480,down,3481,2019-05-02,breakout_idx
+GLPL,640,720,sequential,724,2010-02-09,breakout_idx (first chronological)
+GLPL,720,800,down,807,2010-06-23,breakout_idx
+GTYR,4640,4720,down,4721,2024-09-26,breakout_idx
+GVGL,720,800,down,801,2014-08-12,breakout_idx
+GWLC,960,1040,up,1052,2009-06-15,breakout_idx
+GWLC,2720,2800,down,2814,2017-05-30,breakout_idx
+HALEON,0,80,up,84,2023-06-05,breakout_idx
+HASCOL,2600,2680,sequential,2685,2025-03-19,breakout_idx (first chronological)
+HBL,2040,2120,up,2123,2016-04-27,breakout_idx
+HBL,3200,3280,sequential,3288,2021-01-08,breakout_idx (first chronological)
+HBL,3800,3880,sequential,3885,2023-06-08,breakout_idx (first chronological)
+HINO,1840,1920,up,1935,2015-05-04,breakout_idx
+HINOON,680,760,down,762,2008-03-24,breakout_idx
+HMB,880,960,up,966,2009-04-24,breakout_idx
+HMB,1080,1160,down,1175,2010-03-01,breakout_idx
+HMB,4200,4280,up,4292,2022-12-09,breakout_idx
+HMB,4960,5040,up,5045,2026-01-01,breakout_idx
+HTL,1560,1640,down,1642,2022-10-20,breakout_idx
+HUBC,1320,1400,up,1401,2010-11-23,breakout_idx
+HUMNL,360,440,down,441,2008-06-13,breakout_idx
+HUMNL,3640,3720,down,3725,2022-09-20,breakout_idx
+IBLHL,360,440,up,441,2011-01-28,breakout_idx
+IBLHL,3320,3400,down,3426,2023-05-18,breakout_idx
+IBLHL,3920,4000,down,4002,2025-09-22,breakout_idx
+IGIL,2120,2200,down,2203,2021-06-08,breakout_idx
+IGIL,2640,2720,sequential,2730,2024-10-01,breakout_idx (first chronological)
+ILP,800,880,down,881,2022-10-28,breakout_idx
+INDU,3000,3080,down,3084,2017-12-08,breakout_idx
+INDU,3360,3440,down,3441,2019-05-17,breakout_idx
+ISIL,1680,1760,down,1761,2025-04-15,breakout_idx
+ISL,2560,2640,sequential,2641,2022-02-25,breakout_idx (first chronological)
+ISL,2840,2920,sequential,2932,2023-05-04,breakout_idx (first chronological)
+ISL,3320,3400,sequential,3405,2025-04-07,breakout_idx (first chronological)
+ITTEFAQ,120,200,down,201,2018-04-19,breakout_idx
+JGICL,400,480,up,481,2007-07-17,breakout_idx
+JGICL,1120,1200,up,1201,2011-03-09,breakout_idx
+JGICL,3640,3720,sequential,3721,2026-01-01,breakout_idx (first chronological)
+JLICL,720,800,sequential,801,2008-04-09,breakout_idx (first chronological)
+JLICL,1560,1640,up,1641,2012-08-28,breakout_idx
+JLICL,2160,2240,down,2241,2016-01-22,breakout_idx
+JLICL,4200,4280,up,4281,2026-02-09,breakout_idx
+JLICL,4280,4360,up,4361,2026-06-12,breakout_idx
+JSBL,160,240,sequential,242,2008-03-04,breakout_idx (first chronological)
+JSBL,1200,1280,up,1281,2012-07-25,breakout_idx
+JSBL,1600,1680,sequential,1684,2014-03-18,breakout_idx (first chronological)
+JSBL,3240,3320,sequential,3321,2021-01-19,breakout_idx (first chronological)
+JSBL,3360,3440,down,3448,2021-07-30,breakout_idx
+JUBS,560,640,sequential,641,2013-10-29,breakout_idx (first chronological)
+JVDC,1120,1200,up,1201,2015-06-25,breakout_idx
+JVDC,1960,2040,up,2041,2019-02-20,breakout_idx
+KAPCO,1680,1760,up,1762,2012-05-29,breakout_idx
+KAPCO,2440,2520,sequential,2532,2015-07-09,breakout_idx (first chronological)
+KAPCO,2480,2560,sequential,2561,2015-08-25,breakout_idx (first chronological)
+KAPCO,3920,4000,sequential,4001,2021-06-17,breakout_idx (first chronological)
+KAPCO,4200,4280,up,4282,2022-08-05,breakout_idx
+KAPCO,5160,5240,up,5241,2026-06-23,breakout_idx
+KEL,3160,3240,sequential,3242,2018-03-28,breakout_idx (first chronological)
+KML,1280,1360,sequential,1373,2013-07-25,breakout_idx (first chronological)
+KOHC,2120,2200,sequential,2201,2014-04-25,breakout_idx (first chronological)
+KOHC,3800,3880,whipsaw,3883,2021-02-09,breakout_idx (first chronological)
+KOHC,4240,4320,down,4327,2022-11-28,breakout_idx
+KOHC,4840,4920,down,4922,2025-04-28,breakout_idx
+KOHE,2440,2520,up,2540,2016-08-03,breakout_idx
+KOHP,3560,3640,down,3649,2022-10-11,breakout_idx
+KOIL,1720,1800,sequential,1801,2013-07-29,breakout_idx (first chronological)
+KOIL,3760,3840,whipsaw,3855,2022-02-24,breakout_idx (first chronological)
+KOIL,3960,4040,up,4041,2022-12-07,breakout_idx
+KTML,2200,2280,sequential,2281,2014-08-04,breakout_idx (first chronological)
+LOADS,1120,1200,down,1201,2021-09-08,breakout_idx
+LOADS,2200,2280,down,2288,2026-01-22,breakout_idx
+LOTCHEM,1000,1080,up,1084,2009-08-04,breakout_idx
+LOTCHEM,1720,1800,down,1801,2012-06-21,breakout_idx
+LOTCHEM,4400,4480,up,4484,2023-04-26,breakout_idx
+LPGL,1640,1720,down,1731,2025-10-06,breakout_idx
+LPL,80,160,down,161,2014-04-15,breakout_idx
+LPL,120,200,down,207,2014-06-19,breakout_idx
+LPL,400,480,down,488,2015-08-19,breakout_idx
+LPL,720,800,up,821,2016-12-28,breakout_idx
+LUCK,2040,2120,up,2121,2013-10-28,breakout_idx
+MACFL,560,640,down,641,2007-11-07,breakout_idx
+MACFL,3800,3880,up,3881,2022-08-16,breakout_idx
+MACTER,360,440,sequential,441,2021-01-21,breakout_idx (first chronological)
+MACTER,1000,1080,down,1086,2025-08-01,breakout_idx
+MARI,680,760,whipsaw,763,2008-02-20,breakout_idx (first chronological)
+MCB,1280,1360,up,1379,2010-10-15,breakout_idx
+MCB,1800,1880,up,1882,2012-10-30,breakout_idx
+MCB,2080,2160,whipsaw,2165,2013-12-20,breakout_idx (first chronological)
+MCB,2120,2200,down,2201,2014-02-13,breakout_idx
+MCB,3080,3160,up,3162,2017-12-28,breakout_idx
+MCB,4120,4200,down,4201,2022-03-08,breakout_idx
+MEBL,1000,1080,up,1082,2009-08-24,breakout_idx
+MEBL,1560,1640,sequential,1645,2011-12-07,breakout_idx (first chronological)
+MEBL,2080,2160,down,2169,2014-01-24,breakout_idx
+MEBL,2280,2360,up,2361,2014-11-13,breakout_idx
+MEBL,4800,4880,up,4893,2025-03-17,breakout_idx
+MERIT,720,800,down,801,2010-08-10,breakout_idx
+MERIT,1400,1480,down,1493,2014-05-05,breakout_idx
+MERIT,4240,4320,down,4344,2026-01-14,breakout_idx
+MERIT,4280,4360,down,4361,2026-02-09,breakout_idx
+MFFL,2040,2120,down,2121,2018-01-05,breakout_idx
+MFL,520,600,up,601,2020-07-22,breakout_idx
+MFL,1240,1320,up,1321,2023-07-20,breakout_idx
+MLCF,1360,1440,down,1441,2011-01-18,breakout_idx
+MLCF,2560,2640,down,2643,2015-11-25,breakout_idx
+MLCF,4080,4160,down,4168,2022-01-19,breakout_idx
+MSCL,1520,1600,whipsaw,1601,2023-03-13,breakout_idx (first chronological)
+MSOT,840,920,whipsaw,921,2013-03-04,breakout_idx (first chronological)
+MSOT,960,1040,up,1041,2013-11-04,breakout_idx
+MTL,200,280,up,283,2006-05-03,breakout_idx
+MTL,1560,1640,up,1643,2012-01-16,breakout_idx
+MTL,3360,3440,sequential,3448,2019-04-26,breakout_idx (first chronological)
+MTL,4160,4240,down,4243,2022-07-19,breakout_idx
+MTL,5040,5120,sequential,5123,2026-02-02,breakout_idx (first chronological)
+MUGHAL,1120,1200,sequential,1201,2020-02-20,breakout_idx (first chronological)
+MUREB,2600,2680,sequential,2681,2018-02-08,breakout_idx (first chronological)
+MUREB,2800,2880,up,2882,2019-01-01,breakout_idx
+MUREB,3120,3200,up,3208,2020-08-27,breakout_idx
+MWMP,760,840,up,841,2010-04-15,breakout_idx
+NATF,680,760,down,762,2010-01-28,breakout_idx
+NATF,1120,1200,up,1213,2012-01-03,breakout_idx
+NATF,2000,2080,whipsaw,2081,2015-08-18,breakout_idx (first chronological)
+NATF,3440,3520,down,3521,2021-10-18,breakout_idx
+NBP,1320,1400,up,1401,2010-11-08,breakout_idx
+NBP,1760,1840,down,1842,2012-08-16,breakout_idx
+NBP,3160,3240,sequential,3242,2018-04-13,breakout_idx (first chronological)
+NBP,4840,4920,up,4921,2025-01-29,breakout_idx
+NCL,360,440,down,444,2006-10-16,breakout_idx
+NCL,1280,1360,whipsaw,1361,2010-09-16,breakout_idx (first chronological)
+NCL,2640,2720,up,2740,2016-04-13,breakout_idx
+NCL,3360,3440,down,3476,2019-04-02,breakout_idx
+NCPL,0,80,down,81,2010-02-23,breakout_idx
+NCPL,1240,1320,whipsaw,1333,2015-03-30,breakout_idx (first chronological)
+NESTLE,2720,2800,up,2828,2022-08-01,breakout_idx
+NETSOL,1200,1280,up,1281,2011-01-18,breakout_idx
+NICL,2480,2560,up,2561,2015-07-31,breakout_idx
+NICL,2560,2640,down,2643,2015-11-30,breakout_idx
+NML,3400,3480,down,3481,2019-04-09,breakout_idx
+NRL,2360,2440,sequential,2441,2015-02-11,breakout_idx (first chronological)
+NRSL,4720,4800,sequential,4806,2024-10-30,breakout_idx (first chronological)
+OBOY,440,520,down,527,2023-03-30,breakout_idx
+OGDC,360,440,up,441,2006-10-11,breakout_idx
+OGDC,480,560,up,562,2007-04-18,breakout_idx
+OGDC,520,600,down,607,2007-06-21,breakout_idx
+OGDC,2400,2480,down,2482,2015-03-16,breakout_idx
+OGDC,3760,3840,down,3841,2020-09-09,breakout_idx
+PABC,480,560,up,561,2023-10-24,breakout_idx
+PACE,2240,2320,up,2333,2016-08-26,breakout_idx
+PAEL,1000,1080,down,1085,2009-08-05,breakout_idx
+PAEL,2160,2240,up,2243,2014-04-08,breakout_idx
+PAEL,2680,2760,up,2761,2016-05-10,breakout_idx
+PAEL,4200,4280,sequential,4293,2022-07-21,breakout_idx (first chronological)
+PAEL,4240,4320,sequential,4334,2022-09-20,breakout_idx (first chronological)
+PAEL,4640,4720,up,4728,2024-04-23,breakout_idx
+PAEL,4760,4840,up,4859,2024-11-05,breakout_idx
+PAEL,4800,4880,up,4881,2024-12-05,breakout_idx
+PAEL,4960,5040,up,5044,2025-08-05,breakout_idx
+PAKD,40,120,up,121,2005-07-11,breakout_idx
+PAKD,600,680,down,700,2008-04-22,breakout_idx
+PAKD,2960,3040,down,3041,2021-06-29,breakout_idx
+PAKOXY,2080,2160,up,2163,2014-09-19,breakout_idx
+PAKOXY,3000,3080,down,3090,2018-07-27,breakout_idx
+PAKOXY,3800,3880,up,3887,2022-02-07,breakout_idx
+PAKOXY,4400,4480,up,4481,2024-08-09,breakout_idx
+PAKRI,2280,2360,up,2364,2014-10-28,breakout_idx
+PAKRI,3680,3760,up,3762,2020-08-17,breakout_idx
+PCAL,1720,1800,sequential,1808,2013-11-11,breakout_idx (first chronological)
+PECO,0,80,up,82,2005-12-07,breakout_idx
+PECO,1560,1640,sequential,1649,2018-04-24,breakout_idx (first chronological)
+PIBTL,1640,1720,down,1725,2021-01-07,breakout_idx
+PICT,680,760,sequential,761,2008-02-11,breakout_idx (first chronological)
+PICT,2600,2680,up,2681,2016-10-17,breakout_idx
+PICT,4680,4760,up,4771,2025-12-17,breakout_idx
+PICT,4720,4800,down,4801,2026-01-29,breakout_idx
+PIL,1040,1120,up,1132,2012-03-06,breakout_idx
+PIL,3080,3160,up,3170,2022-08-10,breakout_idx
+PIOC,2560,2640,up,2641,2016-01-22,breakout_idx
+PIOC,3880,3960,up,3965,2021-05-31,breakout_idx
+PIOC,4480,4560,up,4561,2023-10-24,breakout_idx
+PKGI,640,720,up,733,2010-11-25,breakout_idx
+PKGI,1320,1400,sequential,1402,2016-02-04,breakout_idx (first chronological)
+PKGP,1440,1520,up,1521,2017-09-25,breakout_idx
+PKGP,1960,2040,up,2041,2019-11-29,breakout_idx
+PKGP,2960,3040,up,3051,2024-04-08,breakout_idx
+PKGP,3080,3160,sequential,3161,2024-09-30,breakout_idx (first chronological)
+PKGS,1000,1080,sequential,1092,2009-10-09,breakout_idx (first chronological)
+PKGS,1320,1400,up,1401,2011-01-07,breakout_idx
+PKGS,3480,3560,up,3570,2019-11-06,breakout_idx
+PKGS,4040,4120,down,4130,2022-02-08,breakout_idx
+PNSC,920,1000,sequential,1001,2009-06-15,breakout_idx (first chronological)
+PNSC,1240,1320,sequential,1326,2010-10-01,breakout_idx (first chronological)
+PNSC,1280,1360,sequential,1361,2010-11-30,breakout_idx (first chronological)
+PNSC,4640,4720,up,4746,2024-09-25,breakout_idx
+POL,360,440,up,446,2006-10-18,breakout_idx
+POL,400,480,sequential,493,2007-01-05,breakout_idx (first chronological)
+POL,1640,1720,sequential,1721,2012-02-28,breakout_idx (first chronological)
+POL,1720,1800,up,1809,2012-07-03,breakout_idx
+POL,2440,2520,sequential,2525,2015-05-29,breakout_idx (first chronological)
+POWER,160,240,sequential,241,2006-02-17,breakout_idx (first chronological)
+POWER,4560,4640,up,4659,2024-04-02,breakout_idx
+POWER,4920,5000,up,5001,2025-08-27,breakout_idx
+POWERPS,40,120,up,130,2024-10-24,breakout_idx
+POWERPS,400,480,up,481,2026-06-17,breakout_idx
+PPL,400,480,sequential,483,2006-12-19,breakout_idx (first chronological)
+PPL,520,600,down,613,2007-06-29,breakout_idx
+PPL,1160,1240,sequential,1241,2010-04-06,breakout_idx (first chronological)
+PPL,2760,2840,down,2856,2016-10-10,breakout_idx
+PPL,3000,3080,up,3087,2017-09-14,breakout_idx
+PPP,80,160,whipsaw,162,2006-11-30,breakout_idx (first chronological)
+PPP,320,400,down,411,2009-11-03,breakout_idx
+PPVC,960,1040,up,1042,2016-12-22,breakout_idx
+PRL,1680,1760,down,1765,2012-06-05,breakout_idx
+PRL,2480,2560,down,2561,2015-08-27,breakout_idx
+PRL,2640,2720,up,2721,2016-04-18,breakout_idx
+PRL,2760,2840,down,2849,2016-10-27,breakout_idx
+PRL,2840,2920,down,2921,2017-02-07,breakout_idx
+PRL,3920,4000,down,4005,2021-06-25,breakout_idx
+PRL,4120,4200,up,4204,2022-04-11,breakout_idx
+PSEL,920,1000,up,1002,2016-05-27,breakout_idx
+PSO,1160,1240,down,1265,2010-05-07,breakout_idx
+PSO,1200,1280,down,1281,2010-05-31,breakout_idx
+PSO,1480,1560,down,1561,2011-07-11,breakout_idx
+PSO,1600,1680,up,1685,2012-01-16,breakout_idx
+PTC,2680,2760,sequential,2767,2016-05-19,breakout_idx (first chronological)
+QUET,1280,1360,up,1361,2022-11-21,breakout_idx
+QUICE,3400,3480,down,3483,2020-02-14,breakout_idx
+QUICE,3640,3720,down,3746,2021-03-04,breakout_idx
+QUICE,4760,4840,up,4843,2025-08-26,breakout_idx
+REDCO,2040,2120,down,2129,2019-04-04,breakout_idx
+RICL,840,920,sequential,922,2009-12-09,breakout_idx (first chronological)
+RMPL,1800,1880,up,1881,2021-07-26,breakout_idx
+RMPL,2400,2480,down,2485,2025-04-24,breakout_idx
+SARC,1320,1400,sequential,1401,2019-05-09,breakout_idx (first chronological)
+SAZEW,2000,2080,up,2085,2015-02-06,breakout_idx
+SBL,2880,2960,up,2975,2018-03-28,breakout_idx
+SCL,1280,1360,down,1361,2021-10-14,breakout_idx
+SCL,1800,1880,sequential,1894,2025-03-25,breakout_idx (first chronological)
+SEARL,1040,1120,down,1122,2010-02-11,breakout_idx
+SEARL,1280,1360,up,1361,2011-01-25,breakout_idx
+SEARL,1560,1640,up,1651,2012-04-18,breakout_idx
+SEARL,4160,4240,down,4248,2022-10-20,breakout_idx
+SEARL,4640,4720,sequential,4729,2024-10-04,breakout_idx (first chronological)
+SEL,880,960,up,970,2009-06-18,breakout_idx
+SEPL,320,400,up,401,2007-04-26,breakout_idx
+SEPL,3760,3840,up,3871,2022-08-05,breakout_idx
+SEPL,4200,4280,down,4282,2024-05-22,breakout_idx
+SEPL,4720,4800,none,4800,2026-07-01,window_end (no breakout occurred)
+SHEL,480,560,up,561,2007-04-18,breakout_idx
+SHEL,960,1040,up,1042,2009-07-13,breakout_idx
+SHEL,3360,3440,down,3441,2019-03-18,breakout_idx
+SHEZ,600,680,down,681,2011-08-10,breakout_idx
+SHEZ,3040,3120,up,3121,2025-04-21,breakout_idx
+SHEZ,3320,3400,up,3406,2026-06-15,breakout_idx
+SHFA,40,120,sequential,133,2005-08-12,breakout_idx (first chronological)
+SHFA,720,800,down,803,2009-04-01,breakout_idx
+SHFA,1120,1200,up,1208,2011-05-02,breakout_idx
+SHFA,4280,4360,sequential,4361,2026-01-15,breakout_idx (first chronological)
+SHNI,1080,1160,down,1165,2013-05-06,breakout_idx
+SILK,1320,1400,up,1417,2011-01-06,breakout_idx
+SILK,1760,1840,sequential,1841,2012-09-19,breakout_idx (first chronological)
+SILK,1800,1880,sequential,1887,2012-11-28,breakout_idx (first chronological)
+SITC,520,600,up,627,2008-03-31,breakout_idx
+SITC,800,880,up,881,2009-10-01,breakout_idx
+SITC,3800,3880,sequential,3884,2023-08-30,breakout_idx (first chronological)
+SMCPL,120,200,up,201,2011-01-13,breakout_idx
+SMCPL,1160,1240,down,1241,2016-12-15,breakout_idx
+SMCPL,2520,2600,sequential,2601,2023-07-11,breakout_idx (first chronological)
+SMCPL,2640,2720,up,2737,2024-04-22,breakout_idx
+SMCPL,3080,3160,up,3161,2026-01-06,breakout_idx
+SNBL,1920,2000,up,2001,2013-05-07,breakout_idx
+SNBL,4280,4360,down,4361,2023-06-19,breakout_idx
+SNGP,560,640,down,642,2007-08-09,breakout_idx
+SPEL,680,760,down,769,2018-05-14,breakout_idx
+SPWL,920,1000,down,1023,2019-02-14,breakout_idx
+SSGC,360,440,sequential,441,2006-10-11,breakout_idx (first chronological)
+SSGC,400,480,sequential,481,2006-12-15,breakout_idx (first chronological)
+SSGC,520,600,up,618,2007-07-06,breakout_idx
+SSGC,680,760,sequential,761,2008-02-07,breakout_idx (first chronological)
+SSGC,920,1000,down,1011,2009-05-19,breakout_idx
+SSGC,2080,2160,up,2163,2014-01-08,breakout_idx
+SSGC,3000,3080,down,3088,2017-10-03,breakout_idx
+SSGC,3840,3920,down,3922,2021-02-11,breakout_idx
+SSGC,4760,4840,up,4841,2024-11-05,breakout_idx
+SSGC,5080,5160,down,5161,2026-02-13,breakout_idx
+STCL,3480,3560,down,3566,2022-09-12,breakout_idx
+STCL,3640,3720,up,3722,2023-04-26,breakout_idx
+STPL,120,200,down,202,2006-10-05,breakout_idx
+SYS,120,200,down,201,2015-11-27,breakout_idx
+SYS,2280,2360,up,2384,2024-10-11,breakout_idx
+TELE,360,440,down,444,2006-10-16,breakout_idx
+TELE,3200,3280,sequential,3283,2018-06-20,breakout_idx (first chronological)
+TGL,3360,3440,up,3443,2020-12-02,breakout_idx
+TGL,3560,3640,sequential,3658,2021-10-20,breakout_idx (first chronological)
+TGL,4280,4360,sequential,4363,2024-08-28,breakout_idx (first chronological)
+THALL,2400,2480,up,2484,2015-07-24,breakout_idx
+THCCL,880,960,up,964,2014-02-24,breakout_idx
+THCCL,920,1000,sequential,1005,2014-06-13,breakout_idx (first chronological)
+THCCL,960,1040,up,1041,2014-10-02,breakout_idx
+TOWL,360,440,sequential,441,2017-11-24,breakout_idx (first chronological)
+TOWL,1840,1920,whipsaw,1930,2026-02-02,breakout_idx (first chronological)
+TPLP,400,480,down,481,2019-11-12,breakout_idx
+TPLP,720,800,sequential,808,2021-03-26,breakout_idx (first chronological)
+TREET,3720,3800,up,3801,2023-10-23,breakout_idx
+TRG,960,1040,down,1041,2009-05-26,breakout_idx
+TRG,2320,2400,up,2408,2014-12-02,breakout_idx
+TRG,3400,3480,down,3487,2019-04-04,breakout_idx
+TRIPF,3640,3720,sequential,3723,2021-01-04,breakout_idx (first chronological)
+TSPL,3400,3480,down,3489,2020-02-26,breakout_idx
+UBDL,1000,1080,sequential,1081,2020-09-25,breakout_idx (first chronological)
+UBL,1600,1680,up,1684,2012-07-06,breakout_idx
+UBL,2000,2080,down,2088,2014-02-28,breakout_idx
+UBL,2360,2440,sequential,2441,2015-08-04,breakout_idx (first chronological)
+UBL,3360,3440,down,3441,2019-08-21,breakout_idx
+UBL,4520,4600,up,4601,2024-04-24,breakout_idx
+UDPL,2880,2960,up,2964,2026-06-23,breakout_idx
+UNIC,2480,2560,sequential,2575,2019-10-14,breakout_idx (first chronological)
+UNIC,2520,2600,up,2601,2019-11-19,breakout_idx
+UNIC,2680,2760,sequential,2772,2020-08-26,breakout_idx (first chronological)
+UNIC,3120,3200,down,3201,2022-08-29,breakout_idx
+UNIC,3640,3720,sequential,3723,2024-12-06,breakout_idx (first chronological)
+UPFL,400,480,up,490,2012-02-23,breakout_idx
+UVIC,1280,1360,whipsaw,1361,2014-06-10,breakout_idx (first chronological)
+WAHN,1080,1160,down,1172,2011-05-03,breakout_idx
+WAVES,920,1000,up,1002,2010-12-24,breakout_idx
+WAVES,3840,3920,up,3925,2023-11-06,breakout_idx
+WTL,2440,2520,up,2527,2016-03-09,breakout_idx
+ZAHID,560,640,sequential,643,2013-05-31,breakout_idx (first chronological)
+ZIL,2360,2440,down,2441,2021-03-05,breakout_idx
+ZIL,2920,3000,sequential,3014,2025-02-25,breakout_idx (first chronological)

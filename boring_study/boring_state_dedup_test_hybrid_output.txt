@@ -1,0 +1,49 @@
+Decile-9 + liquidity-gated raw rows: 2,130
+
+Total occurrences: 2,130
+Survivors: 1,076 (50.52%)
+Suppressed: 1,054 (49.48%)
+Censored survivors (still open at data-end, block their symbol for remaining history): 7
+
+Direct verification -- survivor open-interval overlaps for the same symbol: 0 (should be 0 by construction; a nonzero count would indicate a simulation bug)
+
+############################################################################################
+# EV comparison: survivors vs suppressed, HYBRID exit logic
+############################################################################################
+
+--- ALL decile-9+gated occurrences (baseline, no dedup filter) (n=2130) ---
+  n_resolved=2122  censored=8 (0.4%)
+  gross_mean=4.317%  net_friction_mean=4.117%  net_friction_cgt_mean=3.163%
+  win_rate=45.6%  median=0.000%  p25=-3.756%  p75=6.106%
+  avg days held=2.5  median days held=2.0
+
+--- SURVIVING occurrences (pass the state-dedup filter) (n=1076) ---
+  n_resolved=1069  censored=7 (0.7%)
+  gross_mean=3.549%  net_friction_mean=3.349%  net_friction_cgt_mean=2.501%
+  win_rate=45.4%  median=-0.062%  p25=-3.906%  p75=5.465%
+  avg days held=2.5  median days held=2.0
+
+--- SUPPRESSED occurrences (hypothetical outcome had they fired anyway) (n=1054) ---
+  n_resolved=1053  censored=1 (0.1%)
+  gross_mean=5.097%  net_friction_mean=4.897%  net_friction_cgt_mean=3.836%
+  win_rate=45.9%  median=0.000%  p25=-3.576%  p75=7.493%
+  avg days held=2.5  median days held=2.0
+
+############################################################################################
+# Frequency
+############################################################################################
+Date span: 20.7 years
+Raw signals/year (current, unsuppressed): 103.1
+Surviving signals/year (state-dedup applied): 52.1
+Reduction: 49.5%
+
+############################################################################################
+# Same-symbol simultaneous-open check (the 1,483-pair test from round 6/7)
+############################################################################################
+Adjacent same-symbol pairs within N=20 trading days: 1483
+Both members survive the dedup filter (not necessarily simultaneously open): 175 (11.8%)
+Both members SIMULTANEOUSLY OPEN at the same time: 0 (should be 0 by construction)
+
+============================================================================================
+Done.
+============================================================================================

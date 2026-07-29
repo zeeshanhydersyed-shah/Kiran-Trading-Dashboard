@@ -1,0 +1,39 @@
+Base occurrences: 108,199
+Computing per-symbol trailing-60d return (own_ret60)...
+Long-format valid rows: 1,480,288
+Building (sector,date) -> sum, count for LOO subtraction...
+Building (symbol,date) -> own_ret60 lookup...
+Computing LOO sector_rs for each base occurrence...
+LOO sector_rs computed: 88,915 / 108,199 (dropped for single-stock-sector: 756)
+
+Complete-case N for comparison: 88,915
+
+==========================================================================================
+1. CONTEMPORANEOUS CORRELATION: self-inclusive vs leave-one-out sector_rs
+==========================================================================================
+Original (self-inclusive)  corr(stock_rs, sector_rs)     = 0.5888
+Corrected (leave-one-out)  corr(stock_rs, sector_rs_loo) = 0.0655
+Absolute change = 0.5233   Percent reduction = 88.9%
+R^2: original=0.3467  corrected=0.0043
+
+==========================================================================================
+2. PARTIAL CORRELATIONS (mediation test) -- self-inclusive vs LOO
+==========================================================================================
+ORIGINAL (self-inclusive sector_rs):
+  Raw corr(sector_rs, vol) = 0.1714   Partial corr(sector_rs, vol | stock_rs) = -0.0188
+
+CORRECTED (LOO sector_rs):
+  Raw corr(sector_rs_loo, vol) = 0.0535   Partial corr(sector_rs_loo, vol | stock_rs) = 0.0346
+
+stock_rs vs vol, partial on ORIGINAL sector_rs  = 0.2695
+stock_rs vs vol, partial on LOO sector_rs       = 0.3131
+
+==========================================================================================
+3. OLS mediation model: vol ~ stock_rs + sector_rs (original vs LOO)
+==========================================================================================
+ORIGINAL:
+  stock_rs coef=0.00995  sector_rs coef=-0.00324  R^2=0.0999
+LOO-CORRECTED:
+  stock_rs coef=0.00949  sector_rs_loo coef=0.00531  R^2=0.1006
+
+Done.

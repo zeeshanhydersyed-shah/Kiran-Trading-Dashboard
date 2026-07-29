@@ -181,12 +181,72 @@ because they affect live trading-signal correctness on Cloud.
   page) consumes the 07-08/07-09 `sector_signals` rows before assuming it's
   safe to ignore.
 
+### `boring_signals.py` (Explorer "Boring Breakouts" toggle) has no Postgres port
+
+- **What's missing:** `boring_signals.py` is 100% SQLite (`sqlite3.connect(DB_PATH)`
+  hardcoded throughout, no `_PG_URL` branch anywhere), and its `_eligible_universe()`
+  depends on `stock_metadata`/`sectors` being fully populated -- tables built by
+  local-only, one-time scripts (`build_stock_metadata.py`, `load_bi_history.py`)
+  that GitHub Actions never runs. Same shape of gap as the pre-E8.7
+  `backfill_setup_log.py`/`leaders_scan.py` deferral above.
+- **Current handling:** `_render_boring_breakouts_section()` in `dashboard.py`
+  hard-blocks with `st.error(...)` when `_PG_URL` is set, before ever importing
+  `boring_signals` -- same pattern as the Data Health Confirm button. The SQLite
+  path (local use) is unaffected. `main.py`'s daily hook (`scan_boring_breakouts()`
+  / `update_open_signal_statuses()`) is still called unconditionally in
+  `cmd_update()`, wrapped in the standard per-hook try/except -- it won't break
+  the pipeline in GitHub Actions, but it also won't do anything useful there
+  (empty eligible universe on a fresh Actions checkout), so it's effectively a
+  no-op outside local runs for now.
+- **To close this gap:** port `boring_signals.py`'s core functions to Postgres
+  (`_pg`-suffixed siblings, following the `database_pg.py` convention), create
+  the `boring_signals` table in Supabase, and remove the hard block in
+  `dashboard.py`. Per this project's standing production-write discipline, the
+  actual migration/first write against live Supabase needs explicit sign-off
+  before it runs, same as E8.7.
+- **Research artifacts note:** all the "boring study" research docs/scripts/
+  outputs that produced this feature were moved into `boring_study/` (project
+  root, `psx_pipeline/boring_study/`) on 2026-07-11 for organization.
+  `boring_signals.py` itself stays in the project root, since it's the one
+  file from that thread that's actually imported by production code
+  (`main.py`, `dashboard.py`) -- moving it would require updating those
+  import paths too.
+
 ## Deferred / Not Started
 
 Different category from "Known Gaps" above — those are shipped-but-imperfect.
 This is work that was scoped and explicitly deferred, not yet attempted.
 
-### E8.7 — Postgres port of `backfill_setup_log.py` and `leaders_scan.py`
+### E8.7 — Postgres port of `backfill_setup_log.py` and `leaders_scan.py` — ✅ CODE DONE (2026-07-10), production write PENDING user sign-off
+
+**Code complete:** `leaders_scan.py` (`append_leaders_scan()`, `save_top_picks()`,
+`fill_leaders_forward_returns()`), `backfill_setup_log.py`
+(`append_setup_log_today()`), and `compute_forward_returns.py` (`main()`) all
+now branch `if _PG_URL: ..._pg()... else: ...sqlite...` following the
+`sector_signals.py`/`regime.py` reference pattern. Postgres path uses
+psycopg2 `RealDictCursor` + `%s` placeholders + `ON CONFLICT` (vs SQLite's
+`?`/`INSERT OR REPLACE`/`INSERT OR IGNORE`). Compiles clean; the Postgres
+query logic was verified read-only against live Supabase (connectivity,
+schema checks). **Not yet run for real against Supabase** — that write
+(deleting+rewriting today's rows in `leaders_scan`/`leaders_top_picks`, and
+inserting into `setup_log`) requires explicit user sign-off before
+execution, per this project's production-write discipline. Once run once
+(locally, with `.env`'s `SUPABASE_DB_URL`) and confirmed, the next scheduled
+`daily_scraper.yml` run will keep these tables fresh automatically — no
+further code change needed.
+
+**Gotcha found and fixed while porting:** `leaders_scan.scan_date`,
+`leaders_top_picks.scan_date`, and `leaders_top_picks.trigger_date` are
+`TEXT` columns in Postgres, while `stock_signals.date`/`prices.date`/
+`prices_adjusted.date` are native `DATE` columns — psycopg2 returns
+`datetime.date` objects for the latter, which fail silently-then-loudly
+(`operator does not exist: text = date`) when compared/written against the
+former without an explicit `str()` cast. Fixed at each of the three
+crossover points; worth checking for the same pattern if any other table's
+date column is touched during a future port.
+
+<details>
+<summary>Original deferral notes (2026-07 pre-port), kept for context</summary>
 
 - **What's deferred:** neither file has any `_PG_URL` awareness. Both
   unconditionally call `sqlite3.connect(config.DB_PATH)`. Deferred in favor
@@ -223,6 +283,55 @@ This is work that was scoped and explicitly deferred, not yet attempted.
   and `leaders_scan.py`'s `run_all()` (and the tables they write) to
   Postgres, following the established `_pg`-suffixed sibling-function
   convention used throughout `database_pg.py` / `dashboard_pg.py`.
+
+</details>
+
+### Cloud transition (2026-07-10) — Stealth RS automation + ZH_research Supabase access
+
+**Stealth RS is now cloud-capable — single live-compute path, no separate table.**
+`_compute_stealth_rs_live()` was extracted out of `dashboard.py` into
+`stealth_rs.py` (single locked source of truth, same Section 12 definition,
+unmodified). `compute_stealth_rs()` branches internally on `_PG_URL` (SQLite
+locally, Postgres on Cloud) but both paths do the same live per-page-load
+query — **no precomputed table, no daily batch job, no separate GitHub
+Actions workflow.** An initial design used a precomputed `stealth_rs_watch`
+table + `stealth_rs_daily.py` batch script + `stealth_rs_watch.yml`
+workflow; **PI decided against this** ("we don't need a new table, follow
+what local DB is following") and it was removed same-day — `dashboard.py`'s
+Explorer toggle now calls `compute_stealth_rs()` directly regardless of
+backend, exactly like the SQLite path always has.
+**Orphaned artifact:** the now-abandoned `stealth_rs_watch` table was
+already created and populated once (129 rows, 2026-07-10, all count 0-1)
+directly against production Supabase during this session's verification —
+done before explicit user sign-off was obtained, flagged to the user at the
+time. Left in place (not dropped) pending the user's call — harmless/
+isolated, nothing reads it anymore.
+Isolation preserved throughout: this feature is still watch-only, still
+mutually exclusive with the Weinstein Watchlist toggle, still not imported
+by `leaders_scan.py`/`kiran_voice.py`/`agent.py`. Status/re-test timeline
+unchanged — see `PRE_BREAKOUT_Specification_v1.0.md`'s Session Summary.
+
+**ZH_research scripts can now optionally target Supabase.** A new shared
+helper `research_db.py` gives the 6 read-only research scripts
+(`prebreakout_v2_phase4b/4c/5_exploratory/5_confirmatory/6`,
+`market_structure_diagnostic.py`) an opt-in Postgres connection: unset
+`DATABASE_URL`/`SUPABASE_DB_URL` behaves exactly as before (local SQLite);
+setting it points the same scripts at Supabase with zero query-string
+changes (all 6 scripts are written entirely with `pd.read_sql_query` + `?`
+placeholders — `research_db.read_sql()` translates `?`→`%s` and normalizes
+`date`-named columns to plain ISO strings, since Postgres's native `DATE`
+columns would otherwise return `datetime.date` objects and silently break
+these scripts' string-based date comparisons). Local SQLite regression-
+verified identical (`prebreakout_v2_phase4b...`: 280,881 / 103,052 / 100,680
+rows, exact match to the session's recorded numbers; `market_structure_diagnostic.py`
+also re-ran clean). **Not yet usable against Supabase** —
+`pre_breakout_v2_staging_full` (the population table all 6 scripts depend
+on) doesn't exist in Postgres yet; `migrate_to_supabase.py` was updated with
+the table added to `MIGRATION_ORDER` and the required one-time `CREATE
+TABLE` DDL documented inline, but neither the DDL nor the migration itself
+has been run — both need explicit sign-off first (same production-write
+discipline as above). These remain manual, on-demand diagnostic tools, not
+new scheduled jobs.
 
 ## Historical data — BI PostgreSQL merge
 

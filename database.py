@@ -342,60 +342,85 @@ def cleanup_ghost_dates():
     """
     Delete market-wide holiday ghosts: dates where PSX returned the previous
     or next session's data for almost all symbols instead of real trading data.
-    Two passes:
-      - Backward ghost: THIS date matches its LAG  (holiday stored prev session)
-      - Forward ghost:  THIS date matches its LEAD (closed day stored next session)
     Threshold: >=90% of symbols identical, minimum 50 symbols.
+
+    Both directions (a date matching its LAG, or matching its LEAD) are
+    identified from a single unmutated snapshot of the table -- one read,
+    before any DELETE runs -- so that removing one candidate can never blind
+    the other direction's reference point. The old version ran two separate
+    DELETEs (forward then backward) in the same transaction; when a
+    premature same-day scrape stored an earlier real date's data under a
+    later fake date (2026-07-10 incident: 07-09 real, 07-10 fake, identical
+    H/L/C), the forward DELETE matched 07-09 against its LEAD (07-10) and
+    removed the genuinely correct 07-09 first. By the time the backward
+    DELETE ran, its LAG reference for 07-10 was already gone (07-09
+    deleted), so the actually-fake 07-10 survived uncorrected.
+
+    Matching is inherently symmetric: if date D matches its LEAD (D+1), then
+    D+1 also matches its LAG (D) -- same pair, same values, viewed from both
+    sides. So any adjacent matching pair is *always* a backward-match and a
+    forward-match simultaneously; the two directions cannot, from price data
+    alone, distinguish "D is real, D+1 is a stale duplicate of it" from "D is
+    a fake preview of D+1's real data" -- both produce identical symptoms.
+    Every incident actually observed on this pipeline (this one, the
+    KSE-100 index bug, the 585-symbol prices contamination) has been the
+    first pattern: a newer date carrying an older date's stale values, never
+    the reverse. For a mutually-matching pair, this function deletes the
+    NEWER date -- a deliberate policy choice based on that history, not an
+    algorithmic derivation from the data. It does NOT protect against the
+    theoretical reverse pattern (an earlier date somehow previewing a later
+    date's real values); that failure mode has never been observed here and
+    is an accepted residual risk, not silently assumed away.
+
+    A one-sided match (a date matching only its LAG or only its LEAD, not
+    both -- possible at the edge of a short multi-date ghost run where the
+    mutual partner doesn't clear the >=50-symbol / >=90% threshold) is still
+    handled per its original direction, since there's no mutual-pair
+    ambiguity to resolve in that case.
     """
-    backward_sql = """
-        DELETE FROM prices
-        WHERE date IN (
-            SELECT date FROM (
-                SELECT date,
-                       COUNT(*) AS total,
-                       SUM(CASE WHEN high = ph AND low = pl AND close = pc THEN 1 ELSE 0 END) AS matches
-                FROM (
-                    SELECT symbol, date, high, low, close,
-                           LAG(high)  OVER (PARTITION BY symbol ORDER BY date) AS ph,
-                           LAG(low)   OVER (PARTITION BY symbol ORDER BY date) AS pl,
-                           LAG(close) OVER (PARTITION BY symbol ORDER BY date) AS pc
-                    FROM prices
-                ) sub
-                WHERE ph IS NOT NULL
-                GROUP BY date
-            )
-            WHERE total >= 50 AND CAST(matches AS REAL) / total >= 0.90
+    sql = """
+        WITH windowed AS (
+            SELECT symbol, date, high, low, close,
+                   LAG(high)   OVER (PARTITION BY symbol ORDER BY date) AS ph,
+                   LAG(low)    OVER (PARTITION BY symbol ORDER BY date) AS pl,
+                   LAG(close)  OVER (PARTITION BY symbol ORDER BY date) AS pc,
+                   LEAD(high)  OVER (PARTITION BY symbol ORDER BY date) AS nh,
+                   LEAD(low)   OVER (PARTITION BY symbol ORDER BY date) AS nl,
+                   LEAD(close) OVER (PARTITION BY symbol ORDER BY date) AS nc
+            FROM prices
+        ),
+        stats AS (
+            SELECT
+                date,
+                SUM(CASE WHEN ph IS NOT NULL THEN 1 ELSE 0 END) AS lag_total,
+                SUM(CASE WHEN ph IS NOT NULL AND high = ph AND low = pl AND close = pc THEN 1 ELSE 0 END) AS lag_matches,
+                SUM(CASE WHEN nh IS NOT NULL THEN 1 ELSE 0 END) AS lead_total,
+                SUM(CASE WHEN nh IS NOT NULL AND high = nh AND low = nl AND close = nc THEN 1 ELSE 0 END) AS lead_matches
+            FROM windowed
+            GROUP BY date
+        ),
+        flagged AS (
+            SELECT date,
+                   (lag_total  >= 50 AND CAST(lag_matches  AS REAL) / lag_total  >= 0.90) AS is_backward,
+                   (lead_total >= 50 AND CAST(lead_matches AS REAL) / lead_total >= 0.90) AS is_forward
+            FROM stats
+        ),
+        distinct_dates AS (SELECT DISTINCT date FROM prices),
+        adjacency AS (
+            SELECT date, LEAD(date) OVER (ORDER BY date) AS next_date FROM distinct_dates
+        )
+        DELETE FROM prices WHERE date IN (
+            SELECT f.date
+            FROM flagged f
+            LEFT JOIN adjacency a      ON a.date = f.date
+            LEFT JOIN flagged   f_next ON f_next.date = a.next_date
+            WHERE f.is_backward
+               OR (f.is_forward AND NOT COALESCE(f_next.is_backward, 0))
         )
     """
-    forward_sql = """
-        DELETE FROM prices
-        WHERE date IN (
-            SELECT date FROM (
-                SELECT date,
-                       COUNT(*) AS total,
-                       SUM(CASE WHEN high = nh AND low = nl AND close = nc THEN 1 ELSE 0 END) AS matches
-                FROM (
-                    SELECT symbol, date, high, low, close,
-                           LEAD(high)  OVER (PARTITION BY symbol ORDER BY date) AS nh,
-                           LEAD(low)   OVER (PARTITION BY symbol ORDER BY date) AS nl,
-                           LEAD(close) OVER (PARTITION BY symbol ORDER BY date) AS nc
-                    FROM prices
-                ) sub
-                WHERE nh IS NOT NULL
-                GROUP BY date
-            )
-            WHERE total >= 50 AND CAST(matches AS REAL) / total >= 0.90
-        )
-    """
-    total_deleted = 0
     with get_conn() as conn:
-        # Forward pass first: removes ghost dates that stored the NEXT session's data.
-        # Must run before backward pass so that the real data following a forward ghost
-        # is not mistakenly flagged as a backward ghost (they share identical H/L/C).
-        conn.execute(forward_sql)
-        total_deleted += conn.execute("SELECT changes()").fetchone()[0]
-        conn.execute(backward_sql)
-        total_deleted += conn.execute("SELECT changes()").fetchone()[0]
+        conn.execute(sql)
+        total_deleted = conn.execute("SELECT changes()").fetchone()[0]
     if total_deleted:
         logger.info("cleanup_ghost_dates: removed %d rows for market-closed dates", total_deleted)
     return total_deleted

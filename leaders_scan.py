@@ -11,13 +11,28 @@ Tables written:
     leaders_top_picks  — top 3 per setup type, with audit trail
 """
 
+import os
 import sqlite3
 import pandas as pd
 import config
 
+# Postgres branch — mirrors sector_signals.py / regime.py's established
+# _PG_URL pattern. leaders_scan / leaders_top_picks already exist in Supabase
+# (populated once by migrate_to_supabase.py's initial copy, per project
+# history) — this only adds the missing WRITE path; it does not create or
+# alter schema on Postgres (DDL against production is out of scope here,
+# per the project's own "acquire independently -> validate independently ->
+# human review -> only then import" rule).
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+
 # Minimum final_score (raw - penalty) for a pick to be selected.
 # Nothing below this threshold appears in leaders_top_picks.
-MIN_PICK_SCORE = 8
+# Re-derived 2026-07-10 (S-002 fix, PRE_BREAKOUT_Specification_v1.0.md Session
+# Summary): _raw_score() dropped from 5 components (max 15) to 3 (max 9) after
+# removing the rs_score_20 and sector_rs_rank blocks (confirmed dead, S-002).
+# Old threshold was 8/15 = 53.3% of max; applied to the new max: 9 * 0.533 =
+# 4.8, rounded to the nearest integer = 5.
+MIN_PICK_SCORE = 5
 
 
 # ── Table setup ───────────────────────────────────────────────────────────────
@@ -145,30 +160,126 @@ def _nearest_overhead_pct(con, symbol, scan_date, pivot_high):
     return None
 
 
+# ── Per-symbol price helpers (Postgres) ───────────────────────────────────────
+# Same logic as the SQLite versions above, %s placeholders, psycopg2 cursor.
+
+def _vol_ratio_today_pg(cur, symbol, scan_date):
+    cur.execute("""
+        SELECT volume FROM prices
+        WHERE symbol = %s AND date <= %s
+        ORDER BY date DESC LIMIT 21
+    """, (symbol, scan_date))
+    rows = cur.fetchall()
+    if len(rows) < 2:
+        return None
+    today_vol = rows[0]["volume"]
+    tail = rows[1:]
+    avg = sum(r["volume"] for r in tail) / len(tail)
+    return round(today_vol / avg, 2) if avg else None
+
+
+def _vol_rejection_flag_pg(cur, symbol, scan_date, pivot_high):
+    cur.execute("""
+        SELECT high, low, open, close, volume FROM prices
+        WHERE symbol = %s AND date <= %s
+        ORDER BY date DESC LIMIT 30
+    """, (symbol, scan_date))
+    rows = cur.fetchall()
+    if len(rows) < 21:
+        return 0
+    near_pivot = pivot_high * 0.98
+    for i in range(min(10, len(rows) - 20)):
+        r = rows[i]
+        high, open_, close = r["high"], r["open"], r["close"]
+        window = rows[i + 1:i + 21]
+        avg = sum(w["volume"] for w in window) / 20
+        vol = r["volume"]
+        if (avg and vol / avg > 2.0
+                and high is not None and high >= near_pivot
+                and close is not None and close < pivot_high
+                and open_ is not None and close < open_):
+            return 1
+    return 0
+
+
+def _nearest_overhead_pct_pg(cur, symbol, scan_date, pivot_high):
+    cur.execute("""
+        SELECT MIN(high) AS min_high FROM prices
+        WHERE symbol = %s
+          AND date < %s
+          AND date >= (%s::date - INTERVAL '120 days')
+          AND high > %s
+    """, (symbol, scan_date, scan_date, pivot_high))
+    row = cur.fetchone()
+    if row and row["min_high"]:
+        return round((row["min_high"] - pivot_high) / pivot_high * 100, 2)
+    return None
+
+
+def _breakout_health_check_pg(cur, symbol, scan_date, pivot_high):
+    cur.execute(
+        "SELECT MAX(date) AS d FROM stock_signals WHERE symbol = %s AND bos_flag = 0 AND date <= %s",
+        (symbol, scan_date),
+    )
+    last_zero = cur.fetchone()["d"]
+    if last_zero is None:
+        cur.execute("SELECT MIN(date) AS d FROM stock_signals WHERE symbol = %s", (symbol,))
+        streak_start = cur.fetchone()["d"]
+    else:
+        cur.execute(
+            "SELECT MIN(date) AS d FROM stock_signals WHERE symbol = %s AND date > %s AND bos_flag = 1",
+            (symbol, last_zero),
+        )
+        streak_start = cur.fetchone()["d"]
+
+    if streak_start is None:
+        return False
+
+    cur.execute(
+        "SELECT close FROM prices_adjusted WHERE symbol = %s AND date >= %s AND date <= %s ORDER BY date ASC",
+        (symbol, streak_start, scan_date),
+    )
+    closes = [r["close"] for r in cur.fetchall()]
+    if not closes:
+        return False
+
+    days_since    = len(closes) - 1
+    current_close = closes[-1]
+    current_pct   = (current_close - pivot_high) / pivot_high * 100
+
+    if current_pct >= 15.0:
+        return False
+
+    if days_since >= 5:
+        post_bo = closes[1:]
+        if post_bo:
+            min_val        = min(post_bo)
+            min_idx        = max(i for i, c in enumerate(post_bo) if c == min_val)
+            days_since_low = (len(post_bo) - 1) - min_idx
+            pct_above_low  = (current_close - min_val) / min_val * 100
+            if days_since_low < 2 or pct_above_low < 1.0:
+                return False
+
+    return True
+
+
 # ── Scoring ────────────────────────────────────────────────────────────────────
 
-def _raw_score(rs_rank, rs_score_20, avg_vol_10d, sector_rs_rank, sector_composite):
-    """5-factor conviction score — identical to dashboard.py Pre-Breakout radar."""
+def _raw_score(rs_rank, avg_vol_10d, sector_composite):
+    """3-factor conviction score (max 9). rs_score_20 and sector_rs_rank
+    components removed 2026-07-10 — both confirmed dead per S-002
+    (no significant relationship with forward returns, corrected BREAKOUT V2
+    population). See PRE_BREAKOUT_Specification_v1.0.md Session Summary."""
     s = 0
     if rs_rank:
         if 101 <= rs_rank <= 150:   s += 3
         elif 51 <= rs_rank <= 100:  s += 2
         elif 151 <= rs_rank <= 200: s += 1
 
-    if rs_score_20 is not None:
-        if rs_score_20 < -2:   s += 3
-        elif rs_score_20 < 0:  s += 2
-        elif rs_score_20 < 2:  s += 1
-
     if avg_vol_10d:
         if avg_vol_10d > 3_000_000:   s += 3
         elif avg_vol_10d > 1_500_000: s += 2
         elif avg_vol_10d > 500_000:   s += 1
-
-    if sector_rs_rank:
-        if sector_rs_rank > 10: s += 3
-        elif sector_rs_rank > 5: s += 2
-        elif sector_rs_rank > 0: s += 1
 
     if sector_composite:
         if sector_composite >= 0.60:   s += 3
@@ -328,12 +439,182 @@ def _breakout_health_check(con, symbol, scan_date, pivot_high):
 
 # ── Main scan builder ─────────────────────────────────────────────────────────
 
+def _append_leaders_scan_pg() -> None:
+    """PG-backed equivalent of append_leaders_scan(). Same query/scoring logic,
+    psycopg2 RealDictCursor instead of sqlite3.Row, ON CONFLICT instead of
+    INSERT OR REPLACE. Assumes leaders_scan already exists in Supabase with
+    the same schema/UNIQUE(scan_date, setup_type, symbol) constraint as
+    SQLite (migrated once via migrate_to_supabase.py) — no DDL run here."""
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("SELECT MAX(date) AS d FROM stock_signals")
+        scan_date = cur.fetchone()["d"]
+        if not scan_date:
+            print("Leaders scan hook (PG): no data in stock_signals.")
+            return
+        # stock_signals.date is a native DATE column (psycopg2 returns a
+        # date object); leaders_scan.scan_date is TEXT — normalize to a
+        # plain ISO string so it compares/writes correctly against both.
+        scan_date = str(scan_date)
+
+        cur.execute("DELETE FROM leaders_scan WHERE scan_date = %s", (scan_date,))
+
+        cur.execute(
+            "SELECT sector, composite_score, rs_inflection, rs_rank AS sector_rank_today "
+            "FROM sector_signals WHERE date = %s", (scan_date,)
+        )
+        sec_rows = cur.fetchall()
+        sec_composite  = {r["sector"]: r["composite_score"] for r in sec_rows}
+        sec_inflection = {r["sector"]: r["rs_inflection"] for r in sec_rows}
+        sec_rank_today = {r["sector"]: r["sector_rank_today"] for r in sec_rows}
+
+        cur.execute("SELECT symbol, close FROM prices WHERE date = %s", (scan_date,))
+        closes = {r["symbol"]: r["close"] for r in cur.fetchall()}
+
+        for setup_type in ("PRE_BREAKOUT", "BREAKOUT"):
+            if setup_type == "PRE_BREAKOUT":
+                sql = """
+                    SELECT ss.symbol, sm.sector,
+                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change,
+                           ss.rs_score_20, ss.rs_score_50,
+                           ss.base_tightness, ss.pivot_high, ss.pivot_distance_pct,
+                           ss.avg_vol_10d, ss.vol_contraction
+                    FROM stock_signals ss
+                    JOIN stock_metadata sm ON ss.symbol = sm.symbol
+                    WHERE ss.date = %s
+                      AND ss.pivot_distance_pct BETWEEN 0 AND 5
+                      AND ss.base_tightness < 7
+                      AND ss.avg_vol_10d > 200000
+                """
+            else:
+                sql = """
+                    SELECT ss.symbol, sm.sector,
+                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change,
+                           ss.rs_score_20, ss.rs_score_50,
+                           ss.base_tightness, ss.pivot_high, ss.pivot_distance_pct,
+                           ss.avg_vol_10d
+                    FROM stock_signals ss
+                    JOIN stock_metadata sm ON ss.symbol = sm.symbol
+                    WHERE ss.date = %s
+                      AND ss.bos_flag = 1
+                      AND ss.pivot_distance_pct < 15
+                      AND ss.avg_vol_10d > 200000
+                """
+            cur.execute(sql, (scan_date,))
+            candidates = cur.fetchall()
+
+            insert_rows = []
+            for r in candidates:
+                sym        = r["symbol"]
+                sector     = r["sector"]
+                pivot_high = r["pivot_high"]
+
+                if setup_type == "BREAKOUT" and not _breakout_health_check_pg(cur, sym, scan_date, pivot_high):
+                    continue
+
+                s_comp   = sec_composite.get(sector, 0.0) or 0.0
+                s_infl   = int(sec_inflection.get(sector, 0) or 0)
+                sr_today = sec_rank_today.get(sector)
+
+                vol_ratio = _vol_ratio_today_pg(cur, sym, scan_date)
+                vol_rej   = _vol_rejection_flag_pg(cur, sym, scan_date, pivot_high)
+                overhead  = _nearest_overhead_pct_pg(cur, sym, scan_date, pivot_high)
+
+                if setup_type == "PRE_BREAKOUT":
+                    entry  = pivot_high
+                    sl     = round(pivot_high * (1 - r["base_tightness"] / 100), 2)
+                    sl_pct = round(float(r["base_tightness"]), 2)
+                else:
+                    entry  = closes.get(sym, pivot_high)
+                    sl     = pivot_high
+                    sl_pct = round(float(r["pivot_distance_pct"]), 2)
+
+                raw = _raw_score(r["rs_rank"], r["avg_vol_10d"], s_comp)
+
+                pen_dict = {
+                    "sector_rank":          sr_today,
+                    "vol_rejection_flag":   vol_rej,
+                    "nearest_overhead_pct": overhead,
+                    "rs_score_50":          r["rs_score_50"],
+                    "rank_change":          r["rank_change"],
+                    "rs_inflection":        s_infl,
+                    "vol_ratio_today":      vol_ratio,
+                }
+                penalty, flag_str = _compute_penalty(pen_dict, setup_type)
+                final_score = raw - penalty
+
+                rs_rank_val  = int(r["rs_rank"]) if r["rs_rank"] is not None else None
+                sec_rs_rank  = int(r["sector_rs_rank"]) if r["sector_rs_rank"] is not None else None
+                rank_chg_val = int(r["rank_change"]) if r["rank_change"] is not None else None
+                vc_val       = float(r["vol_contraction"]) if r.get("vol_contraction") is not None else None
+
+                insert_rows.append((
+                    scan_date, setup_type, sym, sector,
+                    sr_today, rs_rank_val, sec_rs_rank,
+                    r["rs_score_20"], r["rs_score_50"], rank_chg_val,
+                    r["base_tightness"], pivot_high, r["pivot_distance_pct"],
+                    r["avg_vol_10d"], vol_ratio,
+                    entry, sl, sl_pct,
+                    s_infl, s_comp,
+                    int(vol_rej), overhead, vc_val,
+                    raw, penalty, final_score, flag_str,
+                ))
+
+            if insert_rows:
+                psycopg2.extras.execute_values(cur, """
+                    INSERT INTO leaders_scan
+                    (scan_date, setup_type, symbol, sector,
+                     sector_rank, rs_rank, sector_rs_rank,
+                     rs_score_20, rs_score_50, rank_change,
+                     base_tightness, pivot_high, pivot_distance_pct,
+                     avg_vol_10d, vol_ratio_today,
+                     entry_trigger, stop_loss, sl_pct,
+                     rs_inflection, sector_composite,
+                     vol_rejection_flag, nearest_overhead_pct, vol_contraction,
+                     raw_score, penalty, final_score, flag)
+                    VALUES %s
+                    ON CONFLICT (scan_date, setup_type, symbol) DO UPDATE SET
+                        sector = EXCLUDED.sector,
+                        sector_rank = EXCLUDED.sector_rank,
+                        rs_rank = EXCLUDED.rs_rank,
+                        sector_rs_rank = EXCLUDED.sector_rs_rank,
+                        rs_score_20 = EXCLUDED.rs_score_20,
+                        rs_score_50 = EXCLUDED.rs_score_50,
+                        rank_change = EXCLUDED.rank_change,
+                        base_tightness = EXCLUDED.base_tightness,
+                        pivot_high = EXCLUDED.pivot_high,
+                        pivot_distance_pct = EXCLUDED.pivot_distance_pct,
+                        avg_vol_10d = EXCLUDED.avg_vol_10d,
+                        vol_ratio_today = EXCLUDED.vol_ratio_today,
+                        entry_trigger = EXCLUDED.entry_trigger,
+                        stop_loss = EXCLUDED.stop_loss,
+                        sl_pct = EXCLUDED.sl_pct,
+                        rs_inflection = EXCLUDED.rs_inflection,
+                        sector_composite = EXCLUDED.sector_composite,
+                        vol_rejection_flag = EXCLUDED.vol_rejection_flag,
+                        nearest_overhead_pct = EXCLUDED.nearest_overhead_pct,
+                        vol_contraction = EXCLUDED.vol_contraction,
+                        raw_score = EXCLUDED.raw_score,
+                        penalty = EXCLUDED.penalty,
+                        final_score = EXCLUDED.final_score,
+                        flag = EXCLUDED.flag
+                """, insert_rows)
+
+
 def append_leaders_scan(db_path=None):
     """
     Build leaders_scan for today. Pulls stock_signals + sector_signals + prices,
     applies filters (base_tightness<7; not-extended for BO), scores each
     candidate, writes results. Idempotent — safe to re-run same day.
     """
+    if _PG_URL:
+        _append_leaders_scan_pg()
+        return
+
     if db_path is None:
         db_path = config.DB_PATH
 
@@ -422,8 +703,7 @@ def append_leaders_scan(db_path=None):
                 sl_pct = round(float(r['pivot_distance_pct']), 2)
 
             raw = _raw_score(
-                r['rs_rank'], r['rs_score_20'], r['avg_vol_10d'],
-                r['sector_rs_rank'], s_comp
+                r['rs_rank'], r['avg_vol_10d'], s_comp
             )
 
             pen_dict = {
@@ -476,12 +756,75 @@ def append_leaders_scan(db_path=None):
 
 # ── Top picks writer ──────────────────────────────────────────────────────────
 
+def _save_top_picks_pg() -> None:
+    """PG-backed equivalent of save_top_picks(). Same selection logic, ON
+    CONFLICT instead of INSERT OR REPLACE. Assumes leaders_top_picks already
+    exists in Supabase with UNIQUE(scan_date, setup_type, rank) (migrated
+    once via migrate_to_supabase.py) — no DDL run here."""
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("SELECT MAX(scan_date) AS d FROM leaders_scan")
+        scan_date = cur.fetchone()["d"]
+        if not scan_date:
+            return
+
+        cur.execute("DELETE FROM leaders_top_picks WHERE scan_date = %s", (scan_date,))
+
+        for setup_type in ("PRE_BREAKOUT", "BREAKOUT"):
+            cur.execute("""
+                SELECT * FROM leaders_scan
+                WHERE scan_date = %s AND setup_type = %s AND final_score >= %s
+                ORDER BY final_score DESC, vol_ratio_today DESC NULLS LAST
+                LIMIT 3
+            """, (scan_date, setup_type, MIN_PICK_SCORE))
+
+            for rank_idx, r in enumerate(cur.fetchall(), start=1):
+                key_reason = _build_key_reason(dict(r), setup_type)
+
+                triggered    = 1 if setup_type == "BREAKOUT" else None
+                trigger_date = scan_date if setup_type == "BREAKOUT" else None
+
+                cur.execute("""
+                    INSERT INTO leaders_top_picks
+                    (scan_date, setup_type, rank, symbol, sector, sector_rank,
+                     entry_trigger, stop_loss, sl_pct, vol_ratio_today,
+                     key_reason, flag, triggered, trigger_date)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (scan_date, setup_type, rank) DO UPDATE SET
+                        symbol = EXCLUDED.symbol,
+                        sector = EXCLUDED.sector,
+                        sector_rank = EXCLUDED.sector_rank,
+                        entry_trigger = EXCLUDED.entry_trigger,
+                        stop_loss = EXCLUDED.stop_loss,
+                        sl_pct = EXCLUDED.sl_pct,
+                        vol_ratio_today = EXCLUDED.vol_ratio_today,
+                        key_reason = EXCLUDED.key_reason,
+                        flag = EXCLUDED.flag,
+                        triggered = EXCLUDED.triggered,
+                        trigger_date = EXCLUDED.trigger_date
+                """, (
+                    scan_date, setup_type, rank_idx,
+                    r["symbol"], r["sector"], r["sector_rank"],
+                    r["entry_trigger"], r["stop_loss"], r["sl_pct"],
+                    r["vol_ratio_today"], key_reason, r["flag"],
+                    triggered, trigger_date,
+                ))
+
+
 def save_top_picks(db_path=None):
     """
     From today's leaders_scan, select up to top 3 per setup_type (final_score >= MIN_PICK_SCORE)
     and write to leaders_top_picks. If fewer than 3 qualify, write only those that do.
     If none qualify, nothing is written — this is intentional.
     """
+    if _PG_URL:
+        _save_top_picks_pg()
+        return
+
     if db_path is None:
         db_path = config.DB_PATH
 
@@ -530,12 +873,93 @@ def save_top_picks(db_path=None):
 
 # ── Forward return filler ─────────────────────────────────────────────────────
 
+def _fill_leaders_forward_returns_pg() -> None:
+    """PG-backed equivalent of fill_leaders_forward_returns(). Same logic,
+    %s placeholders, CURRENT_DATE instead of date('now', ...)."""
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        cur.execute("""
+            SELECT id, scan_date, setup_type, symbol, entry_trigger,
+                   triggered, trigger_date, fwd_return_20d, outcome_label
+            FROM leaders_top_picks
+            WHERE outcome_label IN ('OPEN', 'NOT_TRIGGERED')
+              AND scan_date < (CURRENT_DATE - INTERVAL '4 days')
+        """)
+        picks = cur.fetchall()
+
+        for pick in picks:
+            pid        = pick["id"]
+            sym        = pick["symbol"]
+            scan_date  = pick["scan_date"]
+            entry      = pick["entry_trigger"]
+            setup_type = pick["setup_type"]
+
+            cur.execute("""
+                SELECT date, close FROM prices
+                WHERE symbol = %s AND date > %s
+                ORDER BY date ASC LIMIT 25
+            """, (sym, scan_date))
+            fwd = cur.fetchall()
+            if not fwd:
+                continue
+
+            triggered    = pick["triggered"]
+            trigger_date = pick["trigger_date"]
+
+            if setup_type == "PRE_BREAKOUT" and not triggered:
+                hit = [f for f in fwd if f["close"] >= entry]
+                if hit:
+                    triggered    = 1
+                    # prices.date is a native DATE column; trigger_date is
+                    # TEXT — normalize before writing back.
+                    trigger_date = str(hit[0]["date"])
+                elif len(fwd) >= 20:
+                    cur.execute("""
+                        UPDATE leaders_top_picks
+                        SET triggered=0, outcome_label='NOT_TRIGGERED'
+                        WHERE id=%s
+                    """, (pid,))
+                    continue
+                else:
+                    continue
+
+            if not triggered:
+                continue
+
+            def fwd_ret(n):
+                if len(fwd) >= n:
+                    return round((fwd[n - 1]["close"] - entry) / entry * 100, 2)
+                return None
+
+            r5, r10, r20 = fwd_ret(5), fwd_ret(10), fwd_ret(20)
+            if r10 is not None:
+                outcome = "WINNER" if r10 > 0 else ("LOSER" if r10 < 0 else "BREAKEVEN")
+            else:
+                outcome = "OPEN"
+
+            cur.execute("""
+                UPDATE leaders_top_picks
+                SET triggered=%s, trigger_date=%s,
+                    fwd_return_5d=%s, fwd_return_10d=%s, fwd_return_20d=%s,
+                    outcome_label=%s
+                WHERE id=%s
+            """, (triggered, trigger_date, r5, r10, r20, outcome, pid))
+
+
 def fill_leaders_forward_returns(db_path=None):
     """
     Fill fwd_return_5d/10d/20d and outcome_label for picks whose window has closed.
     Also sets triggered/trigger_date for PRE_BREAKOUT picks.
     Called daily — skips picks already fully labelled.
     """
+    if _PG_URL:
+        _fill_leaders_forward_returns_pg()
+        return
+
     if db_path is None:
         db_path = config.DB_PATH
 

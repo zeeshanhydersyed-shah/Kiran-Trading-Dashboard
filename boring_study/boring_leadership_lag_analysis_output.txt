@@ -1,0 +1,129 @@
+Loading base occurrence feature set (deduped, already includes up/down vol)...
+Base rows: 108,199
+Columns: ['symbol', 'date', 'stock_rs', 'sector_rs', 'liquidity', 'realized_vol', 'listing_age_days', 'up_semivol', 'down_semivol']
+Rebuilding per-symbol trailing-60d return series (full history, all positions)...
+Building sector-level trailing-60d return lookup (sector,date) -> value...
+Computing lagged sector RS at each occurrence, for each lag horizon...
+  lag 10: 92,026 / 108,199 non-null
+  lag 20: 92,037 / 108,199 non-null
+  lag 40: 91,493 / 108,199 non-null
+  lag 60: 91,248 / 108,199 non-null
+  lag 90: 90,154 / 108,199 non-null
+Saved boring_leadership_lagged.csv
+
+==========================================================================================
+1. LAG SWEEP: Stock RS ~ Lagged Sector RS(L)
+==========================================================================================
+
+Contemporaneous baseline (lag 0):
+  sector_rs (lag 0, current): N=89,671  r=0.5850 [0.5807,0.5893]  R^2=0.3422  std.coef(beta)=0.5850  raw coef 95% CI=[2.76714,2.81781]  p=0
+
+Lagged:
+  sector_rs (lag 10): N=89,303  r=0.3238 [0.3179,0.3296]  R^2=0.1048  std.coef(beta)=0.3238  raw coef 95% CI=[1.72382,1.79119]  p=0
+  sector_rs (lag 20): N=89,109  r=0.2403 [0.2341,0.2464]  R^2=0.0577  std.coef(beta)=0.2403  raw coef 95% CI=[1.48630,1.56731]  p=0
+  sector_rs (lag 40): N=88,866  r=0.1050 [0.0985,0.1115]  R^2=0.0110  std.coef(beta)=0.1050  raw coef 95% CI=[0.71035,0.80467]  p=2.31e-216
+  sector_rs (lag 60): N=88,658  r=0.0525 [0.0459,0.0590]  R^2=0.0028  std.coef(beta)=0.0525  raw coef 95% CI=[0.27215,0.35012]  p=4.34e-55
+  sector_rs (lag 90): N=87,955  r=0.0546 [0.0480,0.0612]  R^2=0.0030  std.coef(beta)=0.0546  raw coef 95% CI=[0.27226,0.34707]  p=4e-59
+
+Shape summary (R^2 by lag, lag 0 = contemporaneous):
+  sector_rs (lag 0, current)   R^2=0.3422  beta=0.5850
+  sector_rs (lag 10)           R^2=0.1048  beta=0.3238
+  sector_rs (lag 20)           R^2=0.0577  beta=0.2403
+  sector_rs (lag 40)           R^2=0.0110  beta=0.1050
+  sector_rs (lag 60)           R^2=0.0028  beta=0.0525
+  sector_rs (lag 90)           R^2=0.0030  beta=0.0546
+
+==========================================================================================
+2. INCREMENTAL INFORMATION: current sector_rs alone vs + lagged sector_rs
+==========================================================================================
+
+Model A: stock_rs ~ current sector_rs   N=89,671  R^2=0.3422
+
+Model B (lag 10): stock_rs ~ current sector_rs + sector_rs_lag10   N=89,303  R^2=0.3660  Delta R^2 vs Model A (same N)=+0.02037
+  lagged-term std.coef(beta)=-0.2055  raw coef 95% CI=[-1.15635,-1.07472]  p=0
+
+Model B (lag 20): stock_rs ~ current sector_rs + sector_rs_lag20   N=89,109  R^2=0.3536  Delta R^2 vs Model A (same N)=+0.00694
+  lagged-term std.coef(beta)=-0.0981  raw coef 95% CI=[-0.66291,-0.58389]  p=6.74e-209
+
+Model B (lag 40): stock_rs ~ current sector_rs + sector_rs_lag40   N=88,866  R^2=0.3522  Delta R^2 vs Model A (same N)=+0.00262
+  lagged-term std.coef(beta)=-0.0531  raw coef 95% CI=[-0.42219,-0.34311]  p=4.53e-80
+
+Model B (lag 60): stock_rs ~ current sector_rs + sector_rs_lag60   N=88,658  R^2=0.3499  Delta R^2 vs Model A (same N)=+0.00035
+  lagged-term std.coef(beta)=-0.0188  raw coef 95% CI=[-0.14295,-0.07954]  p=6.12e-12
+
+Model B (lag 90): stock_rs ~ current sector_rs + sector_rs_lag90   N=87,955  R^2=0.3513  Delta R^2 vs Model A (same N)=+0.00015
+  lagged-term std.coef(beta)=-0.0122  raw coef 95% CI=[-0.09959,-0.03887]  p=7.87e-06
+
+==========================================================================================
+3. RESIDUAL LEADERSHIP: Stock RS - E[Stock RS | current Sector RS]
+==========================================================================================
+N=89,671
+
+Distribution of residual_stock_rs:
+count    89671.000
+mean         0.000
+std        173.610
+min      -6976.034
+1%        -278.423
+5%        -113.433
+25%        -30.169
+50%         -1.084
+75%         23.829
+95%         88.255
+99%        300.281
+max       9366.229
+Skew=12.509  Kurtosis=605.395
+
+Relationship with liquidity:
+  corr(residual_stock_rs, log(liquidity)) = -0.0414 (p=2.84e-35)
+
+Relationship with up/down volatility ratio:
+  corr(residual_stock_rs, up/down ratio) = 0.1995 (p=0)  N=89,653
+
+Residual leadership decile vs up/down ratio (median):
+resid_decile
+0    1.341
+1    1.260
+2    1.233
+3    1.217
+4    1.204
+5    1.220
+6    1.243
+7    1.275
+8    1.361
+9    1.677
+
+==========================================================================================
+4. PERSISTENCE (autocorrelation) -- full daily panel, all trading days,
+   NOT restricted to breakout-occurrence days (irregular spacing there
+   makes autocorrelation meaningless -- flagged per methodology note)
+==========================================================================================
+Building full daily stock_rs / sector_rs series per symbol...
+Full daily panel (valid rows): 1,479,774
+Panel-level stock_rs ~ sector_rs: R^2=0.1413 (reference, full panel)
+
+Pooled autocorrelation (panel-wide, position-based lag on the trading calendar):
+
+  sector_rs:
+    lag 10: autocorr=0.6965 [0.6956,0.6974]  N=1,306,797
+    lag 20: autocorr=0.5121 [0.5108,0.5133]  N=1,290,417
+    lag 40: autocorr=0.2355 [0.2339,0.2372]  N=1,269,345
+    lag 60: autocorr=0.0950 [0.0932,0.0967]  N=1,252,898
+    lag 90: autocorr=0.0713 [0.0695,0.0730]  N=1,233,179
+
+  stock_rs:
+    lag 10: autocorr=0.7864 [0.7857,0.7870]  N=1,306,797
+    lag 20: autocorr=0.6067 [0.6056,0.6078]  N=1,290,417
+    lag 40: autocorr=0.2923 [0.2907,0.2939]  N=1,269,345
+    lag 60: autocorr=0.1351 [0.1334,0.1369]  N=1,252,898
+    lag 90: autocorr=0.0928 [0.0910,0.0945]  N=1,233,179
+
+  residual_stock_rs:
+    lag 10: autocorr=0.7585 [0.7578,0.7592]  N=1,306,797
+    lag 20: autocorr=0.5747 [0.5736,0.5759]  N=1,290,417
+    lag 40: autocorr=0.2666 [0.2650,0.2683]  N=1,269,345
+    lag 60: autocorr=0.1178 [0.1160,0.1195]  N=1,252,898
+    lag 90: autocorr=0.0861 [0.0844,0.0879]  N=1,233,179
+
+
+Done.

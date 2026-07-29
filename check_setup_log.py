@@ -1,0 +1,16 @@
+﻿import sqlite3, sys
+sys.path.insert(0, r'C:\Users\Lenovo\psx_pipeline')
+from config import DB_PATH
+conn = sqlite3.connect(DB_PATH)
+cur = conn.cursor()
+cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='setup_log'")
+print('setup_log exists:', cur.fetchall())
+cur.execute('PRAGMA table_info(setup_log)')
+print('Columns:', cur.fetchall())
+cur.execute('SELECT DISTINCT setup_type FROM setup_log ORDER BY setup_type')
+print('setup_types:', cur.fetchall())
+cur.execute('SELECT DISTINCT regime FROM setup_log WHERE regime IS NOT NULL ORDER BY regime')
+print('regimes:', cur.fetchall())
+cur.execute('SELECT DISTINCT sector FROM setup_log WHERE sector IS NOT NULL ORDER BY sector')
+print('sectors:', cur.fetchall())
+conn.close()

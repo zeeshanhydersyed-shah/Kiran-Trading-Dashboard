@@ -1,0 +1,158 @@
+==========================================================================================
+STEP 1: recomputing days-since-transition from market_regime.regime (independent of the flagged-unreliable regime_days column)
+==========================================================================================
+market_regime: 5,319 rows, 2005-01-03 -> 2026-07-09
+Total regime transitions detected (incl. the very first row): 479
+TRENDING_UP rows in market_regime: 2,136, days_since_transition range: 0-121
+
+==========================================================================================
+Loading liquidity-gated stock_signals population (avg_vol_10d > 200,000)
+==========================================================================================
+Liquidity-gated stock_signals rows: 297,640, 257 symbols, 2015-01-01 -> 2026-07-09
+
+Computing fwd_return_10d fresh from prices_adjusted (10 trading days forward, close-to-close, per-symbol continuous sequence — same formula as compute_forward_returns.py)...
+
+Rows with valid fwd_return_10d (window closed + price data present): 296,010 / 297,640 (99.5%)
+
+
+==========================================================================================
+STEP 2: Population — stock_signals rows, valid fwd_return_10d, avg_vol_10d > 200,000, regime = TRENDING_UP
+==========================================================================================
+Population N = 124,639, 250 symbols, date range 2015-01-01 -> 2026-06-23
+
+==========================================================================================
+STEP 3-4: Group split — 0-2 / 3-5 / 6+ days since transition (transition day itself = 0)
+==========================================================================================
+  0-2 days: n=20,090, mean=+1.0726%, median=-0.3265%
+  3-5 days: n=13,531, mean=+2.0221%, median=+0.5637%
+  6+ days: n=91,018, mean=+1.8296%, median=+0.1656%
+
+==========================================================================================
+STEP 5: Statistical suite, 0-2 days vs 6+ days (journal's claim: 6+ outperforms 0-2, i.e. hi=6+, lo=0-2)
+==========================================================================================
+
+------------------------------------------------------------------------------------------
+PRIMARY: 6+ days since TRENDING_UP transition vs 0-2 days
+------------------------------------------------------------------------------------------
+
+  6+ days (n=91,018, mean=+1.8296%, median=+0.1656%) vs 0-2 days (n=20,090, mean=+1.0726%, median=-0.3265%)
+  Mean delta (hi minus lo): +0.7570pp
+  MWU two-sided: p = 0.000000
+  MWU one-sided (hi > lo, journal's hypothesized direction): p = 0.000000
+  Welch's t: t = 8.7377, p = 0.000000
+  Cliff's delta (hi vs lo): 0.0466
+
+==========================================================================================
+STEP 6: Era consistency (0-2 vs 6+, repeated per era — NOT pooled-only)
+==========================================================================================
+
+>>> ERA: Development (2015-01-01 -> 2019-12-31), n_rows=35,727
+    0-2 days: n=6,024, mean=+2.6696%, median=+0.8436%
+    3-5 days: n=4,656, mean=+3.0161%, median=+1.0794%
+    6+ days : n=25,047, mean=+0.4675%, median=-0.3536%
+
+------------------------------------------------------------------------------------------
+ERA: Development — 6+ vs 0-2
+------------------------------------------------------------------------------------------
+
+  6+ days (n=25,047, mean=+0.4675%, median=-0.3536%) vs 0-2 days (n=6,024, mean=+2.6696%, median=+0.8436%)
+  Mean delta (hi minus lo): -2.2021pp
+  MWU two-sided: p = 0.000000
+  MWU one-sided (hi > lo, journal's hypothesized direction): p = 1.000000
+  Welch's t: t = -15.4422, p = 0.000000
+  Cliff's delta (hi vs lo): -0.1286
+
+>>> ERA: Validation (2020-01-01 -> 2022-12-31), n_rows=20,612
+    0-2 days: n=4,070, mean=-0.7681%, median=-2.0956%
+    3-5 days: n=1,644, mean=+2.2289%, median=+0.8461%
+    6+ days : n=14,898, mean=+1.7498%, median=+0.0000%
+
+------------------------------------------------------------------------------------------
+ERA: Validation — 6+ vs 0-2
+------------------------------------------------------------------------------------------
+
+  6+ days (n=14,898, mean=+1.7498%, median=+0.0000%) vs 0-2 days (n=4,070, mean=-0.7681%, median=-2.0956%)
+  Mean delta (hi minus lo): +2.5179pp
+  MWU two-sided: p = 0.000000
+  MWU one-sided (hi > lo, journal's hypothesized direction): p = 0.000000
+  Welch's t: t = 13.4488, p = 0.000000
+  Cliff's delta (hi vs lo): 0.1687
+
+>>> ERA: OOS (2023-01-01 -> 2026-12-31), n_rows=68,300
+    0-2 days: n=9,996, mean=+0.8597%, median=-0.5292%
+    3-5 days: n=7,231, mean=+1.3350%, median=+0.1909%
+    6+ days : n=51,073, mean=+2.5209%, median=+0.5642%
+
+------------------------------------------------------------------------------------------
+ERA: OOS — 6+ vs 0-2
+------------------------------------------------------------------------------------------
+
+  6+ days (n=51,073, mean=+2.5209%, median=+0.5642%) vs 0-2 days (n=9,996, mean=+0.8597%, median=-0.5292%)
+  Mean delta (hi minus lo): +1.6612pp
+  MWU two-sided: p = 0.000000
+  MWU one-sided (hi > lo, journal's hypothesized direction): p = 0.000000
+  Welch's t: t = 12.9398, p = 0.000000
+  Cliff's delta (hi vs lo): 0.0912
+
+
+==========================================================================================
+STEP 7: Regime-type test — fwd_return_10d by regime (TRENDING_UP / RANGING / VOLATILE / TRENDING_DOWN), full population
+==========================================================================================
+Full regime-type population N = 296,010
+
+Full population, by regime:
+  TRENDING_UP    : n=124,639, mean=+1.7285%, median=+0.1157%
+  RANGING        : n=86,517, mean=-0.2472%, median=-1.0887%
+  VOLATILE       : n=50,639, mean=+0.2477%, median=-0.2380%
+  TRENDING_DOWN  : n=34,215, mean=+0.5425%, median=-0.2086%
+
+VOLATILE vs TRENDING_UP:
+
+------------------------------------------------------------------------------------------
+VOLATILE vs TRENDING_UP (journal claim: VOLATILE worse)
+------------------------------------------------------------------------------------------
+
+  TRENDING_UP (n=124,639, mean=+1.7285%, median=+0.1157%) vs VOLATILE (n=50,639, mean=+0.2477%, median=-0.2380%)
+  Mean delta (hi minus lo): +1.4808pp
+  MWU two-sided: p = 0.000000
+  MWU one-sided (hi > lo, journal's hypothesized direction): p = 0.000000
+  Welch's t: t = 23.9614, p = 0.000000
+  Cliff's delta (hi vs lo): 0.0537
+
+VOLATILE vs RANGING:
+
+------------------------------------------------------------------------------------------
+VOLATILE vs RANGING (journal claim: VOLATILE worse)
+------------------------------------------------------------------------------------------
+
+  RANGING (n=86,517, mean=-0.2472%, median=-1.0887%) vs VOLATILE (n=50,639, mean=+0.2477%, median=-0.2380%)
+  Mean delta (hi minus lo): -0.4949pp
+  MWU two-sided: p = 0.000000
+  MWU one-sided (hi > lo, journal's hypothesized direction): p = 1.000000
+  Welch's t: t = -7.9689, p = 0.000000
+  Cliff's delta (hi vs lo): -0.0511
+
+==========================================================================================
+STEP 7 era breakdown — mean/median fwd_return_10d by regime, per era
+==========================================================================================
+
+>>> ERA: Development (2015-01-01 -> 2019-12-31), n_rows=108,766
+    TRENDING_UP    : n=35,727, mean=+1.1709%, median=+0.0000%
+    RANGING        : n=36,625, mean=+0.0417%, median=-0.7053%
+    VOLATILE       : n=16,203, mean=+0.0432%, median=-0.6314%
+    TRENDING_DOWN  : n=20,211, mean=-0.7998%, median=-1.3029%
+
+>>> ERA: Validation (2020-01-01 -> 2022-12-31), n_rows=78,434
+    TRENDING_UP    : n=20,612, mean=+1.2908%, median=-0.3111%
+    RANGING        : n=33,375, mean=-1.2781%, median=-2.0202%
+    VOLATILE       : n=12,991, mean=+0.3277%, median=+0.3155%
+    TRENDING_DOWN  : n=11,456, mean=+2.4787%, median=+1.1612%
+
+>>> ERA: OOS (2023-01-01 -> 2026-12-31), n_rows=108,810
+    TRENDING_UP    : n=68,300, mean=+2.1523%, median=+0.3341%
+    RANGING        : n=16,517, mean=+1.1954%, median=-0.0116%
+    VOLATILE       : n=21,445, mean=+0.3537%, median=-0.2886%
+    TRENDING_DOWN  : n=2,548, mean=+2.4849%, median=+1.3182%
+
+
+Done.

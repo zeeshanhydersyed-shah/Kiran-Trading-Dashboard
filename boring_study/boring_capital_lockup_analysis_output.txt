@@ -1,0 +1,133 @@
+
+##########################################################################################
+# 20d panel -- top-decile RS, non-winners duration
+##########################################################################################
+Top-decile RS breakouts (real trades only): N=11,321
+  hit_tp_10 rate in this slice: 0.5508
+Non-winners: N=5,085
+Non-winners with computable duration: N=5,085
+
+Status breakdown:
+status
+STOPPED           98.98
+RIGHT_CENSORED     1.02
+status
+STOPPED           5033
+RIGHT_CENSORED      52
+
+--- STOPPED (n=5,033) -- day-to-stop distribution ---
+count    5033.00
+mean        2.76
+std         3.02
+min         1.00
+10%         1.00
+25%         1.00
+50%         2.00
+75%         3.00
+90%         6.00
+max        38.00
+
+--- Cumulative resolution curve for STOPPED trades ---
+  by day   1:  44.3% of eventual-stops resolved  |   43.8% of ALL non-winners resolved (stopped) by then
+  by day   2:  66.0% of eventual-stops resolved  |   65.3% of ALL non-winners resolved (stopped) by then
+  by day   3:  77.7% of eventual-stops resolved  |   76.9% of ALL non-winners resolved (stopped) by then
+  by day   5:  89.2% of eventual-stops resolved  |   88.3% of ALL non-winners resolved (stopped) by then
+  by day  10:  97.2% of eventual-stops resolved  |   96.2% of ALL non-winners resolved (stopped) by then
+  by day  20:  99.5% of eventual-stops resolved  |   98.5% of ALL non-winners resolved (stopped) by then
+  by day  30: 100.0% of eventual-stops resolved  |   98.9% of ALL non-winners resolved (stopped) by then
+  by day  60: 100.0% of eventual-stops resolved  |   99.0% of ALL non-winners resolved (stopped) by then
+  by day  90: 100.0% of eventual-stops resolved  |   99.0% of ALL non-winners resolved (stopped) by then
+
+--- UNRESOLVED, genuine full 90-day horizon available (n=0) -- true 'zombies' ---
+
+--- UNRESOLVED, right-censored by data availability (n=52) -- unknown outcome, not a true drift ---
+  Available horizon distribution (days of data actually observed):
+count    52.00
+mean      9.00
+std       9.81
+min       1.00
+10%       1.00
+25%       2.75
+50%       5.50
+75%      12.25
+90%      19.00
+max      43.00
+  Unrealized return at last observed day, distribution:
+count    52.00
+mean      0.85
+std       3.53
+min      -4.76
+10%      -3.33
+25%      -1.52
+50%       0.03
+75%       3.14
+90%       6.81
+max       8.54
+
+##########################################################################################
+# 60d panel -- top-decile RS, non-winners duration
+##########################################################################################
+Top-decile RS breakouts (real trades only): N=7,548
+  hit_tp_10 rate in this slice: 0.5701
+Non-winners: N=3,245
+Non-winners with computable duration: N=3,245
+
+Status breakdown:
+status
+STOPPED           98.71
+RIGHT_CENSORED     1.29
+status
+STOPPED           3203
+RIGHT_CENSORED      42
+
+--- STOPPED (n=3,203) -- day-to-stop distribution ---
+count    3203.00
+mean        2.57
+std         2.72
+min         1.00
+10%         1.00
+25%         1.00
+50%         2.00
+75%         3.00
+90%         5.00
+max        30.00
+
+--- Cumulative resolution curve for STOPPED trades ---
+  by day   1:  47.4% of eventual-stops resolved  |   46.8% of ALL non-winners resolved (stopped) by then
+  by day   2:  68.9% of eventual-stops resolved  |   68.0% of ALL non-winners resolved (stopped) by then
+  by day   3:  79.7% of eventual-stops resolved  |   78.7% of ALL non-winners resolved (stopped) by then
+  by day   5:  90.3% of eventual-stops resolved  |   89.1% of ALL non-winners resolved (stopped) by then
+  by day  10:  98.0% of eventual-stops resolved  |   96.7% of ALL non-winners resolved (stopped) by then
+  by day  20:  99.7% of eventual-stops resolved  |   98.4% of ALL non-winners resolved (stopped) by then
+  by day  30: 100.0% of eventual-stops resolved  |   98.7% of ALL non-winners resolved (stopped) by then
+  by day  60: 100.0% of eventual-stops resolved  |   98.7% of ALL non-winners resolved (stopped) by then
+  by day  90: 100.0% of eventual-stops resolved  |   98.7% of ALL non-winners resolved (stopped) by then
+
+--- UNRESOLVED, genuine full 90-day horizon available (n=0) -- true 'zombies' ---
+
+--- UNRESOLVED, right-censored by data availability (n=42) -- unknown outcome, not a true drift ---
+  Available horizon distribution (days of data actually observed):
+count    42.00
+mean      9.83
+std      10.41
+min       1.00
+10%       1.00
+25%       3.25
+50%       6.00
+75%      13.00
+90%      19.00
+max      43.00
+  Unrealized return at last observed day, distribution:
+count    42.00
+mean      0.78
+std       3.70
+min      -4.76
+10%      -3.43
+25%      -2.21
+50%       0.01
+75%       3.31
+90%       6.84
+max       8.54
+
+
+Done.

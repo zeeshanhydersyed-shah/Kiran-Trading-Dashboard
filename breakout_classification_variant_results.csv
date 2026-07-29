@@ -1,0 +1,2177 @@
+sector,symbol,start,end,kind,outcome,variant,type
+COMMERCIAL BANKS,ABL,1000,1080,ascending,down,current,1
+COMMERCIAL BANKS,ABL,1000,1080,ascending,down,fixed_5,1
+COMMERCIAL BANKS,ABL,1000,1080,ascending,down,fixed_10,1
+COMMERCIAL BANKS,ABL,1000,1080,ascending,down,trigger,1
+COMMERCIAL BANKS,ABL,3640,3720,descending,sequential,current,4
+COMMERCIAL BANKS,ABL,3640,3720,descending,sequential,fixed_5,4
+COMMERCIAL BANKS,ABL,3640,3720,descending,sequential,fixed_10,4
+COMMERCIAL BANKS,ABL,3640,3720,descending,sequential,trigger,4
+PHARMACEUTICALS,ABOT,2520,2600,descending,sequential,current,4
+PHARMACEUTICALS,ABOT,2520,2600,descending,sequential,fixed_5,3
+PHARMACEUTICALS,ABOT,2520,2600,descending,sequential,fixed_10,3
+PHARMACEUTICALS,ABOT,2520,2600,descending,sequential,trigger,3
+PHARMACEUTICALS,ABOT,3840,3920,ascending,down,current,4
+PHARMACEUTICALS,ABOT,3840,3920,ascending,down,fixed_5,4
+PHARMACEUTICALS,ABOT,3840,3920,ascending,down,fixed_10,4
+PHARMACEUTICALS,ABOT,3840,3920,ascending,down,trigger,4
+CEMENT,ACPL,80,160,ascending,up,current,4
+CEMENT,ACPL,80,160,ascending,up,fixed_5,4
+CEMENT,ACPL,80,160,ascending,up,fixed_10,4
+CEMENT,ACPL,80,160,ascending,up,trigger,4
+CEMENT,ACPL,600,680,descending,down,current,3
+CEMENT,ACPL,600,680,descending,down,fixed_5,3
+CEMENT,ACPL,600,680,descending,down,fixed_10,3
+CEMENT,ACPL,600,680,descending,down,trigger,3
+CEMENT,ACPL,2440,2520,ascending,down,current,1
+CEMENT,ACPL,2440,2520,ascending,down,fixed_5,1
+CEMENT,ACPL,2440,2520,ascending,down,fixed_10,1
+CEMENT,ACPL,2440,2520,ascending,down,trigger,1
+CEMENT,ACPL,3720,3800,descending,up,current,1
+CEMENT,ACPL,3720,3800,descending,up,fixed_5,1
+CEMENT,ACPL,3720,3800,descending,up,fixed_10,1
+CEMENT,ACPL,3720,3800,descending,up,trigger,1
+CEMENT,ACPL,3880,3960,ascending,down,current,4
+CEMENT,ACPL,3880,3960,ascending,down,fixed_5,1
+CEMENT,ACPL,3880,3960,ascending,down,fixed_10,1
+CEMENT,ACPL,3880,3960,ascending,down,trigger,1
+TEXTILE COMPOSITE,ADMM,160,240,symmetrical,down,current,4
+TEXTILE COMPOSITE,ADMM,160,240,symmetrical,down,fixed_5,1
+TEXTILE COMPOSITE,ADMM,160,240,symmetrical,down,fixed_10,4
+TEXTILE COMPOSITE,ADMM,160,240,symmetrical,down,trigger,1
+TEXTILE COMPOSITE,ADMM,520,600,descending,down,current,4
+TEXTILE COMPOSITE,ADMM,520,600,descending,down,fixed_5,1
+TEXTILE COMPOSITE,ADMM,520,600,descending,down,fixed_10,1
+TEXTILE COMPOSITE,ADMM,520,600,descending,down,trigger,1
+TEXTILE COMPOSITE,ADMM,1960,2040,descending,up,current,1
+TEXTILE COMPOSITE,ADMM,1960,2040,descending,up,fixed_5,1
+TEXTILE COMPOSITE,ADMM,1960,2040,descending,up,fixed_10,1
+TEXTILE COMPOSITE,ADMM,1960,2040,descending,up,trigger,1
+TEXTILE COMPOSITE,ADMM,2520,2600,ascending,down,current,4
+TEXTILE COMPOSITE,ADMM,2520,2600,ascending,down,fixed_5,3
+TEXTILE COMPOSITE,ADMM,2520,2600,ascending,down,fixed_10,4
+TEXTILE COMPOSITE,ADMM,2520,2600,ascending,down,trigger,3
+ENGINEERING,AGHA,1200,1280,symmetrical,sequential,current,4
+ENGINEERING,AGHA,1200,1280,symmetrical,sequential,fixed_5,3
+ENGINEERING,AGHA,1200,1280,symmetrical,sequential,fixed_10,3
+ENGINEERING,AGHA,1200,1280,symmetrical,sequential,trigger,4
+INSURANCE,AGIC,1280,1360,descending,up,current,4
+INSURANCE,AGIC,1280,1360,descending,up,fixed_5,1
+INSURANCE,AGIC,1280,1360,descending,up,fixed_10,4
+INSURANCE,AGIC,1280,1360,descending,up,trigger,4
+INSURANCE,AGIC,1960,2040,symmetrical,up,current,4
+INSURANCE,AGIC,1960,2040,symmetrical,up,fixed_5,2
+INSURANCE,AGIC,1960,2040,symmetrical,up,fixed_10,4
+INSURANCE,AGIC,1960,2040,symmetrical,up,trigger,4
+INSURANCE,AGIC,2520,2600,ascending,up,current,4
+INSURANCE,AGIC,2520,2600,ascending,up,fixed_5,4
+INSURANCE,AGIC,2520,2600,ascending,up,fixed_10,4
+INSURANCE,AGIC,2520,2600,ascending,up,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1240,1320,descending,up,current,1
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1240,1320,descending,up,fixed_5,1
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1240,1320,descending,up,fixed_10,1
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1240,1320,descending,up,trigger,1
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1400,1480,descending,down,current,3
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1400,1480,descending,down,fixed_5,3
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1400,1480,descending,down,fixed_10,3
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1400,1480,descending,down,trigger,3
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1520,1600,symmetrical,up,current,2
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1520,1600,symmetrical,up,fixed_5,2
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1520,1600,symmetrical,up,fixed_10,2
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1520,1600,symmetrical,up,trigger,2
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1920,2000,symmetrical,down,current,4
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1920,2000,symmetrical,down,fixed_5,1
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1920,2000,symmetrical,down,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,AGIL,1920,2000,symmetrical,down,trigger,4
+CHEMICAL,AGL,40,120,descending,sequential,current,4
+CHEMICAL,AGL,40,120,descending,sequential,fixed_5,3
+CHEMICAL,AGL,40,120,descending,sequential,fixed_10,3
+CHEMICAL,AGL,40,120,descending,sequential,trigger,4
+CHEMICAL,AGL,640,720,symmetrical,down,current,4
+CHEMICAL,AGL,640,720,symmetrical,down,fixed_5,4
+CHEMICAL,AGL,640,720,symmetrical,down,fixed_10,4
+CHEMICAL,AGL,640,720,symmetrical,down,trigger,4
+CHEMICAL,AGL,2640,2720,symmetrical,sequential,current,4
+CHEMICAL,AGL,2640,2720,symmetrical,sequential,fixed_5,3
+CHEMICAL,AGL,2640,2720,symmetrical,sequential,fixed_10,4
+CHEMICAL,AGL,2640,2720,symmetrical,sequential,trigger,4
+PHARMACEUTICALS,AGP,1840,1920,descending,up,current,1
+PHARMACEUTICALS,AGP,1840,1920,descending,up,fixed_5,1
+PHARMACEUTICALS,AGP,1840,1920,descending,up,fixed_10,1
+PHARMACEUTICALS,AGP,1840,1920,descending,up,trigger,1
+AUTOMOBILE ASSEMBLER,AGTL,1640,1720,descending,up,current,4
+AUTOMOBILE ASSEMBLER,AGTL,1640,1720,descending,up,fixed_5,4
+AUTOMOBILE ASSEMBLER,AGTL,1640,1720,descending,up,fixed_10,4
+AUTOMOBILE ASSEMBLER,AGTL,1640,1720,descending,up,trigger,4
+AUTOMOBILE ASSEMBLER,AGTL,3680,3760,descending,sequential,current,4
+AUTOMOBILE ASSEMBLER,AGTL,3680,3760,descending,sequential,fixed_5,4
+AUTOMOBILE ASSEMBLER,AGTL,3680,3760,descending,sequential,fixed_10,4
+AUTOMOBILE ASSEMBLER,AGTL,3680,3760,descending,sequential,trigger,4
+AUTOMOBILE ASSEMBLER,AGTL,4480,4560,descending,sequential,current,4
+AUTOMOBILE ASSEMBLER,AGTL,4480,4560,descending,sequential,fixed_5,3
+AUTOMOBILE ASSEMBLER,AGTL,4480,4560,descending,sequential,fixed_10,4
+AUTOMOBILE ASSEMBLER,AGTL,4480,4560,descending,sequential,trigger,3
+FERTILIZER,AHCL,3240,3320,descending,down,current,2
+FERTILIZER,AHCL,3240,3320,descending,down,fixed_5,2
+FERTILIZER,AHCL,3240,3320,descending,down,fixed_10,2
+FERTILIZER,AHCL,3240,3320,descending,down,trigger,2
+INSURANCE,AICL,1800,1880,ascending,sequential,current,4
+INSURANCE,AICL,1800,1880,ascending,sequential,fixed_5,3
+INSURANCE,AICL,1800,1880,ascending,sequential,fixed_10,3
+INSURANCE,AICL,1800,1880,ascending,sequential,trigger,3
+INSURANCE,AICL,3800,3880,descending,up,current,4
+INSURANCE,AICL,3800,3880,descending,up,fixed_5,4
+INSURANCE,AICL,3800,3880,descending,up,fixed_10,4
+INSURANCE,AICL,3800,3880,descending,up,trigger,4
+INSURANCE,AICL,3920,4000,ascending,down,current,4
+INSURANCE,AICL,3920,4000,ascending,down,fixed_5,4
+INSURANCE,AICL,3920,4000,ascending,down,fixed_10,4
+INSURANCE,AICL,3920,4000,ascending,down,trigger,4
+TECHNOLOGY & COMMUNICATION,AIRLINK,160,240,descending,down,current,4
+TECHNOLOGY & COMMUNICATION,AIRLINK,160,240,descending,down,fixed_5,3
+TECHNOLOGY & COMMUNICATION,AIRLINK,160,240,descending,down,fixed_10,3
+TECHNOLOGY & COMMUNICATION,AIRLINK,160,240,descending,down,trigger,4
+COMMERCIAL BANKS,AKBL,1800,1880,ascending,up,current,3
+COMMERCIAL BANKS,AKBL,1800,1880,ascending,up,fixed_5,3
+COMMERCIAL BANKS,AKBL,1800,1880,ascending,up,fixed_10,3
+COMMERCIAL BANKS,AKBL,1800,1880,ascending,up,trigger,3
+MISCELLANEOUS,AKDHL,240,320,descending,whipsaw,current,4
+MISCELLANEOUS,AKDHL,240,320,descending,whipsaw,fixed_5,4
+MISCELLANEOUS,AKDHL,240,320,descending,whipsaw,fixed_10,4
+MISCELLANEOUS,AKDHL,240,320,descending,whipsaw,trigger,4
+MISCELLANEOUS,AKDHL,880,960,descending,whipsaw,current,4
+MISCELLANEOUS,AKDHL,880,960,descending,whipsaw,fixed_5,4
+MISCELLANEOUS,AKDHL,880,960,descending,whipsaw,fixed_10,4
+MISCELLANEOUS,AKDHL,880,960,descending,whipsaw,trigger,4
+MISCELLANEOUS,AKGL,640,720,descending,sequential,current,4
+MISCELLANEOUS,AKGL,640,720,descending,sequential,fixed_5,4
+MISCELLANEOUS,AKGL,640,720,descending,sequential,fixed_10,4
+MISCELLANEOUS,AKGL,640,720,descending,sequential,trigger,4
+INSURANCE,ALAC,2720,2800,symmetrical,down,current,4
+INSURANCE,ALAC,2720,2800,symmetrical,down,fixed_5,4
+INSURANCE,ALAC,2720,2800,symmetrical,down,fixed_10,4
+INSURANCE,ALAC,2720,2800,symmetrical,down,trigger,4
+POWER GENERATION & DISTRIBUTION,ALTN,2200,2280,descending,whipsaw,current,4
+POWER GENERATION & DISTRIBUTION,ALTN,2200,2280,descending,whipsaw,fixed_5,4
+POWER GENERATION & DISTRIBUTION,ALTN,2200,2280,descending,whipsaw,fixed_10,4
+POWER GENERATION & DISTRIBUTION,ALTN,2200,2280,descending,whipsaw,trigger,4
+POWER GENERATION & DISTRIBUTION,ALTN,2400,2480,descending,up,current,4
+POWER GENERATION & DISTRIBUTION,ALTN,2400,2480,descending,up,fixed_5,3
+POWER GENERATION & DISTRIBUTION,ALTN,2400,2480,descending,up,fixed_10,3
+POWER GENERATION & DISTRIBUTION,ALTN,2400,2480,descending,up,trigger,3
+POWER GENERATION & DISTRIBUTION,ALTN,2520,2600,descending,down,current,1
+POWER GENERATION & DISTRIBUTION,ALTN,2520,2600,descending,down,fixed_5,1
+POWER GENERATION & DISTRIBUTION,ALTN,2520,2600,descending,down,fixed_10,1
+POWER GENERATION & DISTRIBUTION,ALTN,2520,2600,descending,down,trigger,1
+POWER GENERATION & DISTRIBUTION,ALTN,2600,2680,symmetrical,up,current,1
+POWER GENERATION & DISTRIBUTION,ALTN,2600,2680,symmetrical,up,fixed_5,1
+POWER GENERATION & DISTRIBUTION,ALTN,2600,2680,symmetrical,up,fixed_10,1
+POWER GENERATION & DISTRIBUTION,ALTN,2600,2680,symmetrical,up,trigger,1
+TEXTILE COMPOSITE,ANL,2360,2440,symmetrical,down,current,1
+TEXTILE COMPOSITE,ANL,2360,2440,symmetrical,down,fixed_5,1
+TEXTILE COMPOSITE,ANL,2360,2440,symmetrical,down,fixed_10,1
+TEXTILE COMPOSITE,ANL,2360,2440,symmetrical,down,trigger,1
+TEXTILE COMPOSITE,ANL,3600,3680,symmetrical,down,current,2
+TEXTILE COMPOSITE,ANL,3600,3680,symmetrical,down,fixed_5,2
+TEXTILE COMPOSITE,ANL,3600,3680,symmetrical,down,fixed_10,2
+TEXTILE COMPOSITE,ANL,3600,3680,symmetrical,down,trigger,2
+TEXTILE COMPOSITE,ANTM,440,520,descending,sequential,current,4
+TEXTILE COMPOSITE,ANTM,440,520,descending,sequential,fixed_5,4
+TEXTILE COMPOSITE,ANTM,440,520,descending,sequential,fixed_10,4
+TEXTILE COMPOSITE,ANTM,440,520,descending,sequential,trigger,4
+OIL & GAS MARKETING COMPANIES,APL,1400,1480,symmetrical,up,current,2
+OIL & GAS MARKETING COMPANIES,APL,1400,1480,symmetrical,up,fixed_5,2
+OIL & GAS MARKETING COMPANIES,APL,1400,1480,symmetrical,up,fixed_10,2
+OIL & GAS MARKETING COMPANIES,APL,1400,1480,symmetrical,up,trigger,2
+OIL & GAS MARKETING COMPANIES,APL,1560,1640,ascending,up,current,1
+OIL & GAS MARKETING COMPANIES,APL,1560,1640,ascending,up,fixed_5,1
+OIL & GAS MARKETING COMPANIES,APL,1560,1640,ascending,up,fixed_10,1
+OIL & GAS MARKETING COMPANIES,APL,1560,1640,ascending,up,trigger,1
+OIL & GAS MARKETING COMPANIES,APL,3160,3240,ascending,down,current,4
+OIL & GAS MARKETING COMPANIES,APL,3160,3240,ascending,down,fixed_5,2
+OIL & GAS MARKETING COMPANIES,APL,3160,3240,ascending,down,fixed_10,2
+OIL & GAS MARKETING COMPANIES,APL,3160,3240,ascending,down,trigger,4
+OIL & GAS MARKETING COMPANIES,APL,3880,3960,descending,up,current,4
+OIL & GAS MARKETING COMPANIES,APL,3880,3960,descending,up,fixed_5,4
+OIL & GAS MARKETING COMPANIES,APL,3880,3960,descending,up,fixed_10,4
+OIL & GAS MARKETING COMPANIES,APL,3880,3960,descending,up,trigger,4
+OIL & GAS MARKETING COMPANIES,APL,3920,4000,descending,sequential,current,4
+OIL & GAS MARKETING COMPANIES,APL,3920,4000,descending,sequential,fixed_5,4
+OIL & GAS MARKETING COMPANIES,APL,3920,4000,descending,sequential,fixed_10,4
+OIL & GAS MARKETING COMPANIES,APL,3920,4000,descending,sequential,trigger,4
+OIL & GAS MARKETING COMPANIES,APL,4120,4200,symmetrical,up,current,2
+OIL & GAS MARKETING COMPANIES,APL,4120,4200,symmetrical,up,fixed_5,2
+OIL & GAS MARKETING COMPANIES,APL,4120,4200,symmetrical,up,fixed_10,2
+OIL & GAS MARKETING COMPANIES,APL,4120,4200,symmetrical,up,trigger,2
+OIL & GAS MARKETING COMPANIES,APL,4640,4720,ascending,up,current,4
+OIL & GAS MARKETING COMPANIES,APL,4640,4720,ascending,up,fixed_5,4
+OIL & GAS MARKETING COMPANIES,APL,4640,4720,ascending,up,fixed_10,4
+OIL & GAS MARKETING COMPANIES,APL,4640,4720,ascending,up,trigger,4
+CHEMICAL,ARPL,4720,4800,ascending,up,current,4
+CHEMICAL,ARPL,4720,4800,ascending,up,fixed_5,4
+CHEMICAL,ARPL,4720,4800,ascending,up,fixed_10,4
+CHEMICAL,ARPL,4720,4800,ascending,up,trigger,4
+TEXTILE COMPOSITE,ARUJ,640,720,symmetrical,up,current,1
+TEXTILE COMPOSITE,ARUJ,640,720,symmetrical,up,fixed_5,1
+TEXTILE COMPOSITE,ARUJ,640,720,symmetrical,up,fixed_10,1
+TEXTILE COMPOSITE,ARUJ,640,720,symmetrical,up,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,ASC,80,160,symmetrical,up,current,4
+FOOD & PERSONAL CARE PRODUCTS,ASC,80,160,symmetrical,up,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,ASC,80,160,symmetrical,up,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,ASC,80,160,symmetrical,up,trigger,4
+ENGINEERING,ASL,0,80,ascending,down,current,4
+ENGINEERING,ASL,0,80,ascending,down,fixed_5,4
+ENGINEERING,ASL,0,80,ascending,down,fixed_10,4
+ENGINEERING,ASL,0,80,ascending,down,trigger,4
+ENGINEERING,ASL,160,240,descending,whipsaw,current,4
+ENGINEERING,ASL,160,240,descending,whipsaw,fixed_5,4
+ENGINEERING,ASL,160,240,descending,whipsaw,fixed_10,4
+ENGINEERING,ASL,160,240,descending,whipsaw,trigger,4
+ENGINEERING,ASL,1320,1400,descending,down,current,1
+ENGINEERING,ASL,1320,1400,descending,down,fixed_5,1
+ENGINEERING,ASL,1320,1400,descending,down,fixed_10,1
+ENGINEERING,ASL,1320,1400,descending,down,trigger,1
+ENGINEERING,ASL,2400,2480,descending,down,current,4
+ENGINEERING,ASL,2400,2480,descending,down,fixed_5,4
+ENGINEERING,ASL,2400,2480,descending,down,fixed_10,4
+ENGINEERING,ASL,2400,2480,descending,down,trigger,4
+ENGINEERING,ASLPS,360,440,ascending,up,current,1
+ENGINEERING,ASLPS,360,440,ascending,up,fixed_5,1
+ENGINEERING,ASLPS,360,440,ascending,up,fixed_10,1
+ENGINEERING,ASLPS,360,440,ascending,up,trigger,1
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,2600,2680,descending,up,current,4
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,2600,2680,descending,up,fixed_5,4
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,2600,2680,descending,up,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,2600,2680,descending,up,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,4040,4120,symmetrical,sequential,current,4
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,4040,4120,symmetrical,sequential,fixed_5,4
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,4040,4120,symmetrical,sequential,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,ATBA,4040,4120,symmetrical,sequential,trigger,3
+INSURANCE,ATIL,1320,1400,ascending,up,current,4
+INSURANCE,ATIL,1320,1400,ascending,up,fixed_5,3
+INSURANCE,ATIL,1320,1400,ascending,up,fixed_10,3
+INSURANCE,ATIL,1320,1400,ascending,up,trigger,4
+INSURANCE,ATIL,2480,2560,descending,up,current,4
+INSURANCE,ATIL,2480,2560,descending,up,fixed_5,4
+INSURANCE,ATIL,2480,2560,descending,up,fixed_10,4
+INSURANCE,ATIL,2480,2560,descending,up,trigger,4
+AUTOMOBILE ASSEMBLER,ATLH,3640,3720,descending,sequential,current,4
+AUTOMOBILE ASSEMBLER,ATLH,3640,3720,descending,sequential,fixed_5,4
+AUTOMOBILE ASSEMBLER,ATLH,3640,3720,descending,sequential,fixed_10,4
+AUTOMOBILE ASSEMBLER,ATLH,3640,3720,descending,sequential,trigger,4
+REFINERY,ATRL,1440,1520,ascending,sequential,current,4
+REFINERY,ATRL,1440,1520,ascending,sequential,fixed_5,3
+REFINERY,ATRL,1440,1520,ascending,sequential,fixed_10,3
+REFINERY,ATRL,1440,1520,ascending,sequential,trigger,3
+REFINERY,ATRL,2560,2640,descending,whipsaw,current,4
+REFINERY,ATRL,2560,2640,descending,whipsaw,fixed_5,4
+REFINERY,ATRL,2560,2640,descending,whipsaw,fixed_10,4
+REFINERY,ATRL,2560,2640,descending,whipsaw,trigger,4
+REFINERY,ATRL,2640,2720,ascending,up,current,4
+REFINERY,ATRL,2640,2720,ascending,up,fixed_5,4
+REFINERY,ATRL,2640,2720,ascending,up,fixed_10,4
+REFINERY,ATRL,2640,2720,ascending,up,trigger,4
+REFINERY,ATRL,5000,5080,ascending,sequential,current,4
+REFINERY,ATRL,5000,5080,ascending,sequential,fixed_5,3
+REFINERY,ATRL,5000,5080,ascending,sequential,fixed_10,4
+REFINERY,ATRL,5000,5080,ascending,sequential,trigger,3
+TECHNOLOGY & COMMUNICATION,AVN,560,640,descending,up,current,4
+TECHNOLOGY & COMMUNICATION,AVN,560,640,descending,up,fixed_5,3
+TECHNOLOGY & COMMUNICATION,AVN,560,640,descending,up,fixed_10,3
+TECHNOLOGY & COMMUNICATION,AVN,560,640,descending,up,trigger,3
+TECHNOLOGY & COMMUNICATION,AVN,1920,2000,ascending,down,current,1
+TECHNOLOGY & COMMUNICATION,AVN,1920,2000,ascending,down,fixed_5,1
+TECHNOLOGY & COMMUNICATION,AVN,1920,2000,ascending,down,fixed_10,1
+TECHNOLOGY & COMMUNICATION,AVN,1920,2000,ascending,down,trigger,1
+TECHNOLOGY & COMMUNICATION,AVN,2200,2280,descending,sequential,current,4
+TECHNOLOGY & COMMUNICATION,AVN,2200,2280,descending,sequential,fixed_5,4
+TECHNOLOGY & COMMUNICATION,AVN,2200,2280,descending,sequential,fixed_10,4
+TECHNOLOGY & COMMUNICATION,AVN,2200,2280,descending,sequential,trigger,4
+COMMERCIAL BANKS,BAFL,1840,1920,ascending,down,current,4
+COMMERCIAL BANKS,BAFL,1840,1920,ascending,down,fixed_5,4
+COMMERCIAL BANKS,BAFL,1840,1920,ascending,down,fixed_10,4
+COMMERCIAL BANKS,BAFL,1840,1920,ascending,down,trigger,4
+COMMERCIAL BANKS,BAFL,3040,3120,ascending,down,current,4
+COMMERCIAL BANKS,BAFL,3040,3120,ascending,down,fixed_5,4
+COMMERCIAL BANKS,BAFL,3040,3120,ascending,down,fixed_10,4
+COMMERCIAL BANKS,BAFL,3040,3120,ascending,down,trigger,4
+COMMERCIAL BANKS,BAFL,3840,3920,ascending,sequential,current,4
+COMMERCIAL BANKS,BAFL,3840,3920,ascending,sequential,fixed_5,4
+COMMERCIAL BANKS,BAFL,3840,3920,ascending,sequential,fixed_10,4
+COMMERCIAL BANKS,BAFL,3840,3920,ascending,sequential,trigger,4
+COMMERCIAL BANKS,BAFL,4520,4600,descending,up,current,4
+COMMERCIAL BANKS,BAFL,4520,4600,descending,up,fixed_5,4
+COMMERCIAL BANKS,BAFL,4520,4600,descending,up,fixed_10,4
+COMMERCIAL BANKS,BAFL,4520,4600,descending,up,trigger,4
+COMMERCIAL BANKS,BAHL,4120,4200,ascending,down,current,1
+COMMERCIAL BANKS,BAHL,4120,4200,ascending,down,fixed_5,1
+COMMERCIAL BANKS,BAHL,4120,4200,ascending,down,fixed_10,1
+COMMERCIAL BANKS,BAHL,4120,4200,ascending,down,trigger,1
+ENGINEERING,BCL,760,840,ascending,down,current,1
+ENGINEERING,BCL,760,840,ascending,down,fixed_5,1
+ENGINEERING,BCL,760,840,ascending,down,fixed_10,1
+ENGINEERING,BCL,760,840,ascending,down,trigger,1
+ENGINEERING,BCL,3400,3480,descending,up,current,4
+ENGINEERING,BCL,3400,3480,descending,up,fixed_5,1
+ENGINEERING,BCL,3400,3480,descending,up,fixed_10,1
+ENGINEERING,BCL,3400,3480,descending,up,trigger,4
+ENGINEERING,BECO,400,480,descending,up,current,4
+ENGINEERING,BECO,400,480,descending,up,fixed_5,4
+ENGINEERING,BECO,400,480,descending,up,fixed_10,4
+ENGINEERING,BECO,400,480,descending,up,trigger,4
+CHEMICAL,BERG,2280,2360,symmetrical,down,current,3
+CHEMICAL,BERG,2280,2360,symmetrical,down,fixed_5,3
+CHEMICAL,BERG,2280,2360,symmetrical,down,fixed_10,3
+CHEMICAL,BERG,2280,2360,symmetrical,down,trigger,3
+CHEMICAL,BERG,2840,2920,symmetrical,down,current,4
+CHEMICAL,BERG,2840,2920,symmetrical,down,fixed_5,4
+CHEMICAL,BERG,2840,2920,symmetrical,down,fixed_10,4
+CHEMICAL,BERG,2840,2920,symmetrical,down,trigger,4
+GLASS & CERAMICS,BGL,3800,3880,symmetrical,whipsaw,current,4
+GLASS & CERAMICS,BGL,3800,3880,symmetrical,whipsaw,fixed_5,4
+GLASS & CERAMICS,BGL,3800,3880,symmetrical,whipsaw,fixed_10,4
+GLASS & CERAMICS,BGL,3800,3880,symmetrical,whipsaw,trigger,4
+TEXTILE COMPOSITE,BHAT,1160,1240,descending,up,current,2
+TEXTILE COMPOSITE,BHAT,1160,1240,descending,up,fixed_5,2
+TEXTILE COMPOSITE,BHAT,1160,1240,descending,up,fixed_10,2
+TEXTILE COMPOSITE,BHAT,1160,1240,descending,up,trigger,2
+TEXTILE COMPOSITE,BHAT,1240,1320,symmetrical,down,current,1
+TEXTILE COMPOSITE,BHAT,1240,1320,symmetrical,down,fixed_5,1
+TEXTILE COMPOSITE,BHAT,1240,1320,symmetrical,down,fixed_10,1
+TEXTILE COMPOSITE,BHAT,1240,1320,symmetrical,down,trigger,1
+COMMERCIAL BANKS,BIPL,2240,2320,symmetrical,sequential,current,4
+COMMERCIAL BANKS,BIPL,2240,2320,symmetrical,sequential,fixed_5,3
+COMMERCIAL BANKS,BIPL,2240,2320,symmetrical,sequential,fixed_10,4
+COMMERCIAL BANKS,BIPL,2240,2320,symmetrical,sequential,trigger,4
+COMMERCIAL BANKS,BIPL,3920,4000,descending,up,current,4
+COMMERCIAL BANKS,BIPL,3920,4000,descending,up,fixed_5,4
+COMMERCIAL BANKS,BIPL,3920,4000,descending,up,fixed_10,4
+COMMERCIAL BANKS,BIPL,3920,4000,descending,up,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,BNL,1280,1360,descending,whipsaw,current,4
+FOOD & PERSONAL CARE PRODUCTS,BNL,1280,1360,descending,whipsaw,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,BNL,1280,1360,descending,whipsaw,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,BNL,1280,1360,descending,whipsaw,trigger,4
+COMMERCIAL BANKS,BOK,440,520,descending,down,current,4
+COMMERCIAL BANKS,BOK,440,520,descending,down,fixed_5,3
+COMMERCIAL BANKS,BOK,440,520,descending,down,fixed_10,3
+COMMERCIAL BANKS,BOK,440,520,descending,down,trigger,3
+COMMERCIAL BANKS,BOK,3680,3760,ascending,down,current,4
+COMMERCIAL BANKS,BOK,3680,3760,ascending,down,fixed_5,4
+COMMERCIAL BANKS,BOK,3680,3760,ascending,down,fixed_10,4
+COMMERCIAL BANKS,BOK,3680,3760,ascending,down,trigger,4
+COMMERCIAL BANKS,BOK,4280,4360,ascending,sequential,current,4
+COMMERCIAL BANKS,BOK,4280,4360,ascending,sequential,fixed_5,3
+COMMERCIAL BANKS,BOK,4280,4360,ascending,sequential,fixed_10,4
+COMMERCIAL BANKS,BOK,4280,4360,ascending,sequential,trigger,4
+COMMERCIAL BANKS,BOK,4600,4680,symmetrical,up,current,4
+COMMERCIAL BANKS,BOK,4600,4680,symmetrical,up,fixed_5,4
+COMMERCIAL BANKS,BOK,4600,4680,symmetrical,up,fixed_10,4
+COMMERCIAL BANKS,BOK,4600,4680,symmetrical,up,trigger,4
+COMMERCIAL BANKS,BOP,3840,3920,symmetrical,sequential,current,4
+COMMERCIAL BANKS,BOP,3840,3920,symmetrical,sequential,fixed_5,4
+COMMERCIAL BANKS,BOP,3840,3920,symmetrical,sequential,fixed_10,4
+COMMERCIAL BANKS,BOP,3840,3920,symmetrical,sequential,trigger,4
+OIL & GAS MARKETING COMPANIES,BPL,720,800,descending,down,current,2
+OIL & GAS MARKETING COMPANIES,BPL,720,800,descending,down,fixed_5,2
+OIL & GAS MARKETING COMPANIES,BPL,720,800,descending,down,fixed_10,2
+OIL & GAS MARKETING COMPANIES,BPL,720,800,descending,down,trigger,2
+CEMENT,BWCL,1000,1080,symmetrical,whipsaw,current,4
+CEMENT,BWCL,1000,1080,symmetrical,whipsaw,fixed_5,4
+CEMENT,BWCL,1000,1080,symmetrical,whipsaw,fixed_10,4
+CEMENT,BWCL,1000,1080,symmetrical,whipsaw,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,0,80,descending,up,current,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,0,80,descending,up,fixed_5,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,0,80,descending,up,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,0,80,descending,up,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1400,1480,ascending,up,current,1
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1400,1480,ascending,up,fixed_5,1
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1400,1480,ascending,up,fixed_10,1
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1400,1480,ascending,up,trigger,1
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1880,1960,descending,down,current,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1880,1960,descending,down,fixed_5,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1880,1960,descending,down,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,1880,1960,descending,down,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,2280,2360,symmetrical,sequential,current,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,2280,2360,symmetrical,sequential,fixed_5,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,2280,2360,symmetrical,sequential,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,BWHL,2280,2360,symmetrical,sequential,trigger,4
+INSURANCE,CENI,3480,3560,symmetrical,up,current,3
+INSURANCE,CENI,3480,3560,symmetrical,up,fixed_5,3
+INSURANCE,CENI,3480,3560,symmetrical,up,fixed_10,3
+INSURANCE,CENI,3480,3560,symmetrical,up,trigger,3
+PAPER & BOARD,CEPB,840,920,descending,down,current,4
+PAPER & BOARD,CEPB,840,920,descending,down,fixed_5,2
+PAPER & BOARD,CEPB,840,920,descending,down,fixed_10,2
+PAPER & BOARD,CEPB,840,920,descending,down,trigger,4
+PAPER & BOARD,CEPB,1080,1160,ascending,sequential,current,4
+PAPER & BOARD,CEPB,1080,1160,ascending,sequential,fixed_5,3
+PAPER & BOARD,CEPB,1080,1160,ascending,sequential,fixed_10,4
+PAPER & BOARD,CEPB,1080,1160,ascending,sequential,trigger,4
+PAPER & BOARD,CEPB,2200,2280,ascending,sequential,current,4
+PAPER & BOARD,CEPB,2200,2280,ascending,sequential,fixed_5,4
+PAPER & BOARD,CEPB,2200,2280,ascending,sequential,fixed_10,4
+PAPER & BOARD,CEPB,2200,2280,ascending,sequential,trigger,4
+PAPER & BOARD,CEPB,2520,2600,ascending,sequential,current,4
+PAPER & BOARD,CEPB,2520,2600,ascending,sequential,fixed_5,4
+PAPER & BOARD,CEPB,2520,2600,ascending,sequential,fixed_10,4
+PAPER & BOARD,CEPB,2520,2600,ascending,sequential,trigger,4
+TEXTILE COMPOSITE,CHBL,360,440,descending,up,current,1
+TEXTILE COMPOSITE,CHBL,360,440,descending,up,fixed_5,1
+TEXTILE COMPOSITE,CHBL,360,440,descending,up,fixed_10,1
+TEXTILE COMPOSITE,CHBL,360,440,descending,up,trigger,1
+TEXTILE COMPOSITE,CHBL,1560,1640,symmetrical,sequential,current,4
+TEXTILE COMPOSITE,CHBL,1560,1640,symmetrical,sequential,fixed_5,4
+TEXTILE COMPOSITE,CHBL,1560,1640,symmetrical,sequential,fixed_10,4
+TEXTILE COMPOSITE,CHBL,1560,1640,symmetrical,sequential,trigger,4
+CEMENT,CHCC,1120,1200,symmetrical,sequential,current,4
+CEMENT,CHCC,1120,1200,symmetrical,sequential,fixed_5,4
+CEMENT,CHCC,1120,1200,symmetrical,sequential,fixed_10,4
+CEMENT,CHCC,1120,1200,symmetrical,sequential,trigger,4
+CEMENT,CHCC,1560,1640,descending,sequential,current,4
+CEMENT,CHCC,1560,1640,descending,sequential,fixed_5,3
+CEMENT,CHCC,1560,1640,descending,sequential,fixed_10,3
+CEMENT,CHCC,1560,1640,descending,sequential,trigger,3
+CEMENT,CHCC,2280,2360,symmetrical,up,current,1
+CEMENT,CHCC,2280,2360,symmetrical,up,fixed_5,1
+CEMENT,CHCC,2280,2360,symmetrical,up,fixed_10,1
+CEMENT,CHCC,2280,2360,symmetrical,up,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,CLOV,1480,1560,descending,up,current,1
+FOOD & PERSONAL CARE PRODUCTS,CLOV,1480,1560,descending,up,fixed_5,1
+FOOD & PERSONAL CARE PRODUCTS,CLOV,1480,1560,descending,up,fixed_10,1
+FOOD & PERSONAL CARE PRODUCTS,CLOV,1480,1560,descending,up,trigger,1
+REFINERY,CNERGY,2840,2920,descending,sequential,current,4
+REFINERY,CNERGY,2840,2920,descending,sequential,fixed_5,3
+REFINERY,CNERGY,2840,2920,descending,sequential,fixed_10,4
+REFINERY,CNERGY,2840,2920,descending,sequential,trigger,4
+PAPER & BOARD,CPPL,3160,3240,symmetrical,up,current,2
+PAPER & BOARD,CPPL,3160,3240,symmetrical,up,fixed_5,2
+PAPER & BOARD,CPPL,3160,3240,symmetrical,up,fixed_10,2
+PAPER & BOARD,CPPL,3160,3240,symmetrical,up,trigger,2
+PAPER & BOARD,CPPL,4480,4560,ascending,down,current,2
+PAPER & BOARD,CPPL,4480,4560,ascending,down,fixed_5,2
+PAPER & BOARD,CPPL,4480,4560,ascending,down,fixed_10,2
+PAPER & BOARD,CPPL,4480,4560,ascending,down,trigger,2
+TEXTILE COMPOSITE,CRTM,2240,2320,descending,sequential,current,4
+TEXTILE COMPOSITE,CRTM,2240,2320,descending,sequential,fixed_5,3
+TEXTILE COMPOSITE,CRTM,2240,2320,descending,sequential,fixed_10,3
+TEXTILE COMPOSITE,CRTM,2240,2320,descending,sequential,trigger,3
+TEXTILE COMPOSITE,CRTM,3560,3640,descending,up,current,1
+TEXTILE COMPOSITE,CRTM,3560,3640,descending,up,fixed_5,1
+TEXTILE COMPOSITE,CRTM,3560,3640,descending,up,fixed_10,1
+TEXTILE COMPOSITE,CRTM,3560,3640,descending,up,trigger,1
+ENGINEERING,CSAP,4920,5000,descending,up,current,4
+ENGINEERING,CSAP,4920,5000,descending,up,fixed_5,1
+ENGINEERING,CSAP,4920,5000,descending,up,fixed_10,1
+ENGINEERING,CSAP,4920,5000,descending,up,trigger,1
+INSURANCE,CYAN,640,720,descending,up,current,1
+INSURANCE,CYAN,640,720,descending,up,fixed_5,1
+INSURANCE,CYAN,640,720,descending,up,fixed_10,1
+INSURANCE,CYAN,640,720,descending,up,trigger,1
+INSURANCE,CYAN,1840,1920,symmetrical,sequential,current,4
+INSURANCE,CYAN,1840,1920,symmetrical,sequential,fixed_5,4
+INSURANCE,CYAN,1840,1920,symmetrical,sequential,fixed_10,4
+INSURANCE,CYAN,1840,1920,symmetrical,sequential,trigger,4
+INSURANCE,CYAN,4120,4200,descending,up,current,4
+INSURANCE,CYAN,4120,4200,descending,up,fixed_5,4
+INSURANCE,CYAN,4120,4200,descending,up,fixed_10,4
+INSURANCE,CYAN,4120,4200,descending,up,trigger,1
+CHEMICAL,DAAG,840,920,symmetrical,up,current,2
+CHEMICAL,DAAG,840,920,symmetrical,up,fixed_5,2
+CHEMICAL,DAAG,840,920,symmetrical,up,fixed_10,2
+CHEMICAL,DAAG,840,920,symmetrical,up,trigger,2
+CHEMICAL,DAAG,2240,2320,descending,down,current,4
+CHEMICAL,DAAG,2240,2320,descending,down,fixed_5,4
+CHEMICAL,DAAG,2240,2320,descending,down,fixed_10,4
+CHEMICAL,DAAG,2240,2320,descending,down,trigger,4
+CEMENT,DBCI,1840,1920,symmetrical,sequential,current,4
+CEMENT,DBCI,1840,1920,symmetrical,sequential,fixed_5,4
+CEMENT,DBCI,1840,1920,symmetrical,sequential,fixed_10,4
+CEMENT,DBCI,1840,1920,symmetrical,sequential,trigger,4
+CEMENT,DCL,680,760,symmetrical,up,current,4
+CEMENT,DCL,680,760,symmetrical,up,fixed_5,3
+CEMENT,DCL,680,760,symmetrical,up,fixed_10,4
+CEMENT,DCL,680,760,symmetrical,up,trigger,4
+CEMENT,DCL,1560,1640,ascending,down,current,4
+CEMENT,DCL,1560,1640,ascending,down,fixed_5,3
+CEMENT,DCL,1560,1640,ascending,down,fixed_10,3
+CEMENT,DCL,1560,1640,ascending,down,trigger,4
+CEMENT,DCL,2520,2600,ascending,down,current,1
+CEMENT,DCL,2520,2600,ascending,down,fixed_5,1
+CEMENT,DCL,2520,2600,ascending,down,fixed_10,1
+CEMENT,DCL,2520,2600,ascending,down,trigger,1
+CEMENT,DCL,4760,4840,ascending,up,current,4
+CEMENT,DCL,4760,4840,ascending,up,fixed_5,3
+CEMENT,DCL,4760,4840,ascending,up,fixed_10,3
+CEMENT,DCL,4760,4840,ascending,up,trigger,4
+REAL ESTATE INVESTMENT TRUST,DCR,1240,1320,descending,down,current,4
+REAL ESTATE INVESTMENT TRUST,DCR,1240,1320,descending,down,fixed_5,3
+REAL ESTATE INVESTMENT TRUST,DCR,1240,1320,descending,down,fixed_10,3
+REAL ESTATE INVESTMENT TRUST,DCR,1240,1320,descending,down,trigger,4
+AUTOMOBILE ASSEMBLER,DFML,3840,3920,ascending,down,current,4
+AUTOMOBILE ASSEMBLER,DFML,3840,3920,ascending,down,fixed_5,4
+AUTOMOBILE ASSEMBLER,DFML,3840,3920,ascending,down,fixed_10,4
+AUTOMOBILE ASSEMBLER,DFML,3840,3920,ascending,down,trigger,4
+AUTOMOBILE ASSEMBLER,DFML,3880,3960,descending,down,current,4
+AUTOMOBILE ASSEMBLER,DFML,3880,3960,descending,down,fixed_5,4
+AUTOMOBILE ASSEMBLER,DFML,3880,3960,descending,down,fixed_10,4
+AUTOMOBILE ASSEMBLER,DFML,3880,3960,descending,down,trigger,4
+CEMENT,DGKC,680,760,descending,up,current,1
+CEMENT,DGKC,680,760,descending,up,fixed_5,1
+CEMENT,DGKC,680,760,descending,up,fixed_10,1
+CEMENT,DGKC,680,760,descending,up,trigger,1
+CEMENT,DGKC,1480,1560,symmetrical,down,current,1
+CEMENT,DGKC,1480,1560,symmetrical,down,fixed_5,1
+CEMENT,DGKC,1480,1560,symmetrical,down,fixed_10,1
+CEMENT,DGKC,1480,1560,symmetrical,down,trigger,1
+CEMENT,DGKC,2920,3000,ascending,down,current,3
+CEMENT,DGKC,2920,3000,ascending,down,fixed_5,3
+CEMENT,DGKC,2920,3000,ascending,down,fixed_10,3
+CEMENT,DGKC,2920,3000,ascending,down,trigger,3
+CEMENT,DNCC,240,320,ascending,down,current,4
+CEMENT,DNCC,240,320,ascending,down,fixed_5,4
+CEMENT,DNCC,240,320,ascending,down,fixed_10,4
+CEMENT,DNCC,240,320,ascending,down,trigger,4
+CEMENT,DNCC,1440,1520,symmetrical,sequential,current,4
+CEMENT,DNCC,1440,1520,symmetrical,sequential,fixed_5,4
+CEMENT,DNCC,1440,1520,symmetrical,sequential,fixed_10,4
+CEMENT,DNCC,1440,1520,symmetrical,sequential,trigger,4
+CEMENT,DNCC,2160,2240,symmetrical,sequential,current,4
+CEMENT,DNCC,2160,2240,symmetrical,sequential,fixed_5,4
+CEMENT,DNCC,2160,2240,symmetrical,sequential,fixed_10,4
+CEMENT,DNCC,2160,2240,symmetrical,sequential,trigger,4
+CHEMICAL,DOL,680,760,descending,down,current,4
+CHEMICAL,DOL,680,760,descending,down,fixed_5,4
+CHEMICAL,DOL,680,760,descending,down,fixed_10,4
+CHEMICAL,DOL,680,760,descending,down,trigger,4
+CHEMICAL,DOL,3200,3280,descending,whipsaw,current,4
+CHEMICAL,DOL,3200,3280,descending,whipsaw,fixed_5,4
+CHEMICAL,DOL,3200,3280,descending,whipsaw,fixed_10,4
+CHEMICAL,DOL,3200,3280,descending,whipsaw,trigger,4
+CHEMICAL,DOL,3560,3640,symmetrical,down,current,2
+CHEMICAL,DOL,3560,3640,symmetrical,down,fixed_5,2
+CHEMICAL,DOL,3560,3640,symmetrical,down,fixed_10,2
+CHEMICAL,DOL,3560,3640,symmetrical,down,trigger,2
+CHEMICAL,DOL,4080,4160,ascending,sequential,current,4
+CHEMICAL,DOL,4080,4160,ascending,sequential,fixed_5,4
+CHEMICAL,DOL,4080,4160,ascending,sequential,fixed_10,4
+CHEMICAL,DOL,4080,4160,ascending,sequential,trigger,4
+ENGINEERING,DSL,2280,2360,ascending,whipsaw,current,4
+ENGINEERING,DSL,2280,2360,ascending,whipsaw,fixed_5,4
+ENGINEERING,DSL,2280,2360,ascending,whipsaw,fixed_10,4
+ENGINEERING,DSL,2280,2360,ascending,whipsaw,trigger,4
+ENGINEERING,DSL,3080,3160,ascending,sequential,current,4
+ENGINEERING,DSL,3080,3160,ascending,sequential,fixed_5,3
+ENGINEERING,DSL,3080,3160,ascending,sequential,fixed_10,3
+ENGINEERING,DSL,3080,3160,ascending,sequential,trigger,3
+ENGINEERING,DSL,4000,4080,descending,up,current,3
+ENGINEERING,DSL,4000,4080,descending,up,fixed_5,3
+ENGINEERING,DSL,4000,4080,descending,up,fixed_10,3
+ENGINEERING,DSL,4000,4080,descending,up,trigger,3
+ENGINEERING,DSL,4360,4440,descending,down,current,1
+ENGINEERING,DSL,4360,4440,descending,down,fixed_5,1
+ENGINEERING,DSL,4360,4440,descending,down,fixed_10,1
+ENGINEERING,DSL,4360,4440,descending,down,trigger,1
+CHEMICAL,DYNO,400,480,ascending,sequential,current,4
+CHEMICAL,DYNO,400,480,ascending,sequential,fixed_5,4
+CHEMICAL,DYNO,400,480,ascending,sequential,fixed_10,4
+CHEMICAL,DYNO,400,480,ascending,sequential,trigger,4
+CHEMICAL,DYNO,880,960,descending,down,current,4
+CHEMICAL,DYNO,880,960,descending,down,fixed_5,4
+CHEMICAL,DYNO,880,960,descending,down,fixed_10,4
+CHEMICAL,DYNO,880,960,descending,down,trigger,4
+MISCELLANEOUS,ECOP,280,360,descending,down,current,4
+MISCELLANEOUS,ECOP,280,360,descending,down,fixed_5,4
+MISCELLANEOUS,ECOP,280,360,descending,down,fixed_10,4
+MISCELLANEOUS,ECOP,280,360,descending,down,trigger,4
+MISCELLANEOUS,ECOP,1040,1120,ascending,down,current,4
+MISCELLANEOUS,ECOP,1040,1120,ascending,down,fixed_5,4
+MISCELLANEOUS,ECOP,1040,1120,ascending,down,fixed_10,4
+MISCELLANEOUS,ECOP,1040,1120,ascending,down,trigger,4
+MISCELLANEOUS,ECOP,4920,5000,ascending,up,current,2
+MISCELLANEOUS,ECOP,4920,5000,ascending,up,fixed_5,2
+MISCELLANEOUS,ECOP,4920,5000,ascending,up,fixed_10,2
+MISCELLANEOUS,ECOP,4920,5000,ascending,up,trigger,2
+FERTILIZER,EFERT,520,600,descending,down,current,1
+FERTILIZER,EFERT,520,600,descending,down,fixed_5,1
+FERTILIZER,EFERT,520,600,descending,down,fixed_10,1
+FERTILIZER,EFERT,520,600,descending,down,trigger,1
+FERTILIZER,EFERT,1320,1400,ascending,up,current,4
+FERTILIZER,EFERT,1320,1400,ascending,up,fixed_5,4
+FERTILIZER,EFERT,1320,1400,ascending,up,fixed_10,4
+FERTILIZER,EFERT,1320,1400,ascending,up,trigger,4
+INSURANCE,EFUG,1680,1760,symmetrical,up,current,1
+INSURANCE,EFUG,1680,1760,symmetrical,up,fixed_5,1
+INSURANCE,EFUG,1680,1760,symmetrical,up,fixed_10,1
+INSURANCE,EFUG,1680,1760,symmetrical,up,trigger,1
+INSURANCE,EFUG,1800,1880,descending,up,current,4
+INSURANCE,EFUG,1800,1880,descending,up,fixed_5,4
+INSURANCE,EFUG,1800,1880,descending,up,fixed_10,4
+INSURANCE,EFUG,1800,1880,descending,up,trigger,4
+INSURANCE,EFUL,120,200,descending,up,current,4
+INSURANCE,EFUL,120,200,descending,up,fixed_5,4
+INSURANCE,EFUL,120,200,descending,up,fixed_10,4
+INSURANCE,EFUL,120,200,descending,up,trigger,4
+INSURANCE,EFUL,760,840,descending,sequential,current,4
+INSURANCE,EFUL,760,840,descending,sequential,fixed_5,4
+INSURANCE,EFUL,760,840,descending,sequential,fixed_10,4
+INSURANCE,EFUL,760,840,descending,sequential,trigger,4
+INSURANCE,EFUL,2760,2840,symmetrical,sequential,current,4
+INSURANCE,EFUL,2760,2840,symmetrical,sequential,fixed_5,3
+INSURANCE,EFUL,2760,2840,symmetrical,sequential,fixed_10,4
+INSURANCE,EFUL,2760,2840,symmetrical,sequential,trigger,4
+FERTILIZER,ENGRO,80,160,descending,up,current,1
+FERTILIZER,ENGRO,80,160,descending,up,fixed_5,1
+FERTILIZER,ENGRO,80,160,descending,up,fixed_10,1
+FERTILIZER,ENGRO,80,160,descending,up,trigger,1
+FERTILIZER,ENGRO,1280,1360,descending,up,current,2
+FERTILIZER,ENGRO,1280,1360,descending,up,fixed_5,2
+FERTILIZER,ENGRO,1280,1360,descending,up,fixed_10,2
+FERTILIZER,ENGRO,1280,1360,descending,up,trigger,2
+FERTILIZER,ENGRO,1320,1400,ascending,up,current,2
+FERTILIZER,ENGRO,1320,1400,ascending,up,fixed_5,2
+FERTILIZER,ENGRO,1320,1400,ascending,up,fixed_10,2
+FERTILIZER,ENGRO,1320,1400,ascending,up,trigger,2
+FERTILIZER,ENGRO,1840,1920,symmetrical,sequential,current,4
+FERTILIZER,ENGRO,1840,1920,symmetrical,sequential,fixed_5,3
+FERTILIZER,ENGRO,1840,1920,symmetrical,sequential,fixed_10,3
+FERTILIZER,ENGRO,1840,1920,symmetrical,sequential,trigger,3
+FERTILIZER,ENGRO,1880,1960,ascending,up,current,1
+FERTILIZER,ENGRO,1880,1960,ascending,up,fixed_5,1
+FERTILIZER,ENGRO,1880,1960,ascending,up,fixed_10,1
+FERTILIZER,ENGRO,1880,1960,ascending,up,trigger,1
+FERTILIZER,ENGRO,4200,4280,descending,down,current,4
+FERTILIZER,ENGRO,4200,4280,descending,down,fixed_5,4
+FERTILIZER,ENGRO,4200,4280,descending,down,fixed_10,4
+FERTILIZER,ENGRO,4200,4280,descending,down,trigger,4
+CHEMICAL,EPCL,2840,2920,descending,sequential,current,4
+CHEMICAL,EPCL,2840,2920,descending,sequential,fixed_5,4
+CHEMICAL,EPCL,2840,2920,descending,sequential,fixed_10,4
+CHEMICAL,EPCL,2840,2920,descending,sequential,trigger,4
+CHEMICAL,EPCLPS,280,360,descending,up,current,4
+CHEMICAL,EPCLPS,280,360,descending,up,fixed_5,4
+CHEMICAL,EPCLPS,280,360,descending,up,fixed_10,4
+CHEMICAL,EPCLPS,280,360,descending,up,trigger,4
+POWER GENERATION & DISTRIBUTION,EPQL,960,1040,descending,up,current,4
+POWER GENERATION & DISTRIBUTION,EPQL,960,1040,descending,up,fixed_5,2
+POWER GENERATION & DISTRIBUTION,EPQL,960,1040,descending,up,fixed_10,4
+POWER GENERATION & DISTRIBUTION,EPQL,960,1040,descending,up,trigger,2
+POWER GENERATION & DISTRIBUTION,EPQL,1960,2040,symmetrical,sequential,current,4
+POWER GENERATION & DISTRIBUTION,EPQL,1960,2040,symmetrical,sequential,fixed_5,3
+POWER GENERATION & DISTRIBUTION,EPQL,1960,2040,symmetrical,sequential,fixed_10,4
+POWER GENERATION & DISTRIBUTION,EPQL,1960,2040,symmetrical,sequential,trigger,4
+POWER GENERATION & DISTRIBUTION,EPQL,2040,2120,symmetrical,down,current,4
+POWER GENERATION & DISTRIBUTION,EPQL,2040,2120,symmetrical,down,fixed_5,4
+POWER GENERATION & DISTRIBUTION,EPQL,2040,2120,symmetrical,down,fixed_10,4
+POWER GENERATION & DISTRIBUTION,EPQL,2040,2120,symmetrical,down,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4120,4200,descending,up,current,4
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4120,4200,descending,up,fixed_5,4
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4120,4200,descending,up,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4120,4200,descending,up,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4160,4240,ascending,down,current,1
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4160,4240,ascending,down,fixed_5,1
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4160,4240,ascending,down,fixed_10,1
+AUTOMOBILE PARTS & ACCESSORIES,EXIDE,4160,4240,ascending,down,trigger,1
+COMMERCIAL BANKS,FABL,600,680,ascending,down,current,4
+COMMERCIAL BANKS,FABL,600,680,ascending,down,fixed_5,4
+COMMERCIAL BANKS,FABL,600,680,ascending,down,fixed_10,4
+COMMERCIAL BANKS,FABL,600,680,ascending,down,trigger,4
+COMMERCIAL BANKS,FABL,2040,2120,symmetrical,sequential,current,4
+COMMERCIAL BANKS,FABL,2040,2120,symmetrical,sequential,fixed_5,3
+COMMERCIAL BANKS,FABL,2040,2120,symmetrical,sequential,fixed_10,3
+COMMERCIAL BANKS,FABL,2040,2120,symmetrical,sequential,trigger,4
+TEXTILE COMPOSITE,FASM,120,200,descending,down,current,1
+TEXTILE COMPOSITE,FASM,120,200,descending,down,fixed_5,1
+TEXTILE COMPOSITE,FASM,120,200,descending,down,fixed_10,1
+TEXTILE COMPOSITE,FASM,120,200,descending,down,trigger,1
+TEXTILE COMPOSITE,FASM,360,440,symmetrical,up,current,1
+TEXTILE COMPOSITE,FASM,360,440,symmetrical,up,fixed_5,1
+TEXTILE COMPOSITE,FASM,360,440,symmetrical,up,fixed_10,1
+TEXTILE COMPOSITE,FASM,360,440,symmetrical,up,trigger,1
+FERTILIZER,FATIMA,1240,1320,symmetrical,up,current,1
+FERTILIZER,FATIMA,1240,1320,symmetrical,up,fixed_5,1
+FERTILIZER,FATIMA,1240,1320,symmetrical,up,fixed_10,1
+FERTILIZER,FATIMA,1240,1320,symmetrical,up,trigger,1
+FERTILIZER,FATIMA,2080,2160,ascending,down,current,4
+FERTILIZER,FATIMA,2080,2160,ascending,down,fixed_5,4
+FERTILIZER,FATIMA,2080,2160,ascending,down,fixed_10,4
+FERTILIZER,FATIMA,2080,2160,ascending,down,trigger,4
+CEMENT,FCCL,2520,2600,descending,up,current,4
+CEMENT,FCCL,2520,2600,descending,up,fixed_5,2
+CEMENT,FCCL,2520,2600,descending,up,fixed_10,2
+CEMENT,FCCL,2520,2600,descending,up,trigger,4
+CEMENT,FCCL,2560,2640,ascending,sequential,current,4
+CEMENT,FCCL,2560,2640,ascending,sequential,fixed_5,4
+CEMENT,FCCL,2560,2640,ascending,sequential,fixed_10,4
+CEMENT,FCCL,2560,2640,ascending,sequential,trigger,4
+CEMENT,FCCL,3920,4000,symmetrical,none,current,N/A
+CEMENT,FCCL,3920,4000,symmetrical,none,fixed_5,N/A
+CEMENT,FCCL,3920,4000,symmetrical,none,fixed_10,N/A
+CEMENT,FCCL,3920,4000,symmetrical,none,trigger,N/A
+CEMENT,FCCL,5080,5160,ascending,down,current,4
+CEMENT,FCCL,5080,5160,ascending,down,fixed_5,4
+CEMENT,FCCL,5080,5160,ascending,down,fixed_10,4
+CEMENT,FCCL,5080,5160,ascending,down,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,720,800,descending,up,current,1
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,720,800,descending,up,fixed_5,1
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,720,800,descending,up,fixed_10,1
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,720,800,descending,up,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,1000,1080,descending,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,1000,1080,descending,down,fixed_5,3
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,1000,1080,descending,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,1000,1080,descending,down,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,2920,3000,descending,up,current,2
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,2920,3000,descending,up,fixed_5,2
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,2920,3000,descending,up,fixed_10,2
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,2920,3000,descending,up,trigger,2
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3280,3360,symmetrical,sequential,current,4
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3280,3360,symmetrical,sequential,fixed_5,3
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3280,3360,symmetrical,sequential,fixed_10,3
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3280,3360,symmetrical,sequential,trigger,3
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3480,3560,symmetrical,sequential,current,4
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3480,3560,symmetrical,sequential,fixed_5,3
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3480,3560,symmetrical,sequential,fixed_10,3
+FOOD & PERSONAL CARE PRODUCTS,FCEPL,3480,3560,symmetrical,sequential,trigger,4
+CEMENT,FECTC,3520,3600,symmetrical,up,current,2
+CEMENT,FECTC,3520,3600,symmetrical,up,fixed_5,2
+CEMENT,FECTC,3520,3600,symmetrical,up,fixed_10,2
+CEMENT,FECTC,3520,3600,symmetrical,up,trigger,2
+CEMENT,FECTC,4240,4320,descending,down,current,3
+CEMENT,FECTC,4240,4320,descending,down,fixed_5,3
+CEMENT,FECTC,4240,4320,descending,down,fixed_10,3
+CEMENT,FECTC,4240,4320,descending,down,trigger,3
+PHARMACEUTICALS,FEROZ,1240,1320,ascending,sequential,current,4
+PHARMACEUTICALS,FEROZ,1240,1320,ascending,sequential,fixed_5,4
+PHARMACEUTICALS,FEROZ,1240,1320,ascending,sequential,fixed_10,4
+PHARMACEUTICALS,FEROZ,1240,1320,ascending,sequential,trigger,4
+FERTILIZER,FFC,360,440,descending,up,current,4
+FERTILIZER,FFC,360,440,descending,up,fixed_5,4
+FERTILIZER,FFC,360,440,descending,up,fixed_10,4
+FERTILIZER,FFC,360,440,descending,up,trigger,4
+FERTILIZER,FFC,400,480,ascending,down,current,4
+FERTILIZER,FFC,400,480,ascending,down,fixed_5,2
+FERTILIZER,FFC,400,480,ascending,down,fixed_10,2
+FERTILIZER,FFC,400,480,ascending,down,trigger,2
+FERTILIZER,FFC,2760,2840,descending,down,current,4
+FERTILIZER,FFC,2760,2840,descending,down,fixed_5,4
+FERTILIZER,FFC,2760,2840,descending,down,fixed_10,4
+FERTILIZER,FFC,2760,2840,descending,down,trigger,4
+FERTILIZER,FFC,3520,3600,symmetrical,up,current,2
+FERTILIZER,FFC,3520,3600,symmetrical,up,fixed_5,2
+FERTILIZER,FFC,3520,3600,symmetrical,up,fixed_10,2
+FERTILIZER,FFC,3520,3600,symmetrical,up,trigger,2
+FERTILIZER,FFC,4880,4960,symmetrical,down,current,4
+FERTILIZER,FFC,4880,4960,symmetrical,down,fixed_5,4
+FERTILIZER,FFC,4880,4960,symmetrical,down,fixed_10,4
+FERTILIZER,FFC,4880,4960,symmetrical,down,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,FFL,280,360,ascending,sequential,current,4
+FOOD & PERSONAL CARE PRODUCTS,FFL,280,360,ascending,sequential,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,FFL,280,360,ascending,sequential,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,FFL,280,360,ascending,sequential,trigger,4
+CEMENT,FLYNG,160,240,descending,down,current,1
+CEMENT,FLYNG,160,240,descending,down,fixed_5,1
+CEMENT,FLYNG,160,240,descending,down,fixed_10,1
+CEMENT,FLYNG,160,240,descending,down,trigger,1
+CEMENT,FLYNG,1320,1400,symmetrical,down,current,3
+CEMENT,FLYNG,1320,1400,symmetrical,down,fixed_5,3
+CEMENT,FLYNG,1320,1400,symmetrical,down,fixed_10,3
+CEMENT,FLYNG,1320,1400,symmetrical,down,trigger,3
+CEMENT,FLYNG,3680,3760,descending,down,current,1
+CEMENT,FLYNG,3680,3760,descending,down,fixed_5,1
+CEMENT,FLYNG,3680,3760,descending,down,fixed_10,1
+CEMENT,FLYNG,3680,3760,descending,down,trigger,1
+TEXTILE COMPOSITE,FML,1720,1800,descending,down,current,4
+TEXTILE COMPOSITE,FML,1720,1800,descending,down,fixed_5,3
+TEXTILE COMPOSITE,FML,1720,1800,descending,down,fixed_10,3
+TEXTILE COMPOSITE,FML,1720,1800,descending,down,trigger,4
+AUTOMOBILE ASSEMBLER,GAL,520,600,symmetrical,up,current,4
+AUTOMOBILE ASSEMBLER,GAL,520,600,symmetrical,up,fixed_5,4
+AUTOMOBILE ASSEMBLER,GAL,520,600,symmetrical,up,fixed_10,4
+AUTOMOBILE ASSEMBLER,GAL,520,600,symmetrical,up,trigger,4
+TEXTILE COMPOSITE,GATM,840,920,symmetrical,sequential,current,4
+TEXTILE COMPOSITE,GATM,840,920,symmetrical,sequential,fixed_5,4
+TEXTILE COMPOSITE,GATM,840,920,symmetrical,sequential,fixed_10,4
+TEXTILE COMPOSITE,GATM,840,920,symmetrical,sequential,trigger,4
+TEXTILE COMPOSITE,GATM,1000,1080,ascending,up,current,4
+TEXTILE COMPOSITE,GATM,1000,1080,ascending,up,fixed_5,2
+TEXTILE COMPOSITE,GATM,1000,1080,ascending,up,fixed_10,2
+TEXTILE COMPOSITE,GATM,1000,1080,ascending,up,trigger,2
+TEXTILE COMPOSITE,GFIL,1720,1800,ascending,down,current,1
+TEXTILE COMPOSITE,GFIL,1720,1800,ascending,down,fixed_5,1
+TEXTILE COMPOSITE,GFIL,1720,1800,ascending,down,fixed_10,1
+TEXTILE COMPOSITE,GFIL,1720,1800,ascending,down,trigger,1
+TEXTILE COMPOSITE,GFIL,2840,2920,descending,down,current,4
+TEXTILE COMPOSITE,GFIL,2840,2920,descending,down,fixed_5,3
+TEXTILE COMPOSITE,GFIL,2840,2920,descending,down,fixed_10,3
+TEXTILE COMPOSITE,GFIL,2840,2920,descending,down,trigger,4
+GLASS & CERAMICS,GGGL,1880,1960,ascending,down,current,4
+GLASS & CERAMICS,GGGL,1880,1960,ascending,down,fixed_5,4
+GLASS & CERAMICS,GGGL,1880,1960,ascending,down,fixed_10,4
+GLASS & CERAMICS,GGGL,1880,1960,ascending,down,trigger,4
+CHEMICAL,GGL,1760,1840,descending,down,current,4
+CHEMICAL,GGL,1760,1840,descending,down,fixed_5,4
+CHEMICAL,GGL,1760,1840,descending,down,fixed_10,4
+CHEMICAL,GGL,1760,1840,descending,down,trigger,4
+GLASS & CERAMICS,GHGL,40,120,descending,down,current,3
+GLASS & CERAMICS,GHGL,40,120,descending,down,fixed_5,3
+GLASS & CERAMICS,GHGL,40,120,descending,down,fixed_10,3
+GLASS & CERAMICS,GHGL,40,120,descending,down,trigger,3
+GLASS & CERAMICS,GHGL,1360,1440,ascending,down,current,4
+GLASS & CERAMICS,GHGL,1360,1440,ascending,down,fixed_5,4
+GLASS & CERAMICS,GHGL,1360,1440,ascending,down,fixed_10,4
+GLASS & CERAMICS,GHGL,1360,1440,ascending,down,trigger,4
+GLASS & CERAMICS,GHGL,2480,2560,symmetrical,whipsaw,current,4
+GLASS & CERAMICS,GHGL,2480,2560,symmetrical,whipsaw,fixed_5,4
+GLASS & CERAMICS,GHGL,2480,2560,symmetrical,whipsaw,fixed_10,4
+GLASS & CERAMICS,GHGL,2480,2560,symmetrical,whipsaw,trigger,4
+GLASS & CERAMICS,GHGL,3200,3280,descending,down,current,3
+GLASS & CERAMICS,GHGL,3200,3280,descending,down,fixed_5,3
+GLASS & CERAMICS,GHGL,3200,3280,descending,down,fixed_10,3
+GLASS & CERAMICS,GHGL,3200,3280,descending,down,trigger,3
+GLASS & CERAMICS,GHGL,3880,3960,ascending,down,current,2
+GLASS & CERAMICS,GHGL,3880,3960,ascending,down,fixed_5,2
+GLASS & CERAMICS,GHGL,3880,3960,ascending,down,fixed_10,2
+GLASS & CERAMICS,GHGL,3880,3960,ascending,down,trigger,2
+GLASS & CERAMICS,GHGL,4000,4080,symmetrical,sequential,current,4
+GLASS & CERAMICS,GHGL,4000,4080,symmetrical,sequential,fixed_5,4
+GLASS & CERAMICS,GHGL,4000,4080,symmetrical,sequential,fixed_10,4
+GLASS & CERAMICS,GHGL,4000,4080,symmetrical,sequential,trigger,4
+AUTOMOBILE ASSEMBLER,GHNI,920,1000,symmetrical,down,current,1
+AUTOMOBILE ASSEMBLER,GHNI,920,1000,symmetrical,down,fixed_5,1
+AUTOMOBILE ASSEMBLER,GHNI,920,1000,symmetrical,down,fixed_10,1
+AUTOMOBILE ASSEMBLER,GHNI,920,1000,symmetrical,down,trigger,1
+AUTOMOBILE ASSEMBLER,GHNI,1360,1440,descending,up,current,2
+AUTOMOBILE ASSEMBLER,GHNI,1360,1440,descending,up,fixed_5,2
+AUTOMOBILE ASSEMBLER,GHNI,1360,1440,descending,up,fixed_10,2
+AUTOMOBILE ASSEMBLER,GHNI,1360,1440,descending,up,trigger,2
+AUTOMOBILE ASSEMBLER,GHNI,4040,4120,symmetrical,down,current,2
+AUTOMOBILE ASSEMBLER,GHNI,4040,4120,symmetrical,down,fixed_5,2
+AUTOMOBILE ASSEMBLER,GHNI,4040,4120,symmetrical,down,fixed_10,2
+AUTOMOBILE ASSEMBLER,GHNI,4040,4120,symmetrical,down,trigger,2
+PHARMACEUTICALS,GLAXO,1480,1560,ascending,down,current,2
+PHARMACEUTICALS,GLAXO,1480,1560,ascending,down,fixed_5,2
+PHARMACEUTICALS,GLAXO,1480,1560,ascending,down,fixed_10,2
+PHARMACEUTICALS,GLAXO,1480,1560,ascending,down,trigger,2
+PHARMACEUTICALS,GLAXO,2440,2520,descending,up,current,4
+PHARMACEUTICALS,GLAXO,2440,2520,descending,up,fixed_5,4
+PHARMACEUTICALS,GLAXO,2440,2520,descending,up,fixed_10,4
+PHARMACEUTICALS,GLAXO,2440,2520,descending,up,trigger,4
+PHARMACEUTICALS,GLAXO,2560,2640,ascending,down,current,4
+PHARMACEUTICALS,GLAXO,2560,2640,ascending,down,fixed_5,1
+PHARMACEUTICALS,GLAXO,2560,2640,ascending,down,fixed_10,4
+PHARMACEUTICALS,GLAXO,2560,2640,ascending,down,trigger,4
+PHARMACEUTICALS,GLAXO,3400,3480,symmetrical,down,current,1
+PHARMACEUTICALS,GLAXO,3400,3480,symmetrical,down,fixed_5,1
+PHARMACEUTICALS,GLAXO,3400,3480,symmetrical,down,fixed_10,1
+PHARMACEUTICALS,GLAXO,3400,3480,symmetrical,down,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,GLPL,640,720,symmetrical,sequential,current,4
+FOOD & PERSONAL CARE PRODUCTS,GLPL,640,720,symmetrical,sequential,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,GLPL,640,720,symmetrical,sequential,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,GLPL,640,720,symmetrical,sequential,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,GLPL,720,800,ascending,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,GLPL,720,800,ascending,down,fixed_5,2
+FOOD & PERSONAL CARE PRODUCTS,GLPL,720,800,ascending,down,fixed_10,2
+FOOD & PERSONAL CARE PRODUCTS,GLPL,720,800,ascending,down,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,GTYR,4640,4720,ascending,down,current,4
+AUTOMOBILE PARTS & ACCESSORIES,GTYR,4640,4720,ascending,down,fixed_5,1
+AUTOMOBILE PARTS & ACCESSORIES,GTYR,4640,4720,ascending,down,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,GTYR,4640,4720,ascending,down,trigger,4
+GLASS & CERAMICS,GVGL,720,800,symmetrical,down,current,4
+GLASS & CERAMICS,GVGL,720,800,symmetrical,down,fixed_5,4
+GLASS & CERAMICS,GVGL,720,800,symmetrical,down,fixed_10,4
+GLASS & CERAMICS,GVGL,720,800,symmetrical,down,trigger,1
+CEMENT,GWLC,960,1040,descending,up,current,4
+CEMENT,GWLC,960,1040,descending,up,fixed_5,3
+CEMENT,GWLC,960,1040,descending,up,fixed_10,4
+CEMENT,GWLC,960,1040,descending,up,trigger,4
+CEMENT,GWLC,2720,2800,descending,down,current,2
+CEMENT,GWLC,2720,2800,descending,down,fixed_5,2
+CEMENT,GWLC,2720,2800,descending,down,fixed_10,2
+CEMENT,GWLC,2720,2800,descending,down,trigger,2
+PHARMACEUTICALS,HALEON,0,80,descending,up,current,4
+PHARMACEUTICALS,HALEON,0,80,descending,up,fixed_5,4
+PHARMACEUTICALS,HALEON,0,80,descending,up,fixed_10,4
+PHARMACEUTICALS,HALEON,0,80,descending,up,trigger,4
+OIL & GAS MARKETING COMPANIES,HASCOL,2600,2680,symmetrical,sequential,current,4
+OIL & GAS MARKETING COMPANIES,HASCOL,2600,2680,symmetrical,sequential,fixed_5,4
+OIL & GAS MARKETING COMPANIES,HASCOL,2600,2680,symmetrical,sequential,fixed_10,4
+OIL & GAS MARKETING COMPANIES,HASCOL,2600,2680,symmetrical,sequential,trigger,4
+COMMERCIAL BANKS,HBL,2040,2120,descending,up,current,1
+COMMERCIAL BANKS,HBL,2040,2120,descending,up,fixed_5,1
+COMMERCIAL BANKS,HBL,2040,2120,descending,up,fixed_10,1
+COMMERCIAL BANKS,HBL,2040,2120,descending,up,trigger,1
+COMMERCIAL BANKS,HBL,3200,3280,ascending,sequential,current,4
+COMMERCIAL BANKS,HBL,3200,3280,ascending,sequential,fixed_5,3
+COMMERCIAL BANKS,HBL,3200,3280,ascending,sequential,fixed_10,3
+COMMERCIAL BANKS,HBL,3200,3280,ascending,sequential,trigger,4
+COMMERCIAL BANKS,HBL,3800,3880,descending,sequential,current,4
+COMMERCIAL BANKS,HBL,3800,3880,descending,sequential,fixed_5,3
+COMMERCIAL BANKS,HBL,3800,3880,descending,sequential,fixed_10,3
+COMMERCIAL BANKS,HBL,3800,3880,descending,sequential,trigger,3
+AUTOMOBILE ASSEMBLER,HINO,1840,1920,descending,up,current,4
+AUTOMOBILE ASSEMBLER,HINO,1840,1920,descending,up,fixed_5,3
+AUTOMOBILE ASSEMBLER,HINO,1840,1920,descending,up,fixed_10,3
+AUTOMOBILE ASSEMBLER,HINO,1840,1920,descending,up,trigger,3
+PHARMACEUTICALS,HINOON,680,760,descending,down,current,4
+PHARMACEUTICALS,HINOON,680,760,descending,down,fixed_5,3
+PHARMACEUTICALS,HINOON,680,760,descending,down,fixed_10,3
+PHARMACEUTICALS,HINOON,680,760,descending,down,trigger,4
+COMMERCIAL BANKS,HMB,880,960,descending,up,current,4
+COMMERCIAL BANKS,HMB,880,960,descending,up,fixed_5,4
+COMMERCIAL BANKS,HMB,880,960,descending,up,fixed_10,4
+COMMERCIAL BANKS,HMB,880,960,descending,up,trigger,4
+COMMERCIAL BANKS,HMB,1080,1160,ascending,down,current,1
+COMMERCIAL BANKS,HMB,1080,1160,ascending,down,fixed_5,1
+COMMERCIAL BANKS,HMB,1080,1160,ascending,down,fixed_10,1
+COMMERCIAL BANKS,HMB,1080,1160,ascending,down,trigger,1
+COMMERCIAL BANKS,HMB,4200,4280,descending,up,current,4
+COMMERCIAL BANKS,HMB,4200,4280,descending,up,fixed_5,4
+COMMERCIAL BANKS,HMB,4200,4280,descending,up,fixed_10,4
+COMMERCIAL BANKS,HMB,4200,4280,descending,up,trigger,4
+COMMERCIAL BANKS,HMB,4960,5040,descending,up,current,2
+COMMERCIAL BANKS,HMB,4960,5040,descending,up,fixed_5,2
+COMMERCIAL BANKS,HMB,4960,5040,descending,up,fixed_10,2
+COMMERCIAL BANKS,HMB,4960,5040,descending,up,trigger,2
+OIL & GAS MARKETING COMPANIES,HTL,1560,1640,descending,down,current,2
+OIL & GAS MARKETING COMPANIES,HTL,1560,1640,descending,down,fixed_5,2
+OIL & GAS MARKETING COMPANIES,HTL,1560,1640,descending,down,fixed_10,2
+OIL & GAS MARKETING COMPANIES,HTL,1560,1640,descending,down,trigger,2
+POWER GENERATION & DISTRIBUTION,HUBC,1320,1400,descending,up,current,1
+POWER GENERATION & DISTRIBUTION,HUBC,1320,1400,descending,up,fixed_5,1
+POWER GENERATION & DISTRIBUTION,HUBC,1320,1400,descending,up,fixed_10,1
+POWER GENERATION & DISTRIBUTION,HUBC,1320,1400,descending,up,trigger,1
+TECHNOLOGY & COMMUNICATION,HUMNL,360,440,symmetrical,down,current,4
+TECHNOLOGY & COMMUNICATION,HUMNL,360,440,symmetrical,down,fixed_5,4
+TECHNOLOGY & COMMUNICATION,HUMNL,360,440,symmetrical,down,fixed_10,4
+TECHNOLOGY & COMMUNICATION,HUMNL,360,440,symmetrical,down,trigger,4
+TECHNOLOGY & COMMUNICATION,HUMNL,3640,3720,symmetrical,down,current,2
+TECHNOLOGY & COMMUNICATION,HUMNL,3640,3720,symmetrical,down,fixed_5,2
+TECHNOLOGY & COMMUNICATION,HUMNL,3640,3720,symmetrical,down,fixed_10,2
+TECHNOLOGY & COMMUNICATION,HUMNL,3640,3720,symmetrical,down,trigger,2
+PHARMACEUTICALS,IBLHL,360,440,ascending,up,current,4
+PHARMACEUTICALS,IBLHL,360,440,ascending,up,fixed_5,4
+PHARMACEUTICALS,IBLHL,360,440,ascending,up,fixed_10,4
+PHARMACEUTICALS,IBLHL,360,440,ascending,up,trigger,4
+PHARMACEUTICALS,IBLHL,3320,3400,symmetrical,down,current,4
+PHARMACEUTICALS,IBLHL,3320,3400,symmetrical,down,fixed_5,4
+PHARMACEUTICALS,IBLHL,3320,3400,symmetrical,down,fixed_10,4
+PHARMACEUTICALS,IBLHL,3320,3400,symmetrical,down,trigger,4
+PHARMACEUTICALS,IBLHL,3920,4000,symmetrical,down,current,3
+PHARMACEUTICALS,IBLHL,3920,4000,symmetrical,down,fixed_5,3
+PHARMACEUTICALS,IBLHL,3920,4000,symmetrical,down,fixed_10,3
+PHARMACEUTICALS,IBLHL,3920,4000,symmetrical,down,trigger,3
+INSURANCE,IGIL,2120,2200,descending,down,current,2
+INSURANCE,IGIL,2120,2200,descending,down,fixed_5,2
+INSURANCE,IGIL,2120,2200,descending,down,fixed_10,2
+INSURANCE,IGIL,2120,2200,descending,down,trigger,2
+INSURANCE,IGIL,2640,2720,descending,sequential,current,4
+INSURANCE,IGIL,2640,2720,descending,sequential,fixed_5,3
+INSURANCE,IGIL,2640,2720,descending,sequential,fixed_10,4
+INSURANCE,IGIL,2640,2720,descending,sequential,trigger,4
+TEXTILE COMPOSITE,ILP,800,880,ascending,down,current,2
+TEXTILE COMPOSITE,ILP,800,880,ascending,down,fixed_5,2
+TEXTILE COMPOSITE,ILP,800,880,ascending,down,fixed_10,2
+TEXTILE COMPOSITE,ILP,800,880,ascending,down,trigger,2
+AUTOMOBILE ASSEMBLER,INDU,3000,3080,ascending,down,current,4
+AUTOMOBILE ASSEMBLER,INDU,3000,3080,ascending,down,fixed_5,2
+AUTOMOBILE ASSEMBLER,INDU,3000,3080,ascending,down,fixed_10,2
+AUTOMOBILE ASSEMBLER,INDU,3000,3080,ascending,down,trigger,4
+AUTOMOBILE ASSEMBLER,INDU,3360,3440,ascending,down,current,4
+AUTOMOBILE ASSEMBLER,INDU,3360,3440,ascending,down,fixed_5,2
+AUTOMOBILE ASSEMBLER,INDU,3360,3440,ascending,down,fixed_10,2
+AUTOMOBILE ASSEMBLER,INDU,3360,3440,ascending,down,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,ISIL,1680,1760,symmetrical,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,ISIL,1680,1760,symmetrical,down,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,ISIL,1680,1760,symmetrical,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,ISIL,1680,1760,symmetrical,down,trigger,4
+ENGINEERING,ISL,2560,2640,descending,sequential,current,4
+ENGINEERING,ISL,2560,2640,descending,sequential,fixed_5,4
+ENGINEERING,ISL,2560,2640,descending,sequential,fixed_10,4
+ENGINEERING,ISL,2560,2640,descending,sequential,trigger,4
+ENGINEERING,ISL,2840,2920,symmetrical,sequential,current,4
+ENGINEERING,ISL,2840,2920,symmetrical,sequential,fixed_5,4
+ENGINEERING,ISL,2840,2920,symmetrical,sequential,fixed_10,4
+ENGINEERING,ISL,2840,2920,symmetrical,sequential,trigger,4
+ENGINEERING,ISL,3320,3400,descending,sequential,current,4
+ENGINEERING,ISL,3320,3400,descending,sequential,fixed_5,3
+ENGINEERING,ISL,3320,3400,descending,sequential,fixed_10,3
+ENGINEERING,ISL,3320,3400,descending,sequential,trigger,3
+ENGINEERING,ITTEFAQ,120,200,symmetrical,down,current,1
+ENGINEERING,ITTEFAQ,120,200,symmetrical,down,fixed_5,1
+ENGINEERING,ITTEFAQ,120,200,symmetrical,down,fixed_10,1
+ENGINEERING,ITTEFAQ,120,200,symmetrical,down,trigger,1
+INSURANCE,JGICL,400,480,ascending,up,current,4
+INSURANCE,JGICL,400,480,ascending,up,fixed_5,4
+INSURANCE,JGICL,400,480,ascending,up,fixed_10,4
+INSURANCE,JGICL,400,480,ascending,up,trigger,4
+INSURANCE,JGICL,1120,1200,ascending,up,current,2
+INSURANCE,JGICL,1120,1200,ascending,up,fixed_5,2
+INSURANCE,JGICL,1120,1200,ascending,up,fixed_10,2
+INSURANCE,JGICL,1120,1200,ascending,up,trigger,2
+INSURANCE,JGICL,3640,3720,descending,sequential,current,4
+INSURANCE,JGICL,3640,3720,descending,sequential,fixed_5,4
+INSURANCE,JGICL,3640,3720,descending,sequential,fixed_10,4
+INSURANCE,JGICL,3640,3720,descending,sequential,trigger,4
+INSURANCE,JLICL,720,800,descending,sequential,current,4
+INSURANCE,JLICL,720,800,descending,sequential,fixed_5,4
+INSURANCE,JLICL,720,800,descending,sequential,fixed_10,4
+INSURANCE,JLICL,720,800,descending,sequential,trigger,4
+INSURANCE,JLICL,1560,1640,ascending,up,current,4
+INSURANCE,JLICL,1560,1640,ascending,up,fixed_5,4
+INSURANCE,JLICL,1560,1640,ascending,up,fixed_10,4
+INSURANCE,JLICL,1560,1640,ascending,up,trigger,4
+INSURANCE,JLICL,2160,2240,ascending,down,current,4
+INSURANCE,JLICL,2160,2240,ascending,down,fixed_5,4
+INSURANCE,JLICL,2160,2240,ascending,down,fixed_10,4
+INSURANCE,JLICL,2160,2240,ascending,down,trigger,4
+INSURANCE,JLICL,4200,4280,descending,up,current,4
+INSURANCE,JLICL,4200,4280,descending,up,fixed_5,4
+INSURANCE,JLICL,4200,4280,descending,up,fixed_10,4
+INSURANCE,JLICL,4200,4280,descending,up,trigger,4
+INSURANCE,JLICL,4280,4360,descending,up,current,2
+INSURANCE,JLICL,4280,4360,descending,up,fixed_5,2
+INSURANCE,JLICL,4280,4360,descending,up,fixed_10,2
+INSURANCE,JLICL,4280,4360,descending,up,trigger,2
+COMMERCIAL BANKS,JSBL,160,240,symmetrical,sequential,current,4
+COMMERCIAL BANKS,JSBL,160,240,symmetrical,sequential,fixed_5,4
+COMMERCIAL BANKS,JSBL,160,240,symmetrical,sequential,fixed_10,4
+COMMERCIAL BANKS,JSBL,160,240,symmetrical,sequential,trigger,4
+COMMERCIAL BANKS,JSBL,1200,1280,symmetrical,up,current,4
+COMMERCIAL BANKS,JSBL,1200,1280,symmetrical,up,fixed_5,4
+COMMERCIAL BANKS,JSBL,1200,1280,symmetrical,up,fixed_10,4
+COMMERCIAL BANKS,JSBL,1200,1280,symmetrical,up,trigger,4
+COMMERCIAL BANKS,JSBL,1600,1680,symmetrical,sequential,current,4
+COMMERCIAL BANKS,JSBL,1600,1680,symmetrical,sequential,fixed_5,3
+COMMERCIAL BANKS,JSBL,1600,1680,symmetrical,sequential,fixed_10,4
+COMMERCIAL BANKS,JSBL,1600,1680,symmetrical,sequential,trigger,4
+COMMERCIAL BANKS,JSBL,3240,3320,descending,sequential,current,4
+COMMERCIAL BANKS,JSBL,3240,3320,descending,sequential,fixed_5,3
+COMMERCIAL BANKS,JSBL,3240,3320,descending,sequential,fixed_10,3
+COMMERCIAL BANKS,JSBL,3240,3320,descending,sequential,trigger,3
+COMMERCIAL BANKS,JSBL,3360,3440,ascending,down,current,4
+COMMERCIAL BANKS,JSBL,3360,3440,ascending,down,fixed_5,3
+COMMERCIAL BANKS,JSBL,3360,3440,ascending,down,fixed_10,4
+COMMERCIAL BANKS,JSBL,3360,3440,ascending,down,trigger,4
+TEXTILE COMPOSITE,JUBS,560,640,ascending,sequential,current,4
+TEXTILE COMPOSITE,JUBS,560,640,ascending,sequential,fixed_5,4
+TEXTILE COMPOSITE,JUBS,560,640,ascending,sequential,fixed_10,4
+TEXTILE COMPOSITE,JUBS,560,640,ascending,sequential,trigger,4
+PROPERTY,JVDC,1120,1200,symmetrical,up,current,1
+PROPERTY,JVDC,1120,1200,symmetrical,up,fixed_5,1
+PROPERTY,JVDC,1120,1200,symmetrical,up,fixed_10,1
+PROPERTY,JVDC,1120,1200,symmetrical,up,trigger,1
+PROPERTY,JVDC,1960,2040,symmetrical,up,current,4
+PROPERTY,JVDC,1960,2040,symmetrical,up,fixed_5,4
+PROPERTY,JVDC,1960,2040,symmetrical,up,fixed_10,4
+PROPERTY,JVDC,1960,2040,symmetrical,up,trigger,4
+POWER GENERATION & DISTRIBUTION,KAPCO,1680,1760,symmetrical,up,current,4
+POWER GENERATION & DISTRIBUTION,KAPCO,1680,1760,symmetrical,up,fixed_5,4
+POWER GENERATION & DISTRIBUTION,KAPCO,1680,1760,symmetrical,up,fixed_10,4
+POWER GENERATION & DISTRIBUTION,KAPCO,1680,1760,symmetrical,up,trigger,4
+POWER GENERATION & DISTRIBUTION,KAPCO,2440,2520,ascending,sequential,current,4
+POWER GENERATION & DISTRIBUTION,KAPCO,2440,2520,ascending,sequential,fixed_5,3
+POWER GENERATION & DISTRIBUTION,KAPCO,2440,2520,ascending,sequential,fixed_10,4
+POWER GENERATION & DISTRIBUTION,KAPCO,2440,2520,ascending,sequential,trigger,4
+POWER GENERATION & DISTRIBUTION,KAPCO,2480,2560,ascending,sequential,current,4
+POWER GENERATION & DISTRIBUTION,KAPCO,2480,2560,ascending,sequential,fixed_5,3
+POWER GENERATION & DISTRIBUTION,KAPCO,2480,2560,ascending,sequential,fixed_10,3
+POWER GENERATION & DISTRIBUTION,KAPCO,2480,2560,ascending,sequential,trigger,3
+POWER GENERATION & DISTRIBUTION,KAPCO,3920,4000,symmetrical,sequential,current,4
+POWER GENERATION & DISTRIBUTION,KAPCO,3920,4000,symmetrical,sequential,fixed_5,4
+POWER GENERATION & DISTRIBUTION,KAPCO,3920,4000,symmetrical,sequential,fixed_10,4
+POWER GENERATION & DISTRIBUTION,KAPCO,3920,4000,symmetrical,sequential,trigger,4
+POWER GENERATION & DISTRIBUTION,KAPCO,4200,4280,descending,up,current,1
+POWER GENERATION & DISTRIBUTION,KAPCO,4200,4280,descending,up,fixed_5,1
+POWER GENERATION & DISTRIBUTION,KAPCO,4200,4280,descending,up,fixed_10,1
+POWER GENERATION & DISTRIBUTION,KAPCO,4200,4280,descending,up,trigger,1
+POWER GENERATION & DISTRIBUTION,KAPCO,5160,5240,descending,up,current,4
+POWER GENERATION & DISTRIBUTION,KAPCO,5160,5240,descending,up,fixed_5,4
+POWER GENERATION & DISTRIBUTION,KAPCO,5160,5240,descending,up,fixed_10,4
+POWER GENERATION & DISTRIBUTION,KAPCO,5160,5240,descending,up,trigger,4
+POWER GENERATION & DISTRIBUTION,KEL,3160,3240,ascending,sequential,current,4
+POWER GENERATION & DISTRIBUTION,KEL,3160,3240,ascending,sequential,fixed_5,3
+POWER GENERATION & DISTRIBUTION,KEL,3160,3240,ascending,sequential,fixed_10,3
+POWER GENERATION & DISTRIBUTION,KEL,3160,3240,ascending,sequential,trigger,3
+TEXTILE COMPOSITE,KML,1280,1360,descending,sequential,current,4
+TEXTILE COMPOSITE,KML,1280,1360,descending,sequential,fixed_5,3
+TEXTILE COMPOSITE,KML,1280,1360,descending,sequential,fixed_10,3
+TEXTILE COMPOSITE,KML,1280,1360,descending,sequential,trigger,3
+CEMENT,KOHC,2120,2200,ascending,sequential,current,3
+CEMENT,KOHC,2120,2200,ascending,sequential,fixed_5,3
+CEMENT,KOHC,2120,2200,ascending,sequential,fixed_10,3
+CEMENT,KOHC,2120,2200,ascending,sequential,trigger,3
+CEMENT,KOHC,3800,3880,symmetrical,whipsaw,current,4
+CEMENT,KOHC,3800,3880,symmetrical,whipsaw,fixed_5,4
+CEMENT,KOHC,3800,3880,symmetrical,whipsaw,fixed_10,4
+CEMENT,KOHC,3800,3880,symmetrical,whipsaw,trigger,4
+CEMENT,KOHC,4240,4320,ascending,down,current,4
+CEMENT,KOHC,4240,4320,ascending,down,fixed_5,4
+CEMENT,KOHC,4240,4320,ascending,down,fixed_10,4
+CEMENT,KOHC,4240,4320,ascending,down,trigger,4
+CEMENT,KOHC,4840,4920,ascending,down,current,4
+CEMENT,KOHC,4840,4920,ascending,down,fixed_5,4
+CEMENT,KOHC,4840,4920,ascending,down,fixed_10,4
+CEMENT,KOHC,4840,4920,ascending,down,trigger,3
+POWER GENERATION & DISTRIBUTION,KOHE,2440,2520,ascending,up,current,4
+POWER GENERATION & DISTRIBUTION,KOHE,2440,2520,ascending,up,fixed_5,4
+POWER GENERATION & DISTRIBUTION,KOHE,2440,2520,ascending,up,fixed_10,4
+POWER GENERATION & DISTRIBUTION,KOHE,2440,2520,ascending,up,trigger,4
+POWER GENERATION & DISTRIBUTION,KOHP,3560,3640,ascending,down,current,3
+POWER GENERATION & DISTRIBUTION,KOHP,3560,3640,ascending,down,fixed_5,3
+POWER GENERATION & DISTRIBUTION,KOHP,3560,3640,ascending,down,fixed_10,3
+POWER GENERATION & DISTRIBUTION,KOHP,3560,3640,ascending,down,trigger,3
+TEXTILE COMPOSITE,KOIL,1720,1800,descending,sequential,current,4
+TEXTILE COMPOSITE,KOIL,1720,1800,descending,sequential,fixed_5,4
+TEXTILE COMPOSITE,KOIL,1720,1800,descending,sequential,fixed_10,4
+TEXTILE COMPOSITE,KOIL,1720,1800,descending,sequential,trigger,4
+TEXTILE COMPOSITE,KOIL,3760,3840,descending,whipsaw,current,4
+TEXTILE COMPOSITE,KOIL,3760,3840,descending,whipsaw,fixed_5,4
+TEXTILE COMPOSITE,KOIL,3760,3840,descending,whipsaw,fixed_10,4
+TEXTILE COMPOSITE,KOIL,3760,3840,descending,whipsaw,trigger,4
+TEXTILE COMPOSITE,KOIL,3960,4040,symmetrical,up,current,4
+TEXTILE COMPOSITE,KOIL,3960,4040,symmetrical,up,fixed_5,3
+TEXTILE COMPOSITE,KOIL,3960,4040,symmetrical,up,fixed_10,4
+TEXTILE COMPOSITE,KOIL,3960,4040,symmetrical,up,trigger,3
+TEXTILE COMPOSITE,KTML,2200,2280,descending,sequential,current,4
+TEXTILE COMPOSITE,KTML,2200,2280,descending,sequential,fixed_5,4
+TEXTILE COMPOSITE,KTML,2200,2280,descending,sequential,fixed_10,4
+TEXTILE COMPOSITE,KTML,2200,2280,descending,sequential,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,1120,1200,symmetrical,down,current,4
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,1120,1200,symmetrical,down,fixed_5,4
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,1120,1200,symmetrical,down,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,1120,1200,symmetrical,down,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,2200,2280,symmetrical,down,current,1
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,2200,2280,symmetrical,down,fixed_5,1
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,2200,2280,symmetrical,down,fixed_10,1
+AUTOMOBILE PARTS & ACCESSORIES,LOADS,2200,2280,symmetrical,down,trigger,1
+CHEMICAL,LOTCHEM,1000,1080,descending,up,current,1
+CHEMICAL,LOTCHEM,1000,1080,descending,up,fixed_5,1
+CHEMICAL,LOTCHEM,1000,1080,descending,up,fixed_10,1
+CHEMICAL,LOTCHEM,1000,1080,descending,up,trigger,1
+CHEMICAL,LOTCHEM,1720,1800,symmetrical,down,current,1
+CHEMICAL,LOTCHEM,1720,1800,symmetrical,down,fixed_5,1
+CHEMICAL,LOTCHEM,1720,1800,symmetrical,down,fixed_10,1
+CHEMICAL,LOTCHEM,1720,1800,symmetrical,down,trigger,1
+CHEMICAL,LOTCHEM,4400,4480,descending,up,current,4
+CHEMICAL,LOTCHEM,4400,4480,descending,up,fixed_5,4
+CHEMICAL,LOTCHEM,4400,4480,descending,up,fixed_10,4
+CHEMICAL,LOTCHEM,4400,4480,descending,up,trigger,4
+CHEMICAL,LPGL,1640,1720,symmetrical,down,current,4
+CHEMICAL,LPGL,1640,1720,symmetrical,down,fixed_5,4
+CHEMICAL,LPGL,1640,1720,symmetrical,down,fixed_10,4
+CHEMICAL,LPGL,1640,1720,symmetrical,down,trigger,4
+POWER GENERATION & DISTRIBUTION,LPL,80,160,descending,down,current,4
+POWER GENERATION & DISTRIBUTION,LPL,80,160,descending,down,fixed_5,4
+POWER GENERATION & DISTRIBUTION,LPL,80,160,descending,down,fixed_10,4
+POWER GENERATION & DISTRIBUTION,LPL,80,160,descending,down,trigger,4
+POWER GENERATION & DISTRIBUTION,LPL,120,200,descending,down,current,4
+POWER GENERATION & DISTRIBUTION,LPL,120,200,descending,down,fixed_5,4
+POWER GENERATION & DISTRIBUTION,LPL,120,200,descending,down,fixed_10,4
+POWER GENERATION & DISTRIBUTION,LPL,120,200,descending,down,trigger,4
+POWER GENERATION & DISTRIBUTION,LPL,400,480,ascending,down,current,1
+POWER GENERATION & DISTRIBUTION,LPL,400,480,ascending,down,fixed_5,1
+POWER GENERATION & DISTRIBUTION,LPL,400,480,ascending,down,fixed_10,1
+POWER GENERATION & DISTRIBUTION,LPL,400,480,ascending,down,trigger,1
+POWER GENERATION & DISTRIBUTION,LPL,720,800,descending,up,current,1
+POWER GENERATION & DISTRIBUTION,LPL,720,800,descending,up,fixed_5,1
+POWER GENERATION & DISTRIBUTION,LPL,720,800,descending,up,fixed_10,1
+POWER GENERATION & DISTRIBUTION,LPL,720,800,descending,up,trigger,1
+CEMENT,LUCK,2040,2120,descending,up,current,1
+CEMENT,LUCK,2040,2120,descending,up,fixed_5,1
+CEMENT,LUCK,2040,2120,descending,up,fixed_10,1
+CEMENT,LUCK,2040,2120,descending,up,trigger,1
+MISCELLANEOUS,MACFL,560,640,descending,down,current,4
+MISCELLANEOUS,MACFL,560,640,descending,down,fixed_5,4
+MISCELLANEOUS,MACFL,560,640,descending,down,fixed_10,4
+MISCELLANEOUS,MACFL,560,640,descending,down,trigger,4
+MISCELLANEOUS,MACFL,3800,3880,descending,up,current,4
+MISCELLANEOUS,MACFL,3800,3880,descending,up,fixed_5,3
+MISCELLANEOUS,MACFL,3800,3880,descending,up,fixed_10,3
+MISCELLANEOUS,MACFL,3800,3880,descending,up,trigger,4
+PHARMACEUTICALS,MACTER,360,440,symmetrical,sequential,current,4
+PHARMACEUTICALS,MACTER,360,440,symmetrical,sequential,fixed_5,3
+PHARMACEUTICALS,MACTER,360,440,symmetrical,sequential,fixed_10,4
+PHARMACEUTICALS,MACTER,360,440,symmetrical,sequential,trigger,4
+PHARMACEUTICALS,MACTER,1000,1080,symmetrical,down,current,4
+PHARMACEUTICALS,MACTER,1000,1080,symmetrical,down,fixed_5,3
+PHARMACEUTICALS,MACTER,1000,1080,symmetrical,down,fixed_10,3
+PHARMACEUTICALS,MACTER,1000,1080,symmetrical,down,trigger,4
+OIL & GAS EXPLORATION COMPANIES,MARI,680,760,symmetrical,whipsaw,current,4
+OIL & GAS EXPLORATION COMPANIES,MARI,680,760,symmetrical,whipsaw,fixed_5,4
+OIL & GAS EXPLORATION COMPANIES,MARI,680,760,symmetrical,whipsaw,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,MARI,680,760,symmetrical,whipsaw,trigger,4
+COMMERCIAL BANKS,MCB,1280,1360,ascending,up,current,4
+COMMERCIAL BANKS,MCB,1280,1360,ascending,up,fixed_5,4
+COMMERCIAL BANKS,MCB,1280,1360,ascending,up,fixed_10,4
+COMMERCIAL BANKS,MCB,1280,1360,ascending,up,trigger,4
+COMMERCIAL BANKS,MCB,1800,1880,symmetrical,up,current,4
+COMMERCIAL BANKS,MCB,1800,1880,symmetrical,up,fixed_5,2
+COMMERCIAL BANKS,MCB,1800,1880,symmetrical,up,fixed_10,4
+COMMERCIAL BANKS,MCB,1800,1880,symmetrical,up,trigger,2
+COMMERCIAL BANKS,MCB,2080,2160,ascending,whipsaw,current,4
+COMMERCIAL BANKS,MCB,2080,2160,ascending,whipsaw,fixed_5,4
+COMMERCIAL BANKS,MCB,2080,2160,ascending,whipsaw,fixed_10,4
+COMMERCIAL BANKS,MCB,2080,2160,ascending,whipsaw,trigger,4
+COMMERCIAL BANKS,MCB,2120,2200,ascending,down,current,4
+COMMERCIAL BANKS,MCB,2120,2200,ascending,down,fixed_5,1
+COMMERCIAL BANKS,MCB,2120,2200,ascending,down,fixed_10,1
+COMMERCIAL BANKS,MCB,2120,2200,ascending,down,trigger,4
+COMMERCIAL BANKS,MCB,3080,3160,symmetrical,up,current,1
+COMMERCIAL BANKS,MCB,3080,3160,symmetrical,up,fixed_5,1
+COMMERCIAL BANKS,MCB,3080,3160,symmetrical,up,fixed_10,1
+COMMERCIAL BANKS,MCB,3080,3160,symmetrical,up,trigger,1
+COMMERCIAL BANKS,MCB,4120,4200,ascending,down,current,4
+COMMERCIAL BANKS,MCB,4120,4200,ascending,down,fixed_5,1
+COMMERCIAL BANKS,MCB,4120,4200,ascending,down,fixed_10,1
+COMMERCIAL BANKS,MCB,4120,4200,ascending,down,trigger,1
+COMMERCIAL BANKS,MEBL,1000,1080,descending,up,current,4
+COMMERCIAL BANKS,MEBL,1000,1080,descending,up,fixed_5,4
+COMMERCIAL BANKS,MEBL,1000,1080,descending,up,fixed_10,4
+COMMERCIAL BANKS,MEBL,1000,1080,descending,up,trigger,4
+COMMERCIAL BANKS,MEBL,1560,1640,ascending,sequential,current,4
+COMMERCIAL BANKS,MEBL,1560,1640,ascending,sequential,fixed_5,3
+COMMERCIAL BANKS,MEBL,1560,1640,ascending,sequential,fixed_10,3
+COMMERCIAL BANKS,MEBL,1560,1640,ascending,sequential,trigger,3
+COMMERCIAL BANKS,MEBL,2080,2160,ascending,down,current,4
+COMMERCIAL BANKS,MEBL,2080,2160,ascending,down,fixed_5,2
+COMMERCIAL BANKS,MEBL,2080,2160,ascending,down,fixed_10,2
+COMMERCIAL BANKS,MEBL,2080,2160,ascending,down,trigger,2
+COMMERCIAL BANKS,MEBL,2280,2360,descending,up,current,4
+COMMERCIAL BANKS,MEBL,2280,2360,descending,up,fixed_5,4
+COMMERCIAL BANKS,MEBL,2280,2360,descending,up,fixed_10,4
+COMMERCIAL BANKS,MEBL,2280,2360,descending,up,trigger,4
+COMMERCIAL BANKS,MEBL,4800,4880,symmetrical,up,current,4
+COMMERCIAL BANKS,MEBL,4800,4880,symmetrical,up,fixed_5,4
+COMMERCIAL BANKS,MEBL,4800,4880,symmetrical,up,fixed_10,4
+COMMERCIAL BANKS,MEBL,4800,4880,symmetrical,up,trigger,4
+PAPER & BOARD,MERIT,720,800,symmetrical,down,current,2
+PAPER & BOARD,MERIT,720,800,symmetrical,down,fixed_5,2
+PAPER & BOARD,MERIT,720,800,symmetrical,down,fixed_10,2
+PAPER & BOARD,MERIT,720,800,symmetrical,down,trigger,2
+PAPER & BOARD,MERIT,1400,1480,ascending,down,current,4
+PAPER & BOARD,MERIT,1400,1480,ascending,down,fixed_5,3
+PAPER & BOARD,MERIT,1400,1480,ascending,down,fixed_10,3
+PAPER & BOARD,MERIT,1400,1480,ascending,down,trigger,4
+PAPER & BOARD,MERIT,4240,4320,ascending,down,current,2
+PAPER & BOARD,MERIT,4240,4320,ascending,down,fixed_5,2
+PAPER & BOARD,MERIT,4240,4320,ascending,down,fixed_10,2
+PAPER & BOARD,MERIT,4240,4320,ascending,down,trigger,2
+PAPER & BOARD,MERIT,4280,4360,descending,down,current,2
+PAPER & BOARD,MERIT,4280,4360,descending,down,fixed_5,2
+PAPER & BOARD,MERIT,4280,4360,descending,down,fixed_10,2
+PAPER & BOARD,MERIT,4280,4360,descending,down,trigger,2
+FOOD & PERSONAL CARE PRODUCTS,MFFL,2040,2120,ascending,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,MFFL,2040,2120,ascending,down,fixed_5,3
+FOOD & PERSONAL CARE PRODUCTS,MFFL,2040,2120,ascending,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,MFFL,2040,2120,ascending,down,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,MFL,520,600,symmetrical,up,current,4
+FOOD & PERSONAL CARE PRODUCTS,MFL,520,600,symmetrical,up,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,MFL,520,600,symmetrical,up,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,MFL,520,600,symmetrical,up,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,MFL,1240,1320,descending,up,current,4
+FOOD & PERSONAL CARE PRODUCTS,MFL,1240,1320,descending,up,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,MFL,1240,1320,descending,up,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,MFL,1240,1320,descending,up,trigger,4
+CEMENT,MLCF,1360,1440,symmetrical,down,current,1
+CEMENT,MLCF,1360,1440,symmetrical,down,fixed_5,1
+CEMENT,MLCF,1360,1440,symmetrical,down,fixed_10,1
+CEMENT,MLCF,1360,1440,symmetrical,down,trigger,1
+CEMENT,MLCF,2560,2640,symmetrical,down,current,4
+CEMENT,MLCF,2560,2640,symmetrical,down,fixed_5,2
+CEMENT,MLCF,2560,2640,symmetrical,down,fixed_10,4
+CEMENT,MLCF,2560,2640,symmetrical,down,trigger,2
+CEMENT,MLCF,4080,4160,ascending,down,current,4
+CEMENT,MLCF,4080,4160,ascending,down,fixed_5,4
+CEMENT,MLCF,4080,4160,ascending,down,fixed_10,4
+CEMENT,MLCF,4080,4160,ascending,down,trigger,4
+ENGINEERING,MSCL,1520,1600,descending,whipsaw,current,4
+ENGINEERING,MSCL,1520,1600,descending,whipsaw,fixed_5,4
+ENGINEERING,MSCL,1520,1600,descending,whipsaw,fixed_10,4
+ENGINEERING,MSCL,1520,1600,descending,whipsaw,trigger,4
+TEXTILE COMPOSITE,MSOT,840,920,symmetrical,whipsaw,current,4
+TEXTILE COMPOSITE,MSOT,840,920,symmetrical,whipsaw,fixed_5,4
+TEXTILE COMPOSITE,MSOT,840,920,symmetrical,whipsaw,fixed_10,4
+TEXTILE COMPOSITE,MSOT,840,920,symmetrical,whipsaw,trigger,4
+TEXTILE COMPOSITE,MSOT,960,1040,descending,up,current,1
+TEXTILE COMPOSITE,MSOT,960,1040,descending,up,fixed_5,1
+TEXTILE COMPOSITE,MSOT,960,1040,descending,up,fixed_10,1
+TEXTILE COMPOSITE,MSOT,960,1040,descending,up,trigger,1
+AUTOMOBILE ASSEMBLER,MTL,200,280,symmetrical,up,current,1
+AUTOMOBILE ASSEMBLER,MTL,200,280,symmetrical,up,fixed_5,1
+AUTOMOBILE ASSEMBLER,MTL,200,280,symmetrical,up,fixed_10,1
+AUTOMOBILE ASSEMBLER,MTL,200,280,symmetrical,up,trigger,1
+AUTOMOBILE ASSEMBLER,MTL,1560,1640,descending,up,current,1
+AUTOMOBILE ASSEMBLER,MTL,1560,1640,descending,up,fixed_5,1
+AUTOMOBILE ASSEMBLER,MTL,1560,1640,descending,up,fixed_10,1
+AUTOMOBILE ASSEMBLER,MTL,1560,1640,descending,up,trigger,1
+AUTOMOBILE ASSEMBLER,MTL,3360,3440,symmetrical,sequential,current,4
+AUTOMOBILE ASSEMBLER,MTL,3360,3440,symmetrical,sequential,fixed_5,4
+AUTOMOBILE ASSEMBLER,MTL,3360,3440,symmetrical,sequential,fixed_10,4
+AUTOMOBILE ASSEMBLER,MTL,3360,3440,symmetrical,sequential,trigger,4
+AUTOMOBILE ASSEMBLER,MTL,4160,4240,ascending,down,current,4
+AUTOMOBILE ASSEMBLER,MTL,4160,4240,ascending,down,fixed_5,3
+AUTOMOBILE ASSEMBLER,MTL,4160,4240,ascending,down,fixed_10,3
+AUTOMOBILE ASSEMBLER,MTL,4160,4240,ascending,down,trigger,3
+AUTOMOBILE ASSEMBLER,MTL,5040,5120,ascending,sequential,current,4
+AUTOMOBILE ASSEMBLER,MTL,5040,5120,ascending,sequential,fixed_5,3
+AUTOMOBILE ASSEMBLER,MTL,5040,5120,ascending,sequential,fixed_10,4
+AUTOMOBILE ASSEMBLER,MTL,5040,5120,ascending,sequential,trigger,4
+ENGINEERING,MUGHAL,1120,1200,ascending,sequential,current,4
+ENGINEERING,MUGHAL,1120,1200,ascending,sequential,fixed_5,4
+ENGINEERING,MUGHAL,1120,1200,ascending,sequential,fixed_10,4
+ENGINEERING,MUGHAL,1120,1200,ascending,sequential,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2600,2680,ascending,sequential,current,4
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2600,2680,ascending,sequential,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2600,2680,ascending,sequential,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2600,2680,ascending,sequential,trigger,3
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2800,2880,ascending,up,current,4
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2800,2880,ascending,up,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2800,2880,ascending,up,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,MUREB,2800,2880,ascending,up,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,MUREB,3120,3200,descending,up,current,3
+FOOD & PERSONAL CARE PRODUCTS,MUREB,3120,3200,descending,up,fixed_5,3
+FOOD & PERSONAL CARE PRODUCTS,MUREB,3120,3200,descending,up,fixed_10,3
+FOOD & PERSONAL CARE PRODUCTS,MUREB,3120,3200,descending,up,trigger,3
+MISCELLANEOUS,MWMP,760,840,symmetrical,up,current,4
+MISCELLANEOUS,MWMP,760,840,symmetrical,up,fixed_5,3
+MISCELLANEOUS,MWMP,760,840,symmetrical,up,fixed_10,3
+MISCELLANEOUS,MWMP,760,840,symmetrical,up,trigger,3
+FOOD & PERSONAL CARE PRODUCTS,NATF,680,760,descending,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,680,760,descending,down,fixed_5,2
+FOOD & PERSONAL CARE PRODUCTS,NATF,680,760,descending,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,680,760,descending,down,trigger,2
+FOOD & PERSONAL CARE PRODUCTS,NATF,1120,1200,symmetrical,up,current,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,1120,1200,symmetrical,up,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,1120,1200,symmetrical,up,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,1120,1200,symmetrical,up,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,2000,2080,descending,whipsaw,current,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,2000,2080,descending,whipsaw,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,2000,2080,descending,whipsaw,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,2000,2080,descending,whipsaw,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,3440,3520,descending,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,3440,3520,descending,down,fixed_5,1
+FOOD & PERSONAL CARE PRODUCTS,NATF,3440,3520,descending,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,NATF,3440,3520,descending,down,trigger,4
+COMMERCIAL BANKS,NBP,1320,1400,symmetrical,up,current,2
+COMMERCIAL BANKS,NBP,1320,1400,symmetrical,up,fixed_5,2
+COMMERCIAL BANKS,NBP,1320,1400,symmetrical,up,fixed_10,2
+COMMERCIAL BANKS,NBP,1320,1400,symmetrical,up,trigger,2
+COMMERCIAL BANKS,NBP,1760,1840,descending,down,current,4
+COMMERCIAL BANKS,NBP,1760,1840,descending,down,fixed_5,4
+COMMERCIAL BANKS,NBP,1760,1840,descending,down,fixed_10,4
+COMMERCIAL BANKS,NBP,1760,1840,descending,down,trigger,4
+COMMERCIAL BANKS,NBP,3160,3240,ascending,sequential,current,4
+COMMERCIAL BANKS,NBP,3160,3240,ascending,sequential,fixed_5,4
+COMMERCIAL BANKS,NBP,3160,3240,ascending,sequential,fixed_10,4
+COMMERCIAL BANKS,NBP,3160,3240,ascending,sequential,trigger,4
+COMMERCIAL BANKS,NBP,4840,4920,descending,up,current,1
+COMMERCIAL BANKS,NBP,4840,4920,descending,up,fixed_5,1
+COMMERCIAL BANKS,NBP,4840,4920,descending,up,fixed_10,1
+COMMERCIAL BANKS,NBP,4840,4920,descending,up,trigger,1
+TEXTILE COMPOSITE,NCL,360,440,symmetrical,down,current,4
+TEXTILE COMPOSITE,NCL,360,440,symmetrical,down,fixed_5,4
+TEXTILE COMPOSITE,NCL,360,440,symmetrical,down,fixed_10,4
+TEXTILE COMPOSITE,NCL,360,440,symmetrical,down,trigger,4
+TEXTILE COMPOSITE,NCL,1280,1360,symmetrical,whipsaw,current,4
+TEXTILE COMPOSITE,NCL,1280,1360,symmetrical,whipsaw,fixed_5,4
+TEXTILE COMPOSITE,NCL,1280,1360,symmetrical,whipsaw,fixed_10,4
+TEXTILE COMPOSITE,NCL,1280,1360,symmetrical,whipsaw,trigger,4
+TEXTILE COMPOSITE,NCL,2640,2720,descending,up,current,2
+TEXTILE COMPOSITE,NCL,2640,2720,descending,up,fixed_5,2
+TEXTILE COMPOSITE,NCL,2640,2720,descending,up,fixed_10,2
+TEXTILE COMPOSITE,NCL,2640,2720,descending,up,trigger,2
+TEXTILE COMPOSITE,NCL,3360,3440,symmetrical,down,current,2
+TEXTILE COMPOSITE,NCL,3360,3440,symmetrical,down,fixed_5,2
+TEXTILE COMPOSITE,NCL,3360,3440,symmetrical,down,fixed_10,2
+TEXTILE COMPOSITE,NCL,3360,3440,symmetrical,down,trigger,2
+POWER GENERATION & DISTRIBUTION,NCPL,0,80,symmetrical,down,current,4
+POWER GENERATION & DISTRIBUTION,NCPL,0,80,symmetrical,down,fixed_5,4
+POWER GENERATION & DISTRIBUTION,NCPL,0,80,symmetrical,down,fixed_10,4
+POWER GENERATION & DISTRIBUTION,NCPL,0,80,symmetrical,down,trigger,4
+POWER GENERATION & DISTRIBUTION,NCPL,1240,1320,ascending,whipsaw,current,4
+POWER GENERATION & DISTRIBUTION,NCPL,1240,1320,ascending,whipsaw,fixed_5,4
+POWER GENERATION & DISTRIBUTION,NCPL,1240,1320,ascending,whipsaw,fixed_10,4
+POWER GENERATION & DISTRIBUTION,NCPL,1240,1320,ascending,whipsaw,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,NESTLE,2720,2800,ascending,up,current,2
+FOOD & PERSONAL CARE PRODUCTS,NESTLE,2720,2800,ascending,up,fixed_5,2
+FOOD & PERSONAL CARE PRODUCTS,NESTLE,2720,2800,ascending,up,fixed_10,2
+FOOD & PERSONAL CARE PRODUCTS,NESTLE,2720,2800,ascending,up,trigger,2
+TECHNOLOGY & COMMUNICATION,NETSOL,1200,1280,ascending,up,current,4
+TECHNOLOGY & COMMUNICATION,NETSOL,1200,1280,ascending,up,fixed_5,4
+TECHNOLOGY & COMMUNICATION,NETSOL,1200,1280,ascending,up,fixed_10,4
+TECHNOLOGY & COMMUNICATION,NETSOL,1200,1280,ascending,up,trigger,4
+CHEMICAL,NICL,2480,2560,ascending,up,current,4
+CHEMICAL,NICL,2480,2560,ascending,up,fixed_5,4
+CHEMICAL,NICL,2480,2560,ascending,up,fixed_10,4
+CHEMICAL,NICL,2480,2560,ascending,up,trigger,4
+CHEMICAL,NICL,2560,2640,ascending,down,current,1
+CHEMICAL,NICL,2560,2640,ascending,down,fixed_5,1
+CHEMICAL,NICL,2560,2640,ascending,down,fixed_10,1
+CHEMICAL,NICL,2560,2640,ascending,down,trigger,1
+TEXTILE COMPOSITE,NML,3400,3480,ascending,down,current,4
+TEXTILE COMPOSITE,NML,3400,3480,ascending,down,fixed_5,4
+TEXTILE COMPOSITE,NML,3400,3480,ascending,down,fixed_10,4
+TEXTILE COMPOSITE,NML,3400,3480,ascending,down,trigger,4
+REFINERY,NRL,2360,2440,ascending,sequential,current,4
+REFINERY,NRL,2360,2440,ascending,sequential,fixed_5,4
+REFINERY,NRL,2360,2440,ascending,sequential,fixed_10,4
+REFINERY,NRL,2360,2440,ascending,sequential,trigger,4
+CHEMICAL,NRSL,4720,4800,ascending,sequential,current,4
+CHEMICAL,NRSL,4720,4800,ascending,sequential,fixed_5,4
+CHEMICAL,NRSL,4720,4800,ascending,sequential,fixed_10,4
+CHEMICAL,NRSL,4720,4800,ascending,sequential,trigger,4
+OIL & GAS MARKETING COMPANIES,OBOY,440,520,symmetrical,down,current,4
+OIL & GAS MARKETING COMPANIES,OBOY,440,520,symmetrical,down,fixed_5,4
+OIL & GAS MARKETING COMPANIES,OBOY,440,520,symmetrical,down,fixed_10,4
+OIL & GAS MARKETING COMPANIES,OBOY,440,520,symmetrical,down,trigger,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,360,440,descending,up,current,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,360,440,descending,up,fixed_5,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,360,440,descending,up,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,360,440,descending,up,trigger,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,480,560,ascending,up,current,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,480,560,ascending,up,fixed_5,3
+OIL & GAS EXPLORATION COMPANIES,OGDC,480,560,ascending,up,fixed_10,3
+OIL & GAS EXPLORATION COMPANIES,OGDC,480,560,ascending,up,trigger,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,520,600,ascending,down,current,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,520,600,ascending,down,fixed_5,2
+OIL & GAS EXPLORATION COMPANIES,OGDC,520,600,ascending,down,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,520,600,ascending,down,trigger,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,2400,2480,descending,down,current,1
+OIL & GAS EXPLORATION COMPANIES,OGDC,2400,2480,descending,down,fixed_5,1
+OIL & GAS EXPLORATION COMPANIES,OGDC,2400,2480,descending,down,fixed_10,1
+OIL & GAS EXPLORATION COMPANIES,OGDC,2400,2480,descending,down,trigger,1
+OIL & GAS EXPLORATION COMPANIES,OGDC,3760,3840,ascending,down,current,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,3760,3840,ascending,down,fixed_5,2
+OIL & GAS EXPLORATION COMPANIES,OGDC,3760,3840,ascending,down,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,OGDC,3760,3840,ascending,down,trigger,4
+MISCELLANEOUS,PABC,480,560,symmetrical,up,current,1
+MISCELLANEOUS,PABC,480,560,symmetrical,up,fixed_5,1
+MISCELLANEOUS,PABC,480,560,symmetrical,up,fixed_10,1
+MISCELLANEOUS,PABC,480,560,symmetrical,up,trigger,1
+PROPERTY,PACE,2240,2320,symmetrical,up,current,1
+PROPERTY,PACE,2240,2320,symmetrical,up,fixed_5,1
+PROPERTY,PACE,2240,2320,symmetrical,up,fixed_10,1
+PROPERTY,PACE,2240,2320,symmetrical,up,trigger,1
+CABLE & ELECTRICAL GOODS,PAEL,1000,1080,descending,down,current,4
+CABLE & ELECTRICAL GOODS,PAEL,1000,1080,descending,down,fixed_5,4
+CABLE & ELECTRICAL GOODS,PAEL,1000,1080,descending,down,fixed_10,4
+CABLE & ELECTRICAL GOODS,PAEL,1000,1080,descending,down,trigger,4
+CABLE & ELECTRICAL GOODS,PAEL,2160,2240,symmetrical,up,current,1
+CABLE & ELECTRICAL GOODS,PAEL,2160,2240,symmetrical,up,fixed_5,1
+CABLE & ELECTRICAL GOODS,PAEL,2160,2240,symmetrical,up,fixed_10,1
+CABLE & ELECTRICAL GOODS,PAEL,2160,2240,symmetrical,up,trigger,1
+CABLE & ELECTRICAL GOODS,PAEL,2680,2760,descending,up,current,4
+CABLE & ELECTRICAL GOODS,PAEL,2680,2760,descending,up,fixed_5,2
+CABLE & ELECTRICAL GOODS,PAEL,2680,2760,descending,up,fixed_10,2
+CABLE & ELECTRICAL GOODS,PAEL,2680,2760,descending,up,trigger,4
+CABLE & ELECTRICAL GOODS,PAEL,4200,4280,descending,sequential,current,4
+CABLE & ELECTRICAL GOODS,PAEL,4200,4280,descending,sequential,fixed_5,4
+CABLE & ELECTRICAL GOODS,PAEL,4200,4280,descending,sequential,fixed_10,4
+CABLE & ELECTRICAL GOODS,PAEL,4200,4280,descending,sequential,trigger,4
+CABLE & ELECTRICAL GOODS,PAEL,4240,4320,ascending,sequential,current,4
+CABLE & ELECTRICAL GOODS,PAEL,4240,4320,ascending,sequential,fixed_5,3
+CABLE & ELECTRICAL GOODS,PAEL,4240,4320,ascending,sequential,fixed_10,4
+CABLE & ELECTRICAL GOODS,PAEL,4240,4320,ascending,sequential,trigger,4
+CABLE & ELECTRICAL GOODS,PAEL,4640,4720,symmetrical,up,current,4
+CABLE & ELECTRICAL GOODS,PAEL,4640,4720,symmetrical,up,fixed_5,4
+CABLE & ELECTRICAL GOODS,PAEL,4640,4720,symmetrical,up,fixed_10,4
+CABLE & ELECTRICAL GOODS,PAEL,4640,4720,symmetrical,up,trigger,4
+CABLE & ELECTRICAL GOODS,PAEL,4760,4840,descending,up,current,4
+CABLE & ELECTRICAL GOODS,PAEL,4760,4840,descending,up,fixed_5,4
+CABLE & ELECTRICAL GOODS,PAEL,4760,4840,descending,up,fixed_10,4
+CABLE & ELECTRICAL GOODS,PAEL,4760,4840,descending,up,trigger,4
+CABLE & ELECTRICAL GOODS,PAEL,4800,4880,ascending,up,current,1
+CABLE & ELECTRICAL GOODS,PAEL,4800,4880,ascending,up,fixed_5,1
+CABLE & ELECTRICAL GOODS,PAEL,4800,4880,ascending,up,fixed_10,1
+CABLE & ELECTRICAL GOODS,PAEL,4800,4880,ascending,up,trigger,1
+CABLE & ELECTRICAL GOODS,PAEL,4960,5040,descending,up,current,2
+CABLE & ELECTRICAL GOODS,PAEL,4960,5040,descending,up,fixed_5,2
+CABLE & ELECTRICAL GOODS,PAEL,4960,5040,descending,up,fixed_10,2
+CABLE & ELECTRICAL GOODS,PAEL,4960,5040,descending,up,trigger,2
+TECHNOLOGY & COMMUNICATION,PAKD,40,120,symmetrical,up,current,4
+TECHNOLOGY & COMMUNICATION,PAKD,40,120,symmetrical,up,fixed_5,2
+TECHNOLOGY & COMMUNICATION,PAKD,40,120,symmetrical,up,fixed_10,2
+TECHNOLOGY & COMMUNICATION,PAKD,40,120,symmetrical,up,trigger,2
+TECHNOLOGY & COMMUNICATION,PAKD,600,680,descending,down,current,4
+TECHNOLOGY & COMMUNICATION,PAKD,600,680,descending,down,fixed_5,4
+TECHNOLOGY & COMMUNICATION,PAKD,600,680,descending,down,fixed_10,4
+TECHNOLOGY & COMMUNICATION,PAKD,600,680,descending,down,trigger,4
+TECHNOLOGY & COMMUNICATION,PAKD,2960,3040,symmetrical,down,current,1
+TECHNOLOGY & COMMUNICATION,PAKD,2960,3040,symmetrical,down,fixed_5,1
+TECHNOLOGY & COMMUNICATION,PAKD,2960,3040,symmetrical,down,fixed_10,1
+TECHNOLOGY & COMMUNICATION,PAKD,2960,3040,symmetrical,down,trigger,1
+CHEMICAL,PAKOXY,2080,2160,descending,up,current,1
+CHEMICAL,PAKOXY,2080,2160,descending,up,fixed_5,1
+CHEMICAL,PAKOXY,2080,2160,descending,up,fixed_10,1
+CHEMICAL,PAKOXY,2080,2160,descending,up,trigger,1
+CHEMICAL,PAKOXY,3000,3080,descending,down,current,4
+CHEMICAL,PAKOXY,3000,3080,descending,down,fixed_5,4
+CHEMICAL,PAKOXY,3000,3080,descending,down,fixed_10,4
+CHEMICAL,PAKOXY,3000,3080,descending,down,trigger,4
+CHEMICAL,PAKOXY,3800,3880,descending,up,current,2
+CHEMICAL,PAKOXY,3800,3880,descending,up,fixed_5,2
+CHEMICAL,PAKOXY,3800,3880,descending,up,fixed_10,2
+CHEMICAL,PAKOXY,3800,3880,descending,up,trigger,2
+CHEMICAL,PAKOXY,4400,4480,descending,up,current,1
+CHEMICAL,PAKOXY,4400,4480,descending,up,fixed_5,1
+CHEMICAL,PAKOXY,4400,4480,descending,up,fixed_10,1
+CHEMICAL,PAKOXY,4400,4480,descending,up,trigger,1
+INSURANCE,PAKRI,2280,2360,descending,up,current,2
+INSURANCE,PAKRI,2280,2360,descending,up,fixed_5,2
+INSURANCE,PAKRI,2280,2360,descending,up,fixed_10,2
+INSURANCE,PAKRI,2280,2360,descending,up,trigger,2
+INSURANCE,PAKRI,3680,3760,symmetrical,up,current,2
+INSURANCE,PAKRI,3680,3760,symmetrical,up,fixed_5,2
+INSURANCE,PAKRI,3680,3760,symmetrical,up,fixed_10,2
+INSURANCE,PAKRI,3680,3760,symmetrical,up,trigger,2
+CABLE & ELECTRICAL GOODS,PCAL,1720,1800,symmetrical,sequential,current,4
+CABLE & ELECTRICAL GOODS,PCAL,1720,1800,symmetrical,sequential,fixed_5,4
+CABLE & ELECTRICAL GOODS,PCAL,1720,1800,symmetrical,sequential,fixed_10,4
+CABLE & ELECTRICAL GOODS,PCAL,1720,1800,symmetrical,sequential,trigger,4
+ENGINEERING,PECO,0,80,ascending,up,current,1
+ENGINEERING,PECO,0,80,ascending,up,fixed_5,1
+ENGINEERING,PECO,0,80,ascending,up,fixed_10,1
+ENGINEERING,PECO,0,80,ascending,up,trigger,1
+ENGINEERING,PECO,1560,1640,descending,sequential,current,4
+ENGINEERING,PECO,1560,1640,descending,sequential,fixed_5,3
+ENGINEERING,PECO,1560,1640,descending,sequential,fixed_10,3
+ENGINEERING,PECO,1560,1640,descending,sequential,trigger,3
+TRANSPORT,PIBTL,1640,1720,symmetrical,down,current,4
+TRANSPORT,PIBTL,1640,1720,symmetrical,down,fixed_5,4
+TRANSPORT,PIBTL,1640,1720,symmetrical,down,fixed_10,4
+TRANSPORT,PIBTL,1640,1720,symmetrical,down,trigger,4
+TRANSPORT,PICT,680,760,ascending,sequential,current,4
+TRANSPORT,PICT,680,760,ascending,sequential,fixed_5,3
+TRANSPORT,PICT,680,760,ascending,sequential,fixed_10,3
+TRANSPORT,PICT,680,760,ascending,sequential,trigger,4
+TRANSPORT,PICT,2600,2680,ascending,up,current,4
+TRANSPORT,PICT,2600,2680,ascending,up,fixed_5,4
+TRANSPORT,PICT,2600,2680,ascending,up,fixed_10,4
+TRANSPORT,PICT,2600,2680,ascending,up,trigger,4
+TRANSPORT,PICT,4680,4760,descending,up,current,4
+TRANSPORT,PICT,4680,4760,descending,up,fixed_5,4
+TRANSPORT,PICT,4680,4760,descending,up,fixed_10,4
+TRANSPORT,PICT,4680,4760,descending,up,trigger,4
+TRANSPORT,PICT,4720,4800,descending,down,current,1
+TRANSPORT,PICT,4720,4800,descending,down,fixed_5,1
+TRANSPORT,PICT,4720,4800,descending,down,fixed_10,1
+TRANSPORT,PICT,4720,4800,descending,down,trigger,1
+INSURANCE,PIL,1040,1120,symmetrical,up,current,4
+INSURANCE,PIL,1040,1120,symmetrical,up,fixed_5,4
+INSURANCE,PIL,1040,1120,symmetrical,up,fixed_10,4
+INSURANCE,PIL,1040,1120,symmetrical,up,trigger,4
+INSURANCE,PIL,3080,3160,descending,up,current,4
+INSURANCE,PIL,3080,3160,descending,up,fixed_5,2
+INSURANCE,PIL,3080,3160,descending,up,fixed_10,2
+INSURANCE,PIL,3080,3160,descending,up,trigger,4
+CEMENT,PIOC,2560,2640,descending,up,current,4
+CEMENT,PIOC,2560,2640,descending,up,fixed_5,4
+CEMENT,PIOC,2560,2640,descending,up,fixed_10,4
+CEMENT,PIOC,2560,2640,descending,up,trigger,4
+CEMENT,PIOC,3880,3960,descending,up,current,4
+CEMENT,PIOC,3880,3960,descending,up,fixed_5,3
+CEMENT,PIOC,3880,3960,descending,up,fixed_10,3
+CEMENT,PIOC,3880,3960,descending,up,trigger,4
+CEMENT,PIOC,4480,4560,descending,up,current,4
+CEMENT,PIOC,4480,4560,descending,up,fixed_5,4
+CEMENT,PIOC,4480,4560,descending,up,fixed_10,4
+CEMENT,PIOC,4480,4560,descending,up,trigger,4
+INSURANCE,PKGI,640,720,descending,up,current,4
+INSURANCE,PKGI,640,720,descending,up,fixed_5,4
+INSURANCE,PKGI,640,720,descending,up,fixed_10,4
+INSURANCE,PKGI,640,720,descending,up,trigger,4
+INSURANCE,PKGI,1320,1400,descending,sequential,current,4
+INSURANCE,PKGI,1320,1400,descending,sequential,fixed_5,3
+INSURANCE,PKGI,1320,1400,descending,sequential,fixed_10,4
+INSURANCE,PKGI,1320,1400,descending,sequential,trigger,3
+POWER GENERATION & DISTRIBUTION,PKGP,1440,1520,ascending,up,current,4
+POWER GENERATION & DISTRIBUTION,PKGP,1440,1520,ascending,up,fixed_5,4
+POWER GENERATION & DISTRIBUTION,PKGP,1440,1520,ascending,up,fixed_10,4
+POWER GENERATION & DISTRIBUTION,PKGP,1440,1520,ascending,up,trigger,4
+POWER GENERATION & DISTRIBUTION,PKGP,1960,2040,symmetrical,up,current,1
+POWER GENERATION & DISTRIBUTION,PKGP,1960,2040,symmetrical,up,fixed_5,1
+POWER GENERATION & DISTRIBUTION,PKGP,1960,2040,symmetrical,up,fixed_10,1
+POWER GENERATION & DISTRIBUTION,PKGP,1960,2040,symmetrical,up,trigger,1
+POWER GENERATION & DISTRIBUTION,PKGP,2960,3040,descending,up,current,4
+POWER GENERATION & DISTRIBUTION,PKGP,2960,3040,descending,up,fixed_5,4
+POWER GENERATION & DISTRIBUTION,PKGP,2960,3040,descending,up,fixed_10,4
+POWER GENERATION & DISTRIBUTION,PKGP,2960,3040,descending,up,trigger,4
+POWER GENERATION & DISTRIBUTION,PKGP,3080,3160,ascending,sequential,current,4
+POWER GENERATION & DISTRIBUTION,PKGP,3080,3160,ascending,sequential,fixed_5,4
+POWER GENERATION & DISTRIBUTION,PKGP,3080,3160,ascending,sequential,fixed_10,4
+POWER GENERATION & DISTRIBUTION,PKGP,3080,3160,ascending,sequential,trigger,4
+PAPER & BOARD,PKGS,1000,1080,ascending,sequential,current,4
+PAPER & BOARD,PKGS,1000,1080,ascending,sequential,fixed_5,3
+PAPER & BOARD,PKGS,1000,1080,ascending,sequential,fixed_10,4
+PAPER & BOARD,PKGS,1000,1080,ascending,sequential,trigger,4
+PAPER & BOARD,PKGS,1320,1400,symmetrical,up,current,4
+PAPER & BOARD,PKGS,1320,1400,symmetrical,up,fixed_5,4
+PAPER & BOARD,PKGS,1320,1400,symmetrical,up,fixed_10,4
+PAPER & BOARD,PKGS,1320,1400,symmetrical,up,trigger,4
+PAPER & BOARD,PKGS,3480,3560,symmetrical,up,current,1
+PAPER & BOARD,PKGS,3480,3560,symmetrical,up,fixed_5,1
+PAPER & BOARD,PKGS,3480,3560,symmetrical,up,fixed_10,1
+PAPER & BOARD,PKGS,3480,3560,symmetrical,up,trigger,1
+PAPER & BOARD,PKGS,4040,4120,symmetrical,down,current,4
+PAPER & BOARD,PKGS,4040,4120,symmetrical,down,fixed_5,4
+PAPER & BOARD,PKGS,4040,4120,symmetrical,down,fixed_10,4
+PAPER & BOARD,PKGS,4040,4120,symmetrical,down,trigger,4
+TRANSPORT,PNSC,920,1000,symmetrical,sequential,current,4
+TRANSPORT,PNSC,920,1000,symmetrical,sequential,fixed_5,4
+TRANSPORT,PNSC,920,1000,symmetrical,sequential,fixed_10,4
+TRANSPORT,PNSC,920,1000,symmetrical,sequential,trigger,4
+TRANSPORT,PNSC,1240,1320,descending,sequential,current,4
+TRANSPORT,PNSC,1240,1320,descending,sequential,fixed_5,3
+TRANSPORT,PNSC,1240,1320,descending,sequential,fixed_10,4
+TRANSPORT,PNSC,1240,1320,descending,sequential,trigger,4
+TRANSPORT,PNSC,1280,1360,descending,sequential,current,4
+TRANSPORT,PNSC,1280,1360,descending,sequential,fixed_5,3
+TRANSPORT,PNSC,1280,1360,descending,sequential,fixed_10,3
+TRANSPORT,PNSC,1280,1360,descending,sequential,trigger,4
+TRANSPORT,PNSC,4640,4720,ascending,up,current,1
+TRANSPORT,PNSC,4640,4720,ascending,up,fixed_5,1
+TRANSPORT,PNSC,4640,4720,ascending,up,fixed_10,1
+TRANSPORT,PNSC,4640,4720,ascending,up,trigger,1
+OIL & GAS EXPLORATION COMPANIES,POL,360,440,symmetrical,up,current,2
+OIL & GAS EXPLORATION COMPANIES,POL,360,440,symmetrical,up,fixed_5,2
+OIL & GAS EXPLORATION COMPANIES,POL,360,440,symmetrical,up,fixed_10,2
+OIL & GAS EXPLORATION COMPANIES,POL,360,440,symmetrical,up,trigger,2
+OIL & GAS EXPLORATION COMPANIES,POL,400,480,ascending,sequential,current,4
+OIL & GAS EXPLORATION COMPANIES,POL,400,480,ascending,sequential,fixed_5,4
+OIL & GAS EXPLORATION COMPANIES,POL,400,480,ascending,sequential,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,POL,400,480,ascending,sequential,trigger,4
+OIL & GAS EXPLORATION COMPANIES,POL,1640,1720,ascending,sequential,current,4
+OIL & GAS EXPLORATION COMPANIES,POL,1640,1720,ascending,sequential,fixed_5,3
+OIL & GAS EXPLORATION COMPANIES,POL,1640,1720,ascending,sequential,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,POL,1640,1720,ascending,sequential,trigger,3
+OIL & GAS EXPLORATION COMPANIES,POL,1720,1800,descending,up,current,1
+OIL & GAS EXPLORATION COMPANIES,POL,1720,1800,descending,up,fixed_5,1
+OIL & GAS EXPLORATION COMPANIES,POL,1720,1800,descending,up,fixed_10,1
+OIL & GAS EXPLORATION COMPANIES,POL,1720,1800,descending,up,trigger,1
+OIL & GAS EXPLORATION COMPANIES,POL,2440,2520,descending,sequential,current,4
+OIL & GAS EXPLORATION COMPANIES,POL,2440,2520,descending,sequential,fixed_5,3
+OIL & GAS EXPLORATION COMPANIES,POL,2440,2520,descending,sequential,fixed_10,3
+OIL & GAS EXPLORATION COMPANIES,POL,2440,2520,descending,sequential,trigger,3
+CEMENT,POWER,160,240,ascending,sequential,current,4
+CEMENT,POWER,160,240,ascending,sequential,fixed_5,3
+CEMENT,POWER,160,240,ascending,sequential,fixed_10,3
+CEMENT,POWER,160,240,ascending,sequential,trigger,3
+CEMENT,POWER,4560,4640,descending,up,current,4
+CEMENT,POWER,4560,4640,descending,up,fixed_5,4
+CEMENT,POWER,4560,4640,descending,up,fixed_10,4
+CEMENT,POWER,4560,4640,descending,up,trigger,4
+CEMENT,POWER,4920,5000,symmetrical,up,current,1
+CEMENT,POWER,4920,5000,symmetrical,up,fixed_5,1
+CEMENT,POWER,4920,5000,symmetrical,up,fixed_10,1
+CEMENT,POWER,4920,5000,symmetrical,up,trigger,1
+CEMENT,POWERPS,40,120,symmetrical,up,current,4
+CEMENT,POWERPS,40,120,symmetrical,up,fixed_5,3
+CEMENT,POWERPS,40,120,symmetrical,up,fixed_10,3
+CEMENT,POWERPS,40,120,symmetrical,up,trigger,4
+CEMENT,POWERPS,400,480,symmetrical,up,current,4
+CEMENT,POWERPS,400,480,symmetrical,up,fixed_5,4
+CEMENT,POWERPS,400,480,symmetrical,up,fixed_10,4
+CEMENT,POWERPS,400,480,symmetrical,up,trigger,4
+OIL & GAS EXPLORATION COMPANIES,PPL,400,480,ascending,sequential,current,4
+OIL & GAS EXPLORATION COMPANIES,PPL,400,480,ascending,sequential,fixed_5,3
+OIL & GAS EXPLORATION COMPANIES,PPL,400,480,ascending,sequential,fixed_10,3
+OIL & GAS EXPLORATION COMPANIES,PPL,400,480,ascending,sequential,trigger,4
+OIL & GAS EXPLORATION COMPANIES,PPL,520,600,ascending,down,current,4
+OIL & GAS EXPLORATION COMPANIES,PPL,520,600,ascending,down,fixed_5,4
+OIL & GAS EXPLORATION COMPANIES,PPL,520,600,ascending,down,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,PPL,520,600,ascending,down,trigger,4
+OIL & GAS EXPLORATION COMPANIES,PPL,1160,1240,ascending,sequential,current,4
+OIL & GAS EXPLORATION COMPANIES,PPL,1160,1240,ascending,sequential,fixed_5,4
+OIL & GAS EXPLORATION COMPANIES,PPL,1160,1240,ascending,sequential,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,PPL,1160,1240,ascending,sequential,trigger,4
+OIL & GAS EXPLORATION COMPANIES,PPL,2760,2840,ascending,down,current,4
+OIL & GAS EXPLORATION COMPANIES,PPL,2760,2840,ascending,down,fixed_5,2
+OIL & GAS EXPLORATION COMPANIES,PPL,2760,2840,ascending,down,fixed_10,4
+OIL & GAS EXPLORATION COMPANIES,PPL,2760,2840,ascending,down,trigger,4
+OIL & GAS EXPLORATION COMPANIES,PPL,3000,3080,ascending,up,current,4
+OIL & GAS EXPLORATION COMPANIES,PPL,3000,3080,ascending,up,fixed_5,3
+OIL & GAS EXPLORATION COMPANIES,PPL,3000,3080,ascending,up,fixed_10,3
+OIL & GAS EXPLORATION COMPANIES,PPL,3000,3080,ascending,up,trigger,4
+PAPER & BOARD,PPP,80,160,symmetrical,whipsaw,current,4
+PAPER & BOARD,PPP,80,160,symmetrical,whipsaw,fixed_5,4
+PAPER & BOARD,PPP,80,160,symmetrical,whipsaw,fixed_10,4
+PAPER & BOARD,PPP,80,160,symmetrical,whipsaw,trigger,4
+PAPER & BOARD,PPP,320,400,symmetrical,down,current,4
+PAPER & BOARD,PPP,320,400,symmetrical,down,fixed_5,2
+PAPER & BOARD,PPP,320,400,symmetrical,down,fixed_10,4
+PAPER & BOARD,PPP,320,400,symmetrical,down,trigger,2
+CHEMICAL,PPVC,960,1040,symmetrical,up,current,4
+CHEMICAL,PPVC,960,1040,symmetrical,up,fixed_5,4
+CHEMICAL,PPVC,960,1040,symmetrical,up,fixed_10,4
+CHEMICAL,PPVC,960,1040,symmetrical,up,trigger,4
+REFINERY,PRL,1680,1760,symmetrical,down,current,4
+REFINERY,PRL,1680,1760,symmetrical,down,fixed_5,2
+REFINERY,PRL,1680,1760,symmetrical,down,fixed_10,2
+REFINERY,PRL,1680,1760,symmetrical,down,trigger,2
+REFINERY,PRL,2480,2560,descending,down,current,4
+REFINERY,PRL,2480,2560,descending,down,fixed_5,4
+REFINERY,PRL,2480,2560,descending,down,fixed_10,4
+REFINERY,PRL,2480,2560,descending,down,trigger,4
+REFINERY,PRL,2640,2720,symmetrical,up,current,4
+REFINERY,PRL,2640,2720,symmetrical,up,fixed_5,4
+REFINERY,PRL,2640,2720,symmetrical,up,fixed_10,4
+REFINERY,PRL,2640,2720,symmetrical,up,trigger,4
+REFINERY,PRL,2760,2840,descending,down,current,4
+REFINERY,PRL,2760,2840,descending,down,fixed_5,4
+REFINERY,PRL,2760,2840,descending,down,fixed_10,4
+REFINERY,PRL,2760,2840,descending,down,trigger,4
+REFINERY,PRL,2840,2920,ascending,down,current,4
+REFINERY,PRL,2840,2920,ascending,down,fixed_5,4
+REFINERY,PRL,2840,2920,ascending,down,fixed_10,4
+REFINERY,PRL,2840,2920,ascending,down,trigger,4
+REFINERY,PRL,3920,4000,ascending,down,current,1
+REFINERY,PRL,3920,4000,ascending,down,fixed_5,1
+REFINERY,PRL,3920,4000,ascending,down,fixed_10,1
+REFINERY,PRL,3920,4000,ascending,down,trigger,1
+REFINERY,PRL,4120,4200,descending,up,current,1
+REFINERY,PRL,4120,4200,descending,up,fixed_5,1
+REFINERY,PRL,4120,4200,descending,up,fixed_10,1
+REFINERY,PRL,4120,4200,descending,up,trigger,1
+MISCELLANEOUS,PSEL,920,1000,ascending,up,current,1
+MISCELLANEOUS,PSEL,920,1000,ascending,up,fixed_5,1
+MISCELLANEOUS,PSEL,920,1000,ascending,up,fixed_10,1
+MISCELLANEOUS,PSEL,920,1000,ascending,up,trigger,1
+OIL & GAS MARKETING COMPANIES,PSO,1160,1240,ascending,down,current,1
+OIL & GAS MARKETING COMPANIES,PSO,1160,1240,ascending,down,fixed_5,1
+OIL & GAS MARKETING COMPANIES,PSO,1160,1240,ascending,down,fixed_10,1
+OIL & GAS MARKETING COMPANIES,PSO,1160,1240,ascending,down,trigger,1
+OIL & GAS MARKETING COMPANIES,PSO,1200,1280,ascending,down,current,4
+OIL & GAS MARKETING COMPANIES,PSO,1200,1280,ascending,down,fixed_5,4
+OIL & GAS MARKETING COMPANIES,PSO,1200,1280,ascending,down,fixed_10,4
+OIL & GAS MARKETING COMPANIES,PSO,1200,1280,ascending,down,trigger,4
+OIL & GAS MARKETING COMPANIES,PSO,1480,1560,ascending,down,current,1
+OIL & GAS MARKETING COMPANIES,PSO,1480,1560,ascending,down,fixed_5,1
+OIL & GAS MARKETING COMPANIES,PSO,1480,1560,ascending,down,fixed_10,1
+OIL & GAS MARKETING COMPANIES,PSO,1480,1560,ascending,down,trigger,1
+OIL & GAS MARKETING COMPANIES,PSO,1600,1680,descending,up,current,4
+OIL & GAS MARKETING COMPANIES,PSO,1600,1680,descending,up,fixed_5,4
+OIL & GAS MARKETING COMPANIES,PSO,1600,1680,descending,up,fixed_10,4
+OIL & GAS MARKETING COMPANIES,PSO,1600,1680,descending,up,trigger,4
+TECHNOLOGY & COMMUNICATION,PTC,2680,2760,ascending,sequential,current,4
+TECHNOLOGY & COMMUNICATION,PTC,2680,2760,ascending,sequential,fixed_5,3
+TECHNOLOGY & COMMUNICATION,PTC,2680,2760,ascending,sequential,fixed_10,3
+TECHNOLOGY & COMMUNICATION,PTC,2680,2760,ascending,sequential,trigger,4
+TEXTILE COMPOSITE,QUET,1280,1360,symmetrical,up,current,4
+TEXTILE COMPOSITE,QUET,1280,1360,symmetrical,up,fixed_5,1
+TEXTILE COMPOSITE,QUET,1280,1360,symmetrical,up,fixed_10,1
+TEXTILE COMPOSITE,QUET,1280,1360,symmetrical,up,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3400,3480,descending,down,current,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3400,3480,descending,down,fixed_5,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3400,3480,descending,down,fixed_10,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3400,3480,descending,down,trigger,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3640,3720,ascending,down,current,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3640,3720,ascending,down,fixed_5,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3640,3720,ascending,down,fixed_10,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,3640,3720,ascending,down,trigger,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,4760,4840,ascending,up,current,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,4760,4840,ascending,up,fixed_5,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,4760,4840,ascending,up,fixed_10,2
+FOOD & PERSONAL CARE PRODUCTS,QUICE,4760,4840,ascending,up,trigger,2
+TEXTILE COMPOSITE,REDCO,2040,2120,symmetrical,down,current,4
+TEXTILE COMPOSITE,REDCO,2040,2120,symmetrical,down,fixed_5,4
+TEXTILE COMPOSITE,REDCO,2040,2120,symmetrical,down,fixed_10,4
+TEXTILE COMPOSITE,REDCO,2040,2120,symmetrical,down,trigger,4
+INSURANCE,RICL,840,920,ascending,sequential,current,4
+INSURANCE,RICL,840,920,ascending,sequential,fixed_5,4
+INSURANCE,RICL,840,920,ascending,sequential,fixed_10,4
+INSURANCE,RICL,840,920,ascending,sequential,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,RMPL,1800,1880,descending,up,current,4
+FOOD & PERSONAL CARE PRODUCTS,RMPL,1800,1880,descending,up,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,RMPL,1800,1880,descending,up,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,RMPL,1800,1880,descending,up,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,RMPL,2400,2480,descending,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,RMPL,2400,2480,descending,down,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,RMPL,2400,2480,descending,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,RMPL,2400,2480,descending,down,trigger,4
+CHEMICAL,SARC,1320,1400,symmetrical,sequential,current,4
+CHEMICAL,SARC,1320,1400,symmetrical,sequential,fixed_5,4
+CHEMICAL,SARC,1320,1400,symmetrical,sequential,fixed_10,4
+CHEMICAL,SARC,1320,1400,symmetrical,sequential,trigger,4
+AUTOMOBILE ASSEMBLER,SAZEW,2000,2080,descending,up,current,1
+AUTOMOBILE ASSEMBLER,SAZEW,2000,2080,descending,up,fixed_5,1
+AUTOMOBILE ASSEMBLER,SAZEW,2000,2080,descending,up,fixed_10,1
+AUTOMOBILE ASSEMBLER,SAZEW,2000,2080,descending,up,trigger,1
+COMMERCIAL BANKS,SBL,2880,2960,descending,up,current,4
+COMMERCIAL BANKS,SBL,2880,2960,descending,up,fixed_5,3
+COMMERCIAL BANKS,SBL,2880,2960,descending,up,fixed_10,3
+COMMERCIAL BANKS,SBL,2880,2960,descending,up,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,SCL,1280,1360,symmetrical,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,SCL,1280,1360,symmetrical,down,fixed_5,1
+FOOD & PERSONAL CARE PRODUCTS,SCL,1280,1360,symmetrical,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,SCL,1280,1360,symmetrical,down,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,SCL,1800,1880,symmetrical,sequential,current,4
+FOOD & PERSONAL CARE PRODUCTS,SCL,1800,1880,symmetrical,sequential,fixed_5,3
+FOOD & PERSONAL CARE PRODUCTS,SCL,1800,1880,symmetrical,sequential,fixed_10,3
+FOOD & PERSONAL CARE PRODUCTS,SCL,1800,1880,symmetrical,sequential,trigger,4
+PHARMACEUTICALS,SEARL,1040,1120,descending,down,current,4
+PHARMACEUTICALS,SEARL,1040,1120,descending,down,fixed_5,3
+PHARMACEUTICALS,SEARL,1040,1120,descending,down,fixed_10,4
+PHARMACEUTICALS,SEARL,1040,1120,descending,down,trigger,3
+PHARMACEUTICALS,SEARL,1280,1360,descending,up,current,4
+PHARMACEUTICALS,SEARL,1280,1360,descending,up,fixed_5,4
+PHARMACEUTICALS,SEARL,1280,1360,descending,up,fixed_10,4
+PHARMACEUTICALS,SEARL,1280,1360,descending,up,trigger,4
+PHARMACEUTICALS,SEARL,1560,1640,descending,up,current,2
+PHARMACEUTICALS,SEARL,1560,1640,descending,up,fixed_5,2
+PHARMACEUTICALS,SEARL,1560,1640,descending,up,fixed_10,2
+PHARMACEUTICALS,SEARL,1560,1640,descending,up,trigger,2
+PHARMACEUTICALS,SEARL,4160,4240,descending,down,current,1
+PHARMACEUTICALS,SEARL,4160,4240,descending,down,fixed_5,1
+PHARMACEUTICALS,SEARL,4160,4240,descending,down,fixed_10,1
+PHARMACEUTICALS,SEARL,4160,4240,descending,down,trigger,1
+PHARMACEUTICALS,SEARL,4640,4720,descending,sequential,current,4
+PHARMACEUTICALS,SEARL,4640,4720,descending,sequential,fixed_5,4
+PHARMACEUTICALS,SEARL,4640,4720,descending,sequential,fixed_10,4
+PHARMACEUTICALS,SEARL,4640,4720,descending,sequential,trigger,4
+POWER GENERATION & DISTRIBUTION,SEL,880,960,descending,up,current,4
+POWER GENERATION & DISTRIBUTION,SEL,880,960,descending,up,fixed_5,4
+POWER GENERATION & DISTRIBUTION,SEL,880,960,descending,up,fixed_10,4
+POWER GENERATION & DISTRIBUTION,SEL,880,960,descending,up,trigger,4
+PAPER & BOARD,SEPL,320,400,symmetrical,up,current,4
+PAPER & BOARD,SEPL,320,400,symmetrical,up,fixed_5,4
+PAPER & BOARD,SEPL,320,400,symmetrical,up,fixed_10,4
+PAPER & BOARD,SEPL,320,400,symmetrical,up,trigger,4
+PAPER & BOARD,SEPL,3760,3840,descending,up,current,2
+PAPER & BOARD,SEPL,3760,3840,descending,up,fixed_5,2
+PAPER & BOARD,SEPL,3760,3840,descending,up,fixed_10,2
+PAPER & BOARD,SEPL,3760,3840,descending,up,trigger,2
+PAPER & BOARD,SEPL,4200,4280,ascending,down,current,4
+PAPER & BOARD,SEPL,4200,4280,ascending,down,fixed_5,4
+PAPER & BOARD,SEPL,4200,4280,ascending,down,fixed_10,4
+PAPER & BOARD,SEPL,4200,4280,ascending,down,trigger,4
+PAPER & BOARD,SEPL,4720,4800,ascending,none,current,N/A
+PAPER & BOARD,SEPL,4720,4800,ascending,none,fixed_5,N/A
+PAPER & BOARD,SEPL,4720,4800,ascending,none,fixed_10,N/A
+PAPER & BOARD,SEPL,4720,4800,ascending,none,trigger,N/A
+OIL & GAS MARKETING COMPANIES,SHEL,480,560,descending,up,current,1
+OIL & GAS MARKETING COMPANIES,SHEL,480,560,descending,up,fixed_5,1
+OIL & GAS MARKETING COMPANIES,SHEL,480,560,descending,up,fixed_10,1
+OIL & GAS MARKETING COMPANIES,SHEL,480,560,descending,up,trigger,1
+OIL & GAS MARKETING COMPANIES,SHEL,960,1040,descending,up,current,4
+OIL & GAS MARKETING COMPANIES,SHEL,960,1040,descending,up,fixed_5,4
+OIL & GAS MARKETING COMPANIES,SHEL,960,1040,descending,up,fixed_10,4
+OIL & GAS MARKETING COMPANIES,SHEL,960,1040,descending,up,trigger,4
+OIL & GAS MARKETING COMPANIES,SHEL,3360,3440,ascending,down,current,1
+OIL & GAS MARKETING COMPANIES,SHEL,3360,3440,ascending,down,fixed_5,1
+OIL & GAS MARKETING COMPANIES,SHEL,3360,3440,ascending,down,fixed_10,1
+OIL & GAS MARKETING COMPANIES,SHEL,3360,3440,ascending,down,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,600,680,ascending,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,600,680,ascending,down,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,600,680,ascending,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,600,680,ascending,down,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3040,3120,descending,up,current,4
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3040,3120,descending,up,fixed_5,1
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3040,3120,descending,up,fixed_10,1
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3040,3120,descending,up,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3320,3400,symmetrical,up,current,1
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3320,3400,symmetrical,up,fixed_5,1
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3320,3400,symmetrical,up,fixed_10,1
+FOOD & PERSONAL CARE PRODUCTS,SHEZ,3320,3400,symmetrical,up,trigger,1
+MISCELLANEOUS,SHFA,40,120,descending,sequential,current,4
+MISCELLANEOUS,SHFA,40,120,descending,sequential,fixed_5,4
+MISCELLANEOUS,SHFA,40,120,descending,sequential,fixed_10,4
+MISCELLANEOUS,SHFA,40,120,descending,sequential,trigger,4
+MISCELLANEOUS,SHFA,720,800,descending,down,current,3
+MISCELLANEOUS,SHFA,720,800,descending,down,fixed_5,3
+MISCELLANEOUS,SHFA,720,800,descending,down,fixed_10,3
+MISCELLANEOUS,SHFA,720,800,descending,down,trigger,3
+MISCELLANEOUS,SHFA,1120,1200,descending,up,current,2
+MISCELLANEOUS,SHFA,1120,1200,descending,up,fixed_5,2
+MISCELLANEOUS,SHFA,1120,1200,descending,up,fixed_10,2
+MISCELLANEOUS,SHFA,1120,1200,descending,up,trigger,2
+MISCELLANEOUS,SHFA,4280,4360,descending,sequential,current,4
+MISCELLANEOUS,SHFA,4280,4360,descending,sequential,fixed_5,3
+MISCELLANEOUS,SHFA,4280,4360,descending,sequential,fixed_10,3
+MISCELLANEOUS,SHFA,4280,4360,descending,sequential,trigger,3
+INSURANCE,SHNI,1080,1160,descending,down,current,4
+INSURANCE,SHNI,1080,1160,descending,down,fixed_5,4
+INSURANCE,SHNI,1080,1160,descending,down,fixed_10,4
+INSURANCE,SHNI,1080,1160,descending,down,trigger,4
+COMMERCIAL BANKS,SILK,1320,1400,descending,up,current,2
+COMMERCIAL BANKS,SILK,1320,1400,descending,up,fixed_5,2
+COMMERCIAL BANKS,SILK,1320,1400,descending,up,fixed_10,2
+COMMERCIAL BANKS,SILK,1320,1400,descending,up,trigger,2
+COMMERCIAL BANKS,SILK,1760,1840,ascending,sequential,current,4
+COMMERCIAL BANKS,SILK,1760,1840,ascending,sequential,fixed_5,4
+COMMERCIAL BANKS,SILK,1760,1840,ascending,sequential,fixed_10,4
+COMMERCIAL BANKS,SILK,1760,1840,ascending,sequential,trigger,4
+COMMERCIAL BANKS,SILK,1800,1880,descending,sequential,current,4
+COMMERCIAL BANKS,SILK,1800,1880,descending,sequential,fixed_5,4
+COMMERCIAL BANKS,SILK,1800,1880,descending,sequential,fixed_10,4
+COMMERCIAL BANKS,SILK,1800,1880,descending,sequential,trigger,4
+CHEMICAL,SITC,520,600,symmetrical,up,current,3
+CHEMICAL,SITC,520,600,symmetrical,up,fixed_5,3
+CHEMICAL,SITC,520,600,symmetrical,up,fixed_10,3
+CHEMICAL,SITC,520,600,symmetrical,up,trigger,3
+CHEMICAL,SITC,800,880,ascending,up,current,4
+CHEMICAL,SITC,800,880,ascending,up,fixed_5,4
+CHEMICAL,SITC,800,880,ascending,up,fixed_10,4
+CHEMICAL,SITC,800,880,ascending,up,trigger,4
+CHEMICAL,SITC,3800,3880,descending,sequential,current,4
+CHEMICAL,SITC,3800,3880,descending,sequential,fixed_5,4
+CHEMICAL,SITC,3800,3880,descending,sequential,fixed_10,4
+CHEMICAL,SITC,3800,3880,descending,sequential,trigger,4
+CEMENT,SMCPL,120,200,descending,up,current,4
+CEMENT,SMCPL,120,200,descending,up,fixed_5,4
+CEMENT,SMCPL,120,200,descending,up,fixed_10,4
+CEMENT,SMCPL,120,200,descending,up,trigger,4
+CEMENT,SMCPL,1160,1240,symmetrical,down,current,4
+CEMENT,SMCPL,1160,1240,symmetrical,down,fixed_5,4
+CEMENT,SMCPL,1160,1240,symmetrical,down,fixed_10,4
+CEMENT,SMCPL,1160,1240,symmetrical,down,trigger,4
+CEMENT,SMCPL,2520,2600,ascending,sequential,current,4
+CEMENT,SMCPL,2520,2600,ascending,sequential,fixed_5,4
+CEMENT,SMCPL,2520,2600,ascending,sequential,fixed_10,4
+CEMENT,SMCPL,2520,2600,ascending,sequential,trigger,4
+CEMENT,SMCPL,2640,2720,descending,up,current,4
+CEMENT,SMCPL,2640,2720,descending,up,fixed_5,4
+CEMENT,SMCPL,2640,2720,descending,up,fixed_10,4
+CEMENT,SMCPL,2640,2720,descending,up,trigger,4
+CEMENT,SMCPL,3080,3160,descending,up,current,4
+CEMENT,SMCPL,3080,3160,descending,up,fixed_5,3
+CEMENT,SMCPL,3080,3160,descending,up,fixed_10,4
+CEMENT,SMCPL,3080,3160,descending,up,trigger,3
+COMMERCIAL BANKS,SNBL,1920,2000,descending,up,current,1
+COMMERCIAL BANKS,SNBL,1920,2000,descending,up,fixed_5,1
+COMMERCIAL BANKS,SNBL,1920,2000,descending,up,fixed_10,1
+COMMERCIAL BANKS,SNBL,1920,2000,descending,up,trigger,1
+COMMERCIAL BANKS,SNBL,4280,4360,ascending,down,current,4
+COMMERCIAL BANKS,SNBL,4280,4360,ascending,down,fixed_5,4
+COMMERCIAL BANKS,SNBL,4280,4360,ascending,down,fixed_10,4
+COMMERCIAL BANKS,SNBL,4280,4360,ascending,down,trigger,4
+OIL & GAS MARKETING COMPANIES,SNGP,560,640,descending,down,current,1
+OIL & GAS MARKETING COMPANIES,SNGP,560,640,descending,down,fixed_5,1
+OIL & GAS MARKETING COMPANIES,SNGP,560,640,descending,down,fixed_10,1
+OIL & GAS MARKETING COMPANIES,SNGP,560,640,descending,down,trigger,1
+MISCELLANEOUS,SPEL,680,760,descending,down,current,4
+MISCELLANEOUS,SPEL,680,760,descending,down,fixed_5,4
+MISCELLANEOUS,SPEL,680,760,descending,down,fixed_10,4
+MISCELLANEOUS,SPEL,680,760,descending,down,trigger,4
+POWER GENERATION & DISTRIBUTION,SPWL,920,1000,ascending,down,current,2
+POWER GENERATION & DISTRIBUTION,SPWL,920,1000,ascending,down,fixed_5,2
+POWER GENERATION & DISTRIBUTION,SPWL,920,1000,ascending,down,fixed_10,2
+POWER GENERATION & DISTRIBUTION,SPWL,920,1000,ascending,down,trigger,2
+OIL & GAS MARKETING COMPANIES,SSGC,360,440,descending,sequential,current,4
+OIL & GAS MARKETING COMPANIES,SSGC,360,440,descending,sequential,fixed_5,4
+OIL & GAS MARKETING COMPANIES,SSGC,360,440,descending,sequential,fixed_10,4
+OIL & GAS MARKETING COMPANIES,SSGC,360,440,descending,sequential,trigger,4
+OIL & GAS MARKETING COMPANIES,SSGC,400,480,descending,sequential,current,4
+OIL & GAS MARKETING COMPANIES,SSGC,400,480,descending,sequential,fixed_5,3
+OIL & GAS MARKETING COMPANIES,SSGC,400,480,descending,sequential,fixed_10,3
+OIL & GAS MARKETING COMPANIES,SSGC,400,480,descending,sequential,trigger,3
+OIL & GAS MARKETING COMPANIES,SSGC,520,600,ascending,up,current,4
+OIL & GAS MARKETING COMPANIES,SSGC,520,600,ascending,up,fixed_5,3
+OIL & GAS MARKETING COMPANIES,SSGC,520,600,ascending,up,fixed_10,3
+OIL & GAS MARKETING COMPANIES,SSGC,520,600,ascending,up,trigger,3
+OIL & GAS MARKETING COMPANIES,SSGC,680,760,ascending,sequential,current,4
+OIL & GAS MARKETING COMPANIES,SSGC,680,760,ascending,sequential,fixed_5,3
+OIL & GAS MARKETING COMPANIES,SSGC,680,760,ascending,sequential,fixed_10,4
+OIL & GAS MARKETING COMPANIES,SSGC,680,760,ascending,sequential,trigger,4
+OIL & GAS MARKETING COMPANIES,SSGC,920,1000,ascending,down,current,4
+OIL & GAS MARKETING COMPANIES,SSGC,920,1000,ascending,down,fixed_5,4
+OIL & GAS MARKETING COMPANIES,SSGC,920,1000,ascending,down,fixed_10,4
+OIL & GAS MARKETING COMPANIES,SSGC,920,1000,ascending,down,trigger,4
+OIL & GAS MARKETING COMPANIES,SSGC,2080,2160,descending,up,current,2
+OIL & GAS MARKETING COMPANIES,SSGC,2080,2160,descending,up,fixed_5,2
+OIL & GAS MARKETING COMPANIES,SSGC,2080,2160,descending,up,fixed_10,2
+OIL & GAS MARKETING COMPANIES,SSGC,2080,2160,descending,up,trigger,2
+OIL & GAS MARKETING COMPANIES,SSGC,3000,3080,descending,down,current,4
+OIL & GAS MARKETING COMPANIES,SSGC,3000,3080,descending,down,fixed_5,3
+OIL & GAS MARKETING COMPANIES,SSGC,3000,3080,descending,down,fixed_10,3
+OIL & GAS MARKETING COMPANIES,SSGC,3000,3080,descending,down,trigger,3
+OIL & GAS MARKETING COMPANIES,SSGC,3840,3920,ascending,down,current,4
+OIL & GAS MARKETING COMPANIES,SSGC,3840,3920,ascending,down,fixed_5,4
+OIL & GAS MARKETING COMPANIES,SSGC,3840,3920,ascending,down,fixed_10,4
+OIL & GAS MARKETING COMPANIES,SSGC,3840,3920,ascending,down,trigger,4
+OIL & GAS MARKETING COMPANIES,SSGC,4760,4840,descending,up,current,1
+OIL & GAS MARKETING COMPANIES,SSGC,4760,4840,descending,up,fixed_5,1
+OIL & GAS MARKETING COMPANIES,SSGC,4760,4840,descending,up,fixed_10,1
+OIL & GAS MARKETING COMPANIES,SSGC,4760,4840,descending,up,trigger,1
+OIL & GAS MARKETING COMPANIES,SSGC,5080,5160,symmetrical,down,current,1
+OIL & GAS MARKETING COMPANIES,SSGC,5080,5160,symmetrical,down,fixed_5,1
+OIL & GAS MARKETING COMPANIES,SSGC,5080,5160,symmetrical,down,fixed_10,1
+OIL & GAS MARKETING COMPANIES,SSGC,5080,5160,symmetrical,down,trigger,1
+GLASS & CERAMICS,STCL,3480,3560,symmetrical,down,current,4
+GLASS & CERAMICS,STCL,3480,3560,symmetrical,down,fixed_5,4
+GLASS & CERAMICS,STCL,3480,3560,symmetrical,down,fixed_10,4
+GLASS & CERAMICS,STCL,3480,3560,symmetrical,down,trigger,4
+GLASS & CERAMICS,STCL,3640,3720,symmetrical,up,current,4
+GLASS & CERAMICS,STCL,3640,3720,symmetrical,up,fixed_5,4
+GLASS & CERAMICS,STCL,3640,3720,symmetrical,up,fixed_10,4
+GLASS & CERAMICS,STCL,3640,3720,symmetrical,up,trigger,4
+MISCELLANEOUS,STPL,120,200,symmetrical,down,current,1
+MISCELLANEOUS,STPL,120,200,symmetrical,down,fixed_5,1
+MISCELLANEOUS,STPL,120,200,symmetrical,down,fixed_10,1
+MISCELLANEOUS,STPL,120,200,symmetrical,down,trigger,1
+TECHNOLOGY & COMMUNICATION,SYS,120,200,descending,down,current,4
+TECHNOLOGY & COMMUNICATION,SYS,120,200,descending,down,fixed_5,3
+TECHNOLOGY & COMMUNICATION,SYS,120,200,descending,down,fixed_10,4
+TECHNOLOGY & COMMUNICATION,SYS,120,200,descending,down,trigger,4
+TECHNOLOGY & COMMUNICATION,SYS,2280,2360,descending,up,current,4
+TECHNOLOGY & COMMUNICATION,SYS,2280,2360,descending,up,fixed_5,4
+TECHNOLOGY & COMMUNICATION,SYS,2280,2360,descending,up,fixed_10,4
+TECHNOLOGY & COMMUNICATION,SYS,2280,2360,descending,up,trigger,4
+TECHNOLOGY & COMMUNICATION,TELE,360,440,symmetrical,down,current,4
+TECHNOLOGY & COMMUNICATION,TELE,360,440,symmetrical,down,fixed_5,4
+TECHNOLOGY & COMMUNICATION,TELE,360,440,symmetrical,down,fixed_10,4
+TECHNOLOGY & COMMUNICATION,TELE,360,440,symmetrical,down,trigger,4
+TECHNOLOGY & COMMUNICATION,TELE,3200,3280,ascending,sequential,current,4
+TECHNOLOGY & COMMUNICATION,TELE,3200,3280,ascending,sequential,fixed_5,3
+TECHNOLOGY & COMMUNICATION,TELE,3200,3280,ascending,sequential,fixed_10,3
+TECHNOLOGY & COMMUNICATION,TELE,3200,3280,ascending,sequential,trigger,3
+GLASS & CERAMICS,TGL,3360,3440,descending,up,current,2
+GLASS & CERAMICS,TGL,3360,3440,descending,up,fixed_5,2
+GLASS & CERAMICS,TGL,3360,3440,descending,up,fixed_10,2
+GLASS & CERAMICS,TGL,3360,3440,descending,up,trigger,2
+GLASS & CERAMICS,TGL,3560,3640,descending,sequential,current,4
+GLASS & CERAMICS,TGL,3560,3640,descending,sequential,fixed_5,3
+GLASS & CERAMICS,TGL,3560,3640,descending,sequential,fixed_10,4
+GLASS & CERAMICS,TGL,3560,3640,descending,sequential,trigger,3
+GLASS & CERAMICS,TGL,4280,4360,ascending,sequential,current,4
+GLASS & CERAMICS,TGL,4280,4360,ascending,sequential,fixed_5,4
+GLASS & CERAMICS,TGL,4280,4360,ascending,sequential,fixed_10,4
+GLASS & CERAMICS,TGL,4280,4360,ascending,sequential,trigger,4
+AUTOMOBILE PARTS & ACCESSORIES,THALL,2400,2480,ascending,up,current,4
+AUTOMOBILE PARTS & ACCESSORIES,THALL,2400,2480,ascending,up,fixed_5,4
+AUTOMOBILE PARTS & ACCESSORIES,THALL,2400,2480,ascending,up,fixed_10,4
+AUTOMOBILE PARTS & ACCESSORIES,THALL,2400,2480,ascending,up,trigger,4
+CEMENT,THCCL,880,960,symmetrical,up,current,4
+CEMENT,THCCL,880,960,symmetrical,up,fixed_5,4
+CEMENT,THCCL,880,960,symmetrical,up,fixed_10,4
+CEMENT,THCCL,880,960,symmetrical,up,trigger,4
+CEMENT,THCCL,920,1000,symmetrical,sequential,current,4
+CEMENT,THCCL,920,1000,symmetrical,sequential,fixed_5,4
+CEMENT,THCCL,920,1000,symmetrical,sequential,fixed_10,4
+CEMENT,THCCL,920,1000,symmetrical,sequential,trigger,4
+CEMENT,THCCL,960,1040,descending,up,current,4
+CEMENT,THCCL,960,1040,descending,up,fixed_5,4
+CEMENT,THCCL,960,1040,descending,up,fixed_10,4
+CEMENT,THCCL,960,1040,descending,up,trigger,4
+TEXTILE COMPOSITE,TOWL,360,440,descending,sequential,current,4
+TEXTILE COMPOSITE,TOWL,360,440,descending,sequential,fixed_5,4
+TEXTILE COMPOSITE,TOWL,360,440,descending,sequential,fixed_10,4
+TEXTILE COMPOSITE,TOWL,360,440,descending,sequential,trigger,4
+TEXTILE COMPOSITE,TOWL,1840,1920,ascending,whipsaw,current,4
+TEXTILE COMPOSITE,TOWL,1840,1920,ascending,whipsaw,fixed_5,4
+TEXTILE COMPOSITE,TOWL,1840,1920,ascending,whipsaw,fixed_10,4
+TEXTILE COMPOSITE,TOWL,1840,1920,ascending,whipsaw,trigger,4
+PROPERTY,TPLP,400,480,ascending,down,current,4
+PROPERTY,TPLP,400,480,ascending,down,fixed_5,4
+PROPERTY,TPLP,400,480,ascending,down,fixed_10,4
+PROPERTY,TPLP,400,480,ascending,down,trigger,4
+PROPERTY,TPLP,720,800,descending,sequential,current,4
+PROPERTY,TPLP,720,800,descending,sequential,fixed_5,4
+PROPERTY,TPLP,720,800,descending,sequential,fixed_10,4
+PROPERTY,TPLP,720,800,descending,sequential,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,TREET,3720,3800,symmetrical,up,current,1
+FOOD & PERSONAL CARE PRODUCTS,TREET,3720,3800,symmetrical,up,fixed_5,1
+FOOD & PERSONAL CARE PRODUCTS,TREET,3720,3800,symmetrical,up,fixed_10,1
+FOOD & PERSONAL CARE PRODUCTS,TREET,3720,3800,symmetrical,up,trigger,1
+TECHNOLOGY & COMMUNICATION,TRG,960,1040,symmetrical,down,current,4
+TECHNOLOGY & COMMUNICATION,TRG,960,1040,symmetrical,down,fixed_5,4
+TECHNOLOGY & COMMUNICATION,TRG,960,1040,symmetrical,down,fixed_10,4
+TECHNOLOGY & COMMUNICATION,TRG,960,1040,symmetrical,down,trigger,4
+TECHNOLOGY & COMMUNICATION,TRG,2320,2400,symmetrical,up,current,1
+TECHNOLOGY & COMMUNICATION,TRG,2320,2400,symmetrical,up,fixed_5,1
+TECHNOLOGY & COMMUNICATION,TRG,2320,2400,symmetrical,up,fixed_10,1
+TECHNOLOGY & COMMUNICATION,TRG,2320,2400,symmetrical,up,trigger,1
+TECHNOLOGY & COMMUNICATION,TRG,3400,3480,descending,down,current,2
+TECHNOLOGY & COMMUNICATION,TRG,3400,3480,descending,down,fixed_5,2
+TECHNOLOGY & COMMUNICATION,TRG,3400,3480,descending,down,fixed_10,2
+TECHNOLOGY & COMMUNICATION,TRG,3400,3480,descending,down,trigger,2
+MISCELLANEOUS,TRIPF,3640,3720,descending,sequential,current,4
+MISCELLANEOUS,TRIPF,3640,3720,descending,sequential,fixed_5,3
+MISCELLANEOUS,TRIPF,3640,3720,descending,sequential,fixed_10,4
+MISCELLANEOUS,TRIPF,3640,3720,descending,sequential,trigger,4
+POWER GENERATION & DISTRIBUTION,TSPL,3400,3480,symmetrical,down,current,4
+POWER GENERATION & DISTRIBUTION,TSPL,3400,3480,symmetrical,down,fixed_5,4
+POWER GENERATION & DISTRIBUTION,TSPL,3400,3480,symmetrical,down,fixed_10,4
+POWER GENERATION & DISTRIBUTION,TSPL,3400,3480,symmetrical,down,trigger,4
+MISCELLANEOUS,UBDL,1000,1080,symmetrical,sequential,current,4
+MISCELLANEOUS,UBDL,1000,1080,symmetrical,sequential,fixed_5,4
+MISCELLANEOUS,UBDL,1000,1080,symmetrical,sequential,fixed_10,4
+MISCELLANEOUS,UBDL,1000,1080,symmetrical,sequential,trigger,4
+COMMERCIAL BANKS,UBL,1600,1680,ascending,up,current,4
+COMMERCIAL BANKS,UBL,1600,1680,ascending,up,fixed_5,2
+COMMERCIAL BANKS,UBL,1600,1680,ascending,up,fixed_10,2
+COMMERCIAL BANKS,UBL,1600,1680,ascending,up,trigger,2
+COMMERCIAL BANKS,UBL,2000,2080,ascending,down,current,1
+COMMERCIAL BANKS,UBL,2000,2080,ascending,down,fixed_5,1
+COMMERCIAL BANKS,UBL,2000,2080,ascending,down,fixed_10,1
+COMMERCIAL BANKS,UBL,2000,2080,ascending,down,trigger,1
+COMMERCIAL BANKS,UBL,2360,2440,ascending,sequential,current,4
+COMMERCIAL BANKS,UBL,2360,2440,ascending,sequential,fixed_5,4
+COMMERCIAL BANKS,UBL,2360,2440,ascending,sequential,fixed_10,4
+COMMERCIAL BANKS,UBL,2360,2440,ascending,sequential,trigger,4
+COMMERCIAL BANKS,UBL,3360,3440,ascending,down,current,4
+COMMERCIAL BANKS,UBL,3360,3440,ascending,down,fixed_5,4
+COMMERCIAL BANKS,UBL,3360,3440,ascending,down,fixed_10,4
+COMMERCIAL BANKS,UBL,3360,3440,ascending,down,trigger,4
+COMMERCIAL BANKS,UBL,4520,4600,descending,up,current,4
+COMMERCIAL BANKS,UBL,4520,4600,descending,up,fixed_5,4
+COMMERCIAL BANKS,UBL,4520,4600,descending,up,fixed_10,4
+COMMERCIAL BANKS,UBL,4520,4600,descending,up,trigger,4
+MISCELLANEOUS,UDPL,2880,2960,symmetrical,up,current,2
+MISCELLANEOUS,UDPL,2880,2960,symmetrical,up,fixed_5,2
+MISCELLANEOUS,UDPL,2880,2960,symmetrical,up,fixed_10,2
+MISCELLANEOUS,UDPL,2880,2960,symmetrical,up,trigger,2
+INSURANCE,UNIC,2480,2560,symmetrical,sequential,current,4
+INSURANCE,UNIC,2480,2560,symmetrical,sequential,fixed_5,3
+INSURANCE,UNIC,2480,2560,symmetrical,sequential,fixed_10,4
+INSURANCE,UNIC,2480,2560,symmetrical,sequential,trigger,3
+INSURANCE,UNIC,2520,2600,symmetrical,up,current,1
+INSURANCE,UNIC,2520,2600,symmetrical,up,fixed_5,1
+INSURANCE,UNIC,2520,2600,symmetrical,up,fixed_10,1
+INSURANCE,UNIC,2520,2600,symmetrical,up,trigger,1
+INSURANCE,UNIC,2680,2760,ascending,sequential,current,3
+INSURANCE,UNIC,2680,2760,ascending,sequential,fixed_5,3
+INSURANCE,UNIC,2680,2760,ascending,sequential,fixed_10,3
+INSURANCE,UNIC,2680,2760,ascending,sequential,trigger,3
+INSURANCE,UNIC,3120,3200,ascending,down,current,4
+INSURANCE,UNIC,3120,3200,ascending,down,fixed_5,3
+INSURANCE,UNIC,3120,3200,ascending,down,fixed_10,4
+INSURANCE,UNIC,3120,3200,ascending,down,trigger,4
+INSURANCE,UNIC,3640,3720,ascending,sequential,current,4
+INSURANCE,UNIC,3640,3720,ascending,sequential,fixed_5,3
+INSURANCE,UNIC,3640,3720,ascending,sequential,fixed_10,4
+INSURANCE,UNIC,3640,3720,ascending,sequential,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,UPFL,400,480,symmetrical,up,current,2
+FOOD & PERSONAL CARE PRODUCTS,UPFL,400,480,symmetrical,up,fixed_5,2
+FOOD & PERSONAL CARE PRODUCTS,UPFL,400,480,symmetrical,up,fixed_10,2
+FOOD & PERSONAL CARE PRODUCTS,UPFL,400,480,symmetrical,up,trigger,2
+INSURANCE,UVIC,1280,1360,symmetrical,whipsaw,current,4
+INSURANCE,UVIC,1280,1360,symmetrical,whipsaw,fixed_5,4
+INSURANCE,UVIC,1280,1360,symmetrical,whipsaw,fixed_10,4
+INSURANCE,UVIC,1280,1360,symmetrical,whipsaw,trigger,4
+CHEMICAL,WAHN,1080,1160,descending,down,current,4
+CHEMICAL,WAHN,1080,1160,descending,down,fixed_5,3
+CHEMICAL,WAHN,1080,1160,descending,down,fixed_10,3
+CHEMICAL,WAHN,1080,1160,descending,down,trigger,4
+CABLE & ELECTRICAL GOODS,WAVES,920,1000,symmetrical,up,current,1
+CABLE & ELECTRICAL GOODS,WAVES,920,1000,symmetrical,up,fixed_5,1
+CABLE & ELECTRICAL GOODS,WAVES,920,1000,symmetrical,up,fixed_10,1
+CABLE & ELECTRICAL GOODS,WAVES,920,1000,symmetrical,up,trigger,1
+CABLE & ELECTRICAL GOODS,WAVES,3840,3920,symmetrical,up,current,4
+CABLE & ELECTRICAL GOODS,WAVES,3840,3920,symmetrical,up,fixed_5,4
+CABLE & ELECTRICAL GOODS,WAVES,3840,3920,symmetrical,up,fixed_10,4
+CABLE & ELECTRICAL GOODS,WAVES,3840,3920,symmetrical,up,trigger,4
+TECHNOLOGY & COMMUNICATION,WTL,2440,2520,symmetrical,up,current,4
+TECHNOLOGY & COMMUNICATION,WTL,2440,2520,symmetrical,up,fixed_5,4
+TECHNOLOGY & COMMUNICATION,WTL,2440,2520,symmetrical,up,fixed_10,4
+TECHNOLOGY & COMMUNICATION,WTL,2440,2520,symmetrical,up,trigger,4
+TEXTILE COMPOSITE,ZAHID,560,640,symmetrical,sequential,current,4
+TEXTILE COMPOSITE,ZAHID,560,640,symmetrical,sequential,fixed_5,4
+TEXTILE COMPOSITE,ZAHID,560,640,symmetrical,sequential,fixed_10,4
+TEXTILE COMPOSITE,ZAHID,560,640,symmetrical,sequential,trigger,4
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2360,2440,ascending,down,current,4
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2360,2440,ascending,down,fixed_5,1
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2360,2440,ascending,down,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2360,2440,ascending,down,trigger,1
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2920,3000,symmetrical,sequential,current,4
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2920,3000,symmetrical,sequential,fixed_5,4
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2920,3000,symmetrical,sequential,fixed_10,4
+FOOD & PERSONAL CARE PRODUCTS,ZIL,2920,3000,symmetrical,sequential,trigger,4

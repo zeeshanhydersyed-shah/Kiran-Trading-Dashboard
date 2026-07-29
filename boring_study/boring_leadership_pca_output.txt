@@ -1,0 +1,59 @@
+Occurrence rows: 321,190
+Computing per-symbol trailing return / volume / volatility series...
+Building sector-level trailing return series (equal-weighted)...
+Assembling occurrence-level feature matrix...
+
+Feature matrix: 321,190 rows
+  stock_rs: 311,139 non-null (96.9%)
+  sector_rs: 279,883 non-null (87.1%)
+  liquidity: 311,323 non-null (96.9%)
+  realized_vol: 311,139 non-null (96.9%)
+  listing_age_days: 199,780 non-null (62.2%)
+
+================================================================================
+PCA #1 — 4 variables (stock_rs, sector_rs, liquidity, realized_vol), excl. listing_age
+================================================================================
+Complete-case N: 273,810 (85.2% of feature matrix)
+
+Eigenvalues: [1.796 1.002 0.84  0.362]
+Explained variance ratio: [0.449 0.25  0.21  0.09 ]
+
+Loadings (rows=components, cols=variables):
+     stock_rs  sector_rs  liquidity  realized_vol
+PC1     0.660      0.616     -0.027         0.429
+PC2     0.038      0.072      0.992        -0.100
+PC3    -0.159     -0.434      0.126         0.878
+PC4     0.733     -0.653      0.000        -0.190
+
+Correlation matrix (4 vars):
+              stock_rs  sector_rs  liquidity  realized_vol
+stock_rs         1.000      0.618     -0.011         0.337
+sector_rs        0.618      1.000     -0.004         0.192
+liquidity       -0.011     -0.004      1.000        -0.027
+realized_vol     0.337      0.192     -0.027         1.000
+
+================================================================================
+PCA #2 — 5 variables, incl. listing_age_days (complete case)
+================================================================================
+Complete-case N: 198,459 (61.8% of feature matrix)
+
+Eigenvalues: [1.929 1.082 0.924 0.766 0.299]
+Explained variance ratio: [0.386 0.216 0.185 0.153 0.06 ]
+
+Loadings (rows=components, cols=variables):
+     stock_rs  sector_rs  liquidity  realized_vol  listing_age_days
+PC1     0.648      0.605     -0.027         0.461             0.032
+PC2     0.028      0.010      0.711        -0.060             0.700
+PC3    -0.031     -0.135     -0.681         0.132             0.707
+PC4    -0.178     -0.448      0.172         0.854            -0.088
+PC5     0.739     -0.644      0.009        -0.191            -0.046
+
+Correlation matrix (5 vars):
+                  stock_rs  sector_rs  liquidity  realized_vol  listing_age_days
+stock_rs             1.000      0.679     -0.014         0.412             0.043
+sector_rs            0.679      1.000      0.001         0.264            -0.004
+liquidity           -0.014      0.001      1.000        -0.041             0.081
+realized_vol         0.412      0.264     -0.041         1.000             0.015
+listing_age_days     0.043     -0.004      0.081         0.015             1.000
+
+Done.

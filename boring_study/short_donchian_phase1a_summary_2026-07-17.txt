@@ -1,0 +1,104 @@
+================================================================================
+SHORT-SIDE DONCHIAN BREAKDOWN — PHASE 1a: STOP-LOSS DISCOVERY
+Date: 2026-07-17
+Script: short_donchian_phase1a_sl_discovery.py
+================================================================================
+
+DATASET SUMMARY
+===============
+DFC-eligible symbols (shortable on PSX): 106
+Total price rows (DFC universe): 414,901
+Breakdown occurrences (N ∈ {10,20,40,60,120}): 58,442
+Symbols with ≥1 breakdown: 105 / 106 (99.1%)
+Control entries generated (seed=42): 58,442
+Rows processed in race: 58,442 (BO), 58,421 (Ctrl)
+
+
+STOP-LOSS OPTIMIZATION
+======================
+Outcome measure: TP-hit rate vs. -10% target
+
+SL Level    BO TP% (-10%)       Ctrl TP%         Edge         BO/Ctrl Ratio
+--------    ---------------     --------         ----         --------
+-10%        0.51% (285/58,442)   0.09% (54)       +0.40%       5.28x
+ -8%        0.69% (400/58,442)   0.14% (84)       +0.54%       4.76x
+ -7%        0.87% (511/58,442)   0.18% (104)      +0.70%       4.91x
+ -6%        1.04% (610/58,442)   0.22% (129)      +0.82%       4.73x
+ -5%        1.50% (874/58,442)   0.29% (170)      +1.20%       5.14x
+ -4%        4.00% (2,311/58,442) 0.47% (274)      +3.49%       8.48x
+ -3%        4.56% (2,662/58,442) 0.62% (359)      +3.94%       7.42x
+
+RECOMMENDATION: SL = -3% (highest edge at +3.94 percentage points)
+
+
+FULL MATRIX AT RECOMMENDED SL (-3%)
+===================================
+Target     BO TP%              Ctrl TP%        Edge        BO/Ctrl Ratio
+------     -------             ---------       ----        --------
+ -5%       5.31% (3,102/58,442) 0.88% (513)    +4.46%       6.04x
+-10%       4.56% (2,662/58,442) 0.62% (359)    +3.94%       7.42x
+-20%       3.07% (1,794/58,442) 0.29% (169)    +2.80%       10.62x
+-30%       2.26% (1,322/58,442) 0.18% (103)    +2.16%       12.84x
+-50%       1.02% (595/58,442)   0.10% (59)     +0.96%       10.08x
+
+
+KEY FINDINGS
+============
+
+1. TIGHTER STOPS REQUIRED FOR SHORTS
+   Sharp inflection observed at -4% SL. Unlike longs (optimal at -6%),
+   shorts show peak edge at -3% SL. This suggests short breakdowns are
+   "naturally tight" signals requiring quick exits.
+
+2. EDGE MAGNITUDE: SHORTS VS. LONGS
+   Metric              Longs       Shorts      Ratio
+   Optimal SL          -6%         -3%         0.5x
+   TP rate @ optimal   47.7%       4.56%       0.096x
+   Control TP rate     38.5%       0.62%       0.016x
+   Edge @ optimal      9.2%        3.94%       0.428x
+
+   Shorts edge is ~43% of longs edge in absolute terms.
+
+3. TARGET CONSISTENCY
+   Edge declines smoothly from -5% to -50% targets, confirming that
+   closer targets are easier to hit. The -5% and -10% targets are
+   most practical.
+
+4. UNIVERSE COMPOSITION
+   105/106 DFC symbols produced breakdowns. Universe is deep and
+   representative, not limited to handful of liquid names.
+
+
+STATISTICAL NOTES
+=================
+- Sample sizes: ~58K breakdowns and controls per group (stable rates)
+- Tie rule: Conservative (stop wins if both touched same day)
+- Control robustness: Seed=42 ensures reproducibility
+- Outcome: Binary race outcome (TP-first or not) is robust to path
+
+
+DECISION FOR PHASE 1b
+====================
+
+OPTION A: Conservative (-4% SL)
+  Edge: 3.49% at -10% target
+  TP rate: 4.0% (breakout) vs 0.47% (control)
+  Rationale: Slightly lower edge, higher absolute TP rates
+
+OPTION B: Aggressive (-3% SL) [RECOMMENDED]
+  Edge: 3.94% at -10% target (optimal)
+  TP rate: 4.56% (breakout) vs 0.62% (control)
+  Rationale: Empirically optimal, data-driven choice
+
+
+NEXT STEPS
+==========
+Phase 1b will:
+  1. Validate chosen SL with statistical tests (Mann-Whitney U, Cliffs delta)
+  2. Test forward returns at horizons: 5d, 10d, 20d, 30d, 60d, 90d
+  3. Test RS (Relative Strength) heterogeneity on the tighter SL
+
+Deferred:
+  - Trailing SL analysis (if warranted in Phase 1b)
+  - Lookback-specific breakdown analysis (if heterogeneity detected)
+  - Regime conditioning (later phase)

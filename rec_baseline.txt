@@ -1,0 +1,170 @@
+Loading prices_adjusted ...
+Loaded 1,123,687 rows, 314 symbols, 2005-01-03 to 2026-07-16
+
+====================================================================
+SECTION 1: SANITY CHECK — 4 KNOWN CASES (post-fix)
+====================================================================
+
+--- TRG  |  2026-04-02 ---
+  G1-G7: all PASS  |  base 2026-03-02 to 2026-04-01, 21 bars, b_high=48.75, b_low=40.83
+  base_vol_baseline=2,312,322 (median of first 10 bars) low_conf=False
+  G8 (contraction): mean_ratio=1.4727 (need<0.50)=FAIL, count<0.60=0 (need>=3)=FAIL  =>  G8=FAIL
+  G9 (prior surge): bars>1.5x=5 (need>=2)  =>  G9=PASS
+  Gate 10 not evaluated (G8 or G9 failed)
+
+--- DCL  |  2026-04-08 ---
+  G1-G7: all PASS  |  base 2026-03-02 to 2026-04-07, 25 bars, b_high=8.01, b_low=6.74
+  base_vol_baseline=1,399,494 (median of first 10 bars) low_conf=False
+  G8 (contraction): mean_ratio=0.8896 (need<0.50)=FAIL, count<0.60=2 (need>=3)=FAIL  =>  G8=FAIL
+  G9 (prior surge): bars>1.5x=3 (need>=2)  =>  G9=PASS
+  Gate 10 not evaluated (G8 or G9 failed)
+
+--- TPLP  |  2026-04-08 ---
+  G1-G7: all PASS  |  base 2026-03-06 to 2026-04-07, 21 bars, b_high=7.30, b_low=6.25
+  base_vol_baseline=2,397,319 (median of first 10 bars) low_conf=False
+  G8 (contraction): mean_ratio=1.1123 (need<0.50)=FAIL, count<0.60=1 (need>=3)=FAIL  =>  G8=FAIL
+  G9 (prior surge): bars>1.5x=5 (need>=2)  =>  G9=PASS
+  Gate 10 not evaluated (G8 or G9 failed)
+
+--- PIBTL  |  2026-04-08 ---
+  G1-G7: all PASS  |  base 2026-03-02 to 2026-04-07, 25 bars, b_high=15.45, b_low=13.10
+  base_vol_baseline=6,982,650 (median of first 10 bars) low_conf=False
+  G8 (contraction): mean_ratio=1.4776 (need<0.50)=FAIL, count<0.60=0 (need>=3)=FAIL  =>  G8=FAIL
+  G9 (prior surge): bars>1.5x=6 (need>=2)  =>  G9=PASS
+  Gate 10 not evaluated (G8 or G9 failed)
+
+--- PIBTL  |  2026-04-10 ---
+  G1-G7: all PASS  |  base 2026-03-17 to 2026-04-09, 16 bars, b_high=15.92, b_low=13.45
+  base_vol_baseline=8,643,264 (median of first 8 bars) low_conf=False
+  G8 (contraction): mean_ratio=1.4810 (need<0.50)=FAIL, count<0.60=0 (need>=3)=FAIL  =>  G8=FAIL
+  G9 (prior surge): bars>1.5x=4 (need>=2)  =>  G9=PASS
+  Gate 10 not evaluated (G8 or G9 failed)
+
+====================================================================
+SECTION 2: SIGNAL GENERATION (walk-forward 2005-2026)
+====================================================================
+Running gate-pass funnel across all symbols and all dates ...
+
+GATE-PASS FUNNEL (2005-2026, all eligible symbols):
+Gate                                        Bars    Elim %
+------------------------------------------------------------
+  Eligible bars (n≥60, sector, P\d filter) 1,104,907      0.0%
+  Pass liquidity (avg_vol20d≥800K, close≥5)   237,906     78.5%
+  Pass vol_ma50 validity (for G10 trigger vr)   237,906      0.0%
+  Pass base detection (≥8 bars, range<20%)   218,658      8.1%
+  Pass drawdown ≥30% from pre-base high    27,561     87.4%
+  Pass Gate 8 (vol contraction, base-relative)     5,530     79.9%
+  Pass Gate 9 (prior surge, base-relative)     3,886     29.7%
+  Pass Gate 10 = raw TRIGGERED signals        30     99.2%
+
+Raw TRIGGERED signals generated: 30
+(Note: raw_signals may differ slightly from pass_g10 because
+ signals without a T+1 bar are excluded; same-date signals on
+ same symbol are ALL retained here — portfolio sim will de-dup)
+
+====================================================================
+SECTION 3: PORTFOLIO SIMULATION
+====================================================================
+
+====================================================================
+GATE-PASS FUNNEL SUMMARY (comparison to prior run)
+====================================================================
+  Prior backtest TRIGGERED signals : 3
+  This backtest TRIGGERED signals  : 30
+  Change                           : +27
+
+====================================================================
+SIGNAL & FILL STATISTICS (Fix 3 entry mechanics)
+====================================================================
+  Raw TRIGGERED signals generated  : 30
+  Signals attempted on T+1         : 30
+  Filled (T+1 high >= trigger_high): 23
+    Of which: same-day stop on fill: 0
+    Of which: survived to normal   : 23
+  Discarded (T+1 high < trigger_h) : 7
+  Skipped — insufficient cash      : 0
+  Skipped — duplicate symbol       : 0
+
+====================================================================
+PERFORMANCE SUMMARY
+====================================================================
+  Start date     : 2005-01-03
+  End date       : 2026-07-16
+  Years          : 21.5
+  Starting equity: PKR      100,000
+  Final equity   : PKR      108,045
+  Overall CAGR   : 0.36%
+
+  Total trades closed  : 23
+  Win rate             : 39.1%
+  Avg win              : 25.01%
+  Avg loss             : -7.78%
+  Expectancy           : 5.05% per trade
+
+  Max drawdown         : 2.84%
+    Peak date          : 2026-07-06
+    Trough date        : 2026-04-13
+
+  Exit reason breakdown:
+    TRAIL_EXIT            :   23  (100.0%)
+
+====================================================================
+YEAR-BY-YEAR EQUITY CURVE
+====================================================================
+  Year     Start Equity     End Equity    Return
+  ----------------------------------------------
+  2005          100,000        101,589      1.6%
+  2006          101,589        101,589      0.0%
+  2007          101,589        101,729      0.1%
+  2008          101,729        101,729      0.0%
+  2009          101,729        103,278      1.5%
+  2010          103,278        103,209     -0.1%
+  2011          103,209        103,209      0.0%
+  2012          103,209        103,209      0.0%
+  2013          103,209        103,209      0.0%
+  2014          103,209        103,209      0.0%
+  2015          103,209        103,374      0.2%
+  2016          103,374        103,107     -0.3%
+  2017          103,107        102,845     -0.3%
+  2018          102,845        102,338     -0.5%
+  2019          102,338        102,338      0.0%
+  2020          102,338        108,617      6.1%
+  2021          108,617        108,513     -0.1%
+  2022          108,395        107,421     -0.9%
+  2023          107,421        107,421      0.0%
+  2024          107,421        107,421      0.0%
+  2025          107,421        106,687     -0.7%
+  2026          106,687        108,045      1.3%
+
+====================================================================
+ALL TRADES
+====================================================================
+         Entry Sym              Exit   Entry_P   Exit_P     PL%  Reason
+  --------------------------------------------------------------------------
+    2005-08-23 FCCL       2005-10-27     13.50    18.65  +38.15%  TRAIL_EXIT
+    2005-10-05 OGDC       2005-10-21    120.70   108.95   -9.73%  TRAIL_EXIT
+    2007-04-05 LUCK       2007-05-16     87.10    97.50  +11.94%  TRAIL_EXIT
+    2007-04-06 MLCF       2007-04-24     15.73    14.41   -8.37%  TRAIL_EXIT
+    2009-07-17 POL        2009-10-21    161.32   203.18  +25.95%  TRAIL_EXIT
+    2010-07-12 DGKC       2010-08-06     26.82    26.42   -1.49%  TRAIL_EXIT
+    2015-06-01 NRSL       2015-06-29      5.39     5.59   +3.71%  TRAIL_EXIT
+    2016-08-10 SSGC       2016-08-22     32.16    30.53   -5.07%  TRAIL_EXIT
+    2017-11-13 STCL       2017-11-30     16.24    15.38   -5.30%  TRAIL_EXIT
+    2018-01-08 STCL       2018-01-30     16.64    15.97   -4.03%  TRAIL_EXIT
+    2018-04-25 PSO        2018-05-14    340.41   322.31   -5.32%  TRAIL_EXIT
+    2020-05-12 MACFL      2020-07-14     11.22    21.99  +95.99%  TRAIL_EXIT
+    2021-12-30 CNERGY     2022-01-20      6.95     6.40   -7.91%  TRAIL_EXIT
+    2022-01-12 HASCOL     2022-01-25      7.08     5.88  -16.95%  TRAIL_EXIT
+    2025-06-04 AGHA       2025-06-20      9.15     8.32   -9.07%  TRAIL_EXIT
+    2025-07-18 SYS        2025-07-22    123.99   116.51   -6.03%  TRAIL_EXIT
+    2026-04-10 MLCF       2026-04-24     89.60    87.57   -2.27%  TRAIL_EXIT
+    2026-05-07 QUICE      2026-06-24     26.13    34.73  +32.91%  TRAIL_EXIT
+    2026-05-11 DFML       2026-06-09     22.22    19.54  -12.06%  TRAIL_EXIT
+    2026-06-02 DCL        2026-07-09     10.75    11.14   +3.63%  TRAIL_EXIT
+    2026-06-11 TOMCL      2026-07-10     37.42    41.43  +10.72%  TRAIL_EXIT
+    2026-06-17 SSGC       2026-07-09     30.43    31.07   +2.10%  TRAIL_EXIT
+    2026-07-09 PACE       2026-07-14     12.29    10.41  -15.30%  TRAIL_EXIT
+
+====================================================================
+Unique symbols ever eligible: 314
+Done.

@@ -4,11 +4,14 @@ for setup_log rows where the 20-trading-day forward window has fully closed.
 outcome_label is NOT populated here.
 """
 
+import os
 import sqlite3
 import sys
 from config import DB_PATH
 
 DRY_RUN_SYMBOLS = None  # set to a list to limit processing
+
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 
 def load_price_sequence(cur, symbol):
@@ -66,7 +69,95 @@ def compute_returns(rows, symbol, price_seq, dry_run_sample):
     return updates, skipped
 
 
+def _main_pg(dry_run_symbols=None):
+    """PG-backed equivalent of main(). Same logic, %s placeholders,
+    psycopg2.extras.execute_batch instead of executemany."""
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        if dry_run_symbols:
+            symbols = dry_run_symbols
+        else:
+            cur.execute("SELECT DISTINCT symbol FROM setup_log ORDER BY symbol ASC")
+            symbols = [r["symbol"] for r in cur.fetchall()]
+
+        total_updated = 0
+        total_skipped = 0
+        batch = []
+        dry_run_sample = [] if dry_run_symbols else None
+
+        for sym_idx, symbol in enumerate(symbols):
+            cur.execute(
+                "SELECT date, close FROM prices_adjusted WHERE symbol = %s ORDER BY date ASC",
+                (symbol,),
+            )
+            price_seq = [(r["date"], r["close"]) for r in cur.fetchall()]
+            if not price_seq:
+                continue
+
+            cur.execute(
+                "SELECT setup_date, setup_type FROM setup_log "
+                "WHERE symbol = %s AND fwd_return_20d IS NULL",
+                (symbol,),
+            )
+            rows = [(r["setup_date"], r["setup_type"]) for r in cur.fetchall()]
+            if not rows:
+                continue
+
+            updates, skipped = compute_returns(rows, symbol, price_seq, dry_run_sample)
+            total_skipped += skipped
+            batch.extend(updates)
+
+            if dry_run_symbols:
+                print(f"  {symbol}: {len(updates)} updated, {skipped} skipped")
+
+            if len(batch) >= 1000:
+                psycopg2.extras.execute_batch(cur, """
+                    UPDATE setup_log
+                    SET fwd_return_5d = %s, fwd_return_10d = %s, fwd_return_20d = %s,
+                        outcome_tagged_date = %s
+                    WHERE symbol = %s AND setup_date = %s AND setup_type = %s
+                """, batch)
+                total_updated += len(batch)
+                batch = []
+
+            if not dry_run_symbols and (sym_idx + 1) % 50 == 0:
+                print(f"  Progress: {sym_idx + 1}/{len(symbols)} symbols processed")
+
+        if batch:
+            psycopg2.extras.execute_batch(cur, """
+                UPDATE setup_log
+                SET fwd_return_5d = %s, fwd_return_10d = %s, fwd_return_20d = %s,
+                    outcome_tagged_date = %s
+                WHERE symbol = %s AND setup_date = %s AND setup_type = %s
+            """, batch)
+            total_updated += len(batch)
+
+    print(f"\nSummary:")
+    print(f"  Rows updated : {total_updated}")
+    print(f"  Rows skipped : {total_skipped} (window not yet closed)")
+
+    if dry_run_sample:
+        print(f"\nSample of updated rows:")
+        print(
+            f"  {'symbol':<12} {'setup_date':<12} {'setup_type':<20} "
+            f"{'fwd5':>8} {'fwd10':>8} {'fwd20':>8} {'tag_date':<12}"
+        )
+        for r in dry_run_sample:
+            print(
+                f"  {r[0]:<12} {r[1]:<12} {r[2]:<20} "
+                f"{r[3]:>8.2f} {r[4]:>8.2f} {r[5]:>8.2f} {r[6]:<12}"
+            )
+
+
 def main(dry_run_symbols=None):
+    if _PG_URL:
+        _main_pg(dry_run_symbols=dry_run_symbols)
+        return
+
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 

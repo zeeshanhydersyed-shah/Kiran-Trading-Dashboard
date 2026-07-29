@@ -1,0 +1,49 @@
+Loading candidates + prices...
+
+==================================================================
+GRAND TEST — combined shared-capital, net of costs + CGT
+==================================================================
+
+FULL PERIOD  (2005-01-03 -> 2026-07-16, 21.5y)
+  Final equity : PKR 1,434,281  (start 100,000)
+  CAGR         : 13.17%
+  Max drawdown : 41.3%
+  CGT paid     : PKR 235,819
+
+  Edge            N     WR   avgW%   avgL%  netEV%   /yr  NET of costs+CGT, full period
+  --------------------------------------------------------------
+  Recovery       20  40.0%  +26.80   -9.01   +5.31     1
+  DC           1197  39.4%   +8.81   -3.48   +1.36    56
+  Weinstein     521  24.8%  +16.91   -3.80   +1.33    45
+  ALL          1738  35.0%  +10.76   -3.65   +1.40    82
+
+IN-SAMPLE (->2023): CAGR 8.12%  maxDD 41.3%
+
+  Edge            N     WR   avgW%   avgL%  netEV%   /yr  in-sample
+  --------------------------------------------------------------
+  Recovery       13  38.5%  +34.01   -8.30   +7.98     1
+  DC           1070  39.1%   +8.09   -3.37   +1.11    57
+  Weinstein     444  24.3%  +11.87   -3.69   +0.10    50
+  ALL          1527  34.8%   +9.10   -3.52   +0.87    82
+
+HOLDOUT (2024->): CAGR 59.80%  maxDD 16.7%
+
+  Edge            N     WR   avgW%   avgL%  netEV%   /yr  sealed holdout
+  --------------------------------------------------------------
+  Recovery        8  37.5%  +14.78   -9.71   -0.53     7
+  DC            124  41.9%  +14.88   -4.59   +3.57    49
+  Weinstein      84  27.4%  +39.72   -4.61   +7.53    33
+  ALL           216  36.1%  +22.20   -4.79   +4.96    85
+
+ERA STRATIFICATION (net EV% per edge):
+  2015-2017: Rec= -3.0%(N3) DC= +0.8%(N128) Wei= +1.1%(N120) 
+  2018-2019: Rec= -6.1%(N1) DC= +0.3%(N124) Wei= -1.2%(N114) 
+  2020-2021: Rec=+45.8%(N2) DC= +3.7%(N97) Wei= -0.2%(N117) 
+  2022-2023: Rec=-17.6%(N1) DC= +1.0%(N126) Wei= -0.2%(N107) 
+  2024-2026: Rec= -0.5%(N8) DC= +3.6%(N124) Wei= +7.5%(N84) 
+
+MONTE-CARLO (trade-order shuffle, 5000 paths):
+  Max DD  p50=26.6%  p95=38.2%  p99=44.4%
+  Prob(DD>=40%): 3.2%
+
+Trade ledger -> grand_test_trades.csv

@@ -1,0 +1,15 @@
+Eligible universe (today's stock_metadata, as boring_signals.py always uses): 305 symbols
+N=20 occurrences within eligible universe: 48,196 rows, 5,004 distinct dates
+
+Total (symbol, date) breakout-occurrence observations evaluated: 47,414
+strategy_confirmed under CURRENT (buggy) logic:   3,371 (7.11%)
+strategy_confirmed under CORRECTED logic:          4,133 (8.72%)
+
+FALSE NEGATIVES (should be Strategy Confirmed under correct logic, but current code says NO): 953 observations, 160 distinct symbols
+FALSE POSITIVES (current code says Strategy Confirmed, but correct logic says NO): 191 observations, 98 distinct symbols
+AGREE (confirmed under both): 3,180 observations
+
+False-negative symbols (sample, up to 20): ['ABL', 'ABOT', 'ADMM', 'AGHA', 'AGIC', 'AGIL', 'AGL', 'AHCL', 'AICL', 'AIRLINK', 'AKBL', 'ALTN', 'ANL', 'APL', 'ASC', 'ASL', 'ASTL', 'ATRL', 'AVN', 'BAFL']
+False-positive symbols (sample, up to 20): ['AGL', 'AICL', 'AIRLINK', 'AKBL', 'ANL', 'APL', 'ASC', 'ASL', 'ASTL', 'ATRL', 'AVN', 'BAFL', 'BGL', 'BIFO', 'BIPL', 'BOP', 'CEPB', 'CHBL', 'CHCC', 'CLOV']
+
+Done. Full per-observation detail: boring_rf1_misclassification_detail.csv

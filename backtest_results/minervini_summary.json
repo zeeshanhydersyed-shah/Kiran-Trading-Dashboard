@@ -1,0 +1,27 @@
+{
+  "total_trades": 2521,
+  "wins": 974,
+  "losses": 1547,
+  "win_rate_pct": 38.6,
+  "avg_return_pct": 0.47,
+  "avg_win_pct": 7.41,
+  "avg_loss_pct": -3.9,
+  "profit_factor": 1.2,
+  "tp_exits": 875,
+  "sl_exits": 1491,
+  "time_exits": 155,
+  "max_drawdown_pct": -96.66,
+  "final_equity": 262835.11,
+  "params": {
+    "tp": 0.08,
+    "sl": 0.04,
+    "hold": 10,
+    "rs_min": 80,
+    "sma_trend": 50,
+    "sma_regime": 50,
+    "rs_window": 63,
+    "resist_window": 60,
+    "pp_vol_window": 10,
+    "no_save": false
+  }
+}

@@ -1,0 +1,57 @@
+Loading candidates + prices + regime...
+
+==================================================================
+[1] UNGATED shared pool (fires in every regime)
+==================================================================
+  Final equity PKR    1,429,310   CAGR 13.15%   maxDD 41.3%   CGT PKR 235,819   N=1738
+
+  Edge            N     WR   avgW%   avgL%  netEV%   /yr  [1] UNGATED shared pool (fires in every regime)
+  --------------------------------------------------------------
+  Recovery       20  40.0%  +26.80   -9.01   +5.31     1
+  DC           1197  39.4%   +8.81   -3.48   +1.36    56
+  Weinstein     521  24.8%  +16.91   -3.80   +1.33    45
+  ALL          1738  35.0%  +10.76   -3.65   +1.40    82
+
+==================================================================
+[2] REGIME-GATED (longs only in TRENDING_UP)
+==================================================================
+  Final equity PKR    1,321,211   CAGR 12.73%   maxDD 22.5%   CGT PKR 215,508   N=889
+
+  Edge            N     WR   avgW%   avgL%  netEV%   /yr  [2] REGIME-GATED (longs only in TRENDING_UP)
+  --------------------------------------------------------------
+  Recovery       10  40.0%  +11.70   -9.96   -1.30     1
+  DC            697  42.0%   +9.07   -3.48   +1.79    34
+  Weinstein     182  29.7%  +23.49   -4.50   +3.80    16
+  ALL           889  39.5%  +11.31   -3.79   +2.17    43
+
+==================================================================
+[3] REGIME-GATED + VOLATILE allowed
+==================================================================
+  Final equity PKR    1,395,607   CAGR 13.02%   maxDD 39.4%   CGT PKR 229,842   N=1182
+
+  Edge            N     WR   avgW%   avgL%  netEV%   /yr  [3] REGIME-GATED + VOLATILE allowed
+  --------------------------------------------------------------
+  Recovery       14  35.7%  +28.23   -8.00   +4.94     1
+  DC            906  39.5%   +9.47   -3.40   +1.68    44
+  Weinstein     262  27.5%  +19.61   -4.23   +2.32    23
+  ALL          1182  36.8%  +11.36   -3.67   +1.86    57
+
+==================================================================
+[4] REGIME-GATED + CAPITAL SLEEVES (DC40/Wei40/Rec20)
+==================================================================
+  Final equity PKR    2,202,431   CAGR 15.44%   maxDD 18.8%   CGT PKR 371,017   N=763
+
+  Edge            N     WR   avgW%   avgL%  netEV%   /yr  [4] REGIME-GATED + CAPITAL SLEEVES (DC40/Wei40/Rec20)
+  --------------------------------------------------------------
+  Recovery       11  36.4%  +11.70   -9.51   -1.80     1
+  DC            656  43.6%  +11.13   -3.81   +2.71    32
+  Weinstein      96  28.1%  +32.63   -4.25   +6.12     8
+  ALL           763  41.5%  +12.97   -3.97   +3.07    37
+
+--- In-sample (->2023) vs SEALED holdout (2024->) ---
+  gated          IN-SAMPLE CAGR  9.36% maxDD 22.5% N=711  | HOLDOUT CAGR 41.62% maxDD 21.8% N=186
+  gated+sleeves  IN-SAMPLE CAGR  9.18% maxDD 18.8% N=530  | HOLDOUT CAGR 77.61% maxDD 16.3% N=236
+
+MONTE-CARLO regime-gated (5000 paths): maxDD p50=17.1% p95=25.2% p99=29.3% Prob(DD>=40%)=0.0%
+
+Gated trade ledger -> grand_test_trades_gated.csv

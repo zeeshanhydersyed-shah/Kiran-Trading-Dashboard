@@ -1,0 +1,98 @@
+
+##########################################################################################
+# 20d panel -- PRIMARY, liquidity-gated replication
+##########################################################################################
+Raw panel: 156,786 rows
+After dropping missing hit_tp_10/breakout/stock_rs/liquidity: 150,240 rows (breakout=74,939, control=75,301)
+Liquidity field non-null rate by row type (0=control,1=breakout): {0: 0.9612975648335949, 1: 0.95671807431786}
+
+After liquidity gate (>200,000): 42,170 rows (28.1% retained) (breakout=21,294, control=20,876)
+
+--- Decile table (liquidity-gated, GATE APPLIED BEFORE DECILE COMPUTATION) ---
+           control_rate  breakout_rate   edge  n_control  n_breakout
+rs_decile                                                           
+0                 41.81          46.37   4.56       3377         841
+1                 42.95          39.71  -3.24       3055        1161
+2                 42.97          45.44   2.47       2760        1457
+3                 40.87          42.72   1.85       2398        1819
+4                 42.17          42.76   0.59       2113        2105
+5                 43.04          43.68   0.64       1826        2390
+6                 40.94          43.42   2.48       1573        2644
+7                 41.57          44.57   3.00       1453        2764
+8                 40.03          46.15   6.12       1214        3003
+9                 34.15          49.04  14.89       1107        3110
+
+Spearman rank correlation (decile vs EDGE, liquidity-gated): rho=0.552, p=0.0984
+Decile with the largest edge in the gated data: decile 9 (edge=+14.89pp, breakout_rate=49.04%, n_breakout=3,110)
+
+--- Regression: hit_tp_10 ~ breakout + z(RS) + breakout*z(RS), liquidity-gated ---
+
+------------------------------------------------------------------------------------------
+MODEL 1: hit_tp_10 ~ breakout
+------------------------------------------------------------------------------------------
+N=42,170  R^2=0.00102
+  const        coef=+0.41574  95% CI=[+0.40902,+0.42246]  p=0
+  breakout     coef=+0.03157  95% CI=[+0.02212,+0.04102]  p=5.94e-11
+
+------------------------------------------------------------------------------------------
+MODEL 2: hit_tp_10 ~ breakout + z(RS) + breakout*z(RS)  [liquidity-gated]
+------------------------------------------------------------------------------------------
+N=42,170  R^2=0.00222   Delta R^2 vs prior=+0.00121
+  const        coef=+0.41023  95% CI=[+0.40325,+0.41722]  p=0
+  breakout     coef=+0.03436  95% CI=[+0.02464,+0.04407]  p=4.227e-12
+  z_rs         coef=-0.02584  95% CI=[-0.03492,-0.01676]  p=2.455e-08
+  bo_x_rs      coef=+0.03885  95% CI=[+0.02812,+0.04957]  p=1.264e-12
+
+##########################################################################################
+# 60d panel -- REPLICATION, liquidity-gated replication
+##########################################################################################
+Raw panel: 91,768 rows
+After dropping missing hit_tp_10/breakout/stock_rs/liquidity: 91,766 rows (breakout=45,884, control=45,882)
+Liquidity field non-null rate by row type (0=control,1=breakout): {0: 1.0, 1: 1.0}
+
+After liquidity gate (>200,000): 26,121 rows (28.5% retained) (breakout=13,489, control=12,632)
+
+--- Decile table (liquidity-gated, GATE APPLIED BEFORE DECILE COMPUTATION) ---
+           control_rate  breakout_rate   edge  n_control  n_breakout
+rs_decile                                                           
+0                 42.53          38.24  -4.29       2511         102
+1                 43.80          48.28   4.48       2322         290
+2                 43.98          46.97   2.99       1869         743
+3                 42.51          48.17   5.66       1435        1177
+4                 46.71          48.97   2.26       1111        1501
+5                 39.69          45.12   5.43        892        1720
+6                 37.64          45.45   7.81        797        1815
+7                 41.39          46.49   5.10        691        1921
+8                 40.56          49.40   8.84        535        2077
+9                 37.74          48.48  10.74        469        2143
+
+Spearman rank correlation (decile vs EDGE, liquidity-gated): rho=0.806, p=0.004862
+Decile with the largest edge in the gated data: decile 9 (edge=+10.74pp, breakout_rate=48.48%, n_breakout=2,143)
+
+--- Regression: hit_tp_10 ~ breakout + z(RS) + breakout*z(RS), liquidity-gated ---
+
+------------------------------------------------------------------------------------------
+MODEL 1: hit_tp_10 ~ breakout
+------------------------------------------------------------------------------------------
+N=26,121  R^2=0.00238
+  const        coef=+0.42511  95% CI=[+0.41644,+0.43378]  p=0
+  breakout     coef=+0.04853  95% CI=[+0.03647,+0.06059]  p=3.185e-15
+
+------------------------------------------------------------------------------------------
+MODEL 2: hit_tp_10 ~ breakout + z(RS) + breakout*z(RS)  [liquidity-gated]
+------------------------------------------------------------------------------------------
+N=26,121  R^2=0.00276   Delta R^2 vs prior=+0.00038
+  const        coef=+0.42042  95% CI=[+0.41076,+0.43009]  p=0
+  breakout     coef=+0.05076  95% CI=[+0.03779,+0.06372]  p=1.738e-14
+  z_rs         coef=-0.01496  95% CI=[-0.02861,-0.00130]  p=0.03179
+  bo_x_rs      coef=+0.02336  95% CI=[+0.00796,+0.03877]  p=0.002959
+
+
+==========================================================================================
+SUMMARY -- cross-panel comparison, ORIGINAL (ungated) vs THIS (gated) interaction term
+==========================================================================================
+20d: ORIGINAL (ungated) bo_x_rs=+0.03531 (p=4.26e-19)   LIQUIDITY-GATED bo_x_rs=+0.03885 (p=1.26e-12)   retained 110.0% of original interaction magnitude
+60d: ORIGINAL (ungated) bo_x_rs=+0.02887 (p=6.23e-06)   LIQUIDITY-GATED bo_x_rs=+0.02336 (p=0.00296)   retained 80.9% of original interaction magnitude
+
+
+Done.

@@ -37,7 +37,25 @@ DOTENV_PATH = os.path.join(BASE_DIR, ".env")
 
 # ── Migration order ────────────────────────────────────────────────────────────
 # Largest tables first; sectors is SKIPPED (already migrated and verified).
+#
+# pre_breakout_v2_staging_full (2026-07-10): added for the ZH_research cloud
+# migration. NOT YET RUNNABLE — this tool reads the Postgres table's own
+# schema as authoritative (get_pg_column_info()) and does not auto-create
+# tables, so the target table must exist in Supabase FIRST via a one-time
+# DDL statement matching the SQLite schema (see
+# prebreakout_v2_rebuild_and_test.py's write_staging() CREATE TABLE):
+#   CREATE TABLE pre_breakout_v2_staging_full (
+#       symbol TEXT NOT NULL, date DATE NOT NULL, close REAL,
+#       active_resistance REAL, bbw_pct REAL, pct_rank_252 REAL,
+#       pct_rank_756 REAL, zscore_252 REAL, n_obs_252 INTEGER,
+#       n_obs_756 INTEGER, fwd_return_10d REAL,
+#       PRIMARY KEY (symbol, date)
+#   );
+# That DDL has NOT been run against production — requires explicit sign-off
+# before either the CREATE TABLE or `--only-table pre_breakout_v2_staging_full`
+# are executed against Supabase.
 MIGRATION_ORDER = [
+    "pre_breakout_v2_staging_full",
     "prices",
     "prices_adjusted",
     "symbol_active_dates",

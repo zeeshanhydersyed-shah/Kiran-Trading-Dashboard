@@ -1,0 +1,53 @@
+{
+  "Fixed (TP8%/SL4%/H10d)": {
+    "n": 743,
+    "wins": 305,
+    "losses": 438,
+    "win_rate": 41.0,
+    "avg_ret": 0.84,
+    "avg_win": 7.72,
+    "avg_loss": -3.96,
+    "pf": 1.36,
+    "tp_exits": 289,
+    "sl_exits": 430,
+    "time_exits": 24,
+    "max_dd": -75.79,
+    "final_eq": 14501.63,
+    "med_hold": 1.0,
+    "avg_hold": 3.0
+  },
+  "ATR14 Trail (SMA10\u22121.0\u00d7ATR)": {
+    "n": 519,
+    "wins": 147,
+    "losses": 372,
+    "win_rate": 28.3,
+    "avg_ret": 4.98,
+    "avg_win": 35.01,
+    "avg_loss": -6.89,
+    "pf": 2.01,
+    "tp_exits": 0,
+    "sl_exits": 510,
+    "time_exits": 9,
+    "max_dd": -97.64,
+    "final_eq": 882940.45,
+    "med_hold": 8.0,
+    "avg_hold": 13.1
+  },
+  "ATR14 Trail (SMA20\u22121.0\u00d7ATR)": {
+    "n": 478,
+    "wins": 131,
+    "losses": 347,
+    "win_rate": 27.4,
+    "avg_ret": 5.63,
+    "avg_win": 39.81,
+    "avg_loss": -7.28,
+    "pf": 2.07,
+    "tp_exits": 0,
+    "sl_exits": 450,
+    "time_exits": 28,
+    "max_dd": -97.29,
+    "final_eq": 3903899.23,
+    "med_hold": 10.0,
+    "avg_hold": 17.9
+  }
+}

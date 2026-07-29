@@ -1,0 +1,97 @@
+############################################################################################
+# PART 1: N=20 -- CONTROL / TRAIL_LOW / HYBRID_TRAIL(-8% floor)
+############################################################################################
+[boring_heterogeneity_panel_20d.csv, lookback=20] 2,130 decile-9+liquidity-gated rows -> 647 distinct runs
+
+============================================================================================
+CONTROL (N=20)  (n=647)
+============================================================================================
+Censored: 19 (2.9%)
+Resolved: n=628
+  Gross %:                   mean=  1.236  median= -6.000  p25= -6.000  p75= 10.000  p90= 10.000
+  Net of 0.20% friction:      mean=  1.036  median= -6.200  p25= -6.200  p75=  9.800  p90=  9.800
+  Net of friction + 15% CGT(wins): mean=  0.357  median= -6.200  p25= -6.200  p75=  8.300  p90=  8.300
+  Win rate: 45.2%   Avg days held: 2.8   median days: 2.0
+  [CENSORED mark-to-market, NOT above]: mean=  0.402%  median=  0.282%  avg days held so far=8.0
+
+============================================================================================
+TRAIL_LOW (N=20)  (n=647)
+============================================================================================
+Censored: 7 (1.1%)
+Resolved: n=640
+  Gross %:                   mean=  3.610  median= -0.182  p25= -3.945  p75=  4.933  p90= 17.084
+  Net of 0.20% friction:      mean=  3.410  median= -0.382  p25= -4.145  p75=  4.733  p90= 16.884
+  Net of friction + 15% CGT(wins): mean=  2.492  median= -0.382  p25= -4.145  p75=  3.993  p90= 14.322
+  Win rate: 42.7%   Avg days held: 2.5   median days: 2.0
+  [CENSORED mark-to-market, NOT above]: mean=  3.919%  median=  2.848%  avg days held so far=1.6
+
+============================================================================================
+HYBRID_TRAIL -8% floor (N=20)  (n=647)
+============================================================================================
+Censored: 6 (0.9%)
+Resolved: n=641
+  Gross %:                   mean=  3.615  median= -0.309  p25= -4.231  p75=  4.405  p90= 15.815
+  Net of 0.20% friction:      mean=  3.415  median= -0.509  p25= -4.431  p75=  4.205  p90= 15.615
+  Net of friction + 15% CGT(wins): mean=  2.534  median= -0.509  p25= -4.431  p75=  3.544  p90= 13.242
+  Win rate: 41.5%   Avg days held: 2.4   median days: 2.0
+  [CENSORED mark-to-market, NOT above]: mean=  5.415%  median=  3.971%  avg days held so far=1.3
+
+HYBRID_TRAIL floor-binding breakdown (resolved n=641):
+  Exit determined by the -8% FLOOR:      71 (11.1%)
+  Exit determined by the TRAILING stop:  570 (88.9%)
+
+############################################################################################
+# PART 2: Gap-down analysis, TRAIL_LOW exits (N=20 population)
+############################################################################################
+TRAIL_LOW resolved exits checked: 640
+Exit days with no Open price data available (skipped, not assumed zero-gap): 24 (3.8%)
+Evaluable exits: 616
+Exits where Open(exit_day) gapped > 2% below the overnight stop level: 18 (2.9% of evaluable exits)
+Gap magnitude distribution among flagged events (% below stop level, negative=worse):
+  mean=-4.51  median=-4.36  min=-8.33  p10=-6.88  p25=-5.74
+
+############################################################################################
+# PART 3: N=60 replication -- CONTROL / TRAIL_LOW / HYBRID_TRAIL
+############################################################################################
+[boring_heterogeneity_panel_60d.csv, lookback=60] 1,349 decile-9+liquidity-gated rows -> 343 distinct runs
+
+============================================================================================
+CONTROL (N=60)  (n=343)
+============================================================================================
+Censored: 13 (3.8%)
+Resolved: n=330
+  Gross %:                   mean=  1.903  median= -6.000  p25= -6.000  p75= 10.000  p90= 10.000
+  Net of 0.20% friction:      mean=  1.703  median= -6.200  p25= -6.200  p75=  9.800  p90=  9.800
+  Net of friction + 15% CGT(wins): mean=  0.962  median= -6.200  p25= -6.200  p75=  8.300  p90=  8.300
+  Win rate: 49.4%   Avg days held: 2.4   median days: 2.0
+  [CENSORED mark-to-market, NOT above]: mean=  0.115%  median= -1.398%  avg days held so far=8.7
+
+============================================================================================
+TRAIL_LOW (N=60)  (n=343)
+============================================================================================
+Censored: 3 (0.9%)
+Resolved: n=340
+  Gross %:                   mean=  4.505  median=  0.000  p25= -4.173  p75=  5.780  p90= 18.578
+  Net of 0.20% friction:      mean=  4.305  median= -0.200  p25= -4.373  p75=  5.580  p90= 18.378
+  Net of friction + 15% CGT(wins): mean=  3.264  median= -0.200  p25= -4.373  p75=  4.713  p90= 15.591
+  Win rate: 48.8%   Avg days held: 2.6   median days: 2.0
+  [CENSORED mark-to-market, NOT above]: mean=  7.748%  median=  5.095%  avg days held so far=1.3
+
+============================================================================================
+HYBRID_TRAIL -8% floor (N=60)  (n=343)
+============================================================================================
+Censored: 3 (0.9%)
+Resolved: n=340
+  Gross %:                   mean=  4.259  median=  0.000  p25= -4.584  p75=  5.466  p90= 15.881
+  Net of 0.20% friction:      mean=  4.059  median= -0.200  p25= -4.784  p75=  5.266  p90= 15.681
+  Net of friction + 15% CGT(wins): mean=  3.088  median= -0.200  p25= -4.784  p75=  4.446  p90= 13.299
+  Win rate: 47.1%   Avg days held: 2.5   median days: 2.0
+  [CENSORED mark-to-market, NOT above]: mean=  7.748%  median=  5.095%  avg days held so far=1.3
+
+HYBRID_TRAIL(N=60) floor-binding breakdown (resolved n=340):
+  Exit determined by the -8% FLOOR:      43 (12.6%)
+  Exit determined by the TRAILING stop:  297 (87.4%)
+
+============================================================================================
+Done.
+============================================================================================

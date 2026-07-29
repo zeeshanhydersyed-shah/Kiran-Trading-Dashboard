@@ -1,0 +1,208 @@
+Loaded dataset: 321,190 rows
+After dropping NaNs in any model variable: 321,190 / 321,190 (100.0%)
+
+==========================================================================================
+Pairwise correlation matrix — candidate variables (multicollinearity check)
+==========================================================================================
+                        rarity  breadth  dispersion  participation  avg_correlation  trend_persistence  volatility_level  sector_concentration  base_duration  breakout_magnitude_pct
+rarity                    1.00    -0.55       -0.03          -0.48             0.16              -0.22              0.09                  0.68          -0.03                    0.02
+breadth                  -0.55     1.00       -0.02           0.63            -0.37               0.34             -0.33                 -0.40          -0.00                   -0.02
+dispersion               -0.03    -0.02        1.00          -0.04            -0.07              -0.01              0.09                  0.00          -0.02                    0.13
+participation            -0.48     0.63       -0.04           1.00            -0.27               0.38             -0.33                 -0.27          -0.02                   -0.01
+avg_correlation           0.16    -0.37       -0.07          -0.27             1.00              -0.31              0.54                  0.20          -0.04                    0.00
+trend_persistence        -0.22     0.34       -0.01           0.38            -0.31               1.00             -0.13                 -0.11          -0.02                    0.00
+volatility_level          0.09    -0.33        0.09          -0.33             0.54              -0.13              1.00                  0.09          -0.09                    0.04
+sector_concentration      0.68    -0.40        0.00          -0.27             0.20              -0.11              0.09                  1.00          -0.03                    0.03
+base_duration            -0.03    -0.00       -0.02          -0.02            -0.04              -0.02             -0.09                 -0.03           1.00                   -0.07
+breakout_magnitude_pct    0.02    -0.02        0.13          -0.01             0.00               0.00              0.04                  0.03          -0.07                    1.00
+
+Time-based split at 2023-07-03: train N=256,792, test N=64,398
+
+
+------------------------------------------------------------------------------------------
+MODEL 1: response ~ rarity + rarity^2
+------------------------------------------------------------------------------------------
+N=256,792  R^2=0.00018  Adj R^2=0.00017  AIC=2975649.9  BIC=2975681.3  LogLik=-1487822.0
+
+Coefficients:
+const       -7.28915
+rarity       3.96914
+rarity_sq   -0.48895
+
+P-values:
+const        0.000006
+rarity       0.000000
+rarity_sq    0.000000
+Out-of-sample R^2 (time-holdout): -0.00010
+
+------------------------------------------------------------------------------------------
+MODEL 2: Model 1 + Market/Environment
+------------------------------------------------------------------------------------------
+N=256,792  R^2=0.00064  Adj R^2=0.00060  AIC=2975545.3  BIC=2975649.9  LogLik=-1487762.7
+LR test vs previous model: LR-stat=118.58, df=7, p=1.51538e-22
+
+Coefficients:
+const                   -0.17961
+rarity                   3.98005
+rarity_sq               -0.55509
+breadth                 -0.03918
+dispersion               0.00444
+participation           -0.02015
+avg_correlation        -14.45217
+trend_persistence        0.01231
+volatility_level        -0.60211
+sector_concentration     6.65946
+
+P-values:
+const                   0.939357
+rarity                  0.000002
+rarity_sq               0.000000
+breadth                 0.000916
+dispersion              0.884470
+participation           0.701250
+avg_correlation         0.000000
+trend_persistence       0.148950
+volatility_level        0.143086
+sector_concentration    0.001263
+Out-of-sample R^2 (time-holdout): -0.00024
+
+------------------------------------------------------------------------------------------
+MODEL 3: Model 2 + Setup Quality
+------------------------------------------------------------------------------------------
+N=256,792  R^2=0.00070  Adj R^2=0.00066  AIC=2975532.5  BIC=2975658.0  LogLik=-1487754.3
+LR test vs previous model: LR-stat=16.80, df=2, p=0.000224514
+
+Coefficients:
+const                     -0.55767
+rarity                     3.97179
+rarity_sq                 -0.55113
+breadth                   -0.03795
+dispersion                 0.01217
+participation             -0.01177
+avg_correlation          -14.40779
+trend_persistence          0.01324
+volatility_level          -0.51693
+sector_concentration       6.81552
+base_duration              0.04100
+breakout_magnitude_pct    -0.06544
+
+P-values:
+const                     0.814541
+rarity                    0.000002
+rarity_sq                 0.000000
+breadth                   0.001335
+dispersion                0.691509
+participation             0.822871
+avg_correlation           0.000000
+trend_persistence         0.120582
+volatility_level          0.210424
+sector_concentration      0.000969
+base_duration             0.007765
+breakout_magnitude_pct    0.007287
+Out-of-sample R^2 (time-holdout): -0.00022
+
+==========================================================================================
+Each candidate individually, beyond rarity alone (Model 1 baseline)
+==========================================================================================
+  breadth                   R^2=0.00018  delta R^2 vs rarity-only=+0.00000  AIC=2975650.8 (Model1 AIC=2975649.9)  coef=0.00997  p=0.2867
+  dispersion                R^2=0.00019  delta R^2 vs rarity-only=+0.00001  AIC=2975648.3 (Model1 AIC=2975649.9)  coef=0.05231  p=0.05862
+  participation             R^2=0.00018  delta R^2 vs rarity-only=+0.00001  AIC=2975649.9 (Model1 AIC=2975649.9)  coef=0.05886  p=0.1587
+  avg_correlation           R^2=0.00054  delta R^2 vs rarity-only=+0.00036  AIC=2975558.8 (Model1 AIC=2975649.9)  coef=-13.82912  p=4.822e-22
+  trend_persistence         R^2=0.00023  delta R^2 vs rarity-only=+0.00006  AIC=2975637.7 (Model1 AIC=2975649.9)  coef=0.02889  p=0.0001638
+  volatility_level          R^2=0.00027  delta R^2 vs rarity-only=+0.00010  AIC=2975626.7 (Model1 AIC=2975649.9)  coef=-1.50447  p=5.081e-07
+  sector_concentration      R^2=0.00021  delta R^2 vs rarity-only=+0.00004  AIC=2975642.7 (Model1 AIC=2975649.9)  coef=6.23189  p=0.002344
+  base_duration             R^2=0.00022  delta R^2 vs rarity-only=+0.00005  AIC=2975640.0 (Model1 AIC=2975649.9)  coef=0.05234  p=0.0005411
+  breakout_magnitude_pct    R^2=0.00021  delta R^2 vs rarity-only=+0.00003  AIC=2975644.3 (Model1 AIC=2975649.9)  coef=-0.06623  p=0.005856
+
+==========================================================================================
+Regime dummies vs continuous environment variables (same rarity baseline)
+==========================================================================================
+
+------------------------------------------------------------------------------------------
+Rarity + regime dummies (3 dummy vars)
+------------------------------------------------------------------------------------------
+N=256,792  R^2=0.00025  Adj R^2=0.00023  AIC=2975637.5  BIC=2975700.2  LogLik=-1487812.8
+LR test vs previous model: LR-stat=18.43, df=3, p=0.000359344
+
+Coefficients:
+const                  -6.55252
+rarity                  3.61505
+rarity_sq              -0.43026
+regime_TRENDING_DOWN   -3.42549
+regime_TRENDING_UP     -0.07572
+regime_VOLATILE        -1.19103
+
+P-values:
+const                   0.000074
+rarity                  0.000001
+rarity_sq               0.000000
+regime_TRENDING_DOWN    0.000263
+regime_TRENDING_UP      0.860675
+regime_VOLATILE         0.027203
+
+Rarity + continuous environment (7 vars), no regime dummies:
+  N=256,792  R^2=0.00064  AIC=2975545.3  BIC=2975649.9
+
+Rarity + regime dummies (3 vars):
+  N=256,792  R^2=0.00025  AIC=2975637.5  BIC=2975700.2
+
+AIC difference (env - regime): -92.15 (continuous variables fit better)
+
+==========================================================================================
+Robustness check: rank-transformed (Spearman-style) regression, Model 3 spec
+==========================================================================================
+Rank-OLS  N=256,792  R^2=0.00320  (vs raw Model 3 R^2=0.00070)
+Rank-OLS coefficients (sign check against raw Model 3):
+const                     132263.81870
+rarity                        -0.00924
+rarity_sq                     -0.00936
+breadth                       -0.01329
+dispersion                     0.02280
+participation                 -0.00432
+avg_correlation               -0.00906
+trend_persistence             -0.02053
+volatility_level              -0.03721
+sector_concentration           0.01284
+base_duration                  0.02308
+breakout_magnitude_pct         0.01417
+
+==========================================================================================
+Partial dependence — predicted response vs rarity, other Model-3 vars at median
+==========================================================================================
+  rarity  predicted_response
+2.081794           -0.393067
+2.247551           -0.130219
+2.413308            0.102343
+2.579065            0.304620
+2.744822            0.476612
+2.910578            0.618318
+3.076335            0.729740
+3.242092            0.810876
+3.407849            0.861728
+3.573606            0.882294
+3.739363            0.872575
+3.905120            0.832571
+4.070877            0.762281
+4.236633            0.661707
+4.402390            0.530848
+4.568147            0.369703
+4.733904            0.178273
+4.899661           -0.043442
+5.065418           -0.295442
+5.231175           -0.577727
+5.396931           -0.890298
+5.562688           -1.233153
+5.728445           -1.606294
+5.894202           -2.009720
+6.059959           -2.443430
+6.225716           -2.907427
+6.391473           -3.401708
+6.557230           -3.926274
+6.722986           -4.481126
+6.888743           -5.066262
+
+
+Stage 2 done. Summary of nested models:
+  model1: R^2=0.00018  AIC=2975649.9  BIC=2975681.3  OOS R^2=-0.00010
+  model2: R^2=0.00064  AIC=2975545.3  BIC=2975649.9  OOS R^2=-0.00024
+  model3: R^2=0.00070  AIC=2975532.5  BIC=2975658.0  OOS R^2=-0.00022

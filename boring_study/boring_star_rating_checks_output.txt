@@ -1,0 +1,53 @@
+
+##########################################################################################
+# 20d panel
+##########################################################################################
+
+--- (A) Within-top-decile granularity ---
+         n  hit_rate      rs_min        rs_max
+subq                                          
+0     2265     52.27   78.303809     93.826538
+1     2264     52.21   93.828593    116.785022
+2     2264     53.93  116.807987    155.298321
+3     2264     56.23  155.318448    262.880559
+4     2264     60.78  262.954318  27527.375997
+Spearman rank correlation (sub-quintile vs hit rate, within top decile): rho=0.900, p=0.03739
+
+--- (B) Same-day, same-sector clustering ---
+Rows with sector mapped: 9,155 (dropped 2,166 with no sector match)
+                 n  hit_rate  avg_rs
+cluster_bin                         
+0 (isolated)  6792     55.39  280.01
+1-2           1784     53.42  234.92
+3-5            334     54.49  253.16
+6+             245     53.88  247.45
+Spearman rank correlation (cluster_size vs hit_tp_10, row-level): rho=-0.015, p=0.1608
+(diagnostic) Spearman corr(cluster_size, RS itself): rho=0.050, p=1.641e-06 -- if high, cluster size may just be re-deriving RS, not adding new info
+
+##########################################################################################
+# 60d panel
+##########################################################################################
+
+--- (A) Within-top-decile granularity ---
+         n  hit_rate      rs_min        rs_max
+subq                                          
+0     1510     52.52  102.379380    121.356757
+1     1509     55.00  121.357250    149.801222
+2     1510     54.17  149.801241    204.050668
+3     1509     60.04  204.059853    354.341533
+4     1510     63.31  354.470429  27527.375997
+Spearman rank correlation (sub-quintile vs hit rate, within top decile): rho=0.900, p=0.03739
+
+--- (B) Same-day, same-sector clustering ---
+Rows with sector mapped: 6,025 (dropped 1,523 with no sector match)
+                 n  hit_rate  avg_rs
+cluster_bin                         
+0 (isolated)  4757     57.45  371.34
+1-2            940     54.68  296.12
+3-5            178     54.49  362.86
+6+             150     55.33  264.99
+Spearman rank correlation (cluster_size vs hit_tp_10, row-level): rho=-0.022, p=0.08643
+(diagnostic) Spearman corr(cluster_size, RS itself): rho=0.026, p=0.04061 -- if high, cluster size may just be re-deriving RS, not adding new info
+
+
+Done.

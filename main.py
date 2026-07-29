@@ -265,6 +265,17 @@ def cmd_update():
     except Exception as exc:
         logger.warning("setup_log hook failed: %s", exc)
 
+    # Boring Breakouts (RS_60-conditioned Donchian) -- scan for new signals,
+    # then advance status on anything already open (Target Hit/Stopped/Expired).
+    # SQLite only, watch-and-manually-execute, not wired into leaders_scan/agent.
+    try:
+        from boring_signals import scan_boring_breakouts, update_open_signal_statuses
+        n_new = scan_boring_breakouts()
+        n_updated = update_open_signal_statuses()
+        logger.info("Boring Breakouts: %d new signal(s), %d status update(s).", n_new, n_updated)
+    except Exception as exc:
+        logger.warning("Boring Breakouts hook failed: %s", exc)
+
     # Run daily agent analysis in a subprocess so it cannot block the pipeline.
     # Agent is bonus — a timeout or API failure must never stop stock_signals / setup_log
     # from completing. Timeout is 360s (4 sequential LLM calls × ~60s worst-case each + margin).

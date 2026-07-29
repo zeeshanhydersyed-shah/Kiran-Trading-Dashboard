@@ -1,0 +1,22 @@
+
+================================================================================
+Building stacked panel for lookback=20d
+================================================================================
+Finding breakout occurrences...
+  78,683 breakout occurrences
+Generating matched controls (same stock, same regime, seed=42)...
+  Panel rows: 156,786 (78,393 breakout, 78,393 control)
+
+Saved boring_heterogeneity_panel_20d.csv
+
+================================================================================
+Building stacked panel for lookback=60d
+================================================================================
+Finding breakout occurrences...
+  45,983 breakout occurrences
+Generating matched controls (same stock, same regime, seed=42)...
+  Panel rows: 91,768 (45,884 breakout, 45,884 control)
+
+Saved boring_heterogeneity_panel_60d.csv
+
+Done.

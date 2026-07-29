@@ -1,0 +1,71 @@
+﻿===========================================================================
+SECTOR GLOBAL RANK AT TIME OF BOS  (how strong was the sector vs all sectors?)
+===========================================================================
+
+  -- 20-day window --
+  Sector top 3                              resolved= 244 (48%)  incomplete= 265  WR=18.4%  EV=-1.57%
+  Sector 4-5                                resolved= 155 (42%)  incomplete= 212  WR=16.1%  EV=-2.13%
+  Sector 6-8                                resolved= 282 (43%)  incomplete= 375  WR=19.9%  EV=-1.23%
+  Sector 9-12                               resolved= 345 (41%)  incomplete= 506  WR=20.3%  EV=-1.13%
+  Sector 13+                                resolved= 475 (40%)  incomplete= 724  WR=24.8%  EV=-0.04%
+
+  -- 40-day window --
+  Sector top 3                              resolved= 320 (63%)  incomplete= 189  WR=23.1%  EV=-0.45%
+  Sector 4-5                                resolved= 242 (66%)  incomplete= 125  WR=20.7%  EV=-1.04%
+  Sector 6-8                                resolved= 443 (67%)  incomplete= 214  WR=23.5%  EV=-0.37%
+  Sector 9-12                               resolved= 553 (65%)  incomplete= 298  WR=26.4%  EV=+0.34%
+  Sector 13+                                resolved= 803 (67%)  incomplete= 396  WR=31.1%  EV=+1.47%
+
+  -- 60-day window --
+  Sector top 3                              resolved= 381 (75%)  incomplete= 128  WR=26.5%  EV=+0.36%
+  Sector 4-5                                resolved= 282 (77%)  incomplete=  85  WR=24.8%  EV=-0.04%
+  Sector 6-8                                resolved= 514 (78%)  incomplete= 143  WR=27.8%  EV=+0.68%
+  Sector 9-12                               resolved= 674 (79%)  incomplete= 177  WR=29.2%  EV=+1.01%
+  Sector 13+                                resolved= 998 (83%)  incomplete= 201  WR=35.2%  EV=+2.44%
+
+===========================================================================
+TRENDING_UP ONLY — SECTOR GLOBAL RANK AT BOS
+===========================================================================
+
+  -- 20-day window --
+  Sector top 3                              resolved= 126 (53%)  incomplete= 113  WR=30.2%  EV=+1.24%
+  Sector 4-5                                resolved=  70 (42%)  incomplete=  96  WR=21.4%  EV=-0.86%
+  Sector 6-8                                resolved= 162 (43%)  incomplete= 218  WR=28.4%  EV=+0.81%
+  Sector 9-12                               resolved= 207 (37%)  incomplete= 357  WR=25.1%  EV=+0.03%
+  Sector 13+                                resolved= 328 (37%)  incomplete= 560  WR=27.7%  EV=+0.66%
+
+  -- 40-day window --
+  Sector top 3                              resolved= 166 (69%)  incomplete=  73  WR=32.5%  EV=+1.81%
+  Sector 4-5                                resolved= 114 (69%)  incomplete=  52  WR=20.2%  EV=-1.16%
+  Sector 6-8                                resolved= 261 (69%)  incomplete= 119  WR=28.0%  EV=+0.71%
+  Sector 9-12                               resolved= 353 (63%)  incomplete= 211  WR=29.5%  EV=+1.07%
+  Sector 13+                                resolved= 580 (65%)  incomplete= 308  WR=31.9%  EV=+1.66%
+
+  -- 60-day window --
+  Sector top 3                              resolved= 187 (78%)  incomplete=  52  WR=34.2%  EV=+2.21%
+  Sector 4-5                                resolved= 129 (78%)  incomplete=  37  WR=23.3%  EV=-0.42%
+  Sector 6-8                                resolved= 297 (78%)  incomplete=  83  WR=29.6%  EV=+1.11%
+  Sector 9-12                               resolved= 441 (78%)  incomplete= 123  WR=31.1%  EV=+1.46%
+  Sector 13+                                resolved= 721 (81%)  incomplete= 167  WR=36.1%  EV=+2.65%
+
+===========================================================================
+TRENDING_UP + 40d: SECTOR RANK vs STOCK RS RANK CROSS
+===========================================================================
+  Sector top 3 x RS top 50                  resolved=  28 (60%)  incomplete=  19  WR=35.7%  EV=+2.57%
+  Sector top 3 x RS 51-100                  resolved=  73 (75%)  incomplete=  24  WR=21.9%  EV=-0.74%
+  Sector top 3 x RS 101-200                 resolved=  61 (68%)  incomplete=  29  WR=45.9%  EV=+5.02%
+  Sector 4-5 x RS top 50                    resolved=  10 (67%)  incomplete=   5  WR=10.0%  EV=-3.60%
+  Sector 4-5 x RS 51-100                    resolved=  59 (66%)  incomplete=  30  WR=16.9%  EV=-1.93%
+  Sector 4-5 x RS 101-200                   resolved=  42 (71%)  incomplete=  17  WR=26.2%  EV=+0.29%
+  Sector 6-8 x RS top 50                    resolved=  24 (57%)  incomplete=  18  WR=37.5%  EV=+3.00%
+  Sector 6-8 x RS 51-100                    resolved= 130 (67%)  incomplete=  65  WR=33.1%  EV=+1.94%
+  Sector 6-8 x RS 101-200                   resolved= 104 (75%)  incomplete=  35  WR=19.2%  EV=-1.38%
+  Sector 9-12 x RS top 50                   resolved=  21 (55%)  incomplete=  17  WR=23.8%  EV=-0.29%
+  Sector 9-12 x RS 51-100                   resolved= 132 (61%)  incomplete=  83  WR=28.8%  EV=+0.91%
+  Sector 9-12 x RS 101-200                  resolved= 197 (64%)  incomplete= 110  WR=30.5%  EV=+1.31%
+  Sector 13+ x RS top 50                    resolved=  18 (86%)  incomplete=   3  WR=33.3%  EV=+2.00%
+  Sector 13+ x RS 51-100                    resolved= 146 (69%)  incomplete=  67  WR=32.9%  EV=+1.89%
+  Sector 13+ x RS 101-200                   resolved= 394 (64%)  incomplete= 218  WR=31.2%  EV=+1.49%
+  Sector 13+ x RS 201+                      resolved=  22 (52%)  incomplete=  20  WR=36.4%  EV=+2.73%
+
+Done.

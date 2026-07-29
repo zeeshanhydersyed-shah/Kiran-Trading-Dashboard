@@ -1,0 +1,84 @@
+Fixed inputs: capital=PKR2,000,000  risk_pct=1%  stop=6%  position_fraction=16.67% of equity  win_prob=0.485  target=+10%  iterations=1000  trades/run=500
+NOTE: cash-only account -- 1/0.1667 = 6.0 positions is the real concurrency ceiling, not the nominal 10 slots.
+
+==========================================================================================
+SENSITIVITY  (friction=0.15% round-trip)
+==========================================================================================
+Median ending equity:      PKR 7,211,914  (3.61x)
+5th pct (worst-case):      PKR 4,476,391  (2.24x)
+95th pct (best-case):      PKR 11,595,490  (5.80x)
+Fraction of runs ending BELOW initial capital: 0.0%
+
+Max drawdown distribution (peak-to-trough, any point in the 500 trades):
+  median max DD: 11.7%   90th pct max DD: 16.0%
+  P(max drawdown >= 10%): 74.6%
+  P(max drawdown >= 15%): 16.4%
+  P(max drawdown >= 20%): 3.0%
+
+Streak lengths (consecutive, in trade-close order):
+  Win streak  -- median: 8   90th pct: 10   max observed: 16
+  Loss streak -- median: 8   90th pct: 11   max observed: 22
+
+Capital-constraint diagnostics:
+  Max concurrent positions actually reached -- median: 6   max observed across all runs: 6  (nominal ceiling was 10)
+  Signals skipped for lack of cash -- median per run: 90
+
+Calendar time to complete 500 trades -- median: 938 trading days (~44.6 months)
+
+==========================================================================================
+PRIMARY RESULT  (friction=0.20% round-trip)
+==========================================================================================
+Median ending equity:      PKR 7,012,983  (3.51x)
+5th pct (worst-case):      PKR 4,295,413  (2.15x)
+95th pct (best-case):      PKR 11,129,233  (5.56x)
+Fraction of runs ending BELOW initial capital: 0.0%
+
+Max drawdown distribution (peak-to-trough, any point in the 500 trades):
+  median max DD: 11.9%   90th pct max DD: 16.4%
+  P(max drawdown >= 10%): 76.9%
+  P(max drawdown >= 15%): 18.8%
+  P(max drawdown >= 20%): 3.3%
+
+Streak lengths (consecutive, in trade-close order):
+  Win streak  -- median: 8   90th pct: 10   max observed: 16
+  Loss streak -- median: 8   90th pct: 11   max observed: 22
+
+Capital-constraint diagnostics:
+  Max concurrent positions actually reached -- median: 6   max observed across all runs: 6  (nominal ceiling was 10)
+  Signals skipped for lack of cash -- median per run: 90
+
+Calendar time to complete 500 trades -- median: 937 trading days (~44.6 months)
+
+==========================================================================================
+SENSITIVITY  (friction=0.25% round-trip)
+==========================================================================================
+Median ending equity:      PKR 6,730,195  (3.37x)
+5th pct (worst-case):      PKR 4,121,692  (2.06x)
+95th pct (best-case):      PKR 10,681,589  (5.34x)
+Fraction of runs ending BELOW initial capital: 0.0%
+
+Max drawdown distribution (peak-to-trough, any point in the 500 trades):
+  median max DD: 12.2%   90th pct max DD: 16.7%
+  P(max drawdown >= 10%): 79.0%
+  P(max drawdown >= 15%): 21.1%
+  P(max drawdown >= 20%): 3.5%
+
+Streak lengths (consecutive, in trade-close order):
+  Win streak  -- median: 8   90th pct: 10   max observed: 16
+  Loss streak -- median: 8   90th pct: 11   max observed: 22
+
+Capital-constraint diagnostics:
+  Max concurrent positions actually reached -- median: 6   max observed across all runs: 6  (nominal ceiling was 10)
+  Signals skipped for lack of cash -- median per run: 90
+
+Calendar time to complete 500 trades -- median: 937 trading days (~44.6 months)
+
+
+==========================================================================================
+FRICTION SENSITIVITY SUMMARY
+==========================================================================================
+friction=0.15%: median ending equity = PKR 7,211,914 (3.61x)   5th pct = PKR 4,476,391   median max DD = 11.7%
+friction=0.20%: median ending equity = PKR 7,012,983 (3.51x)   5th pct = PKR 4,295,413   median max DD = 11.9%
+friction=0.25%: median ending equity = PKR 6,730,195 (3.37x)   5th pct = PKR 4,121,692   median max DD = 12.2%
+
+Done.

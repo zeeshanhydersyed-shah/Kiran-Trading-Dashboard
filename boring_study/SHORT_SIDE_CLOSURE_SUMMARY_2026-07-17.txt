@@ -1,0 +1,147 @@
+================================================================================
+SHORT-SIDE DONCHIAN BREAKDOWN STUDY — CLOSURE SUMMARY
+Date: 2026-07-17
+Status: CLOSED — Not Deployable
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+Attempted to extend the successful long-side Donchian Breakout study (9.2% edge)
+to short positions on PSX (DFC-eligible shortable stocks).
+
+Conducted 3 phases of analysis + 6 stress tests to validate robustness.
+
+FINAL VERDICT: Strategy is not deployable. Edge exists only during crisis periods
+(2008-2009), not in normal market conditions.
+
+================================================================================
+PHASES COMPLETED
+================================================================================
+
+Phase 1a: Stop-Loss Optimization by Lookback
+  ✓ Tested SL levels -3% to -10% across N ∈ {10,20,40,60,120}
+  ✓ N=60 selected as primary (5.24% edge, good signal frequency)
+  ✓ All lookbacks recommend -3% SL (no variation)
+
+Phase 1b: Take-Profit Optimization (Full Sample)
+  ✓ Analyzed MFE distribution across -5% to -30% targets
+  ✓ Locked TP = -15% (primary) and -10% (sensitivity)
+  ✓ Full sample validation: 5.22% edge @ -10% target replicated exactly
+
+Phase 1c: Regime & Sector Analysis
+  ✓ TRENDING_DOWN regime: 9.89% edge (2,955 trades)
+  ✓ Best sectors: Insurance (12.30%), Banks (9.74%), Oil & Gas (7.61%)
+  ✓ Edge holds across N=60 and N=20 (regime robust to lookback)
+
+Stress Test Battery:
+  ✓ ST#1: Time-based walk-forward — FATAL FLAW DISCOVERED
+  ✓ ST#4: Sector concentration — PASS (edge not concentrated)
+  ⊘ ST#2,3,5,6: Deferred (schema audit needed, re-race needed)
+
+Final Focus Test: Post-2011 + Sector Downtrend Filter
+  ✗ FAILURE: 197 trades, 1.02% edge, p=0.156 (not significant)
+
+================================================================================
+CRITICAL FINDING: THE EDGE IS A CRISIS ARTIFACT
+================================================================================
+
+Time-based walk-forward analysis revealed:
+
+  2008:        749 trades, 36.78% edge (Global financial crisis)
+  2009:        241 trades, 27.94% edge (Crisis aftermath)
+  2011-2023:  2000+ trades,  ~0% edge (Normal market conditions)
+
+The 9.89% "TRENDING_DOWN" edge reported in Phase 1c is entirely driven by
+2008-2009 data. In normal markets (2011-2026), the edge does not exist.
+
+DIAGNOSIS: Strategy worked during panic/capitulation sell-offs when support
+levels were breaking indiscriminately. It does NOT work in normal market regimes.
+
+================================================================================
+WHY THE STRATEGY FAILED
+================================================================================
+
+1. HISTORICAL ACCIDENT
+   - Only 8,069 N=60 breakdowns across 16 years on 106 DFC symbols
+   - All meaningful edge comes from single 2-year crisis period
+   - No replication in 12 subsequent years of data
+
+2. TIGHT ENTRY SIGNAL
+   - With sector-downtrend filtering: only 197 trades (too rare to trade)
+   - Hit rate: 1.02% (trader cannot execute this in real-time)
+
+3. ASYMMETRY vs LONGS
+   - Longs had 9.2% edge (durable across regimes)
+   - Shorts had "9.89%" (actually 1% in normal times, 0% out-of-sample)
+   - Markets have structural upward bias; shorts are harder
+
+4. LACK OF MECHANISM
+   - Regime/sector patterns were confounded by crisis period
+   - Once isolated to normal markets, patterns disappear
+
+================================================================================
+ARTIFACTS & DOCUMENTATION
+================================================================================
+
+Scripts:
+  • short_donchian_phase1a_by_lookback.py
+  • short_donchian_phase1b_tp_optimization.py
+  • short_donchian_phase1c_regime_sector.py
+  • short_donchian_phase1c_stress_tests.py
+  • short_donchian_focused_sector_downtrend.py
+
+Data Panels:
+  • short_panel_60d_phase1b.csv
+  • short_panel_20d_phase1b.csv
+  • short_panel_60d_phase1c.csv
+  • short_panel_20d_phase1c.csv
+
+Reports:
+  • SHORT_SIDE_DONCHIAN_FINAL_REPORT_2026-07-17.md (comprehensive)
+  • SHORT_SIDE_CLOSURE_SUMMARY_2026-07-17.txt (this file)
+
+================================================================================
+RECOMMENDATIONS FOR FUTURE WORK
+================================================================================
+
+If revisiting short-side trading on PSX:
+
+1. DIFFERENT MECHANISM
+   ✗ Donchian breakdowns do not work
+   ✓ Consider: support-reversal, volume confirmation, order-flow signals
+
+2. AVOID REGIME SELECTION
+   ✗ Regime patterns were confounded by crisis period
+   ✓ Use sector fundamentals or technical momentum instead
+
+3. ACCEPT LOWER EDGE TARGETS
+   ✗ Don't expect 9%+ edges on shorts (upward market bias)
+   ✓ Target 3-5% if mechanism works at all
+
+4. SECTOR FOCUS (if pursuing)
+   ✓ Restrict to Financial sector (Banks, Insurance)
+   ⚠ But be aware: macro-sensitive (rate environment risk)
+
+================================================================================
+PROJECT CLOSURE
+================================================================================
+
+Status:        CLOSED — Not Deployable
+Hold Duration: Indefinite (pending new ideas or major market regime shift)
+Decision Date: 2026-07-17
+
+Lessons Learned:
+  • Historical backtests must be stress-tested for crisis-period artifacts
+  • Walk-forward analysis catches illusions early (2-4% of data can distort)
+  • Longs and shorts behave asymmetrically; never assume symmetry
+  • Edge must replicate across multiple time periods and market regimes
+  • Tight entry signals (197 trades) are not tradeable in real-time
+
+Next Steps: Focus resources on other opportunities.
+  • Long-side regime/sector refinements
+  • Support-reversal short patterns (different mechanism)
+  • Entirely new entry signals or market segments
+
+================================================================================
+END OF REPORT
+================================================================================

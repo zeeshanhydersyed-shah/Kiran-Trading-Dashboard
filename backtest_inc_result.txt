@@ -1,0 +1,39 @@
+﻿=================================================================
+TOTAL EVENTS     : 3,718
+Resolved at 20d  : 1,513  (40.7%)
+Incomplete at 20d: 2,205  (59.3%)
+
+=== WHAT DO INCOMPLETE EVENTS LOOK LIKE AT 20 DAYS? ===
+  Avg max gain  : 6.3%
+  Median max gain: 5.4%
+  Avg max drawdown: -2.3%
+  % that gained >10% (close to target): 22.1%
+  % that gained >15% (almost there)   : 5.3%
+  % that gained < 3% (went nowhere)   : 29.4%
+
+=== IF WE EXTEND THE WINDOW — HOW MANY RESOLVE? ===
+  20d window -> resolved: 1513 (40.7%)  incomplete: 2205  WR: 20.8%  EV: -1.02%
+  30d window -> resolved: 2050 (55.1%)  incomplete: 1668  WR: 24.0%  EV: -0.24%
+  40d window -> resolved: 2386 (64.2%)  incomplete: 1332  WR: 26.4%  EV: +0.33%
+  60d window -> resolved: 2891 (77.8%)  incomplete:  827  WR: 30.4%  EV: +1.30%
+
+=== FOR EVENTS INCOMPLETE AT 20D — WHAT HAPPENS BY 60D? ===
+  Eventually WIN         :  565 (25.6%)
+  Eventually LOSS        :  813 (36.9%)
+  Eventually INCOMPLETE  :  827 (37.5%)
+
+=== INCOMPLETE@20d BY REGIME ===
+  TRENDING_UP       n=1380  avg_max_gain=6.4%  eventually_win_60d=337 (24.4%)
+  RANGING           n= 636  avg_max_gain=5.9%  eventually_win_60d=182 (28.6%)
+  TRENDING_DOWN     n= 102  avg_max_gain=6.5%  eventually_win_60d=20 (19.6%)
+  VOLATILE          n=  87  avg_max_gain=5.8%  eventually_win_60d=26 (29.9%)
+
+=== DISTRIBUTION OF MAX GAIN FOR INCOMPLETE@20d ===
+  0-3%      550  ##############################
+  3-6%      533  #############################
+  6-9%      424  #######################
+  9-12%     269  ##############
+  12-15%    197  ##########
+  15-18%    114  ######
+
+Done.

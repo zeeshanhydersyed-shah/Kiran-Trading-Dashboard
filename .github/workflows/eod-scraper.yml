@@ -1,0 +1,57 @@
+name: EOD Scraper
+
+# ── Triggers ────────────────────────────────────────────────────────────────
+# Cron is commented out intentionally.
+# First test via workflow_dispatch (manual). Uncomment cron only after
+# manual run is reviewed and confirmed correct.
+on:
+  workflow_dispatch:        # manual trigger — use this for first test
+  # schedule:
+  #   - cron: '0 17 * * 1-5'  # 5 PM UTC = 10 PM PKT, Mon–Fri
+
+# ── Concurrency ──────────────────────────────────────────────────────────────
+# Prevent overlapping runs (e.g. manual trigger fired while cron is running)
+concurrency:
+  group: eod-scraper
+  cancel-in-progress: false   # let the running job finish; queue cancels instead
+
+jobs:
+  scrape:
+    name: Scrape EOD prices → Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 30       # hard ceiling — scraper should finish in <10 min
+
+    env:
+      # Secrets injected from GitHub repo Settings > Secrets and variables > Actions
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # agent.py daily hook
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # pinned stable; pipeline does not use 3.14-only syntax
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          # Exclude streamlit, playwright — not needed for headless scraper run
+          pip install \
+            pandas \
+            numpy \
+            requests \
+            beautifulsoup4 \
+            lxml \
+            psycopg2-binary \
+            python-dotenv \
+            scikit-learn \
+            joblib \
+            openpyxl
+
+      - name: Run EOD update
+        run: python main.py --update
+        working-directory: ${{ github.workspace }}

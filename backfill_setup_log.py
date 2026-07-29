@@ -4,11 +4,14 @@ Processes all 4 setup types per date. Outcome columns left NULL.
 Run with --dry-run to test on first month only (2015-01-01 to 2015-01-31).
 """
 
+import os
 import sqlite3
 import sys
 from config import DB_PATH
 
 DRY_RUN_END = "2015-01-31"
+
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 INSERT_SQL = """
 INSERT OR IGNORE INTO setup_log (
@@ -141,10 +144,157 @@ def run(dry_run=False):
         for r in rows:
             print(r)
 
+def _append_setup_log_today_pg() -> int:
+    """PG-backed equivalent of append_setup_log_today(). Same 3-step logic
+    (insert setups, fill forward returns via compute_forward_returns, label
+    outcomes), %s placeholders, ON CONFLICT DO NOTHING instead of INSERT OR
+    IGNORE. Assumes setup_log already exists in Supabase with the same
+    UNIQUE constraint the SQLite schema uses (migrated once via
+    migrate_to_supabase.py) — no DDL run here."""
+    import logging
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    log = logging.getLogger(__name__)
+    total_inserted = 0
+
+    try:
+        with get_conn() as conn:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+            cur.execute("SELECT MAX(date) AS d FROM stock_signals")
+            target_date = cur.fetchone()["d"]
+            if not target_date:
+                log.warning("setup_log hook (PG): no data in stock_signals.")
+                return 0
+
+            cur.execute("SELECT MAX(setup_date) AS d FROM setup_log")
+            already = cur.fetchone()["d"]
+            if already and already >= target_date:
+                log.info("setup_log already up to date for %s (PG).", target_date)
+                return 0
+
+            setup_insert_pg = """
+                INSERT INTO setup_log
+                    (symbol, setup_date, setup_type, regime,
+                     rs_rank, sector_rs_rank, rank_change, rs_score_20,
+                     base_tightness, vol_contraction, pivot_distance_pct,
+                     bos_flag, sector, outcome_label)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING
+            """
+
+            queries_pg = [
+                ("BREAKOUT", """
+                    SELECT ss.symbol, ss.date, 'BREAKOUT', mr.regime,
+                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+                           ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+                           ss.bos_flag, sm.sector, 'BREAKEVEN'
+                    FROM stock_signals ss
+                    LEFT JOIN market_regime mr ON ss.date = mr.date
+                    LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+                    WHERE ss.date = %s
+                      AND ss.bos_flag = 1
+                      AND ss.avg_vol_10d > 500000
+                      AND COALESCE((
+                          SELECT ss_prev.bos_flag
+                          FROM stock_signals ss_prev
+                          WHERE ss_prev.symbol = ss.symbol
+                            AND ss_prev.date < ss.date
+                          ORDER BY ss_prev.date DESC
+                          LIMIT 1
+                      ), 0) = 0
+                """),
+                ("PRE_BREAKOUT", """
+                    SELECT ss.symbol, ss.date, 'PRE_BREAKOUT', mr.regime,
+                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+                           ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+                           ss.bos_flag, sm.sector, 'BREAKEVEN'
+                    FROM stock_signals ss
+                    LEFT JOIN market_regime mr ON ss.date = mr.date
+                    LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+                    WHERE ss.date = %s
+                      AND ss.pivot_distance_pct BETWEEN 0 AND 3
+                      AND ss.base_tightness < 8
+                      AND ss.avg_vol_10d > 200000
+                """),
+                ("RS_LEADER_MARKET", """
+                    SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET', mr.regime,
+                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+                           ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+                           ss.bos_flag, sm.sector, 'BREAKEVEN'
+                    FROM stock_signals ss
+                    LEFT JOIN market_regime mr ON ss.date = mr.date
+                    LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+                    WHERE ss.date = %s
+                      AND ss.avg_vol_10d > 200000
+                    ORDER BY ss.rs_score_20 DESC
+                    LIMIT 20
+                """),
+                ("RS_LEADER_SECTOR", """
+                    SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR', mr.regime,
+                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+                           ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+                           ss.bos_flag, sm.sector, 'BREAKEVEN'
+                    FROM stock_signals ss
+                    LEFT JOIN market_regime mr ON ss.date = mr.date
+                    LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+                    WHERE ss.date = %s
+                      AND ss.avg_vol_10d > 200000
+                      AND ss.sector_rs_rank <= 3
+                """),
+            ]
+
+            try:
+                for setup_type, select_sql in queries_pg:
+                    cur.execute(select_sql, (target_date,))
+                    rows = [tuple(r.values()) for r in cur.fetchall()]
+                    if rows:
+                        psycopg2.extras.execute_batch(cur, setup_insert_pg, rows)
+                        total_inserted += len(rows)
+                log.info("setup_log (PG): %d rows inserted for %s.", total_inserted, target_date)
+            except Exception as exc:
+                log.warning("setup_log step 1 (insert, PG) failed: %s", exc)
+
+        # Step 2 — forward returns (own connection, branches on _PG_URL internally)
+        try:
+            from compute_forward_returns import main as cfr_main
+            cfr_main()
+            log.info("setup_log (PG): forward returns updated.")
+        except Exception as exc:
+            log.warning("setup_log step 2 (forward returns, PG) failed: %s", exc)
+
+        # Step 3 — label outcomes
+        try:
+            with get_conn() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE setup_log
+                    SET outcome_label = CASE
+                        WHEN fwd_return_10d > 0 THEN 'WINNER'
+                        WHEN fwd_return_10d < 0 THEN 'LOSER'
+                        ELSE 'BREAKEVEN'
+                    END
+                    WHERE fwd_return_10d IS NOT NULL
+                      AND (outcome_label = 'BREAKEVEN' OR outcome_label IS NULL)
+                """)
+                log.info("setup_log (PG): %d rows labelled.", cur.rowcount)
+        except Exception as exc:
+            log.warning("setup_log step 3 (labelling, PG) failed: %s", exc)
+
+    except Exception as exc:
+        log.warning("setup_log hook (PG) failed: %s", exc)
+
+    return total_inserted
+
+
 def append_setup_log_today() -> int:
     """Insert today's setups, fill forward returns, label outcomes."""
     import logging
     log = logging.getLogger(__name__)
+
+    if _PG_URL:
+        return _append_setup_log_today_pg()
 
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -263,7 +413,7 @@ def append_setup_log_today() -> int:
                     ELSE 'BREAKEVEN'
                 END
                 WHERE fwd_return_10d IS NOT NULL
-                  AND outcome_label = 'BREAKEVEN'
+                  AND (outcome_label = 'BREAKEVEN' OR outcome_label IS NULL)
             """)
             labelled = cur.rowcount
             conn.commit()

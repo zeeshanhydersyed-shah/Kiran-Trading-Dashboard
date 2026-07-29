@@ -1,0 +1,58 @@
+Decile-9 + liquidity-gated raw rows: 2,130 -> 647 distinct runs (entries)
+ATR_CHANDELIER: 0 run(s) skipped (insufficient history for entry-day ATR_14)
+
+============================================================================================
+CONTROL  (n=647)
+============================================================================================
+Censored (no resolution by end of available price history): 19 (2.9%)
+Resolved: n=628
+  Gross return %:            mean=  1.236  median= -6.000  p25= -6.000  p75= 10.000  p90= 10.000
+  Net of 0.20% friction:      mean=  1.036  median= -6.200  p25= -6.200  p75=  9.800  p90=  9.800
+  Net of friction + 15% CGT(wins): mean=  0.357  median= -6.200  p25= -6.200  p75=  8.300  p90=  8.300
+  Win rate (gross ret > 0): 45.2%
+  Avg days held: 2.8   median days held: 2.0
+  [CENSORED -- mark-to-market as of data end, NOT in the stats above]
+    mean=  0.402%  median=  0.282%  avg days held so far=8.0
+
+============================================================================================
+TRAIL_LOW  (n=647)
+============================================================================================
+Censored (no resolution by end of available price history): 7 (1.1%)
+Resolved: n=640
+  Gross return %:            mean=  3.610  median= -0.182  p25= -3.945  p75=  4.933  p90= 17.084
+  Net of 0.20% friction:      mean=  3.410  median= -0.382  p25= -4.145  p75=  4.733  p90= 16.884
+  Net of friction + 15% CGT(wins): mean=  2.492  median= -0.382  p25= -4.145  p75=  3.993  p90= 14.322
+  Win rate (gross ret > 0): 42.7%
+  Avg days held: 2.5   median days held: 2.0
+  [CENSORED -- mark-to-market as of data end, NOT in the stats above]
+    mean=  3.919%  median=  2.848%  avg days held so far=1.6
+
+============================================================================================
+DONCHIAN_M10  (n=647)
+============================================================================================
+Censored (no resolution by end of available price history): 72 (11.1%)
+Resolved: n=575
+  Gross return %:            mean=  2.728  median= -6.854  p25=-18.086  p75= 11.570  p90= 40.704
+  Net of 0.20% friction:      mean=  2.528  median= -7.054  p25=-18.286  p75= 11.370  p90= 40.504
+  Net of friction + 15% CGT(wins): mean=  0.525  median= -7.054  p25=-18.286  p75=  9.635  p90= 34.399
+  Win rate (gross ret > 0): 37.4%
+  Avg days held: 26.4   median days held: 21.0
+  [CENSORED -- mark-to-market as of data end, NOT in the stats above]
+    mean=  8.077%  median=  1.650%  avg days held so far=12.6
+
+============================================================================================
+ATR_CHANDELIER  (n=647)
+============================================================================================
+Censored (no resolution by end of available price history): 27 (4.2%)
+Resolved: n=620
+  Gross return %:            mean=  3.126  median= -4.044  p25= -9.562  p75=  6.957  p90= 24.724
+  Net of 0.20% friction:      mean=  2.926  median= -4.244  p25= -9.762  p75=  6.757  p90= 24.524
+  Net of friction + 15% CGT(wins): mean=  1.645  median= -4.244  p25= -9.762  p75=  5.714  p90= 20.815
+  Win rate (gross ret > 0): 38.7%
+  Avg days held: 7.3   median days held: 5.0
+  [CENSORED -- mark-to-market as of data end, NOT in the stats above]
+    mean=  6.426%  median=  2.848%  avg days held so far=6.4
+
+============================================================================================
+Done. Population: 647 runs (decile-9 + liquidity-gated, N=20 lookback, first-fire-of-run entries).
+============================================================================================

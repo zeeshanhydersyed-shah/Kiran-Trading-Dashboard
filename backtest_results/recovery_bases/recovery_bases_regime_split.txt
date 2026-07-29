@@ -1,0 +1,41 @@
+======================================================================
+  RECOVERY BASES -- REGIME-CONDITIONED SPLIT
+  Generated: 2026-06-08 17:51
+======================================================================
+
+  [KSE-100 UP REGIME]
+    Total signals      : 45
+    Valid (T+1 entry)  : 45
+    Wins (T1+T2)       : 7  (15.6%)
+    Losses (SL)        : 10  (22.2%)
+    Time exits         : 28  (62.2%)
+    Avg win            : +41.08%
+    Avg loss           : -18.68%
+    Avg time exit      : -1.57%
+    Expectancy/trade   : 1.263%
+    Profit factor      : 1.539
+    Avg holding        : 33.5 days
+    Avg MAE            : -11.61%
+    Avg MFE            : 17.32%
+    MAE p50/p75/p90    : -11.15% / -5.68% / -3.46%
+
+  [KSE-100 DOWN REGIME]
+    Total signals      : 9
+    Valid (T+1 entry)  : 9
+    Wins (T1+T2)       : 1  (11.1%)
+    Losses (SL)        : 4  (44.4%)
+    Time exits         : 4  (44.4%)
+    Avg win            : +35.07%
+    Avg loss           : -19.10%
+    Avg time exit      : 1.81%
+    Expectancy/trade   : -3.787%
+    Profit factor      : 0.459
+    Avg holding        : 32.6 days
+    Avg MAE            : -12.88%
+    Avg MFE            : 14.44%
+    MAE p50/p75/p90    : -13.31% / -9.27% / -2.39%
+
+  [REGIME UNKNOWN]  n_total=0  n_valid=0
+
+  NOTES
+  Regime = KSE-100 close[D] >= close[D - 10 trading days]

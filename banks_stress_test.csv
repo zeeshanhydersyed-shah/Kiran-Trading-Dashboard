@@ -1,0 +1,920 @@
+Ticker,Ep,Entry,Exit,Duration,Ongoing,Stock_Mom,P30,P10,Ep_Ret,MAD,Fwd20,Fwd60,KSE20,KSE60,Alpha20,Alpha60,Sec_Rank,Sec_Pct,Top35,Sec_Momentum_On_Entry,Win_Ep,Win20,Win60,BeatKSE20,BeatKSE60
+ABL,1,2020-10-23,2020-10-26,3,False,Recovering,-0.7,0.34,-0.03,-0.34,-4.97,1.37,-3.96,11.24,-1.01,-9.87,2,95.5,True,Recovering,False,False,True,False,False
+ABL,2,2021-01-13,2021-01-21,8,False,Cooling Down,6.04,4.03,-1.28,-1.72,-3.64,-20.49,-0.08,-1.96,-3.56,-18.53,9,63.6,False,Cooling Down,False,False,False,False,False
+ABL,3,2021-02-03,2021-02-04,1,False,Rolling Over,2.9,-1.03,0.07,-1.16,-7.43,-19.5,-3.53,-5.69,-3.9,-13.81,13,45.5,False,Rolling Over,True,False,False,False,False
+ABL,4,2021-11-15,2021-11-24,9,False,Rolling Over,14.57,-1.38,0.44,-0.53,-4.89,14.73,-6.25,0.23,1.36,14.5,3,90.9,True,Rolling Over,True,False,True,True,True
+ABL,5,2021-11-26,2021-11-29,3,False,Stabilising,-1.22,-0.29,0.05,-2.02,-0.41,10.23,0.01,3.54,-0.42,6.69,3,90.9,True,Falling,True,False,True,False,True
+ABL,6,2021-12-03,2021-12-03,0,False,Stabilising,-1.58,-0.96,0.0,-2.86,5.14,9.92,3.15,1.74,1.99,8.18,8,68.2,True,Stabilising,False,True,True,True,True
+ABL,7,2021-12-20,2021-12-20,0,False,Falling,-0.13,-1.48,0.0,-1.66,12.68,10.92,2.87,-2.19,9.81,13.11,5,81.8,True,Recovering,False,True,True,True,True
+ABL,8,2021-12-22,2022-02-09,49,False,Heating Up,0.23,0.26,14.84,-0.65,9.29,9.69,1.49,-0.45,7.8,10.14,4,86.4,True,Stabilising,True,True,True,True,True
+ABL,9,2022-02-15,2022-02-15,0,False,Rolling Over,8.44,-1.14,0.0,-3.14,-5.32,-21.11,-4.4,-5.91,-0.92,-15.2,1,100.0,True,Cooling Down,False,False,False,False,False
+ABL,10,2022-03-11,2022-03-14,3,False,Recovering,-2.36,0.46,0.69,-1.0,-1.5,-20.61,5.71,-6.35,-7.21,-14.26,8,68.2,True,Stabilising,True,False,False,False,False
+ABL,11,2022-03-31,2022-03-31,0,False,Recovering,-3.31,2.11,0.0,-3.97,-10.76,-21.45,0.71,-7.54,-11.47,-13.91,14,40.9,False,Stabilising,False,False,False,False,False
+ABL,12,2023-07-11,2023-08-07,27,False,Heating Up,3.45,8.98,-0.53,-4.72,0.17,0.07,6.8,5.18,-6.63,-5.11,12,50.0,False,Heating Up,False,True,True,False,False
+ABL,13,2023-08-09,2023-08-18,9,False,Rolling Over,9.16,-0.2,-0.35,-2.1,-2.1,7.83,-5.12,10.15,3.02,-2.32,2,95.5,True,Cooling Down,False,False,True,True,False
+ABL,14,2023-08-25,2023-08-25,0,False,Falling,-0.91,-1.08,0.0,-1.03,-1.0,16.49,-2.62,20.35,1.62,-3.86,1,100.0,True,Rolling Over,False,False,True,True,False
+ABL,15,2023-09-06,2023-09-06,0,False,Recovering,-0.98,0.71,0.0,-0.71,-0.62,28.38,3.59,34.67,-4.21,-6.29,8,68.2,True,Stabilising,False,False,True,False,False
+ABL,16,2023-09-08,2023-09-25,17,False,Stabilising,-2.29,-1.03,1.41,-2.84,2.04,25.99,3.71,36.82,-1.67,-10.83,5,81.8,True,Falling,True,True,True,False,False
+ABL,17,2023-10-02,2023-10-05,3,False,Recovering,-0.28,1.43,-0.14,-1.41,5.63,16.9,10.41,30.53,-4.78,-13.63,8,68.2,True,Recovering,False,True,True,False,False
+ABL,18,2023-10-11,2023-10-17,6,False,Rolling Over,0.66,-0.72,1.94,-0.68,9.96,19.18,11.94,33.09,-1.98,-13.91,15,36.4,False,Heating Up,True,True,True,False,False
+ABL,19,2023-10-19,2023-12-19,61,False,Cooling Down,3.6,1.84,18.06,-1.31,8.26,15.97,13.3,27.61,-5.04,-11.64,12,50.0,False,Cooling Down,True,True,True,False,False
+ABL,20,2023-12-28,2023-12-28,0,False,Rolling Over,11.89,-2.67,0.0,-2.28,2.48,1.29,3.62,5.6,-1.14,-4.31,2,95.5,True,Rolling Over,False,True,True,False,False
+ABL,21,2024-01-01,2024-01-02,1,False,Rolling Over,8.88,-2.53,0.66,-1.13,2.43,3.01,-2.92,2.92,5.35,0.09,3,90.9,True,Rolling Over,True,True,True,True,True
+ABL,22,2024-01-05,2024-01-05,0,False,Cooling Down,2.43,2.29,0.0,-1.77,5.96,3.63,-2.34,3.68,8.3,-0.05,6,77.3,True,Cooling Down,False,True,True,True,False
+ABL,23,2024-01-09,2024-01-12,3,False,Cooling Down,3.23,2.45,-0.12,-2.86,2.38,8.36,-0.04,6.62,2.42,1.74,7,72.7,True,Heating Up,False,True,True,True,True
+ABL,24,2024-01-17,2024-02-12,26,False,Recovering,-0.99,0.48,2.5,-0.72,2.92,16.19,-5.81,10.58,8.73,5.61,5,81.8,True,Rolling Over,True,True,True,True,True
+ABL,25,2024-02-14,2024-02-16,2,False,Cooling Down,2.48,0.0,-0.01,-1.16,1.72,14.24,3.05,20.13,-1.33,-5.89,3,92.9,True,Heating Up,False,True,True,False,False
+ABL,26,2024-02-20,2024-02-27,7,False,Cooling Down,3.41,0.99,0.75,-0.98,-1.31,14.41,8.33,24.38,-9.64,-9.97,7,78.6,True,Stabilising,True,False,True,False,False
+ABL,27,2024-02-29,2024-03-01,1,False,Cooling Down,3.37,0.32,1.0,-0.27,-0.96,13.41,3.97,17.5,-4.93,-4.09,7,78.6,True,Recovering,True,False,True,False,False
+ABL,28,2024-03-05,2024-03-05,0,False,Cooling Down,3.1,0.17,0.0,0.0,0.16,14.47,1.77,12.92,-1.61,1.55,6,82.1,True,Heating Up,False,True,True,False,True
+ABL,29,2024-03-08,2024-03-13,5,False,Cooling Down,2.64,0.75,0.46,-0.11,-0.07,14.01,5.82,11.34,-5.89,2.67,11,64.3,False,Recovering,True,False,True,False,True
+ABL,30,2024-03-18,2024-03-18,0,False,Cooling Down,1.72,1.72,0.0,-1.69,4.79,26.52,9.28,21.45,-4.49,5.07,21,28.6,False,Stabilising,False,True,True,False,True
+ABL,31,2024-03-27,2024-03-27,0,False,Stabilising,-3.14,-0.11,0.0,-1.14,13.79,25.39,6.84,19.54,6.95,5.85,23,21.4,False,Recovering,False,True,True,True,True
+ABL,32,2024-04-03,2024-07-22,110,False,Cooling Down,0.57,0.5,38.41,-1.31,9.68,44.94,7.15,19.06,2.53,25.88,12,60.7,False,Cooling Down,True,True,True,True,True
+ABL,33,2024-07-24,2024-07-24,0,False,Rolling Over,18.98,-4.99,0.0,-0.88,-2.16,-4.3,-0.76,7.37,-1.4,-11.67,2,96.4,True,Rolling Over,False,False,False,False,False
+ABL,34,2024-07-29,2024-07-29,0,False,Rolling Over,18.4,-6.93,0.0,-1.87,-2.06,-3.27,-0.94,10.61,-1.12,-13.88,1,100.0,True,Rolling Over,False,False,False,False,False
+ABL,35,2024-07-31,2024-08-01,1,False,Rolling Over,17.91,-5.15,-0.05,-1.69,-2.63,-2.51,0.59,15.54,-3.22,-18.05,1,100.0,True,Rolling Over,False,False,False,False,False
+ABL,36,2024-08-22,2024-08-28,6,False,Recovering,-7.05,2.12,0.77,-1.64,-6.1,0.5,4.16,20.27,-10.26,-19.77,26,10.7,False,Recovering,True,False,True,False,False
+ABL,37,2024-10-08,2024-10-16,8,False,Recovering,-1.42,3.12,-0.53,-2.29,8.71,22.28,7.75,36.59,0.96,-14.31,16,46.4,False,Recovering,False,True,True,True,False
+ABL,38,2024-10-22,2024-10-25,3,False,Rolling Over,2.91,-0.53,1.01,-0.88,1.88,21.86,10.86,32.42,-8.98,-10.56,3,92.9,True,Rolling Over,True,True,True,False,False
+ABL,39,2024-10-29,2024-11-06,8,False,Cooling Down,5.54,0.49,6.14,-0.51,10.49,23.26,4.08,24.85,6.41,-1.59,5,85.7,True,Cooling Down,True,True,True,True,False
+ABL,40,2024-11-22,2024-12-12,20,False,Cooling Down,6.66,3.51,16.09,-4.25,6.8,12.66,11.98,15.63,-5.18,-2.97,19,35.7,False,Heating Up,True,True,True,False,False
+ABL,41,2024-12-30,2025-01-06,7,False,Cooling Down,22.84,6.87,-3.78,-7.32,-1.17,-5.24,-1.51,1.19,0.34,-6.43,14,53.6,False,Cooling Down,False,False,False,True,False
+ABL,42,2025-01-08,2025-02-06,29,False,Cooling Down,8.41,2.97,3.34,-2.23,3.34,-1.48,-3.37,-1.1,6.71,-0.38,23,21.4,False,Cooling Down,True,True,False,True,False
+ABL,43,2025-02-10,2025-02-12,2,False,Rolling Over,7.98,-0.04,0.01,-1.41,-1.81,-6.32,2.67,5.32,-4.48,-11.64,1,100.0,True,Rolling Over,True,False,False,False,False
+ABL,44,2025-02-14,2025-02-14,0,False,Rolling Over,1.94,-0.7,0.0,-0.99,-3.91,-8.54,3.08,6.75,-6.99,-15.29,3,92.9,True,Rolling Over,False,False,False,False,False
+ABL,45,2025-02-20,2025-02-20,0,False,Rolling Over,1.73,-1.56,0.0,-0.95,-2.57,-7.45,4.42,4.76,-6.99,-12.21,3,92.9,True,Cooling Down,False,False,False,False,False
+ABL,46,2025-02-25,2025-02-27,2,False,Cooling Down,3.34,0.09,-0.89,-2.79,-4.31,-8.85,1.84,3.32,-6.15,-12.17,2,96.4,True,Cooling Down,False,False,False,False,False
+ABL,47,2025-03-04,2025-03-04,0,False,Recovering,-1.42,2.27,0.0,-0.72,-3.93,-0.62,1.92,8.03,-5.85,-8.65,3,92.9,True,Rolling Over,False,False,False,False,False
+ABL,48,2025-03-07,2025-03-07,0,False,Recovering,-0.29,0.65,0.0,-1.41,-3.61,1.91,1.51,8.7,-5.12,-6.79,4,89.3,True,Cooling Down,False,False,True,False,False
+ABL,49,2025-06-11,2025-06-20,9,False,Heating Up,8.99,10.66,-0.53,-3.11,19.0,22.89,6.61,22.77,12.39,0.12,6,82.1,True,Cooling Down,False,True,True,True,True
+ABL,50,2025-06-24,2025-06-25,1,False,Rolling Over,9.8,-1.27,3.33,-0.18,50.08,24.51,14.05,27.76,36.03,-3.25,11,64.3,False,Cooling Down,True,True,True,True,False
+ABL,51,2025-06-27,2025-07-25,28,False,Cooling Down,10.52,1.97,33.29,-3.04,33.29,19.68,11.92,26.67,21.37,-6.99,12,60.7,False,Cooling Down,True,True,True,True,False
+ABL,52,2025-07-30,2025-08-20,21,False,Rolling Over,27.87,-11.11,5.75,-2.51,-2.0,6.17,6.45,18.91,-8.45,-12.74,4,89.3,True,Rolling Over,True,False,True,False,False
+ABL,53,2025-08-22,2025-08-22,0,False,Cooling Down,10.09,0.09,0.0,-1.09,-9.07,-7.49,5.03,7.62,-14.1,-15.11,3,92.9,True,Cooling Down,False,False,False,False,False
+ABL,54,2025-10-02,2025-10-22,20,False,Heating Up,3.23,12.3,5.22,-8.76,-5.1,-5.55,-6.98,2.32,1.88,-7.87,7,78.6,True,Cooling Down,True,False,False,True,False
+ABL,55,2025-12-30,2026-01-30,31,False,Cooling Down,4.77,1.62,9.21,-1.64,10.9,-6.74,7.87,-13.05,3.03,6.31,6,82.1,True,Cooling Down,True,True,False,True,True
+ABL,56,2026-02-03,2026-02-06,3,False,Rolling Over,11.6,-2.99,-0.56,-2.07,-15.92,-11.09,-16.65,-12.28,0.73,1.19,4,89.3,True,Rolling Over,False,False,False,True,True
+ABL,57,2026-04-22,2026-04-29,7,False,Rolling Over,11.33,-0.6,-0.47,-2.17,-2.91,,-2.18,,-0.73,,18,39.3,False,Cooling Down,False,False,,False,
+ABL,58,2026-05-07,2026-05-08,1,False,Rolling Over,6.4,-0.91,-0.94,-2.01,,,,,,,18,39.3,False,Rolling Over,False,,,,
+ABL,59,2026-05-21,2026-05-29,8,True,Rolling Over,3.48,-1.53,0.49,-0.49,,,,,,,25,14.3,False,Rolling Over,,,,,
+AKBL,1,2020-10-20,2020-10-28,8,False,Recovering,-2.46,3.43,1.37,-0.32,-2.63,23.11,-1.08,12.29,-1.55,10.82,7,72.7,True,Recovering,True,False,True,False,True
+AKBL,2,2020-11-05,2020-11-05,0,False,Falling,-0.42,-1.61,0.0,-1.9,3.06,29.26,2.38,12.94,0.68,16.32,8,68.2,True,Falling,False,True,True,True,True
+AKBL,3,2020-11-26,2021-02-08,74,False,Cooling Down,4.72,2.0,27.11,-0.58,17.29,31.09,5.81,11.84,11.48,19.25,12,50.0,False,Rolling Over,True,True,True,True,True
+AKBL,4,2021-02-15,2021-02-22,7,False,Cooling Down,5.72,0.94,-0.16,-6.67,-2.99,-19.39,-3.47,-1.5,0.48,-17.89,11,54.5,False,Rolling Over,False,False,False,True,False
+AKBL,5,2021-02-25,2021-03-01,4,False,Heating Up,3.4,3.89,-0.12,-1.85,-17.9,-9.79,-0.97,4.2,-16.93,-13.99,21,9.1,False,Stabilising,False,False,False,False,False
+AKBL,6,2021-03-15,2021-03-17,2,False,Stabilising,-2.08,-1.07,0.08,-0.46,-20.28,-7.41,0.63,8.3,-20.91,-15.71,19,18.2,False,Stabilising,True,False,False,False,False
+AKBL,7,2021-06-02,2021-07-02,30,False,Cooling Down,15.99,11.28,2.61,-1.89,2.39,-6.85,-1.6,-1.48,3.99,-5.37,5,81.8,True,Cooling Down,True,True,False,True,False
+AKBL,8,2021-07-23,2021-08-10,18,False,Recovering,-1.31,1.92,0.96,-1.83,-4.08,12.61,0.07,-4.8,-4.15,17.41,17,27.3,False,Recovering,True,False,True,False,True
+AKBL,9,2021-09-17,2021-09-24,7,False,Heating Up,4.88,13.66,-2.97,-3.53,-1.03,-4.95,-3.89,-8.06,2.86,3.11,2,95.5,True,Heating Up,False,False,False,True,True
+AKBL,10,2021-09-28,2021-10-05,7,False,Cooling Down,7.73,1.36,0.99,-3.59,1.03,-1.26,1.14,-2.43,-0.11,1.17,2,95.5,True,Recovering,True,True,False,False,True
+AKBL,11,2021-10-07,2021-10-07,0,False,Rolling Over,9.14,-2.45,0.0,-1.08,4.26,-1.34,6.08,0.02,-1.82,-1.36,2,95.5,True,Stabilising,False,True,False,False,False
+AKBL,12,2021-10-12,2021-10-12,0,False,Rolling Over,8.58,-0.13,0.0,-2.56,3.32,-0.09,6.26,3.47,-2.94,-3.56,1,100.0,True,Cooling Down,False,True,False,False,False
+AKBL,13,2021-10-14,2021-10-25,11,False,Cooling Down,13.41,2.12,4.45,-3.88,-2.42,-2.37,3.19,2.28,-5.61,-4.65,1,100.0,True,Cooling Down,True,False,False,False,False
+AKBL,14,2021-10-29,2021-10-29,0,False,Rolling Over,2.98,-0.22,0.0,-3.11,-0.61,1.17,-4.48,-2.53,3.87,3.7,1,100.0,True,Cooling Down,False,False,True,True,True
+AKBL,15,2021-11-02,2021-11-02,0,False,Rolling Over,2.67,-4.4,0.0,-0.13,2.95,0.48,-4.33,-4.72,7.28,5.2,1,100.0,True,Cooling Down,False,True,True,True,True
+AKBL,16,2021-11-04,2021-11-08,4,False,Rolling Over,0.92,-6.18,0.3,-1.21,-3.25,-0.39,-8.44,-4.52,5.19,4.13,1,100.0,True,Cooling Down,True,False,False,True,True
+AKBL,17,2021-11-17,2021-11-23,6,False,Cooling Down,2.26,0.57,2.21,-0.17,-1.09,-0.04,-3.96,0.31,2.87,-0.35,3,90.9,True,Rolling Over,True,False,False,True,False
+AKBL,18,2021-11-29,2021-12-01,2,False,Heating Up,2.22,3.12,-0.17,-2.0,-4.38,-15.03,-3.13,0.07,-1.25,-15.1,4,86.4,True,Cooling Down,False,False,False,False,False
+AKBL,19,2021-12-07,2021-12-07,0,False,Rolling Over,4.62,-1.83,0.0,-1.77,-3.85,-15.75,3.51,2.17,-7.36,-17.92,4,86.4,True,Falling,False,False,False,False,False
+AKBL,20,2022-01-14,2022-02-04,21,False,Heating Up,3.52,6.72,-0.64,-5.96,-2.51,-17.36,0.69,0.83,-3.2,-18.19,12,50.0,False,Cooling Down,False,False,False,False,False
+AKBL,21,2022-02-14,2022-02-14,0,False,Rolling Over,4.41,-1.65,0.0,-1.16,-20.15,-22.35,-4.99,-6.39,-15.16,-15.96,1,100.0,True,Cooling Down,False,False,False,False,False
+AKBL,22,2022-11-21,2022-12-14,23,False,Cooling Down,16.57,8.07,0.87,-0.96,-1.59,-0.96,-4.19,-2.44,2.6,1.48,2,95.5,True,Cooling Down,True,False,False,True,True
+AKBL,23,2023-01-09,2023-01-13,4,False,Recovering,-1.76,3.2,-0.92,-2.52,-3.15,-24.81,1.69,-2.02,-4.84,-22.79,8,68.2,True,Stabilising,False,False,False,False,False
+AKBL,24,2023-02-02,2023-02-03,1,False,Heating Up,1.87,3.98,-0.2,-0.6,-9.15,-23.42,-0.15,3.7,-9.0,-27.12,4,86.4,True,Heating Up,False,False,False,False,False
+AKBL,25,2023-02-07,2023-02-14,7,False,Heating Up,2.95,4.67,-0.24,-2.43,-8.88,-26.99,-0.45,-1.08,-8.43,-25.91,3,90.9,True,Heating Up,False,False,False,False,False
+AKBL,26,2023-10-30,2023-12-18,49,False,Cooling Down,18.21,3.38,32.06,-2.5,22.48,30.1,17.96,25.91,4.52,4.19,10,59.1,False,Cooling Down,True,True,True,True,True
+AKBL,27,2023-12-28,2024-01-05,8,False,Rolling Over,22.12,-4.91,4.52,-5.77,-0.26,-14.07,3.62,5.6,-3.88,-19.67,2,95.5,True,Rolling Over,True,False,False,False,False
+AKBL,28,2024-01-11,2024-01-12,1,False,Cooling Down,6.16,1.59,0.76,-2.58,-2.12,-7.96,-5.5,8.82,3.38,-16.78,7,72.7,True,Cooling Down,True,False,False,True,False
+AKBL,29,2024-01-16,2024-01-16,0,False,Rolling Over,9.02,-5.24,0.0,-1.18,1.35,0.97,-4.26,10.35,5.61,-9.38,5,81.8,True,Rolling Over,False,True,True,True,False
+AKBL,30,2024-01-18,2024-01-24,6,False,Rolling Over,6.77,-3.21,1.75,-3.87,-0.21,1.15,-4.34,12.19,4.13,-11.04,4,86.4,True,Rolling Over,True,False,True,True,False
+AKBL,31,2024-01-31,2024-02-09,9,False,Cooling Down,4.62,2.48,1.99,-4.24,-1.91,-7.09,5.4,16.01,-7.31,-23.1,2,95.5,True,Cooling Down,True,False,False,False,False
+AKBL,32,2024-02-14,2024-02-15,1,False,Recovering,-1.81,7.17,-1.48,-3.94,-6.57,-8.95,3.05,20.13,-9.62,-29.08,3,92.9,True,Heating Up,False,False,False,False,False
+AKBL,33,2024-02-20,2024-02-20,0,False,Recovering,-1.65,0.97,0.0,-2.22,-6.61,-7.16,8.33,24.38,-14.94,-31.54,7,78.6,True,Stabilising,False,False,False,False,False
+AKBL,34,2024-02-27,2024-02-27,0,False,Recovering,-0.92,1.16,0.0,-2.84,-14.43,-5.73,4.25,18.38,-18.68,-24.11,3,92.9,True,Heating Up,False,False,False,False,False
+AKBL,35,2024-02-29,2024-02-29,0,False,Falling,-1.1,-2.42,0.0,-1.37,-12.04,-6.11,3.97,17.5,-16.01,-23.61,7,78.6,True,Recovering,False,False,False,False,False
+AKBL,36,2024-03-14,2024-03-14,0,False,Rolling Over,1.98,-1.24,0.0,-0.99,3.37,-2.55,8.1,17.89,-4.73,-20.44,8,75.0,True,Rolling Over,False,True,False,False,False
+AKBL,37,2024-04-22,2024-04-29,7,False,Heating Up,9.07,22.99,-1.09,-5.13,-10.46,13.52,5.28,11.15,-15.74,2.37,5,85.7,True,Heating Up,False,False,True,False,True
+AKBL,38,2024-07-01,2024-08-02,32,False,Heating Up,1.6,11.87,21.97,-1.75,23.73,14.61,-1.19,3.13,24.92,11.48,2,96.4,True,Heating Up,True,True,True,True,True
+AKBL,39,2024-10-01,2024-10-31,30,False,Heating Up,2.55,12.67,8.42,-5.72,13.2,36.59,11.07,37.42,2.13,-0.83,22,25.0,False,Recovering,True,True,True,True,False
+AKBL,40,2024-11-07,2024-12-18,41,False,Rolling Over,5.98,-3.95,29.27,-2.16,36.72,51.86,16.99,23.49,19.73,28.37,15,50.0,False,Rolling Over,True,True,True,True,True
+AKBL,41,2024-12-20,2024-12-23,3,False,Rolling Over,27.03,-7.45,3.16,-6.98,8.43,7.28,5.78,6.84,2.65,0.44,16,46.4,False,Rolling Over,True,True,True,True,True
+AKBL,42,2024-12-30,2025-01-14,15,False,Rolling Over,30.36,-0.13,5.2,-4.91,5.81,3.14,-1.51,1.19,7.32,1.95,14,53.6,False,Cooling Down,True,True,True,True,True
+AKBL,43,2025-01-16,2025-01-21,5,False,Cooling Down,1.69,0.05,0.35,-3.91,7.46,-9.02,-1.54,2.69,9.0,-11.71,19,35.7,False,Rolling Over,True,True,False,True,False
+AKBL,44,2025-01-24,2025-01-28,4,False,Falling,-0.17,-2.93,-1.01,-4.13,0.02,-14.6,-0.48,0.51,0.5,-15.11,7,78.6,True,Heating Up,False,True,False,True,False
+AKBL,45,2025-01-30,2025-02-21,22,False,Cooling Down,8.56,1.59,8.51,-2.41,-0.77,4.22,0.04,0.8,-0.81,3.42,5,85.7,True,Cooling Down,True,False,True,False,True
+AKBL,46,2025-03-10,2025-03-13,3,False,Cooling Down,1.98,1.95,4.17,-1.24,-10.14,16.23,0.25,8.51,-10.39,7.72,2,96.4,True,Cooling Down,True,False,True,False,True
+AKBL,47,2025-05-13,2025-06-20,38,False,Heating Up,12.67,29.94,10.88,-5.14,7.95,63.03,3.01,22.61,4.94,40.42,5,85.7,True,Heating Up,True,True,True,True,True
+AKBL,48,2025-06-24,2025-10-29,127,False,Cooling Down,30.73,0.2,96.28,-2.52,39.19,64.71,14.05,27.76,25.14,36.95,11,64.3,False,Cooling Down,True,True,True,True,True
+AKBL,49,2025-10-31,2025-11-14,14,False,Cooling Down,18.45,3.73,0.37,-4.0,-0.68,25.28,3.12,16.68,-3.8,8.6,1,100.0,True,Rolling Over,True,False,True,False,True
+AKBL,50,2025-11-27,2025-12-02,5,False,Rolling Over,3.57,-2.12,0.37,-2.64,1.35,-6.83,4.25,1.4,-2.9,-8.23,25,14.3,False,Recovering,True,True,False,False,False
+AKBL,51,2025-12-17,2026-01-29,43,False,Recovering,-0.15,3.56,19.76,-3.23,20.49,-18.32,6.54,-9.66,13.95,-8.66,14,53.6,False,Cooling Down,True,True,False,True,False
+AKBL,52,2026-02-03,2026-02-06,3,False,Rolling Over,21.48,-4.86,-0.57,-3.73,-30.91,-22.03,-16.65,-12.28,-14.26,-9.75,4,89.3,True,Rolling Over,False,False,False,False,False
+AKBL,53,2026-04-24,2026-04-30,6,False,Cooling Down,17.52,2.48,-2.72,-9.54,3.1,,1.95,,1.15,,23,21.4,False,Cooling Down,False,True,,True,
+AKBL,54,2026-05-06,2026-05-11,5,False,Rolling Over,14.44,-2.15,1.44,-3.62,,,,,,,17,42.9,False,Rolling Over,True,,,,
+AKBL,55,2026-05-22,2026-05-29,7,True,Rolling Over,4.26,-3.53,7.4,-2.0,,,,,,,26,10.7,False,Falling,,,,,
+BAFL,1,2021-10-22,2021-11-10,19,False,Heating Up,10.51,10.65,-1.34,-5.29,-0.47,-0.3,2.0,0.41,-2.47,-0.71,1,100.0,True,Cooling Down,False,False,False,False,False
+BAFL,2,2021-11-19,2021-11-23,4,False,Cooling Down,10.13,0.83,-0.77,-3.06,-6.17,3.11,-5.57,-0.88,-0.6,3.99,2,95.5,True,Rolling Over,False,False,True,False,True
+BAFL,3,2021-12-10,2021-12-10,0,False,Recovering,-3.11,1.91,0.0,-3.49,-2.7,2.67,4.49,2.66,-7.19,0.01,4,86.4,True,Stabilising,False,False,True,False,True
+BAFL,4,2022-01-10,2022-02-11,32,False,Heating Up,1.45,3.87,4.93,-3.34,5.52,-3.98,-0.1,-4.27,5.62,0.29,10,59.1,False,Heating Up,True,True,False,True,True
+BAFL,5,2022-02-16,2022-02-23,7,False,Rolling Over,7.86,-2.0,2.02,-1.75,-4.33,-8.47,-3.74,-5.91,-0.59,-2.56,2,95.5,True,Rolling Over,True,False,False,False,False
+BAFL,6,2023-07-13,2023-08-18,36,False,Cooling Down,18.44,17.2,23.68,-2.95,22.51,10.55,6.98,6.35,15.53,4.2,12,50.0,False,Heating Up,True,True,True,True,True
+BAFL,7,2023-08-22,2023-08-28,6,False,Rolling Over,19.87,-2.39,2.89,-2.16,-3.26,-3.43,-3.18,21.05,-0.08,-24.48,1,100.0,True,Rolling Over,True,False,False,False,False
+BAFL,8,2023-09-08,2023-09-12,4,False,Rolling Over,3.32,-2.74,-0.59,-5.68,-6.27,13.4,3.71,36.82,-9.98,-23.42,5,81.8,True,Falling,False,False,True,False,False
+BAFL,9,2023-09-14,2023-09-14,0,False,Recovering,-1.08,0.92,0.0,-0.49,-1.14,28.08,8.42,44.61,-9.56,-16.53,5,81.8,True,Recovering,False,False,True,False,False
+BAFL,10,2023-10-13,2023-10-17,4,False,Recovering,-0.22,3.98,-0.9,-3.48,3.18,22.73,14.2,29.65,-11.02,-6.92,14,40.9,False,Cooling Down,False,True,True,False,False
+BAFL,11,2023-10-20,2023-10-25,5,False,Heating Up,3.36,4.49,-0.17,-2.32,-4.17,22.21,12.51,25.64,-16.68,-3.43,13,45.5,False,Cooling Down,False,False,True,False,False
+BAFL,12,2023-10-31,2023-11-13,13,False,Stabilising,-1.11,-0.71,4.85,-1.8,15.12,27.82,16.53,23.84,-1.41,3.98,8,68.2,True,Cooling Down,True,True,True,False,True
+BAFL,13,2023-11-22,2023-12-21,29,False,Rolling Over,3.27,-1.85,21.47,-2.06,21.85,26.44,7.3,3.88,14.55,22.56,19,18.2,False,Cooling Down,True,True,True,True,True
+BAFL,14,2023-12-28,2024-01-12,15,False,Rolling Over,22.42,-3.11,0.14,-4.93,2.84,10.2,3.62,5.6,-0.78,4.6,2,95.5,True,Rolling Over,True,True,True,False,True
+BAFL,15,2024-01-16,2024-01-18,2,False,Cooling Down,5.77,0.31,-0.35,-1.88,4.13,13.37,-4.26,10.35,8.39,3.02,5,81.8,True,Rolling Over,False,True,True,True,True
+BAFL,16,2024-01-22,2024-01-26,4,False,Recovering,-7.16,0.24,0.85,-2.19,2.79,16.42,-3.72,11.6,6.51,4.82,8,68.2,True,Recovering,True,True,True,True,True
+BAFL,17,2024-01-31,2024-02-09,9,False,Heating Up,2.39,2.71,0.71,-2.73,15.73,17.03,5.4,16.01,10.33,1.02,2,95.5,True,Cooling Down,True,True,True,True,True
+BAFL,18,2024-02-13,2024-02-21,8,False,Cooling Down,4.14,1.45,0.48,-2.02,14.41,16.49,5.84,21.73,8.57,-5.24,2,95.5,True,Rolling Over,True,True,True,True,False
+BAFL,19,2024-02-23,2024-03-12,18,False,Cooling Down,5.5,1.53,11.95,-2.58,3.66,24.93,3.72,20.96,-0.06,3.97,6,82.1,True,Recovering,True,True,True,False,True
+BAFL,20,2024-03-28,2024-03-28,0,False,Cooling Down,5.83,2.96,0.0,-0.11,12.67,30.42,5.24,19.5,7.43,10.92,22,25.0,False,Recovering,False,True,True,True,True
+BAFL,21,2024-04-03,2024-04-08,5,False,Cooling Down,6.28,1.26,0.95,-2.32,9.36,26.12,7.15,19.06,2.21,7.06,12,60.7,False,Cooling Down,True,True,True,True,True
+BAFL,22,2024-04-17,2024-05-31,44,False,Recovering,-3.28,2.88,11.86,-4.26,11.45,19.6,6.54,13.91,4.91,5.69,8,75.0,True,Heating Up,True,True,True,True,True
+BAFL,23,2024-06-13,2024-07-18,35,False,Rolling Over,3.62,-1.88,12.44,-8.09,12.44,0.1,7.39,4.1,5.05,-4.0,11,64.3,False,Rolling Over,True,True,True,True,False
+BAFL,24,2024-07-26,2024-07-26,0,False,Rolling Over,13.79,-1.21,0.0,-3.24,-12.58,1.69,0.69,10.81,-13.27,-9.12,2,96.4,True,Rolling Over,False,False,True,False,False
+BAFL,25,2024-10-07,2024-10-30,23,False,Cooling Down,9.0,3.56,2.85,-3.51,3.93,28.87,8.28,35.59,-4.35,-6.72,17,42.9,False,Recovering,True,True,True,False,False
+BAFL,26,2024-11-01,2024-11-20,19,False,Rolling Over,5.7,-0.72,-0.93,-4.63,21.09,22.18,11.55,24.94,9.54,-2.76,8,75.0,True,Cooling Down,False,True,True,True,False
+BAFL,27,2024-11-22,2024-12-12,20,False,Heating Up,7.59,8.1,11.0,-8.23,9.03,9.19,11.98,15.63,-2.95,-6.44,19,35.7,False,Heating Up,True,True,True,False,False
+BAFL,28,2024-12-17,2024-12-18,1,False,Rolling Over,19.13,-5.91,-1.88,-5.63,4.73,-6.07,-0.32,0.2,5.05,-6.27,22,25.0,False,Rolling Over,False,True,False,True,False
+BAFL,29,2024-12-20,2025-01-13,24,False,Rolling Over,17.86,-7.42,3.77,-6.41,5.31,-3.66,5.78,6.84,-0.47,-10.5,16,46.4,False,Rolling Over,True,True,False,False,False
+BAFL,30,2025-01-15,2025-01-24,9,False,Falling,-1.46,-1.59,1.54,-2.01,-6.67,-10.6,-1.69,1.33,-4.98,-11.93,23,21.4,False,Rolling Over,True,False,False,False,False
+BAFL,31,2025-06-10,2025-06-18,8,False,Heating Up,5.38,7.56,-3.73,-4.9,12.33,33.95,9.32,24.73,3.01,9.22,4,89.3,True,Cooling Down,False,True,True,True,True
+BAFL,32,2025-06-24,2025-07-30,36,False,Rolling Over,15.65,-1.38,15.49,-3.89,17.3,30.29,14.05,27.76,3.25,2.53,11,64.3,False,Cooling Down,True,True,True,True,True
+BAFL,33,2025-08-06,2025-08-07,1,False,Rolling Over,13.28,-2.05,1.32,-2.57,16.56,13.97,5.22,8.03,11.34,5.94,3,92.9,True,Cooling Down,True,True,True,True,True
+BAFL,34,2025-08-11,2025-09-12,32,False,Cooling Down,11.28,0.1,15.09,-1.94,18.22,18.04,6.56,9.77,11.66,8.27,3,92.9,True,Cooling Down,True,True,True,True,True
+BAFL,35,2025-09-18,2025-09-19,1,False,Rolling Over,13.86,-2.31,0.46,-0.9,9.8,2.09,4.11,6.72,5.69,-4.63,14,53.6,False,Cooling Down,True,True,True,True,False
+BAFL,36,2025-09-26,2025-10-10,14,False,Cooling Down,10.98,2.8,2.63,-4.86,0.94,0.19,0.65,5.64,0.29,-5.45,18,39.3,False,Cooling Down,True,True,True,True,False
+BAFL,37,2025-10-14,2025-10-22,8,False,Cooling Down,4.2,2.52,1.7,-4.55,-8.55,6.77,-4.6,12.72,-3.95,-5.95,5,85.7,True,Cooling Down,True,False,True,False,False
+BAFL,38,2025-10-31,2025-10-31,0,False,Rolling Over,7.92,-0.79,0.0,-6.04,-5.85,12.07,3.12,16.68,-8.97,-4.61,1,100.0,True,Rolling Over,False,False,True,False,False
+BAFL,39,2025-12-11,2025-12-12,1,False,Cooling Down,1.99,0.76,0.15,-0.6,13.09,4.27,9.39,-13.11,3.7,17.38,17,42.9,False,Cooling Down,True,True,True,True,True
+BAFL,40,2025-12-16,2025-12-19,3,False,Stabilising,-0.16,-0.01,0.58,-1.26,11.2,9.47,7.11,-9.4,4.09,18.87,20,32.1,False,Heating Up,True,True,True,True,True
+BAFL,41,2025-12-23,2026-02-09,48,False,Cooling Down,3.4,0.38,20.23,-0.9,17.66,2.8,9.33,-10.72,8.33,13.52,9,71.4,True,Cooling Down,True,True,True,True,True
+BAFL,42,2026-02-11,2026-02-11,0,False,Cooling Down,19.42,0.86,0.0,-2.62,-8.79,-53.7,-14.85,-7.72,6.06,-45.98,5,85.7,True,Rolling Over,False,False,False,True,False
+BAFL,43,2026-02-18,2026-02-18,0,False,Rolling Over,9.15,-2.57,0.0,-6.34,-15.87,-56.39,-13.73,-8.92,-2.14,-47.47,18,39.3,False,Stabilising,False,False,False,False,False
+BAFL,44,2026-02-25,2026-02-27,2,False,Rolling Over,6.24,-2.73,3.41,-3.87,-13.56,-52.39,-7.85,5.67,-5.71,-58.06,10,67.9,True,Stabilising,True,False,False,False,False
+BAFL,45,2026-04-16,2026-04-17,1,False,Heating Up,2.28,8.65,2.69,-0.45,-53.79,,-4.77,,-49.02,,19,35.7,False,Heating Up,True,False,,False,
+BAHL,1,2020-10-28,2020-10-29,1,False,Heating Up,4.54,7.86,-1.28,-3.08,0.16,16.28,-0.38,11.37,0.54,4.91,6,77.3,True,Recovering,False,True,True,True,True
+BAHL,2,2020-11-03,2020-11-18,15,False,Heating Up,5.7,10.37,0.55,-3.67,-2.19,11.67,2.93,14.77,-5.12,-3.1,7,72.7,True,Stabilising,True,False,True,False,False
+BAHL,3,2020-11-26,2020-11-27,1,False,Rolling Over,8.03,-1.41,-0.07,-0.82,8.36,3.86,5.81,11.84,2.55,-7.98,12,50.0,False,Rolling Over,False,True,True,True,False
+BAHL,4,2020-12-02,2020-12-29,27,False,Cooling Down,11.75,0.95,4.14,-3.46,-0.6,0.77,4.11,9.13,-4.71,-8.36,10,59.1,False,Heating Up,True,False,True,False,False
+BAHL,5,2021-01-04,2021-01-27,23,False,Rolling Over,6.41,-1.83,6.96,-1.37,3.53,-9.69,3.5,-0.22,0.03,-9.47,12,50.0,False,Cooling Down,True,True,False,True,False
+BAHL,6,2021-06-03,2021-06-21,18,False,Cooling Down,12.74,10.56,-2.2,-3.2,-4.0,-7.19,-0.61,-2.48,-3.39,-4.71,10,59.1,False,Cooling Down,False,False,False,False,False
+BAHL,7,2021-07-27,2021-07-27,0,False,Recovering,-3.93,0.13,0.0,-0.73,-0.84,1.33,-0.68,-4.42,-0.16,5.75,14,40.9,False,Recovering,False,False,True,False,True
+BAHL,8,2021-07-29,2021-07-29,0,False,Recovering,-3.41,1.9,0.0,-1.05,-2.05,0.73,0.11,-4.35,-2.16,5.08,12,50.0,False,Recovering,False,False,True,False,True
+BAHL,9,2021-08-02,2021-08-04,2,False,Recovering,-2.7,1.15,-0.34,-1.47,-3.54,-0.72,-0.08,-3.18,-3.46,2.46,10,59.1,False,Stabilising,False,False,False,False,True
+BAHL,10,2021-10-15,2021-10-15,0,False,Cooling Down,3.98,1.76,0.0,-1.86,0.67,-0.6,2.04,2.38,-1.37,-2.98,1,100.0,True,Cooling Down,False,True,False,False,False
+BAHL,11,2021-10-20,2021-11-08,19,False,Heating Up,1.56,2.29,2.4,-2.27,3.46,0.96,1.53,0.92,1.93,0.04,1,100.0,True,Cooling Down,True,True,True,True,True
+BAHL,12,2021-11-10,2021-11-10,0,False,Cooling Down,3.91,1.04,0.0,-1.38,1.0,6.3,-5.97,-1.1,6.97,7.4,2,95.5,True,Cooling Down,False,True,True,True,True
+BAHL,13,2021-11-15,2021-11-15,0,False,Cooling Down,2.44,0.04,0.0,-2.51,0.24,4.96,-6.25,0.23,6.49,4.73,3,90.9,True,Rolling Over,False,True,True,True,True
+BAHL,14,2021-11-17,2021-12-01,14,False,Cooling Down,5.84,0.76,1.68,-2.61,-3.81,6.72,-3.96,0.31,0.15,6.41,3,90.9,True,Rolling Over,True,False,True,True,True
+BAHL,15,2022-01-26,2022-03-07,40,False,Cooling Down,3.99,2.51,5.18,-1.87,6.47,-6.72,0.4,1.55,6.07,-8.27,5,81.8,True,Rolling Over,True,True,False,True,False
+BAHL,16,2022-03-10,2022-03-10,0,False,Cooling Down,4.81,0.17,0.0,-1.11,-8.97,-17.15,1.35,-4.19,-10.32,-12.96,6,77.3,True,Stabilising,False,False,False,False,False
+BAHL,17,2022-03-16,2022-03-16,0,False,Cooling Down,0.56,0.0,0.0,-2.2,-4.55,-22.24,5.7,-5.11,-10.25,-17.13,7,72.7,True,Stabilising,False,False,False,False,False
+BAHL,18,2023-08-23,2023-08-29,6,False,Cooling Down,24.69,4.08,-2.1,-7.92,-19.66,19.13,-3.22,20.34,-16.44,-1.21,2,95.5,True,Rolling Over,False,False,True,False,False
+BAHL,19,2023-10-26,2023-12-21,56,False,Cooling Down,41.7,25.55,25.01,-1.43,15.91,34.71,15.44,24.92,0.47,9.79,10,59.1,False,Cooling Down,True,True,True,True,True
+BAHL,20,2023-12-27,2024-01-18,22,False,Rolling Over,12.74,-8.89,4.42,-3.05,14.36,4.1,6.5,7.05,7.86,-2.95,3,90.9,True,Rolling Over,True,True,True,True,False
+BAHL,21,2024-01-22,2024-02-12,21,False,Recovering,-2.55,2.78,0.89,-4.99,-0.34,6.26,-3.72,11.6,3.38,-5.34,8,68.2,True,Recovering,True,False,True,True,False
+BAHL,22,2024-02-29,2024-03-06,6,False,Rolling Over,0.9,-1.36,3.17,-2.28,2.55,20.81,3.97,17.5,-1.42,3.31,7,78.6,True,Recovering,True,True,True,False,True
+BAHL,23,2024-03-08,2024-03-11,3,False,Recovering,-5.82,6.6,0.0,-1.18,5.41,16.68,5.82,11.34,-0.41,5.34,11,64.3,False,Recovering,False,True,True,False,True
+BAHL,24,2024-03-28,2024-06-04,68,False,Heating Up,1.15,3.84,17.27,-3.51,14.26,34.75,5.24,19.5,9.02,15.25,22,25.0,False,Recovering,True,True,True,True,True
+BAHL,25,2024-06-13,2024-07-19,36,False,Cooling Down,5.98,2.77,11.2,-5.48,13.36,-7.13,7.39,4.1,5.97,-11.23,11,64.3,False,Rolling Over,True,True,False,True,False
+BAHL,26,2024-07-24,2024-07-24,0,False,Rolling Over,15.1,-3.01,0.0,-1.65,-12.53,-5.3,-0.76,7.37,-11.77,-12.67,2,96.4,True,Rolling Over,False,False,False,False,False
+BAHL,27,2024-10-09,2024-11-04,26,False,Cooling Down,12.44,10.54,-1.2,-3.5,-3.5,23.36,7.41,36.71,-10.91,-13.35,10,67.9,True,Heating Up,False,False,True,False,False
+BAHL,28,2024-11-15,2024-11-15,0,False,Rolling Over,5.92,-1.83,0.0,-2.05,16.53,34.03,20.62,19.26,-4.09,14.77,20,32.1,False,Rolling Over,False,True,True,False,True
+BAHL,29,2024-11-22,2024-12-12,20,False,Heating Up,6.99,9.92,12.02,-8.78,3.68,18.7,11.98,15.63,-8.3,3.07,19,35.7,False,Heating Up,True,True,True,False,True
+BAHL,30,2024-12-17,2024-12-17,0,False,Rolling Over,19.27,-5.9,0.0,-4.8,4.71,11.96,-0.32,0.2,5.03,11.76,22,25.0,False,Rolling Over,False,True,True,True,True
+BAHL,31,2024-12-23,2024-12-24,1,False,Rolling Over,22.35,-2.93,-0.71,-6.08,5.13,11.28,0.98,3.55,4.15,7.73,15,50.0,False,Rolling Over,False,True,True,True,True
+BAHL,32,2024-12-27,2025-01-08,12,False,Rolling Over,21.0,-2.86,3.35,-2.73,5.41,12.94,3.17,4.57,2.24,8.37,19,35.7,False,Rolling Over,True,True,True,True,True
+BAHL,33,2025-01-10,2025-01-28,18,False,Recovering,-0.89,5.86,-0.62,-4.38,4.77,4.83,-1.65,1.23,6.42,3.6,17,42.9,False,Cooling Down,False,True,True,True,True
+BAHL,34,2025-01-30,2025-02-12,13,False,Cooling Down,13.5,5.06,1.21,-5.4,3.69,-0.2,0.04,0.8,3.65,-1.0,5,85.7,True,Cooling Down,True,True,False,True,False
+BAHL,35,2025-02-18,2025-03-26,36,False,Rolling Over,2.31,-3.22,3.26,-5.35,4.17,0.59,3.46,5.2,0.71,-4.61,1,100.0,True,Rolling Over,True,True,True,True,False
+BAHL,36,2025-04-04,2025-04-09,5,False,Cooling Down,5.42,0.33,-0.06,-5.71,-4.4,14.23,-3.95,10.01,-0.45,4.22,11,64.3,False,Cooling Down,False,False,True,False,True
+BAHL,37,2025-04-15,2025-04-15,0,False,Heating Up,0.13,0.4,0.0,-0.98,-3.46,20.78,1.51,16.89,-4.97,3.89,20,32.1,False,Recovering,False,False,True,False,True
+BAHL,38,2025-04-21,2025-04-23,2,False,Rolling Over,0.75,-0.49,0.02,-1.37,-2.97,16.09,0.5,17.08,-3.47,-0.99,21,28.6,False,Recovering,True,False,True,False,False
+BAHL,39,2025-05-23,2025-07-18,56,False,Heating Up,0.03,6.1,17.04,-1.92,10.87,44.47,3.07,25.3,7.8,19.17,11,64.3,False,Heating Up,True,True,True,True,True
+BAHL,40,2025-07-23,2025-07-25,2,False,Rolling Over,8.9,-1.37,-0.27,-2.59,23.55,22.33,7.17,18.09,16.38,4.24,7,78.6,True,Cooling Down,False,True,True,True,True
+BAHL,41,2025-07-29,2025-08-27,29,False,Rolling Over,7.39,-4.17,15.44,-0.76,15.44,30.98,6.91,20.72,8.53,10.26,4,89.3,True,Rolling Over,True,True,True,True,True
+BAHL,42,2025-08-29,2025-09-03,5,False,Cooling Down,11.87,4.68,1.15,-1.82,2.6,-3.89,9.18,9.07,-6.58,-12.96,11,64.3,False,Cooling Down,True,True,False,False,False
+BAHL,43,2025-09-05,2025-09-12,7,False,Rolling Over,14.3,-8.34,0.77,-1.9,12.31,-2.58,9.54,8.04,2.77,-10.62,7,78.6,True,Cooling Down,True,True,False,True,False
+BAHL,44,2025-09-18,2025-09-19,1,False,Cooling Down,10.12,2.48,-0.55,-0.95,6.32,-3.84,4.11,6.72,2.21,-10.56,14,53.6,False,Cooling Down,False,True,False,True,False
+BAHL,45,2025-09-23,2025-10-10,17,False,Rolling Over,4.22,-0.05,8.12,-2.6,14.0,-4.18,5.95,7.92,8.05,-12.1,16,46.4,False,Rolling Over,True,True,False,True,False
+BAHL,46,2025-10-14,2025-10-22,8,False,Cooling Down,4.6,0.37,5.8,-3.7,-9.53,-1.58,-4.6,12.72,-4.93,-14.3,5,85.7,True,Cooling Down,True,False,False,False,False
+BAHL,47,2026-01-05,2026-01-28,23,False,Cooling Down,9.2,6.16,0.12,-4.93,-1.49,-18.65,1.45,-16.66,-2.94,-1.99,2,96.4,True,Cooling Down,True,False,False,False,False
+BAHL,48,2026-02-03,2026-02-04,1,False,Rolling Over,6.97,-0.24,1.03,-1.57,-21.73,-15.34,-16.65,-12.28,-5.08,-3.06,4,89.3,True,Rolling Over,True,False,False,False,False
+BIPL,1,2020-10-20,2020-10-21,1,False,Recovering,-11.85,4.0,-0.86,-3.94,-5.86,35.06,-1.08,12.29,-4.78,22.77,7,72.7,True,Recovering,False,False,True,False,True
+BIPL,2,2020-10-26,2020-10-26,0,False,Recovering,-8.65,2.71,0.0,-0.39,-4.39,34.86,-4.75,9.14,0.36,25.72,10,59.1,False,Recovering,False,False,True,True,True
+BIPL,3,2020-11-11,2020-11-16,5,False,Recovering,-2.36,7.83,-5.96,-9.22,-2.23,25.88,2.44,13.86,-4.67,12.02,8,68.2,True,Recovering,False,False,True,False,True
+BIPL,4,2020-11-20,2020-11-20,0,False,Recovering,-1.37,4.15,0.0,-1.49,12.74,30.25,8.84,16.62,3.9,13.63,16,31.8,False,Falling,False,True,True,True,True
+BIPL,5,2020-11-25,2021-02-02,69,False,Rolling Over,3.43,-4.66,32.52,-4.1,20.21,27.83,6.71,14.49,13.5,13.34,12,50.0,False,Rolling Over,True,True,True,True,True
+BIPL,6,2021-02-08,2021-02-11,3,False,Rolling Over,9.99,-0.94,-0.58,-1.89,-22.97,-18.53,-3.58,-4.62,-19.39,-13.91,12,50.0,False,Rolling Over,False,False,False,False,False
+BIPL,7,2021-09-22,2021-11-15,54,False,Heating Up,25.4,28.71,4.7,-8.5,4.55,0.76,0.49,-4.09,4.06,4.85,2,95.5,True,Heating Up,True,True,True,True,True
+BIPL,8,2021-11-17,2021-11-25,8,False,Cooling Down,3.01,0.57,1.5,-2.57,-3.93,-4.64,-3.96,0.31,0.03,-4.95,3,90.9,True,Rolling Over,True,False,False,True,False
+BIPL,9,2021-12-15,2021-12-15,0,False,Stabilising,-3.37,-0.59,0.0,-3.42,-3.86,-18.28,3.49,-2.98,-7.35,-15.3,4,86.4,True,Stabilising,False,False,False,False,False
+BIPL,10,2021-12-17,2021-12-17,0,False,Recovering,-5.35,2.99,0.0,-1.49,-5.36,-20.83,4.24,-0.56,-9.6,-20.27,4,86.4,True,Stabilising,False,False,False,False,False
+BIPL,11,2021-12-21,2021-12-22,1,False,Stabilising,-4.93,-0.37,0.15,-1.63,-5.93,-21.85,3.01,-1.04,-8.94,-20.81,5,81.8,True,Stabilising,True,False,False,False,False
+BIPL,12,2022-02-04,2022-02-09,5,False,Heating Up,2.27,7.66,-1.04,-3.63,-17.63,-6.81,-2.96,-5.48,-14.67,-1.33,8,68.2,True,Cooling Down,False,False,False,False,False
+BIPL,13,2022-04-19,2022-05-06,17,False,Cooling Down,16.01,5.74,1.86,-0.08,-8.68,-18.45,-9.46,-13.5,0.78,-4.95,20,13.6,False,Recovering,True,False,False,True,False
+BIPL,14,2022-05-12,2022-05-12,0,False,Rolling Over,17.77,-1.92,0.0,-4.22,-6.18,-12.82,-2.71,-1.53,-3.47,-11.29,9,63.6,False,Falling,False,False,False,False,False
+BIPL,15,2022-11-23,2022-12-19,26,False,Cooling Down,41.93,32.11,-3.68,-8.86,-6.66,-14.16,-8.25,-3.62,1.59,-10.54,6,77.3,True,Heating Up,False,False,False,True,False
+BIPL,16,2022-12-22,2022-12-22,0,False,Rolling Over,22.95,-1.22,0.0,-1.86,-9.02,-25.48,-2.53,4.66,-6.49,-30.14,7,72.7,True,Stabilising,False,False,False,False,False
+BIPL,17,2022-12-27,2022-12-27,0,False,Rolling Over,18.15,-3.73,0.0,-2.28,-9.55,-30.8,-1.88,2.7,-7.67,-33.5,7,72.7,True,Stabilising,False,False,False,False,False
+BIPL,18,2023-01-13,2023-01-13,0,False,Recovering,-4.76,4.94,0.0,-7.99,-7.28,-30.6,3.52,-1.21,-10.8,-29.39,7,72.7,True,Stabilising,False,False,False,False,False
+BIPL,19,2023-05-10,2023-06-20,41,False,Cooling Down,52.7,40.74,10.09,-6.68,8.58,12.84,2.6,15.47,5.98,-2.63,1,100.0,True,Rolling Over,True,True,True,True,False
+BIPL,20,2023-06-26,2023-07-14,18,False,Rolling Over,7.2,-2.65,8.54,-5.45,13.14,-1.45,13.61,11.96,-0.47,-13.41,19,18.2,False,Recovering,True,True,False,False,False
+BIPL,21,2023-07-18,2023-07-31,13,False,Rolling Over,18.65,-5.53,4.51,-2.42,-1.63,-3.15,7.37,9.96,-9.0,-13.11,8,68.2,True,Cooling Down,True,False,False,False,False
+BIPL,22,2023-08-15,2023-08-16,1,False,Rolling Over,3.32,-1.08,-3.05,-4.36,-23.43,23.27,-6.3,11.73,-17.13,11.54,3,90.9,True,Rolling Over,False,False,True,False,True
+BIPL,23,2023-10-03,2023-11-24,52,False,Heating Up,12.94,25.76,22.69,-7.98,10.68,17.9,11.04,32.71,-0.36,-14.81,11,54.5,False,Recovering,True,True,True,False,False
+BIPL,24,2023-12-06,2023-12-18,12,False,Rolling Over,9.64,-1.68,3.04,-4.23,2.14,12.88,1.13,3.18,1.01,9.7,14,40.9,False,Cooling Down,True,True,True,True,True
+BIPL,25,2023-12-28,2024-02-09,43,False,Rolling Over,2.34,-0.14,14.57,-6.59,16.11,-6.35,3.62,5.6,12.49,-11.95,2,95.5,True,Rolling Over,True,True,False,True,False
+BIPL,26,2024-02-15,2024-02-15,0,False,Cooling Down,13.12,0.12,0.0,-3.34,-7.72,-8.17,6.63,22.8,-14.35,-30.97,1,100.0,True,Heating Up,False,False,False,False,False
+BIPL,27,2024-02-19,2024-02-27,8,False,Cooling Down,14.56,1.19,6.74,-5.36,-7.55,-9.34,7.33,24.19,-14.88,-33.53,1,100.0,True,Rolling Over,True,False,False,False,False
+BIPL,28,2024-04-19,2024-04-24,5,False,Heating Up,2.78,14.65,-3.65,-4.14,-8.56,-9.22,5.89,11.39,-14.45,-20.61,8,75.0,True,Heating Up,False,False,False,False,False
+BIPL,29,2024-07-05,2024-07-18,13,False,Cooling Down,9.45,8.77,-2.42,-5.73,-11.63,-16.05,-3.77,3.13,-7.86,-19.18,1,100.0,True,Cooling Down,False,False,False,False,False
+BIPL,30,2024-08-27,2024-09-04,8,False,Recovering,-3.18,10.1,-0.88,-4.88,-11.53,-7.62,5.33,22.36,-16.86,-29.98,25,14.3,False,Recovering,False,False,False,False,False
+BIPL,31,2024-10-21,2024-10-24,3,False,Heating Up,9.26,15.47,-3.14,-4.79,-6.36,-1.48,10.39,33.4,-16.75,-34.88,5,85.7,True,Cooling Down,False,False,False,False,False
+BIPL,32,2024-11-12,2024-11-19,7,False,Cooling Down,9.07,4.41,-0.4,-1.93,6.52,6.34,16.81,18.32,-10.29,-11.98,18,39.3,False,Rolling Over,False,True,True,False,False
+BIPL,33,2024-11-21,2024-11-25,4,False,Recovering,-4.19,0.91,3.52,-1.22,-0.63,13.31,9.19,14.81,-9.82,-1.5,27,7.1,False,Recovering,True,False,True,False,False
+BIPL,34,2024-11-28,2024-12-13,15,False,Recovering,-1.37,0.86,5.7,-3.99,-0.94,14.93,11.26,14.24,-12.2,0.69,11,64.3,False,Cooling Down,True,False,True,False,True
+BIPL,35,2024-12-30,2025-01-06,7,False,Rolling Over,3.58,-3.01,0.61,-5.95,-0.52,-9.01,-1.51,1.19,0.99,-10.2,14,53.6,False,Cooling Down,True,False,False,True,False
+BIPL,36,2025-01-14,2025-01-21,7,False,Cooling Down,1.35,1.18,-1.68,-2.75,2.8,-9.55,-1.64,1.72,4.44,-11.27,23,21.4,False,Heating Up,False,True,False,True,False
+BIPL,37,2025-01-24,2025-01-24,0,False,Recovering,-4.25,2.59,0.0,-1.17,11.43,-13.3,-0.48,0.51,11.91,-13.81,7,78.6,True,Heating Up,False,True,False,True,False
+BIPL,38,2025-01-30,2025-02-26,27,False,Rolling Over,2.6,-0.65,12.62,-1.22,-0.04,-12.36,0.04,0.8,-0.08,-13.16,5,85.7,True,Cooling Down,True,False,False,False,False
+BIPL,39,2025-06-17,2025-07-31,44,False,Cooling Down,48.99,43.6,15.74,-8.26,21.15,25.6,11.45,28.74,9.7,-3.14,9,71.4,True,Cooling Down,True,True,True,True,False
+BIPL,40,2025-08-04,2025-08-04,0,False,Rolling Over,23.7,-1.51,0.0,-1.09,1.92,-10.48,6.28,12.71,-4.36,-23.19,3,92.9,True,Cooling Down,False,True,False,False,False
+BIPL,41,2025-08-06,2025-08-06,0,False,Cooling Down,9.85,0.62,0.0,-0.86,2.63,-8.91,5.22,8.03,-2.59,-16.94,3,92.9,True,Cooling Down,False,True,False,False,False
+BIPL,42,2025-08-11,2025-08-22,11,False,Recovering,-4.16,1.06,6.29,-4.84,8.3,-7.6,6.56,9.77,1.74,-17.37,3,92.9,True,Cooling Down,True,True,False,True,False
+BIPL,43,2025-08-27,2025-08-28,1,False,Rolling Over,1.04,-4.31,0.64,-0.78,-1.11,-14.19,7.28,9.99,-8.39,-24.18,14,53.6,False,Rolling Over,True,False,False,False,False
+BIPL,44,2025-09-05,2025-09-12,7,False,Cooling Down,9.4,1.7,-2.69,-5.2,12.77,-16.63,9.54,8.04,3.23,-24.67,7,78.6,True,Cooling Down,False,True,False,True,False
+BIPL,45,2025-09-16,2025-09-16,0,False,Cooling Down,7.03,5.01,0.0,-1.49,8.72,-8.3,5.95,8.5,2.77,-16.8,9,71.4,True,Rolling Over,False,True,False,True,False
+BIPL,46,2025-09-18,2025-09-22,4,False,Cooling Down,6.43,3.71,0.78,-1.86,11.14,-4.46,4.11,6.72,7.03,-11.18,14,53.6,False,Cooling Down,True,True,False,True,False
+BIPL,47,2025-09-26,2025-10-10,14,False,Recovering,-5.51,0.75,7.04,-2.39,-6.9,-7.53,0.65,5.64,-7.55,-13.17,18,39.3,False,Cooling Down,True,False,False,False,False
+BIPL,48,2025-10-14,2025-10-22,8,False,Rolling Over,14.17,-0.4,-0.61,-4.85,-22.3,-13.14,-4.6,12.72,-17.7,-25.86,5,85.7,True,Cooling Down,False,False,False,False,False
+BIPL,49,2026-01-07,2026-01-09,2,False,Cooling Down,11.1,3.57,-2.28,-3.42,-2.92,-28.66,0.7,-18.93,-3.62,-9.73,2,96.4,True,Cooling Down,False,False,False,False,False
+BIPL,50,2026-01-14,2026-01-16,2,False,Cooling Down,4.39,1.61,-0.15,-0.6,-5.79,-21.73,-1.13,-12.04,-4.66,-9.69,2,96.4,True,Cooling Down,False,False,False,False,False
+BOK,1,2020-12-22,2021-01-06,15,False,Recovering,-2.29,3.57,3.45,-8.21,3.45,13.79,6.46,4.24,-3.01,9.55,11,54.5,False,Cooling Down,True,True,True,False,True
+BOK,2,2021-01-08,2021-01-21,13,False,Cooling Down,12.02,7.14,0.0,-3.33,0.0,11.67,2.34,-2.74,,14.41,11,54.5,False,Cooling Down,False,False,True,,True
+BOK,3,2021-01-25,2021-02-08,14,False,Cooling Down,7.14,0.0,0.0,-3.6,3.33,10.2,-0.78,-1.69,4.11,11.89,6,77.3,True,Cooling Down,False,True,True,True,True
+BOK,4,2021-02-10,2021-02-24,14,False,Cooling Down,3.52,0.07,2.6,-3.0,19.65,13.06,-6.33,-3.15,25.98,16.21,14,40.9,False,Rolling Over,True,True,True,True,True
+BOK,5,2021-02-26,2021-03-18,20,False,Cooling Down,3.33,3.33,17.55,-6.06,6.97,7.74,-3.12,5.07,10.09,2.67,20,13.6,False,Stabilising,True,True,True,True,True
+BOK,6,2021-04-15,2021-04-21,6,False,Cooling Down,8.39,1.33,1.13,-5.95,0.89,-13.63,1.51,5.76,-0.62,-19.39,19,18.2,False,Stabilising,True,True,False,False,False
+BOK,7,2021-04-23,2021-04-26,3,False,Recovering,-8.42,2.71,-0.41,-0.41,0.18,-15.06,7.13,5.83,-6.95,-20.89,20,13.6,False,Recovering,False,True,False,False,False
+BOK,8,2021-05-17,2021-05-21,4,False,Falling,-0.29,-0.41,-0.18,-6.65,-1.18,-15.0,6.4,3.22,-7.58,-18.22,4,86.4,True,Cooling Down,False,False,False,False,False
+BOK,9,2021-05-25,2021-05-26,1,False,Cooling Down,2.23,2.11,0.12,-0.88,-0.88,-16.81,3.64,3.3,-4.52,-20.11,9,63.6,False,Cooling Down,True,False,False,False,False
+BOK,10,2021-05-28,2021-06-03,6,False,Heating Up,1.8,2.97,0.06,-2.59,-5.89,-13.3,1.01,0.02,-6.9,-13.32,5,81.8,True,Cooling Down,True,False,False,False,False
+BOK,11,2021-06-07,2021-06-07,0,False,Cooling Down,2.42,2.42,0.0,0.0,-9.11,-12.43,-1.81,-2.87,-7.3,-9.56,16,31.8,False,Cooling Down,False,False,False,False,False
+BOK,12,2021-06-14,2021-06-14,0,False,Cooling Down,3.03,0.06,0.0,-2.35,-11.18,-11.18,-2.62,-2.99,-8.56,-8.19,18,22.7,False,Rolling Over,False,False,False,False,False
+BOK,13,2021-06-23,2021-06-24,1,False,Cooling Down,1.32,0.12,-0.71,-6.38,-14.01,-15.6,-0.48,-4.81,-13.53,-10.79,20,13.6,False,Cooling Down,False,False,False,False,False
+BOK,14,2021-12-24,2021-12-28,4,False,Recovering,-1.9,3.2,0.97,-2.97,-2.52,0.19,2.04,-2.47,-4.56,2.66,5,81.8,True,Recovering,True,False,True,False,True
+BOK,15,2022-01-04,2022-01-04,0,False,Heating Up,6.6,7.6,0.0,-8.01,-3.06,-6.44,0.62,-2.32,-3.68,-4.12,17,27.3,False,Recovering,False,False,False,False,False
+BOK,16,2022-01-07,2022-01-07,0,False,Rolling Over,7.63,-4.07,0.0,-6.01,0.0,-4.75,1.24,-3.18,,-1.57,11,54.5,False,Heating Up,False,False,False,,False
+BOK,17,2022-01-17,2022-01-17,0,False,Cooling Down,2.27,1.94,0.0,-10.13,1.27,-5.57,0.07,1.74,1.2,-7.31,15,36.4,False,Cooling Down,False,True,False,True,False
+BOK,18,2022-01-19,2022-01-24,5,False,Stabilising,-3.19,-0.06,2.84,-10.46,0.0,-3.16,1.9,3.68,,-6.84,5,81.8,True,Cooling Down,True,False,False,,False
+BOK,19,2022-01-27,2022-01-31,4,False,Cooling Down,5.27,1.87,0.95,-6.65,-0.57,-8.17,-2.78,1.04,2.21,-9.21,2,95.5,True,Rolling Over,True,False,False,True,False
+BOK,20,2022-02-04,2022-02-09,5,False,Cooling Down,1.03,1.03,0.83,-8.43,-0.32,-4.92,-2.96,-5.48,2.64,0.56,8,68.2,True,Cooling Down,True,False,False,True,True
+BOK,21,2022-02-11,2022-02-16,5,False,Recovering,-2.67,3.71,2.11,-4.15,-2.68,-3.64,-5.26,-7.4,2.58,3.76,4,86.4,True,Cooling Down,True,False,False,True,True
+BOK,22,2022-02-28,2022-03-01,1,False,Rolling Over,1.29,-1.51,-1.27,-9.11,-4.46,-0.51,-0.05,-3.11,-4.41,2.6,10,59.1,False,Stabilising,False,False,False,False,True
+BOK,23,2022-03-03,2022-03-03,0,False,Cooling Down,6.08,0.64,0.0,-7.01,-4.71,-4.46,1.41,-7.21,-6.12,2.75,8,68.2,True,Falling,False,False,False,False,True
+BOK,24,2022-03-07,2022-03-09,2,False,Heating Up,0.71,4.69,-0.7,-6.79,-4.1,-10.83,1.53,-3.93,-5.63,-6.9,5,81.8,True,Stabilising,False,False,False,False,False
+BOK,25,2024-03-20,2024-03-20,0,False,Heating Up,23.85,34.03,0.0,-0.94,-20.67,-20.13,8.56,18.57,-29.23,-38.7,25,14.3,False,Stabilising,False,False,False,False,False
+BOK,26,2024-08-02,2024-08-05,3,False,Rolling Over,13.55,-0.55,2.13,0.0,-2.29,-5.14,0.07,16.16,-2.36,-21.3,3,92.9,True,Rolling Over,True,False,False,False,False
+BOK,27,2024-08-07,2024-08-08,1,False,Cooling Down,14.35,0.24,0.0,-10.51,-4.39,-7.45,2.27,17.82,-6.66,-25.27,10,67.9,True,Rolling Over,False,False,False,False,False
+BOK,28,2024-08-15,2024-08-19,4,False,Cooling Down,7.0,3.85,-1.5,-9.38,-0.95,2.36,1.17,19.44,-2.12,-17.08,9,71.4,True,Rolling Over,False,False,True,False,False
+BOK,29,2024-08-21,2024-08-21,0,False,Cooling Down,11.89,6.0,0.0,-6.9,-7.84,-0.16,4.09,20.36,-11.93,-20.52,22,25.0,False,Recovering,False,False,False,False,False
+BOK,30,2024-08-26,2024-08-26,0,False,Recovering,-1.95,0.72,0.0,-1.99,-6.77,-0.24,3.71,22.0,-10.48,-22.24,23,21.4,False,Recovering,False,False,False,False,False
+BOK,31,2024-09-02,2024-09-02,0,False,Stabilising,-2.83,-1.12,0.0,-8.82,-7.61,16.42,4.5,20.81,-12.11,-4.39,22,25.0,False,Stabilising,False,False,True,False,False
+BOK,32,2024-09-12,2024-09-12,0,False,Cooling Down,2.86,2.53,0.0,-11.06,-1.99,19.25,8.18,38.01,-10.17,-18.76,27,7.1,False,Stabilising,False,False,True,False,False
+BOK,33,2024-10-11,2024-10-14,3,False,Cooling Down,7.25,4.29,-4.27,-9.48,-2.8,12.67,9.13,36.0,-11.93,-23.33,8,75.0,True,Heating Up,False,False,True,False,False
+BOK,34,2024-11-11,2024-11-19,8,False,Cooling Down,11.79,9.16,3.7,-6.0,15.4,4.7,17.43,19.53,-2.03,-14.83,20,32.1,False,Rolling Over,True,True,True,False,False
+BOK,35,2024-11-21,2024-12-13,22,False,Heating Up,3.59,4.17,11.62,-5.08,6.23,14.46,9.19,14.81,-2.96,-0.35,27,7.1,False,Recovering,True,True,True,False,False
+BOK,36,2024-12-24,2025-01-06,13,False,Rolling Over,13.46,-2.68,0.0,-11.72,-4.07,7.31,0.92,5.65,-4.99,1.66,14,53.6,False,Rolling Over,False,False,True,False,True
+BOK,37,2025-01-10,2025-01-10,0,False,Cooling Down,7.7,1.62,0.0,-2.91,-4.16,-0.83,-1.65,1.23,-2.51,-2.06,17,42.9,False,Cooling Down,False,False,False,False,False
+BOK,38,2025-01-30,2025-01-31,1,False,Recovering,-0.14,0.94,-0.07,-2.72,-1.57,0.43,0.04,0.8,-1.61,-0.37,5,85.7,True,Cooling Down,False,False,True,False,False
+BOK,39,2025-02-12,2025-02-27,15,False,Recovering,-3.86,4.64,3.87,-7.39,12.11,4.01,1.03,4.97,11.08,-0.96,2,96.4,True,Cooling Down,True,True,True,True,False
+BOK,40,2025-03-07,2025-03-21,14,False,Rolling Over,2.52,-6.86,9.12,-2.88,1.4,12.9,1.51,8.7,-0.11,4.2,4,89.3,True,Cooling Down,True,True,True,False,True
+BOK,41,2025-03-25,2025-03-25,0,False,Cooling Down,10.79,1.93,0.0,-2.88,-8.5,12.75,-2.2,6.64,-6.3,6.11,22,25.0,False,Stabilising,False,False,True,False,True
+BOK,42,2025-05-19,2025-07-28,70,False,Heating Up,1.02,6.13,20.81,-8.05,9.4,18.46,0.26,22.39,9.14,-3.93,12,60.7,False,Recovering,True,True,True,True,False
+BOK,43,2025-07-31,2025-07-31,0,False,Rolling Over,8.59,-0.95,0.0,-1.69,45.82,96.1,6.62,17.16,39.2,78.94,7,78.6,True,Rolling Over,False,True,True,True,True
+BOK,44,2025-08-04,2025-08-05,1,False,Rolling Over,8.21,-1.55,-0.51,-0.79,49.58,93.25,6.28,12.71,43.3,80.54,3,92.9,True,Cooling Down,False,True,True,True,True
+BOK,45,2025-08-07,2025-08-08,1,False,Cooling Down,8.68,0.44,-1.05,-9.03,40.75,85.24,5.93,10.97,34.82,74.27,5,85.7,True,Cooling Down,False,True,True,True,True
+BOK,46,2025-08-12,2025-08-13,1,False,Recovering,-1.61,5.34,1.47,-0.68,45.49,89.01,6.81,8.55,38.68,80.46,4,89.3,True,Cooling Down,True,True,True,True,True
+BOK,47,2025-08-19,2025-08-20,1,False,Heating Up,1.56,2.64,-1.42,-3.61,40.2,81.65,4.28,5.41,35.92,76.24,3,92.9,True,Cooling Down,False,True,True,True,True
+BOK,48,2025-08-25,2025-10-10,46,False,Heating Up,8.33,8.51,79.13,-8.62,77.49,74.41,5.87,8.65,71.62,65.76,2,96.4,True,Cooling Down,True,True,True,True,True
+BOK,49,2025-10-14,2025-10-27,13,False,Cooling Down,31.19,0.46,-0.69,-5.44,-4.98,5.24,-4.6,12.72,-0.38,-7.48,5,85.7,True,Cooling Down,False,False,True,False,False
+BOK,50,2025-11-13,2025-11-17,4,False,Recovering,-3.91,1.82,-0.53,-2.95,-5.38,10.97,4.93,13.5,-10.31,-2.53,20,32.1,False,Recovering,False,False,True,False,False
+BOK,51,2025-11-19,2025-11-19,0,False,Recovering,-5.25,1.19,0.0,-0.8,-2.74,11.2,4.99,10.71,-7.73,0.49,21,28.6,False,Stabilising,False,False,True,False,True
+BOK,52,2025-12-12,2025-12-12,0,False,Recovering,-2.29,1.14,0.0,-2.53,20.2,6.42,7.37,-8.06,12.83,14.48,25,14.3,False,Recovering,False,True,True,True,True
+BOK,53,2025-12-16,2025-12-19,3,False,Recovering,-1.29,1.45,0.88,-3.32,23.33,3.65,7.11,-9.4,16.22,13.05,20,32.1,False,Heating Up,True,True,True,True,True
+BOK,54,2025-12-23,2025-12-23,0,False,Recovering,-1.15,1.42,0.0,-2.56,16.68,-0.55,9.33,-10.72,7.35,10.17,9,71.4,True,Cooling Down,False,True,False,True,True
+BOK,55,2025-12-26,2026-02-11,47,False,Recovering,-0.88,4.76,11.77,-4.51,10.71,-0.09,9.73,-8.17,0.98,8.08,7,78.6,True,Cooling Down,True,True,False,True,True
+BOK,56,2026-04-23,2026-04-24,1,False,Heating Up,1.17,3.69,-0.11,-7.94,-7.04,,1.51,,-8.55,,21,28.6,False,Cooling Down,False,False,,False,
+BOP,1,2023-11-27,2023-12-22,25,False,Cooling Down,25.69,13.0,31.55,-2.38,13.49,23.02,-1.07,3.52,14.56,19.5,14,40.9,False,Cooling Down,True,True,True,True,True
+BOP,2,2023-12-27,2024-01-12,16,False,Cooling Down,42.12,4.3,3.65,-12.2,1.58,-13.95,6.5,7.05,-4.92,-21.0,3,90.9,True,Rolling Over,True,True,False,False,False
+BOP,3,2024-01-23,2024-01-23,0,False,Rolling Over,14.39,-1.38,0.0,-3.42,-3.73,-17.7,-3.94,11.79,0.21,-29.49,5,81.8,True,Recovering,False,False,False,True,False
+BOP,4,2024-02-06,2024-02-07,1,False,Recovering,-4.22,1.44,0.94,-1.26,-2.99,-22.36,2.91,13.8,-5.9,-36.16,2,95.5,True,Cooling Down,True,False,False,False,False
+BOP,5,2024-02-14,2024-02-14,0,False,Recovering,-8.21,5.64,0.0,-1.73,-5.49,-19.47,3.05,20.13,-8.54,-39.6,3,92.9,True,Heating Up,False,False,False,False,False
+BOP,6,2024-02-20,2024-02-21,1,False,Recovering,-9.39,0.8,-0.48,-6.54,-2.07,-20.26,8.33,24.38,-10.4,-44.64,7,78.6,True,Stabilising,False,False,False,False,False
+BOP,7,2024-02-23,2024-03-04,10,False,Recovering,-4.15,3.31,1.28,-1.92,-12.98,-19.71,3.72,20.96,-16.7,-40.67,6,82.1,True,Recovering,True,False,False,False,False
+BOP,8,2024-03-11,2024-03-11,0,False,Stabilising,-1.27,-0.48,0.0,-1.45,-12.06,-25.56,6.93,10.39,-18.99,-35.95,14,53.6,False,Recovering,False,False,False,False,False
+BOP,9,2024-03-15,2024-03-18,3,False,Rolling Over,0.32,-1.58,0.16,-1.45,-10.13,-19.29,8.44,21.58,-18.57,-40.87,22,25.0,False,Falling,True,False,False,False,False
+BOP,10,2024-10-21,2025-01-16,87,False,Cooling Down,6.08,4.04,87.62,-0.92,23.66,93.9,10.39,33.4,13.27,60.5,5,85.7,True,Cooling Down,True,True,True,True,True
+BOP,11,2025-01-24,2025-01-24,0,False,Recovering,-1.26,1.19,0.0,-2.55,24.39,-4.9,-0.48,0.51,24.87,-5.41,7,78.6,True,Heating Up,False,True,False,True,False
+BOP,12,2025-01-31,2025-02-04,4,False,Cooling Down,8.48,0.2,0.0,-3.07,23.74,-0.99,-1.99,-0.13,25.73,-0.86,2,96.4,True,Cooling Down,False,True,False,True,False
+BOP,13,2025-02-10,2025-03-14,32,False,Cooling Down,8.44,0.69,27.33,-6.52,27.63,-1.56,2.67,5.32,24.96,-6.88,1,100.0,True,Rolling Over,True,True,False,True,False
+BOP,14,2025-04-14,2025-04-14,0,False,Recovering,-9.77,2.43,0.0,-1.32,-12.32,15.14,1.88,15.39,-14.2,-0.25,23,21.4,False,Recovering,False,False,True,False,False
+BOP,15,2025-07-02,2025-10-29,119,False,Cooling Down,15.75,13.03,221.32,-3.9,18.89,131.2,6.19,22.2,12.7,109.0,5,85.7,True,Cooling Down,True,True,True,True,True
+BOP,16,2025-10-31,2025-11-04,4,False,Rolling Over,32.41,-2.96,0.23,-4.37,-2.33,18.52,3.12,16.68,-5.45,1.84,1,100.0,True,Rolling Over,True,False,True,False,True
+BOP,17,2025-11-07,2025-11-10,3,False,Rolling Over,30.31,-5.54,1.95,-2.4,-2.17,10.16,4.69,15.96,-6.86,-5.8,2,96.4,True,Rolling Over,True,False,True,False,False
+BOP,18,2025-11-12,2025-11-14,2,False,Rolling Over,18.02,-5.15,-0.17,-2.45,0.97,13.99,7.12,16.4,-6.15,-2.41,5,85.7,True,Falling,False,True,True,False,False
+BOP,19,2025-12-01,2025-12-04,3,False,Stabilising,-12.66,-1.09,0.52,-2.32,12.46,-14.24,3.81,-2.04,8.65,-12.2,27,7.1,False,Recovering,True,True,False,True,False
+BOP,20,2025-12-08,2026-01-28,51,False,Recovering,-7.47,2.9,19.82,-1.02,22.55,-19.21,9.96,-7.44,12.59,-11.77,15,50.0,False,Recovering,True,True,False,True,False
+BOP,21,2026-02-04,2026-02-04,0,False,Rolling Over,7.97,-1.99,0.0,-2.1,-28.58,-14.28,-14.17,-12.29,-14.41,-1.99,3,92.9,True,Rolling Over,False,False,False,False,False
+BOP,22,2026-04-22,2026-05-13,21,False,Cooling Down,41.18,29.57,-4.48,-10.94,-6.21,,-2.18,,-4.03,,18,39.3,False,Cooling Down,False,False,,False,
+BOP,23,2026-05-21,2026-05-21,0,False,Rolling Over,35.38,-6.6,0.0,-0.56,,,,,,,25,14.3,False,Rolling Over,False,,,,
+BOP,24,2026-05-25,2026-05-29,4,True,Rolling Over,23.06,-2.81,0.17,-0.96,,,,,,,24,17.9,False,Cooling Down,,,,,
+FABL,1,2020-10-21,2020-10-21,0,False,Recovering,-3.37,0.76,0.0,-1.22,-1.28,17.72,-2.4,10.58,1.12,7.14,2,95.5,True,Recovering,False,False,True,True,True
+FABL,2,2020-12-02,2020-12-21,19,False,Heating Up,0.94,4.29,0.0,-0.93,0.12,-5.62,4.11,9.13,-3.99,-14.75,10,59.1,False,Heating Up,False,True,False,False,False
+FABL,3,2020-12-23,2021-02-08,47,False,Cooling Down,2.99,0.23,16.7,-1.39,21.16,-3.19,6.72,4.21,14.44,-7.4,14,40.9,False,Cooling Down,True,True,False,True,False
+FABL,4,2021-07-14,2021-08-11,28,False,Heating Up,4.93,7.96,3.38,-3.33,-0.11,47.54,-1.22,-8.99,1.11,56.53,21,9.1,False,Stabilising,True,False,True,True,True
+FABL,5,2021-08-23,2021-08-24,1,False,Cooling Down,8.38,0.05,-0.31,-3.39,36.81,34.73,-3.29,-3.26,40.1,37.99,8,68.2,True,Cooling Down,False,True,True,True,True
+FABL,6,2021-08-26,2021-11-08,74,False,Rolling Over,11.35,-0.36,40.76,-5.82,33.87,34.84,-4.36,-1.85,38.23,36.69,7,72.7,True,Stabilising,True,True,True,True,True
+FABL,7,2022-01-13,2022-02-08,26,False,Cooling Down,15.57,14.91,0.57,-3.52,-1.48,4.92,0.39,-2.88,-1.87,7.8,9,63.6,False,Cooling Down,True,False,True,False,True
+FABL,8,2022-02-11,2022-02-16,5,False,Rolling Over,15.22,-0.23,1.89,-1.89,-3.13,-12.08,-5.26,-7.4,2.13,-4.68,4,86.4,True,Cooling Down,True,False,False,True,False
+FABL,9,2022-04-01,2022-04-01,0,False,Heating Up,1.13,3.75,0.0,-1.94,-7.53,-12.45,-0.69,-7.8,-6.84,-4.65,13,45.5,False,Recovering,False,False,False,False,False
+FABL,10,2022-04-05,2022-04-14,9,False,Recovering,-0.11,5.68,5.99,-2.02,-11.4,-7.32,-0.96,-6.43,-10.44,-0.89,13,45.5,False,Recovering,True,False,False,False,False
+FABL,11,2022-07-29,2022-08-17,19,False,Cooling Down,25.75,7.51,-4.57,-5.55,-6.27,-0.53,5.09,5.08,-11.36,-5.61,17,27.3,False,Stabilising,False,False,False,False,False
+FABL,12,2022-08-24,2022-08-26,2,False,Rolling Over,4.44,-0.91,0.16,-2.54,4.25,11.37,-5.47,-1.2,9.72,12.57,14,40.9,False,Rolling Over,True,True,True,True,True
+FABL,13,2022-08-31,2022-09-20,20,False,Cooling Down,10.25,5.58,1.46,-6.26,-0.41,11.02,-2.16,1.3,1.75,9.72,18,22.7,False,Rolling Over,True,False,True,True,True
+FABL,14,2022-09-27,2022-09-28,1,False,Rolling Over,5.35,-2.31,-0.15,-1.13,-1.02,-10.68,1.62,-5.24,-2.64,-5.44,15,36.4,False,Stabilising,False,False,False,False,False
+FABL,15,2022-10-05,2022-10-11,6,False,Cooling Down,6.04,1.72,-0.15,-1.76,12.3,-7.76,0.8,-4.48,11.5,-3.28,17,27.3,False,Stabilising,False,True,False,True,False
+FABL,16,2022-10-19,2022-10-24,5,False,Recovering,-1.36,0.26,0.6,-3.55,4.75,-10.66,1.41,-3.37,3.34,-7.29,12,50.0,False,Recovering,True,True,False,True,False
+FABL,17,2022-10-27,2022-11-07,11,False,Heating Up,0.76,6.5,13.9,-8.31,4.95,-20.04,3.21,-7.68,1.74,-12.36,10,59.1,False,Stabilising,True,True,False,True,False
+FABL,18,2022-11-10,2022-11-10,0,False,Heating Up,9.49,12.89,0.0,-5.09,-8.15,-20.12,-2.91,-5.05,-5.24,-15.07,4,86.4,True,Heating Up,False,False,False,False,False
+FABL,19,2022-11-18,2022-11-25,7,False,Rolling Over,8.15,-6.47,0.45,-3.53,-9.57,-19.43,-3.34,-2.31,-6.23,-17.12,3,90.9,True,Heating Up,True,False,False,False,False
+FABL,20,2023-08-10,2023-08-18,8,False,Cooling Down,27.25,0.39,1.81,-0.98,-13.56,-3.54,-3.75,12.66,-9.81,-16.2,3,90.9,True,Rolling Over,True,False,False,False,False
+FABL,21,2023-08-22,2023-08-23,1,False,Rolling Over,13.21,-1.09,1.06,-1.73,-15.71,-1.53,-3.18,21.05,-12.53,-22.58,1,100.0,True,Rolling Over,True,False,False,False,False
+FABL,22,2023-10-24,2023-10-26,2,False,Cooling Down,17.52,2.69,-4.58,-6.1,3.25,24.73,14.05,23.86,-10.8,0.87,13,45.5,False,Cooling Down,False,True,True,False,True
+FABL,23,2023-10-30,2023-12-22,53,False,Rolling Over,13.14,-0.86,28.94,-1.57,14.68,36.83,17.96,25.91,-3.28,10.92,10,59.1,False,Cooling Down,True,True,True,False,True
+FABL,24,2023-12-27,2024-01-16,20,False,Rolling Over,22.91,-4.57,3.63,-6.87,4.38,-2.4,6.5,7.05,-2.12,-9.45,3,90.9,True,Rolling Over,True,True,False,False,False
+FABL,25,2024-01-23,2024-01-26,3,False,Cooling Down,2.8,1.4,-0.03,-3.92,-4.28,24.12,-3.94,11.79,-0.34,12.33,5,81.8,True,Recovering,False,False,True,False,True
+FABL,26,2024-02-01,2024-02-06,5,False,Cooling Down,4.79,2.92,0.88,-1.77,-5.21,15.88,5.7,16.62,-10.91,-0.74,2,95.5,True,Cooling Down,True,False,True,False,False
+FABL,27,2024-02-19,2024-02-19,0,False,Stabilising,-4.74,-2.65,0.0,-6.04,-5.76,21.26,7.33,24.19,-13.09,-2.93,1,100.0,True,Rolling Over,False,False,True,False,False
+FABL,28,2024-02-22,2024-02-26,4,False,Stabilising,-2.94,-0.47,4.69,-1.5,-4.44,21.73,5.66,21.32,-10.1,0.41,4,89.3,True,Falling,True,False,True,False,True
+FABL,29,2024-03-28,2024-04-30,33,False,Heating Up,8.94,15.93,16.24,-3.94,12.3,58.22,5.24,19.5,7.06,38.72,22,25.0,False,Recovering,True,True,True,True,True
+FABL,30,2024-05-13,2024-07-18,66,False,Rolling Over,24.97,-2.91,37.92,-5.78,8.39,24.55,-1.64,5.53,10.03,19.02,10,67.9,True,Rolling Over,True,True,True,True,True
+FABL,31,2024-07-24,2024-07-29,5,False,Rolling Over,18.09,-8.1,-0.1,-7.73,-4.87,-1.23,-0.76,7.37,-4.11,-8.6,2,96.4,True,Rolling Over,False,False,False,False,False
+FABL,32,2024-08-21,2024-08-21,0,False,Recovering,-13.36,1.64,0.0,-2.52,-6.88,-2.93,4.09,20.36,-10.97,-23.29,22,25.0,False,Recovering,False,False,False,False,False
+FABL,33,2024-08-28,2024-09-05,8,False,Recovering,-8.73,3.15,2.59,-2.55,-5.83,-2.37,4.7,24.79,-10.53,-27.16,25,14.3,False,Recovering,True,False,False,False,False
+FABL,34,2024-10-14,2024-10-31,17,False,Heating Up,1.59,10.22,0.26,-1.56,-8.05,-5.04,9.84,36.11,-17.89,-41.15,6,82.1,True,Heating Up,True,False,False,False,False
+FABL,35,2024-11-22,2024-11-25,3,False,Heating Up,4.2,8.74,0.79,-6.56,-10.19,-6.54,11.98,15.63,-22.17,-22.17,19,35.7,False,Heating Up,True,False,False,False,False
+FABL,36,2025-01-15,2025-01-27,12,False,Cooling Down,6.36,3.18,-1.42,-3.28,-3.14,-5.84,-1.69,1.33,-1.45,-7.17,23,21.4,False,Rolling Over,False,False,False,False,False
+FABL,37,2025-01-30,2025-02-04,5,False,Cooling Down,4.35,0.28,0.22,-1.81,2.63,-3.63,0.04,0.8,2.59,-4.43,5,85.7,True,Cooling Down,True,True,False,True,False
+FABL,38,2025-02-10,2025-02-11,1,False,Rolling Over,4.19,-1.02,0.16,-2.41,3.74,-3.05,2.67,5.32,1.07,-8.37,1,100.0,True,Rolling Over,True,True,False,True,False
+FABL,39,2025-02-20,2025-03-06,14,False,Cooling Down,11.08,7.57,-3.3,-6.66,-8.1,-8.3,4.42,4.76,-12.52,-13.06,3,92.9,True,Cooling Down,False,False,False,False,False
+FABL,40,2025-03-10,2025-03-14,4,False,Rolling Over,2.68,-1.31,0.43,-1.77,-8.03,15.06,0.25,8.51,-8.28,6.55,2,96.4,True,Cooling Down,True,False,True,False,True
+FABL,41,2025-06-03,2025-07-25,52,False,Cooling Down,13.2,11.51,45.32,-7.38,49.17,39.26,8.5,23.38,40.67,15.88,8,75.0,True,Cooling Down,True,True,True,True,True
+FABL,42,2025-07-30,2025-07-30,0,False,Rolling Over,30.47,-4.72,0.0,-2.24,-4.0,15.68,6.45,18.91,-10.45,-3.23,4,89.3,True,Rolling Over,False,False,True,False,False
+FABL,43,2025-08-01,2025-08-01,0,False,Rolling Over,30.45,-4.91,0.0,-0.17,3.01,14.53,6.34,14.98,-3.33,-0.45,4,89.3,True,Cooling Down,False,True,True,False,False
+FABL,44,2025-08-06,2025-08-06,0,False,Rolling Over,21.02,-4.22,0.0,-1.26,2.11,8.38,5.22,8.03,-3.11,0.35,3,92.9,True,Cooling Down,False,True,True,False,True
+FABL,45,2025-08-11,2025-08-26,15,False,Cooling Down,11.4,1.94,2.6,-5.56,-0.61,12.12,6.56,9.77,-7.17,2.35,3,92.9,True,Cooling Down,True,False,True,False,True
+FABL,46,2025-09-01,2025-09-04,3,False,Stabilising,-2.05,-1.62,-0.79,-6.1,13.93,2.04,9.25,8.01,4.68,-5.97,14,53.6,False,Cooling Down,False,True,True,True,False
+FABL,47,2025-09-26,2025-10-10,14,False,Heating Up,3.67,8.83,5.23,-8.0,8.15,8.87,0.65,5.64,7.5,3.23,18,39.3,False,Cooling Down,True,True,True,True,True
+FABL,48,2025-10-14,2025-10-22,8,False,Rolling Over,14.45,-1.26,4.5,-4.6,-5.84,12.92,-4.6,12.72,-1.24,0.2,5,85.7,True,Cooling Down,True,False,True,False,True
+FABL,49,2025-11-03,2025-11-03,0,False,Rolling Over,18.6,-4.81,0.0,-1.48,-2.87,9.31,3.81,16.25,-6.68,-6.94,1,100.0,True,Rolling Over,False,False,True,False,False
+FABL,50,2025-11-14,2025-11-14,0,False,Stabilising,-7.2,-0.6,0.0,-2.26,2.94,3.56,4.9,12.49,-1.96,-8.93,16,46.4,False,Stabilising,False,True,True,False,False
+FABL,51,2025-11-28,2026-01-23,56,False,Stabilising,-7.39,-2.63,16.11,-0.92,9.08,4.48,4.33,-0.25,4.75,4.73,26,10.7,False,Stabilising,True,True,True,True,True
+FABL,52,2026-01-27,2026-01-28,1,False,Rolling Over,9.61,-2.14,-0.03,-0.48,-10.34,-9.85,-12.53,-9.33,2.19,-0.52,3,92.9,True,Rolling Over,False,False,False,True,False
+FABL,53,2026-02-03,2026-02-04,1,False,Rolling Over,9.4,-1.8,0.74,-1.55,-12.06,-10.33,-16.65,-12.28,4.59,1.95,4,89.3,True,Rolling Over,True,False,False,True,True
+FABL,54,2026-02-11,2026-02-13,2,False,Cooling Down,4.76,0.21,-1.01,-8.03,-16.66,-9.45,-14.85,-7.72,-1.81,-1.73,5,85.7,True,Rolling Over,False,False,False,False,False
+FABL,55,2026-02-18,2026-02-18,0,False,Stabilising,-6.05,-0.53,0.0,-4.86,-10.14,-10.95,-13.73,-8.92,3.59,-2.03,18,39.3,False,Stabilising,False,False,False,True,False
+FABL,56,2026-04-17,2026-04-23,6,False,Heating Up,10.73,18.6,-6.03,-6.45,-9.03,,-6.35,,-2.68,,19,35.7,False,Heating Up,False,False,,False,
+FABL,57,2026-05-07,2026-05-12,5,False,Rolling Over,6.8,-2.66,-1.72,-2.93,,,,,,,18,39.3,False,Rolling Over,False,,,,
+HBL,1,2020-10-20,2020-10-26,6,False,Heating Up,6.73,8.24,-0.62,-1.81,-7.03,2.18,-1.08,12.29,-5.95,-10.11,7,72.7,True,Recovering,False,False,True,False,False
+HBL,2,2020-11-11,2020-11-11,0,False,Rolling Over,1.92,-1.78,0.0,-2.06,-1.08,5.02,2.44,13.86,-3.52,-8.84,8,68.2,True,Recovering,False,False,True,False,False
+HBL,3,2020-12-10,2020-12-28,18,False,Recovering,-0.88,1.93,1.84,-0.99,5.89,-9.92,7.91,6.49,-2.02,-16.41,9,63.6,False,Cooling Down,True,True,False,False,False
+HBL,4,2021-01-01,2021-02-01,31,False,Rolling Over,1.31,-2.05,6.09,-0.63,6.79,-11.41,4.39,0.13,2.4,-11.54,17,27.3,False,Cooling Down,True,True,False,True,False
+HBL,5,2021-06-15,2021-06-17,2,False,Rolling Over,7.54,-1.46,-0.82,-0.94,-4.3,-11.17,-2.37,-3.58,-1.93,-7.59,19,18.2,False,Rolling Over,False,False,False,False,False
+HBL,6,2021-07-28,2021-07-29,1,False,Recovering,-3.18,1.65,-1.43,-1.76,-2.96,-0.84,-0.38,-3.99,-2.58,3.15,9,63.6,False,Recovering,False,False,False,False,True
+HBL,7,2021-08-05,2021-08-06,1,False,Recovering,-0.74,0.05,-0.28,-0.71,-7.29,-1.11,-1.52,-1.11,-5.77,0.0,14,40.9,False,Stabilising,False,False,False,False,False
+HBL,8,2021-08-11,2021-08-25,14,False,Rolling Over,1.07,-1.5,0.49,-0.61,-10.15,-1.7,-0.38,-0.55,-9.77,-1.15,17,27.3,False,Stabilising,True,False,False,False,False
+HBL,9,2023-07-31,2023-08-28,28,False,Cooling Down,43.75,24.04,1.72,-5.92,0.34,0.2,-2.63,6.54,2.97,-6.34,2,95.5,True,Cooling Down,True,True,True,True,False
+HBL,10,2023-08-30,2023-08-30,0,False,Rolling Over,24.82,-3.37,0.0,-2.57,-7.52,3.63,0.26,27.77,-7.78,-24.14,1,100.0,True,Rolling Over,False,False,True,False,False
+HBL,11,2023-09-05,2023-09-07,2,False,Rolling Over,23.53,-0.92,-0.17,-1.69,-2.58,14.36,3.49,33.06,-6.07,-18.7,6,77.3,True,Falling,False,False,True,False,False
+HBL,12,2023-10-04,2023-10-06,2,False,Stabilising,-3.48,-0.93,-0.21,-5.28,0.34,16.51,11.18,32.65,-10.84,-16.14,6,77.3,True,Recovering,False,True,True,False,False
+HBL,13,2023-10-11,2023-10-25,14,False,Recovering,-2.91,2.45,2.85,-0.99,1.39,23.92,11.94,33.09,-10.55,-9.17,15,36.4,False,Heating Up,True,True,True,False,False
+HBL,14,2023-11-08,2023-12-21,43,False,Rolling Over,3.88,-1.42,24.58,-2.15,26.04,16.45,19.27,16.11,6.77,0.34,13,45.5,False,Cooling Down,True,True,True,True,True
+HBL,15,2024-01-01,2024-01-09,8,False,Rolling Over,19.31,-7.26,-0.15,-4.25,-3.21,-9.75,-2.92,2.92,-0.29,-12.67,3,90.9,True,Rolling Over,False,False,False,False,False
+HBL,16,2024-01-11,2024-01-16,5,False,Heating Up,5.61,5.63,-0.68,-2.9,-7.66,-6.62,-5.5,8.82,-2.16,-15.44,7,72.7,True,Cooling Down,False,False,False,False,False
+HBL,17,2024-01-23,2024-01-23,0,False,Recovering,-6.83,0.37,0.0,-0.78,-2.64,1.89,-3.94,11.79,1.3,-9.9,5,81.8,True,Recovering,False,False,True,True,False
+HBL,18,2024-01-25,2024-01-25,0,False,Stabilising,-5.74,-1.35,0.0,-0.72,-0.94,1.77,-1.54,13.13,0.6,-11.36,4,86.4,True,Recovering,False,False,True,True,False
+HBL,19,2024-02-23,2024-03-11,17,False,Recovering,-1.1,2.75,0.79,-1.56,-7.72,0.46,3.72,20.96,-11.44,-20.5,6,82.1,True,Recovering,True,False,True,False,False
+HBL,20,2024-04-22,2024-04-30,8,False,Recovering,-1.01,9.49,1.69,-1.76,-0.72,23.54,5.28,11.15,-6.0,12.39,5,85.7,True,Heating Up,True,False,True,False,True
+HBL,21,2024-05-08,2024-05-09,1,False,Rolling Over,5.13,-1.88,-0.18,-1.49,-4.34,19.73,1.74,7.26,-6.08,12.47,10,67.9,True,Rolling Over,False,False,True,False,True
+HBL,22,2024-05-13,2024-05-17,4,False,Rolling Over,8.93,-3.78,1.79,-0.38,-7.43,20.78,-1.64,5.53,-5.79,15.25,10,67.9,True,Rolling Over,True,False,True,False,True
+HBL,23,2024-05-24,2024-05-27,3,False,Cooling Down,3.62,1.18,1.3,-1.08,8.46,12.42,3.35,2.77,5.11,9.65,12,60.7,False,Cooling Down,True,True,True,True,True
+HBL,24,2024-06-21,2024-07-26,35,False,Heating Up,12.19,12.21,8.97,-3.22,12.46,-4.76,0.22,3.36,12.24,-8.12,2,96.4,True,Cooling Down,True,True,False,True,False
+HBL,25,2024-08-02,2024-08-02,0,False,Rolling Over,20.92,-4.11,0.0,-2.86,-9.31,2.86,0.07,16.16,-9.38,-13.3,3,92.9,True,Rolling Over,False,False,True,False,False
+HBL,26,2024-08-08,2024-08-20,12,False,Rolling Over,7.84,-2.53,0.51,-2.65,-12.27,-3.08,1.31,18.06,-13.58,-21.14,9,71.4,True,Rolling Over,True,False,False,False,False
+HBL,27,2024-10-08,2024-10-30,22,False,Heating Up,6.73,7.26,-0.56,-6.53,-5.31,26.34,7.75,36.59,-13.06,-10.25,16,46.4,False,Recovering,False,False,True,False,False
+HBL,28,2024-11-15,2024-12-13,28,False,Rolling Over,3.42,-0.04,21.04,-2.14,21.04,23.65,20.62,19.26,0.42,4.39,20,32.1,False,Rolling Over,True,True,True,True,True
+HBL,29,2024-12-17,2024-12-18,1,False,Rolling Over,25.38,-8.24,-1.12,-3.57,4.98,-3.78,-0.32,0.2,5.3,-3.98,22,25.0,False,Rolling Over,False,True,False,True,False
+HBL,30,2024-12-30,2025-01-31,32,False,Cooling Down,28.11,5.84,2.62,-8.38,1.63,-11.6,-1.51,1.19,3.14,-12.79,14,53.6,False,Cooling Down,True,True,False,True,False
+HBL,31,2025-05-29,2025-08-27,90,False,Rolling Over,0.87,-1.45,65.86,-0.72,16.51,68.19,5.59,24.77,10.92,43.42,14,53.6,False,Heating Up,True,True,True,True,True
+HBL,32,2025-08-29,2025-09-11,13,False,Rolling Over,14.66,-6.54,1.21,-3.59,5.89,13.75,9.18,9.07,-3.29,4.68,11,64.3,False,Cooling Down,True,True,True,False,True
+HBL,33,2025-09-18,2025-09-18,0,False,Recovering,-0.94,0.37,0.0,-0.96,18.62,20.47,4.11,6.72,14.51,13.75,14,53.6,False,Cooling Down,False,True,True,True,True
+HBL,34,2025-09-25,2025-10-27,32,False,Stabilising,-6.26,-0.32,17.75,-3.38,21.36,25.88,3.33,7.96,18.03,17.92,21,28.6,False,Rolling Over,True,True,True,True,True
+HBL,35,2025-10-31,2025-10-31,0,False,Cooling Down,19.45,0.74,0.0,-5.21,1.7,12.83,3.12,16.68,-1.42,-3.85,1,100.0,True,Rolling Over,False,True,True,False,False
+HBL,36,2025-11-21,2026-01-22,62,False,Recovering,-3.24,1.1,19.48,-1.36,9.96,3.55,5.74,6.82,4.22,-3.27,21,28.6,False,Stabilising,True,True,True,True,False
+HBL,37,2026-02-04,2026-02-04,0,False,Rolling Over,7.83,-1.51,0.0,-0.99,-18.53,-17.48,-14.17,-12.29,-4.36,-5.19,3,92.9,True,Rolling Over,False,False,False,False,False
+HBL,38,2026-02-18,2026-02-18,0,False,Stabilising,-8.75,-3.26,0.0,-9.03,-20.72,-19.44,-13.73,-8.92,-6.99,-10.52,18,39.3,False,Stabilising,False,False,False,False,False
+HBL,39,2026-04-27,2026-04-28,1,False,Cooling Down,8.27,2.77,-2.22,-2.43,,,,,,,19,35.7,False,Cooling Down,False,,,,
+HMB,1,2020-11-04,2020-12-28,54,False,Heating Up,0.06,8.23,8.81,-1.75,6.08,9.8,4.33,14.61,1.75,-4.81,8,68.2,True,Falling,True,True,True,True,False
+HMB,2,2020-12-30,2021-01-26,27,False,Rolling Over,5.76,-0.84,2.22,-2.25,0.92,-6.21,6.32,4.18,-5.4,-10.39,18,22.7,False,Cooling Down,True,True,False,False,False
+HMB,3,2021-04-26,2021-06-25,60,False,Heating Up,11.08,16.18,2.4,-6.25,2.52,2.48,5.49,3.0,-2.97,-0.52,20,13.6,False,Recovering,True,True,True,False,False
+HMB,4,2021-07-01,2021-07-01,0,False,Rolling Over,4.3,-0.58,0.0,-1.86,-1.47,6.64,-0.09,-6.07,-1.38,12.71,19,18.2,False,Cooling Down,False,False,True,False,True
+HMB,5,2021-07-05,2021-07-05,0,False,Rolling Over,3.12,-0.44,0.0,-2.3,1.34,6.86,0.45,-5.03,0.89,11.89,17,27.3,False,Rolling Over,False,True,True,True,True
+HMB,6,2021-07-08,2021-07-08,0,False,Stabilising,-0.97,-0.53,0.0,-3.2,0.83,7.5,-1.91,-7.22,2.74,14.72,22,4.5,False,Stabilising,False,True,True,True,True
+HMB,7,2021-07-29,2021-08-02,4,False,Stabilising,-3.3,-0.62,1.97,-1.0,7.29,11.97,0.11,-4.35,7.18,16.32,12,50.0,False,Recovering,True,True,True,True,True
+HMB,8,2021-08-04,2021-09-17,44,False,Recovering,-0.53,3.14,8.0,-1.83,6.1,12.93,-1.74,-1.71,7.84,14.64,12,50.0,False,Recovering,True,True,True,True,True
+HMB,9,2021-09-21,2021-09-21,0,False,Cooling Down,8.91,0.09,0.0,-2.14,-0.45,-0.04,-1.11,-3.57,0.66,3.53,2,95.5,True,Recovering,False,False,False,True,True
+HMB,10,2021-09-23,2021-09-27,4,False,Rolling Over,7.15,-1.25,-0.48,-2.71,-0.41,-1.58,0.62,-3.08,-1.03,1.5,2,95.5,True,Recovering,False,False,False,False,True
+HMB,11,2021-10-01,2021-10-01,0,False,Rolling Over,3.41,-0.75,0.0,-1.07,5.35,-1.57,4.69,-2.14,0.66,0.57,2,95.5,True,Rolling Over,False,True,False,True,True
+HMB,12,2021-10-05,2021-10-07,2,False,Rolling Over,0.34,-2.17,0.43,-0.66,5.07,-3.72,5.3,-0.91,-0.23,-2.81,2,95.5,True,Stabilising,True,True,False,False,False
+HMB,13,2021-10-14,2021-10-14,0,False,Heating Up,1.13,1.15,0.0,-4.5,3.98,-2.07,3.19,2.28,0.79,-4.35,1,100.0,True,Cooling Down,False,True,False,True,False
+HMB,14,2021-10-20,2021-11-23,34,False,Recovering,-0.36,1.76,3.32,-4.62,4.62,0.74,1.53,0.92,3.09,-0.18,1,100.0,True,Cooling Down,True,True,True,True,False
+HMB,15,2022-01-21,2022-02-15,25,False,Cooling Down,4.19,2.83,4.15,-0.7,0.65,6.91,1.46,3.38,-0.81,3.53,18,22.7,False,Cooling Down,True,True,True,False,True
+HMB,16,2022-02-23,2022-02-23,0,False,Rolling Over,1.25,-2.17,0.0,-1.21,-5.39,-7.06,-3.57,-5.74,-1.82,-1.32,6,77.3,True,Falling,False,False,False,False,False
+HMB,17,2022-02-25,2022-03-01,4,False,Cooling Down,2.22,0.22,-0.87,-3.04,-6.7,-6.85,-0.12,-2.15,-6.58,-4.7,9,63.6,False,Stabilising,False,False,False,False,False
+HMB,18,2022-03-10,2022-03-11,1,False,Cooling Down,0.0,0.0,0.07,-0.58,3.33,-11.11,1.35,-4.19,1.98,-6.92,6,77.3,True,Stabilising,True,True,False,True,False
+HMB,19,2022-03-16,2022-03-16,0,False,Recovering,-0.02,1.51,0.0,-3.04,3.96,-14.09,5.7,-5.11,-1.74,-8.98,7,72.7,True,Stabilising,False,True,False,False,False
+HMB,20,2022-04-08,2022-04-21,13,False,Heating Up,3.33,9.13,0.62,-1.29,-5.7,-16.17,-2.16,-5.81,-3.54,-10.36,18,22.7,False,Recovering,True,False,False,False,False
+HMB,21,2022-04-27,2022-05-06,9,False,Rolling Over,7.49,-0.42,-0.77,-3.77,-12.13,-26.4,-6.1,-11.99,-6.03,-14.41,20,13.6,False,Falling,False,False,False,False,False
+HMB,22,2023-08-18,2023-09-01,14,False,Cooling Down,22.05,0.25,17.62,-1.24,0.97,29.39,-5.11,17.52,6.08,11.87,1,100.0,True,Rolling Over,True,True,True,True,True
+HMB,23,2023-10-04,2023-12-15,72,False,Heating Up,2.04,2.07,52.74,-1.32,16.3,49.55,11.18,32.65,5.12,16.9,6,77.3,True,Recovering,True,True,True,True,True
+HMB,24,2023-12-28,2024-01-16,19,False,Rolling Over,16.37,-6.29,1.92,-2.27,10.44,1.12,3.62,5.6,6.82,-4.48,2,95.5,True,Rolling Over,True,True,True,True,False
+HMB,25,2024-01-18,2024-02-13,26,False,Cooling Down,1.69,0.02,5.36,-2.68,3.0,9.27,-4.34,12.19,7.34,-2.92,4,86.4,True,Rolling Over,True,True,True,True,False
+HMB,26,2024-02-15,2024-02-15,0,False,Rolling Over,5.75,-0.44,0.0,-0.73,-0.59,3.68,6.63,22.8,-7.22,-19.12,1,100.0,True,Heating Up,False,False,True,False,False
+HMB,27,2024-02-27,2024-03-12,14,False,Rolling Over,4.07,-1.22,1.34,-0.91,-5.2,5.1,4.25,18.38,-9.45,-13.28,3,92.9,True,Heating Up,True,False,True,False,False
+HMB,28,2024-03-18,2024-03-18,0,False,Stabilising,-1.49,-0.19,0.0,-0.7,3.87,17.94,9.28,21.45,-5.41,-3.51,21,28.6,False,Stabilising,False,True,True,False,False
+HMB,29,2024-04-04,2024-04-23,19,False,Heating Up,2.05,6.98,3.63,-3.22,0.86,25.28,6.2,16.7,-5.34,8.58,7,78.6,True,Cooling Down,True,True,True,False,True
+HMB,30,2024-04-25,2024-05-02,7,False,Heating Up,1.54,3.61,0.07,-6.71,2.63,16.6,5.57,9.53,-2.94,7.07,8,75.0,True,Cooling Down,True,True,True,False,True
+HMB,31,2024-05-06,2024-05-06,0,False,Rolling Over,2.75,-1.08,0.0,-1.12,2.28,13.99,2.61,6.08,-0.33,7.91,9,71.4,True,Rolling Over,False,True,True,False,True
+HMB,32,2024-05-13,2024-06-04,22,False,Rolling Over,9.41,-0.78,3.18,-3.33,-1.67,13.5,-1.64,5.53,-0.03,7.97,10,67.9,True,Rolling Over,True,False,True,False,True
+HMB,33,2024-06-13,2024-07-19,36,False,Cooling Down,5.21,2.27,15.6,-4.99,15.82,6.75,7.39,4.1,8.43,2.65,11,64.3,False,Rolling Over,True,True,True,True,True
+HMB,34,2024-07-23,2024-07-24,1,False,Rolling Over,14.8,-5.3,-0.13,-1.51,1.25,-0.44,-0.92,8.35,2.17,-8.79,2,96.4,True,Rolling Over,False,True,False,True,False
+HMB,35,2024-08-20,2024-08-26,6,False,Recovering,-2.16,3.98,0.5,-5.29,-4.59,1.94,3.49,20.08,-8.08,-18.14,17,42.9,False,Stabilising,True,False,True,False,False
+HMB,36,2024-10-07,2024-11-12,36,False,Heating Up,0.27,3.61,3.09,-6.86,2.93,24.37,8.28,35.59,-5.35,-11.22,17,42.9,False,Recovering,True,True,True,False,False
+HMB,37,2024-11-14,2024-12-13,29,False,Rolling Over,7.37,-0.26,15.97,-3.99,18.55,28.32,21.22,18.25,-2.67,10.07,20,32.1,False,Cooling Down,True,True,True,False,True
+HMB,38,2024-12-17,2024-12-17,0,False,Rolling Over,19.46,-4.15,0.0,-3.5,10.92,9.29,-0.32,0.2,11.24,9.09,22,25.0,False,Rolling Over,False,True,True,True,True
+HMB,39,2024-12-23,2024-12-23,0,False,Rolling Over,14.92,-6.03,0.0,-1.58,18.73,6.3,0.98,3.55,17.75,2.75,15,50.0,False,Rolling Over,False,True,True,True,True
+HMB,40,2024-12-30,2025-01-27,28,False,Cooling Down,17.44,1.78,11.2,-4.28,11.2,3.06,-1.51,1.19,12.71,1.87,14,53.6,False,Cooling Down,True,True,True,True,True
+HMB,41,2025-01-30,2025-02-04,5,False,Rolling Over,15.0,-1.7,0.9,-1.52,0.48,-11.49,0.04,0.8,0.44,-12.29,5,85.7,True,Cooling Down,True,True,False,True,False
+HMB,42,2025-02-19,2025-02-20,1,False,Stabilising,-3.55,-1.4,1.27,-1.01,-6.73,-5.97,4.09,5.81,-10.82,-11.78,1,100.0,True,Rolling Over,True,False,False,False,False
+HMB,43,2025-02-24,2025-03-04,8,False,Recovering,-1.1,1.1,0.71,-2.74,-6.18,-5.81,1.85,3.4,-8.03,-9.21,4,89.3,True,Cooling Down,True,False,False,False,False
+HMB,44,2025-03-07,2025-03-07,0,False,Recovering,-0.93,1.75,0.0,-1.77,-9.08,3.17,1.51,8.7,-10.59,-5.53,4,89.3,True,Cooling Down,False,False,True,False,False
+HMB,45,2025-06-03,2025-06-20,17,False,Heating Up,7.91,8.35,1.54,-5.68,8.69,20.75,8.5,23.38,0.19,-2.63,8,75.0,True,Cooling Down,True,True,True,True,False
+HMB,46,2025-06-24,2025-06-25,1,False,Rolling Over,21.84,-0.39,2.56,-0.6,19.79,23.08,14.05,27.76,5.74,-4.68,11,64.3,False,Cooling Down,True,True,True,True,False
+HMB,47,2025-06-27,2025-07-31,34,False,Rolling Over,10.51,-0.12,14.22,-2.82,17.05,14.59,11.92,26.67,5.13,-12.08,12,60.7,False,Cooling Down,True,True,True,True,False
+HMB,48,2025-08-06,2025-08-28,22,False,Rolling Over,14.56,-1.7,4.36,-1.71,5.74,8.84,5.22,8.03,0.52,0.81,3,92.9,True,Cooling Down,True,True,True,True,True
+HMB,49,2025-09-01,2025-09-10,9,False,Cooling Down,3.84,1.3,0.24,-6.2,-1.57,-3.01,9.25,8.01,-10.82,-11.02,14,53.6,False,Cooling Down,True,False,False,False,False
+HMB,50,2025-09-29,2025-10-10,11,False,Falling,-0.28,-0.31,2.71,-2.53,5.33,-3.88,-1.03,4.49,6.36,-8.37,19,35.7,False,Heating Up,True,True,False,True,False
+HMB,51,2025-10-16,2025-10-22,6,False,Rolling Over,3.81,-1.01,4.79,-3.25,-7.35,-4.39,-2.3,12.14,-5.05,-16.53,2,96.4,True,Rolling Over,True,False,False,False,False
+HMB,52,2025-10-24,2025-10-30,6,False,Cooling Down,4.02,2.37,-0.59,-5.34,-6.3,-2.38,-0.74,14.98,-5.56,-17.36,3,92.9,True,Cooling Down,False,False,False,False,False
+HMB,53,2026-01-07,2026-02-23,47,False,Heating Up,5.94,7.55,2.54,-4.01,5.83,-8.65,0.7,-18.93,5.13,10.28,2,96.4,True,Cooling Down,True,True,False,True,True
+HMB,54,2026-02-26,2026-02-27,1,False,Cooling Down,5.0,1.34,-0.19,-4.02,-14.64,,-13.06,,-1.58,,10,67.9,True,Stabilising,False,False,,False,
+HMB,55,2026-04-17,2026-04-29,12,False,Heating Up,9.56,11.64,-4.36,-6.76,-6.68,,-6.35,,-0.33,,19,35.7,False,Heating Up,False,False,,False,
+HMB,56,2026-05-07,2026-05-13,6,False,Rolling Over,10.77,-3.5,-0.37,-1.64,,,,,,,18,39.3,False,Rolling Over,False,,,,
+HMB,57,2026-05-15,2026-05-15,0,False,Rolling Over,4.69,-0.4,0.0,-0.84,,,,,,,25,14.3,False,Rolling Over,False,,,,
+HMB,58,2026-05-25,2026-05-29,4,True,Cooling Down,0.42,0.11,0.09,-1.19,,,,,,,24,17.9,False,Cooling Down,,,,,
+JSBL,1,2020-10-27,2020-10-27,0,False,Recovering,-4.79,4.0,0.0,-6.07,-11.39,3.55,-2.43,11.12,-8.96,-7.57,5,81.8,True,Recovering,False,False,True,False,False
+JSBL,2,2020-11-03,2020-11-03,0,False,Recovering,-2.04,2.13,0.0,-6.41,-6.56,8.79,2.93,14.77,-9.49,-5.98,7,72.7,True,Stabilising,False,False,True,False,False
+JSBL,3,2021-01-08,2021-01-29,21,False,Cooling Down,9.47,5.44,5.92,-4.4,3.19,-22.0,2.34,-2.74,0.85,-19.26,11,54.5,False,Cooling Down,True,True,False,True,False
+JSBL,4,2021-02-02,2021-02-02,0,False,Rolling Over,14.94,-2.1,0.0,-1.43,-15.43,-26.57,-0.9,-3.69,-14.53,-22.88,10,59.1,False,Rolling Over,False,False,False,False,False
+JSBL,5,2021-02-10,2021-02-10,0,False,Rolling Over,9.7,-4.96,0.0,-0.14,-17.54,-25.36,-6.33,-3.15,-11.21,-22.21,14,40.9,False,Rolling Over,False,False,False,False,False
+JSBL,6,2022-12-06,2022-12-06,0,False,Rolling Over,17.69,-2.13,0.0,-3.92,-6.1,-10.68,-2.19,-2.48,-3.91,-8.2,3,90.9,True,Falling,False,False,False,False,False
+JSBL,7,2022-12-09,2022-12-09,0,False,Rolling Over,27.42,-6.31,0.0,-3.04,6.09,-7.83,-1.66,-0.87,7.75,-6.96,6,77.3,True,Rolling Over,False,True,False,True,False
+JSBL,8,2022-12-14,2022-12-16,2,False,Cooling Down,16.58,0.44,-0.22,-7.0,3.06,-12.47,-2.35,-0.91,5.41,-11.56,4,86.4,True,Rolling Over,False,True,False,True,False
+JSBL,9,2022-12-30,2023-01-02,3,False,Heating Up,1.52,2.85,-5.76,-11.51,-5.33,-14.71,0.07,-1.04,-5.4,-13.67,5,81.8,True,Stabilising,False,False,False,False,False
+JSBL,10,2023-01-04,2023-01-13,9,False,Recovering,-5.32,6.46,3.15,-3.15,-1.35,-8.09,0.2,-1.7,-1.55,-6.39,9,63.6,False,Recovering,True,False,False,False,False
+JSBL,11,2023-01-18,2023-01-19,1,False,Heating Up,6.89,8.09,-4.78,-9.56,-6.65,-6.24,6.54,3.65,-13.19,-9.89,8,68.2,True,Stabilising,False,False,False,False,False
+JSBL,12,2023-01-26,2023-01-26,0,False,Cooling Down,3.98,0.0,0.0,-8.51,-9.15,-0.64,-0.02,1.51,-9.13,-2.15,7,72.7,True,Recovering,False,False,False,False,False
+JSBL,13,2023-01-30,2023-01-31,1,False,Cooling Down,5.23,3.35,-1.51,-3.89,-8.86,-5.4,2.29,5.16,-11.15,-10.56,7,72.7,True,Stabilising,False,False,False,False,False
+JSBL,14,2023-02-22,2023-02-22,0,False,Recovering,-3.2,4.37,0.0,-5.29,-11.23,-4.63,-1.92,-0.34,-9.31,-4.29,6,77.3,True,Falling,False,False,False,False,False
+JSBL,15,2023-05-08,2023-05-08,0,False,Heating Up,9.88,11.19,0.0,-3.64,-3.64,14.56,-0.39,16.15,-3.25,-1.59,1,100.0,True,Cooling Down,False,False,True,False,False
+JSBL,16,2023-05-11,2023-05-16,5,False,Cooling Down,13.83,7.08,-2.99,-4.05,-1.92,14.07,0.87,16.7,-2.79,-2.63,2,95.5,True,Cooling Down,False,False,True,False,False
+JSBL,17,2023-05-19,2023-05-19,0,False,Rolling Over,8.98,-3.85,0.0,-3.79,-0.22,25.17,-0.72,15.91,0.5,9.26,2,95.5,True,Rolling Over,False,False,True,True,True
+JSBL,18,2023-05-23,2023-05-23,0,False,Cooling Down,12.75,2.5,0.0,-2.0,-0.22,32.82,-1.09,15.37,0.87,17.45,3,90.9,True,Rolling Over,False,False,True,True,True
+JSBL,19,2023-05-25,2023-05-26,1,False,Rolling Over,9.49,-4.05,0.0,-2.22,0.0,33.11,-2.14,16.38,,16.73,6,77.3,True,Rolling Over,False,False,True,,True
+JSBL,20,2023-06-02,2023-06-12,10,False,Cooling Down,9.88,1.56,-1.32,-7.89,17.76,24.12,5.32,9.58,12.44,14.54,7,72.7,True,Rolling Over,False,True,True,True,True
+JSBL,21,2023-06-14,2023-06-15,1,False,Recovering,-2.97,7.76,-0.66,-2.84,19.65,27.73,8.5,9.82,11.15,17.91,22,4.5,False,Stabilising,False,True,True,True,True
+JSBL,22,2023-06-19,2023-06-20,1,False,Recovering,-3.64,0.0,0.0,-0.44,16.89,29.33,11.76,12.76,5.13,16.57,21,9.1,False,Stabilising,False,True,True,True,True
+JSBL,23,2023-06-22,2023-08-30,69,False,Stabilising,-4.05,-2.17,31.11,-4.22,16.67,26.67,15.6,15.07,1.07,11.6,17,27.3,False,Stabilising,True,True,True,True,True
+JSBL,24,2023-09-06,2023-09-06,0,False,Rolling Over,10.15,-2.87,0.0,-1.74,0.52,54.96,3.59,34.67,-3.07,20.29,8,68.2,True,Stabilising,False,True,True,False,True
+JSBL,25,2023-09-08,2023-09-18,10,False,Rolling Over,8.05,-6.94,0.87,-4.33,3.81,52.51,3.71,36.82,0.1,15.69,5,81.8,True,Falling,True,True,True,True,True
+JSBL,26,2023-09-22,2023-09-26,4,False,Rolling Over,3.41,-0.17,0.35,-2.43,9.38,62.15,10.02,35.35,-0.64,26.8,11,54.5,False,Stabilising,True,True,True,False,True
+JSBL,27,2023-10-05,2023-12-22,78,False,Recovering,-2.36,4.71,62.8,-3.63,18.86,64.36,10.97,36.27,7.89,28.09,13,45.5,False,Recovering,True,True,True,True,True
+JSBL,28,2024-01-01,2024-01-29,28,False,Rolling Over,10.59,-5.85,4.21,-7.79,4.21,-2.11,-2.92,2.92,7.13,-5.03,3,90.9,True,Rolling Over,True,True,False,True,False
+JSBL,29,2024-01-31,2024-02-06,6,False,Cooling Down,7.6,1.52,-1.99,-9.35,-10.55,-8.76,5.4,16.01,-15.95,-24.77,2,95.5,True,Cooling Down,False,False,False,False,False
+JSBL,30,2024-04-08,2024-04-18,10,False,Heating Up,3.24,3.47,-0.76,-2.27,0.11,23.27,4.98,14.9,-4.87,8.37,9,71.4,True,Heating Up,False,True,True,False,True
+JSBL,31,2024-04-22,2024-04-24,2,False,Cooling Down,7.57,1.87,-0.87,-2.49,-2.6,8.12,5.28,11.15,-7.88,-3.03,5,85.7,True,Heating Up,False,False,True,False,False
+JSBL,32,2024-04-26,2024-05-02,6,False,Cooling Down,8.37,5.04,-2.61,-6.05,-5.85,5.95,3.81,8.09,-9.66,-2.14,4,89.3,True,Cooling Down,False,False,True,False,False
+JSBL,33,2024-05-07,2024-05-07,0,False,Cooling Down,1.09,0.54,0.0,-3.88,-2.15,9.26,2.0,5.98,-4.15,3.28,11,64.3,False,Rolling Over,False,False,True,False,True
+JSBL,34,2024-05-23,2024-05-24,1,False,Cooling Down,1.31,0.43,-0.11,-3.02,2.26,7.54,4.21,4.6,-1.95,2.94,14,53.6,False,Cooling Down,False,True,True,False,True
+JSBL,35,2024-05-29,2024-05-31,2,False,Heating Up,0.98,1.08,-1.29,-3.43,3.86,2.04,5.33,4.69,-1.47,-2.65,15,50.0,False,Heating Up,False,True,True,False,False
+JSBL,36,2024-06-21,2024-06-21,0,False,Heating Up,2.09,3.22,0.0,-1.61,5.6,-0.54,0.22,3.36,5.38,-3.9,2,96.4,True,Cooling Down,False,True,False,True,False
+JSBL,37,2024-06-25,2024-07-18,23,False,Heating Up,0.87,1.43,21.3,-1.62,6.16,-3.78,0.68,5.02,5.48,-8.8,2,96.4,True,Cooling Down,True,True,False,True,False
+JSBL,38,2024-08-02,2024-08-02,0,False,Rolling Over,13.3,-0.29,0.0,-3.75,-10.88,-18.09,0.07,16.16,-10.95,-34.25,3,92.9,True,Rolling Over,False,False,False,False,False
+JSBL,39,2024-08-09,2024-08-09,0,False,Cooling Down,7.59,5.04,0.0,-3.92,-8.42,-13.12,0.06,17.48,-8.48,-30.6,6,82.1,True,Rolling Over,False,False,False,False,False
+JSBL,40,2024-08-26,2024-08-26,0,False,Stabilising,-11.29,-2.25,0.0,-3.31,-11.82,-8.92,3.71,22.0,-15.53,-30.92,23,21.4,False,Recovering,False,False,False,False,False
+JSBL,41,2024-12-04,2024-12-12,8,False,Cooling Down,6.8,2.89,0.22,-2.91,3.56,-0.32,11.43,7.75,-7.87,-8.07,12,60.7,False,Cooling Down,True,True,False,False,False
+JSBL,42,2025-01-02,2025-01-03,1,False,Heating Up,6.55,6.67,-2.6,-4.17,11.77,-13.33,-3.34,1.55,15.11,-14.88,13,57.1,False,Cooling Down,False,True,False,True,False
+JSBL,43,2025-01-07,2025-01-28,21,False,Heating Up,4.67,5.73,15.3,-5.42,7.97,-17.0,-3.55,-0.42,11.52,-16.58,20,32.1,False,Cooling Down,True,True,False,True,False
+JSBL,44,2025-01-30,2025-01-30,0,False,Rolling Over,19.22,-3.59,0.0,-1.12,-13.89,-21.16,0.04,0.8,-13.93,-21.96,5,85.7,True,Cooling Down,False,False,False,False,False
+JSBL,45,2025-06-19,2025-07-28,39,False,Cooling Down,21.69,12.2,46.91,-5.97,43.78,45.84,15.55,28.7,28.23,17.14,6,82.1,True,Cooling Down,True,True,True,True,True
+JSBL,46,2025-07-30,2025-08-21,22,False,Rolling Over,40.23,-1.78,7.38,-3.9,-4.32,55.43,6.45,18.91,-10.77,36.52,4,89.3,True,Rolling Over,True,False,True,False,True
+JSBL,47,2025-09-05,2025-10-23,48,False,Recovering,-0.93,5.95,49.2,-5.08,50.47,13.44,9.54,8.04,40.93,5.4,7,78.6,True,Cooling Down,True,True,True,True,True
+MCB,1,2020-12-17,2021-01-28,42,False,Cooling Down,7.79,1.61,5.44,-2.46,6.59,-7.05,4.95,2.28,1.64,-9.33,10,59.1,False,Cooling Down,True,True,False,True,False
+MCB,2,2021-02-02,2021-02-03,1,False,Rolling Over,5.2,-0.87,0.31,-2.08,-4.53,-15.79,-0.9,-3.69,-3.63,-12.1,10,59.1,False,Rolling Over,True,False,False,False,False
+MCB,3,2023-07-20,2023-08-09,20,False,Cooling Down,17.1,11.48,9.91,-0.49,0.93,4.85,4.51,9.1,-3.58,-4.25,3,90.9,True,Cooling Down,True,True,True,False,False
+MCB,4,2023-08-11,2023-08-16,5,False,Rolling Over,26.74,-0.8,-1.24,-3.26,-10.28,-1.76,-5.28,10.97,-5.0,-12.73,2,95.5,True,Cooling Down,False,False,False,False,False
+MCB,5,2023-10-06,2023-11-02,27,False,Recovering,-2.39,5.62,10.3,-0.9,4.05,30.48,11.85,35.49,-7.8,-5.01,16,31.8,False,Recovering,True,True,True,False,False
+MCB,6,2023-11-10,2023-12-18,38,False,Rolling Over,14.14,-0.73,25.17,-3.05,28.08,25.49,19.56,15.18,8.52,10.31,13,45.5,False,Cooling Down,True,True,True,True,True
+MCB,7,2023-12-28,2023-12-28,0,False,Rolling Over,16.28,-4.95,0.0,-1.84,2.05,11.97,3.62,5.6,-1.57,6.37,2,95.5,True,Rolling Over,False,True,True,False,True
+MCB,8,2024-01-01,2024-01-26,25,False,Rolling Over,19.46,-5.17,-0.66,-4.37,-1.9,10.09,-2.92,2.92,1.02,7.17,3,90.9,True,Rolling Over,False,False,True,True,True
+MCB,9,2024-01-30,2024-03-13,43,False,Recovering,-3.82,1.83,11.45,-1.24,11.1,16.84,4.43,14.26,6.67,2.58,3,90.9,True,Stabilising,True,True,True,True,True
+MCB,10,2024-03-20,2024-04-29,40,False,Rolling Over,4.19,-5.11,9.07,-2.87,10.27,24.46,8.56,18.57,1.71,5.89,25,14.3,False,Stabilising,True,True,True,True,True
+MCB,11,2024-05-14,2024-05-21,7,False,Rolling Over,7.73,-1.09,2.0,-2.54,-5.26,10.75,-2.33,4.8,-2.93,5.95,12,60.7,False,Rolling Over,True,False,True,False,True
+MCB,12,2024-05-24,2024-05-24,0,False,Recovering,-2.58,3.65,0.0,-2.43,12.5,1.36,3.35,2.77,9.15,-1.41,12,60.7,False,Cooling Down,False,True,True,True,False
+MCB,13,2024-05-31,2024-05-31,0,False,Rolling Over,0.37,-4.16,0.0,-3.3,11.19,2.95,5.74,3.17,5.45,-0.22,21,28.6,False,Heating Up,False,True,True,True,False
+MCB,14,2024-06-13,2024-07-08,25,False,Heating Up,3.13,6.08,5.24,-6.82,8.58,0.62,7.39,4.1,1.19,-3.48,11,64.3,False,Rolling Over,True,True,True,True,False
+MCB,15,2024-07-15,2024-07-19,4,False,Rolling Over,12.17,-0.01,-0.13,-3.67,0.8,12.2,-3.76,5.33,4.56,6.87,1,100.0,True,Cooling Down,False,True,True,True,True
+MCB,16,2024-07-23,2024-07-24,1,False,Rolling Over,11.08,-0.56,0.65,-0.82,-5.99,10.12,-0.92,8.35,-5.07,1.77,2,96.4,True,Rolling Over,True,False,True,False,True
+MCB,17,2024-07-29,2024-08-01,3,False,Cooling Down,14.0,3.79,-0.16,-2.34,-6.08,6.36,-0.94,10.61,-5.14,-4.25,1,100.0,True,Rolling Over,False,False,True,False,False
+MCB,18,2024-08-09,2024-08-15,6,False,Recovering,-5.77,0.67,2.21,-1.44,-3.28,8.5,0.06,17.48,-3.34,-8.98,6,82.1,True,Rolling Over,True,False,True,False,False
+MCB,19,2024-09-20,2024-10-22,32,False,Heating Up,7.03,9.05,4.5,-4.11,4.52,10.98,3.87,39.27,0.65,-28.29,21,28.6,False,Recovering,True,True,True,True,False
+MCB,20,2024-10-24,2024-10-30,6,False,Rolling Over,14.19,-2.85,6.26,-3.11,-0.82,14.58,9.42,29.6,-10.24,-15.02,7,78.6,True,Cooling Down,True,False,True,False,False
+MCB,21,2024-11-14,2024-11-15,1,False,Cooling Down,2.5,1.38,0.61,-2.23,6.79,11.61,21.22,18.25,-14.43,-6.64,20,32.1,False,Cooling Down,True,True,True,False,False
+MCB,22,2024-11-19,2024-11-19,0,False,Recovering,-0.29,0.94,0.0,-0.72,9.08,12.61,19.83,17.43,-10.75,-4.82,24,17.9,False,Cooling Down,False,True,True,False,False
+MCB,23,2024-11-22,2024-12-09,17,False,Heating Up,1.9,7.08,4.47,-6.6,1.9,4.55,11.98,15.63,-10.08,-11.08,19,35.7,False,Heating Up,True,True,True,False,False
+MCB,24,2024-12-17,2024-12-18,1,False,Rolling Over,10.11,-2.67,-0.59,-4.55,4.19,7.42,-0.32,0.2,4.51,7.22,22,25.0,False,Rolling Over,False,True,True,True,True
+MCB,25,2024-12-20,2024-12-23,3,False,Rolling Over,9.12,-6.88,2.51,-6.09,6.93,5.57,5.78,6.84,1.15,-1.27,16,46.4,False,Rolling Over,True,True,True,True,False
+MCB,26,2024-12-26,2025-01-28,33,False,Cooling Down,10.51,1.42,5.44,-2.19,6.79,4.89,3.27,7.26,3.52,-2.37,12,60.7,False,Rolling Over,True,True,True,True,False
+MCB,27,2025-01-31,2025-02-03,3,False,Rolling Over,10.33,-0.15,0.05,-1.23,-0.72,-3.81,-1.99,-0.13,1.27,-3.68,2,96.4,True,Cooling Down,True,False,False,True,False
+MCB,28,2025-02-24,2025-03-13,17,False,Heating Up,0.12,2.98,2.06,-5.09,-1.88,-3.21,1.85,3.4,-3.73,-6.61,4,89.3,True,Cooling Down,True,False,False,False,False
+MCB,29,2025-04-04,2025-04-07,3,False,Cooling Down,5.39,2.61,-1.77,-4.37,-5.81,11.71,-3.95,10.01,-1.86,1.7,11,64.3,False,Cooling Down,False,False,True,False,True
+MCB,30,2025-04-23,2025-04-23,0,False,Recovering,-0.6,2.35,0.0,-0.57,-2.8,20.83,1.64,18.93,-4.44,1.9,22,25.0,False,Recovering,False,False,True,False,True
+MCB,31,2025-04-25,2025-04-29,4,False,Recovering,-1.75,4.17,1.32,-2.2,-3.48,21.6,2.38,20.11,-5.86,1.49,20,32.1,False,Recovering,True,False,True,False,True
+MCB,32,2025-05-16,2025-05-20,4,False,Heating Up,1.34,3.76,-1.41,-1.6,-2.88,26.61,0.68,22.47,-3.56,4.14,7,78.6,True,Heating Up,False,False,True,False,True
+MCB,33,2025-06-12,2025-06-17,5,False,Recovering,-0.25,3.34,-0.78,-2.81,22.42,25.3,7.81,24.32,14.61,0.98,7,78.6,True,Cooling Down,False,True,True,True,True
+MCB,34,2025-06-25,2025-08-15,51,False,Rolling Over,4.58,-0.1,27.71,-1.66,21.24,25.35,13.43,28.67,7.81,-3.32,9,71.4,True,Cooling Down,True,True,True,True,False
+MCB,35,2025-08-19,2025-08-25,6,False,Cooling Down,5.56,1.68,-0.56,-2.12,-1.93,-2.72,4.28,5.41,-6.21,-8.13,3,92.9,True,Cooling Down,False,False,False,False,False
+MCB,36,2025-08-27,2025-08-27,0,False,Rolling Over,0.29,-3.77,0.0,-0.78,-1.41,-1.32,7.28,9.99,-8.69,-11.31,14,53.6,False,Rolling Over,False,False,False,False,False
+MCB,37,2025-08-29,2025-09-10,12,False,Rolling Over,2.59,-2.06,0.81,-2.42,0.11,-1.18,9.18,9.07,-9.07,-10.25,11,64.3,False,Cooling Down,True,True,False,False,False
+MCB,38,2025-09-18,2025-09-19,1,False,Stabilising,-1.34,-0.22,-0.2,-1.22,3.78,0.85,4.11,6.72,-0.33,-5.87,14,53.6,False,Cooling Down,False,True,True,False,False
+MCB,39,2025-09-26,2025-10-10,14,False,Recovering,-1.95,0.66,3.57,-10.27,7.03,4.14,0.65,5.64,6.38,-1.5,18,39.3,False,Cooling Down,True,True,True,True,False
+MCB,40,2025-10-14,2025-10-28,14,False,Cooling Down,3.38,2.83,1.94,-1.93,-5.51,21.06,-4.6,12.72,-0.91,8.34,5,85.7,True,Cooling Down,True,False,True,False,True
+MCB,41,2025-12-04,2026-01-28,55,False,Recovering,-5.57,3.49,15.92,-1.35,8.54,-0.68,7.67,-8.61,0.87,7.93,26,10.7,False,Recovering,True,True,False,True,True
+MCB,42,2026-02-03,2026-02-04,1,False,Rolling Over,13.54,-2.12,-0.26,-1.68,-11.55,-3.6,-16.65,-12.28,5.1,8.68,4,89.3,True,Rolling Over,False,False,False,True,True
+MCB,43,2026-02-09,2026-02-09,0,False,Rolling Over,11.32,-1.52,0.0,-2.03,-13.97,-2.73,-19.67,-5.18,5.7,2.45,3,92.9,True,Rolling Over,False,False,False,True,True
+MCB,44,2026-02-11,2026-02-11,0,False,Cooling Down,11.4,1.39,0.0,-2.14,-11.76,-5.25,-14.85,-7.72,3.09,2.47,5,85.7,True,Rolling Over,False,False,False,True,True
+MCB,45,2026-02-18,2026-02-18,0,False,Recovering,-4.04,0.25,0.0,-4.99,-10.82,-3.85,-13.73,-8.92,2.91,5.07,18,39.3,False,Stabilising,False,False,False,True,True
+MCB,46,2026-04-14,2026-04-28,14,False,Heating Up,2.11,10.48,0.18,-2.62,-2.13,,0.52,,-2.65,,8,75.0,True,Recovering,True,False,,False,
+MCB,47,2026-05-05,2026-05-11,6,False,Rolling Over,7.82,-3.89,0.32,-2.81,,,,,,,24,17.9,False,Rolling Over,True,,,,
+MCB,48,2026-05-18,2026-05-29,11,True,Cooling Down,8.36,1.7,3.05,-2.0,,,,,,,23,21.4,False,Rolling Over,,,,,
+MEBL,1,2020-10-20,2020-11-20,31,False,Recovering,-2.83,17.2,0.22,-6.61,0.31,23.87,-1.08,12.29,1.39,11.58,7,72.7,True,Recovering,True,True,True,True,True
+MEBL,2,2020-11-25,2021-02-01,68,False,Cooling Down,14.97,1.35,22.12,-2.6,12.45,15.11,6.71,14.49,5.74,0.62,12,50.0,False,Rolling Over,True,True,True,True,True
+MEBL,3,2021-02-03,2021-02-10,7,False,Rolling Over,6.75,-0.73,0.51,-1.03,-0.33,-2.38,-3.53,-5.69,3.2,3.31,13,45.5,False,Rolling Over,True,False,False,True,True
+MEBL,4,2021-02-26,2021-03-10,12,False,Stabilising,-3.71,-1.11,2.36,-4.14,2.15,3.94,-3.12,5.07,5.27,-1.13,20,13.6,False,Stabilising,True,True,True,True,False
+MEBL,5,2021-03-12,2021-03-24,12,False,Heating Up,0.51,2.41,2.2,-1.07,-2.29,2.17,2.72,11.06,-5.01,-8.89,13,45.5,False,Stabilising,True,False,True,False,False
+MEBL,6,2021-03-26,2021-03-26,0,False,Heating Up,2.53,3.41,0.0,-4.44,-4.81,-1.22,-1.79,3.25,-3.02,-4.47,19,18.2,False,Stabilising,False,False,False,False,False
+MEBL,7,2021-03-30,2021-03-31,1,False,Rolling Over,1.99,-0.56,1.06,-2.67,-0.74,3.05,1.8,6.44,-2.54,-3.39,17,27.3,False,Stabilising,True,False,True,False,False
+MEBL,8,2021-04-26,2021-04-28,2,False,Recovering,-1.0,1.33,0.23,-4.33,2.52,13.51,5.49,3.0,-2.97,10.51,20,13.6,False,Recovering,True,True,True,False,True
+MEBL,9,2021-05-27,2021-06-25,29,False,Heating Up,2.57,3.92,1.29,-1.68,1.98,38.36,2.5,1.22,-0.52,37.14,5,81.8,True,Cooling Down,True,True,True,False,True
+MEBL,10,2021-06-29,2021-09-08,71,False,Cooling Down,4.5,0.2,35.84,-0.83,9.77,17.62,-0.17,-3.95,9.94,21.57,19,18.2,False,Rolling Over,True,True,True,True,True
+MEBL,11,2021-09-30,2021-10-13,13,False,Stabilising,-1.24,-0.01,-0.49,-8.53,-4.76,-3.72,2.86,-1.74,-7.62,-1.98,2,95.5,True,Rolling Over,False,False,False,False,False
+MEBL,12,2021-10-20,2021-10-20,0,False,Recovering,-11.25,0.05,0.0,-1.33,2.47,-0.99,1.53,0.92,0.94,-1.91,1,100.0,True,Cooling Down,False,True,False,True,False
+MEBL,13,2021-11-02,2021-11-12,10,False,Cooling Down,3.06,0.57,0.83,-2.47,7.03,-1.29,-4.33,-4.72,11.36,3.43,1,100.0,True,Cooling Down,True,True,False,True,True
+MEBL,14,2021-11-16,2021-12-01,15,False,Heating Up,0.23,0.99,6.19,-1.1,-0.5,-3.31,-7.08,-1.28,6.58,-2.03,4,86.4,True,Rolling Over,True,False,False,True,False
+MEBL,15,2021-12-03,2021-12-03,0,False,Rolling Over,6.59,-2.56,0.0,-4.82,-8.17,-8.07,3.15,1.74,-11.32,-9.81,8,68.2,True,Stabilising,False,False,False,False,False
+MEBL,16,2022-04-14,2022-04-28,14,False,Heating Up,4.43,9.88,-2.61,-4.57,-9.78,-18.68,-7.53,-13.11,-2.25,-5.57,19,18.2,False,Recovering,False,False,False,False,False
+MEBL,17,2023-07-31,2023-08-21,21,False,Cooling Down,53.21,18.17,-2.37,-5.93,-5.56,1.32,-2.63,6.54,-2.93,-5.22,2,95.5,True,Cooling Down,False,False,True,False,False
+MEBL,18,2023-08-25,2023-08-25,0,False,Rolling Over,14.92,-2.88,0.0,-1.93,-7.81,15.57,-2.62,20.35,-5.19,-4.78,1,100.0,True,Rolling Over,False,False,True,False,False
+MEBL,19,2023-10-04,2023-12-14,71,False,Recovering,-3.74,2.1,34.66,-1.58,14.76,35.15,11.18,32.65,3.58,2.5,6,77.3,True,Recovering,True,True,True,True,True
+MEBL,20,2023-12-27,2024-01-09,13,False,Rolling Over,8.51,-6.95,2.13,-7.48,7.44,24.87,6.5,7.05,0.94,17.82,3,90.9,True,Rolling Over,True,True,True,True,True
+MEBL,21,2024-01-12,2024-01-15,3,False,Rolling Over,3.91,-0.29,0.22,-1.45,5.41,42.3,-5.28,9.14,10.69,33.16,6,77.3,True,Cooling Down,True,True,True,True,True
+MEBL,22,2024-01-17,2024-01-29,12,False,Cooling Down,2.67,0.31,1.22,-2.67,2.03,33.22,-5.81,10.58,7.84,22.64,5,81.8,True,Rolling Over,True,True,True,True,True
+MEBL,23,2024-02-01,2024-02-19,18,False,Cooling Down,8.44,0.81,1.3,-2.75,16.83,29.3,5.7,16.62,11.13,12.68,2,95.5,True,Cooling Down,True,True,True,True,True
+MEBL,24,2024-02-21,2024-04-23,62,False,Cooling Down,3.82,0.24,29.16,-1.21,20.28,39.8,6.78,21.76,13.5,18.04,2,96.4,True,Rolling Over,True,True,True,True,True
+MEBL,25,2024-04-25,2024-04-26,1,False,Rolling Over,15.41,-2.99,1.5,-2.1,10.83,9.27,5.57,9.53,5.26,-0.26,8,75.0,True,Cooling Down,True,True,True,True,False
+MEBL,26,2024-05-14,2024-06-06,23,False,Cooling Down,4.85,2.16,10.14,-2.76,2.82,11.31,-2.33,4.8,5.15,6.51,12,60.7,False,Rolling Over,True,True,True,True,True
+MEBL,27,2024-06-13,2024-07-09,26,False,Rolling Over,9.55,-3.3,2.33,-4.29,3.46,-7.73,7.39,4.1,-3.93,-11.83,11,64.3,False,Rolling Over,True,True,False,False,False
+MEBL,28,2024-07-18,2024-07-19,1,False,Heating Up,0.05,0.29,-0.62,-1.79,2.99,0.15,-4.64,4.18,7.63,-4.03,1,100.0,True,Cooling Down,False,True,True,True,False
+MEBL,29,2024-07-24,2024-07-25,1,False,Heating Up,0.85,1.61,-1.36,-2.88,-1.21,-0.84,-0.76,7.37,-0.45,-8.21,2,96.4,True,Rolling Over,False,False,False,False,False
+MEBL,30,2024-08-01,2024-08-02,1,False,Rolling Over,2.8,-0.64,0.21,-0.64,-1.71,3.12,0.96,16.02,-2.67,-12.9,2,96.4,True,Rolling Over,True,False,True,False,False
+MEBL,31,2024-08-06,2024-08-12,6,False,Recovering,-2.48,1.41,-0.07,-1.37,-6.54,-3.87,2.15,15.25,-8.69,-19.12,8,75.0,True,Rolling Over,False,False,False,False,False
+MEBL,32,2024-08-15,2024-08-21,6,False,Heating Up,1.33,1.37,0.14,-1.66,-10.28,-5.34,1.17,19.44,-11.45,-24.78,9,71.4,True,Rolling Over,True,False,False,False,False
+MEBL,33,2024-10-09,2024-10-29,20,False,Heating Up,0.48,2.74,0.12,-2.09,-3.59,2.7,7.41,36.71,-11.0,-34.01,10,67.9,True,Heating Up,True,False,True,False,False
+MEBL,34,2024-11-22,2024-11-25,3,False,Heating Up,6.99,12.58,2.29,-7.94,-15.12,-8.87,11.98,15.63,-27.1,-24.5,19,35.7,False,Heating Up,True,False,False,False,False
+MEBL,35,2024-12-02,2024-12-03,1,False,Recovering,-1.19,3.7,-0.81,-4.2,1.67,-0.58,11.48,10.25,-9.81,-10.83,10,67.9,True,Cooling Down,False,True,False,False,False
+MEBL,36,2024-12-05,2024-12-12,7,False,Heating Up,0.86,3.85,-1.08,-4.54,0.85,-0.48,8.64,3.46,-7.79,-3.94,14,53.6,False,Heating Up,False,True,False,False,False
+MEBL,37,2025-01-03,2025-01-08,5,False,Heating Up,4.74,16.45,-1.91,-2.51,-2.24,7.78,-2.83,1.02,0.59,6.76,10,67.9,True,Cooling Down,False,False,True,True,True
+MEBL,38,2025-01-13,2025-01-15,2,False,Rolling Over,4.05,-2.85,0.37,-1.13,0.38,9.11,-1.07,1.89,1.45,7.22,20,32.1,False,Rolling Over,True,True,True,True,True
+MEBL,39,2025-01-17,2025-01-27,10,False,Falling,-2.94,-3.75,2.11,-0.6,-0.84,7.9,-3.06,1.77,2.22,6.13,22,25.0,False,Stabilising,True,False,True,True,True
+MEBL,40,2025-01-31,2025-02-04,4,False,Cooling Down,13.84,1.57,-0.27,-1.91,0.95,13.04,-1.99,-0.13,2.94,13.17,2,96.4,True,Cooling Down,False,True,True,True,True
+MEBL,41,2025-02-13,2025-02-13,0,False,Recovering,-2.55,0.95,0.0,-0.97,0.75,19.39,2.25,6.57,-1.5,12.82,3,92.9,True,Heating Up,False,True,True,False,True
+MEBL,42,2025-02-24,2025-02-25,1,False,Cooling Down,2.88,1.22,-0.48,-3.04,-1.9,18.6,1.85,3.4,-3.75,15.2,4,89.3,True,Cooling Down,False,False,True,False,True
+MEBL,43,2025-02-27,2025-03-06,7,False,Rolling Over,0.65,-0.08,0.44,-0.84,3.51,26.89,3.54,5.19,-0.03,21.7,4,89.3,True,Cooling Down,True,True,True,False,True
+MEBL,44,2025-03-11,2025-03-19,8,False,Recovering,-0.31,0.97,2.61,-0.9,7.02,27.0,1.94,6.98,5.08,20.02,4,89.3,True,Rolling Over,True,True,True,True,True
+MEBL,45,2025-03-26,2025-05-06,41,False,Cooling Down,2.91,2.02,9.98,-2.0,11.05,35.59,-2.46,6.67,13.51,28.92,18,39.3,False,Stabilising,True,True,True,True,True
+MEBL,46,2025-05-12,2025-07-23,72,False,Cooling Down,19.69,3.77,25.73,-4.2,10.34,31.11,5.79,24.17,4.55,6.94,5,85.7,True,Heating Up,True,True,True,True,True
+MEBL,47,2025-07-25,2025-07-25,0,False,Rolling Over,15.93,-5.4,0.0,-1.02,11.63,29.72,6.9,19.42,4.73,10.3,5,85.7,True,Cooling Down,False,True,True,True,True
+MEBL,48,2025-07-29,2025-09-02,35,False,Rolling Over,15.17,-3.37,10.28,-0.69,11.69,28.58,6.91,20.72,4.78,7.86,4,89.3,True,Rolling Over,True,True,True,True,True
+MEBL,49,2025-09-04,2025-09-23,19,False,Rolling Over,10.18,-5.59,3.15,-0.6,24.06,12.9,10.37,8.32,13.69,4.58,12,60.7,False,Rolling Over,True,True,True,True,True
+MEBL,50,2025-09-25,2025-10-10,15,False,Rolling Over,4.43,-1.02,10.18,-0.96,11.93,7.54,3.33,7.96,8.6,-0.42,21,28.6,False,Rolling Over,True,True,True,True,False
+MEBL,51,2025-10-14,2025-10-23,9,False,Cooling Down,15.2,3.05,0.69,-3.18,-6.48,10.9,-4.6,12.72,-1.88,-1.82,5,85.7,True,Cooling Down,True,False,True,False,False
+MEBL,52,2025-10-31,2025-10-31,0,False,Cooling Down,10.32,0.1,0.0,-5.6,-2.11,4.95,3.12,16.68,-5.23,-11.73,1,100.0,True,Rolling Over,False,False,True,False,False
+MEBL,53,2025-11-27,2025-12-10,13,False,Recovering,-2.99,4.47,-1.49,-4.23,0.28,5.27,4.25,1.4,-3.97,3.87,25,14.3,False,Recovering,False,True,True,False,True
+MEBL,54,2025-12-18,2026-02-09,53,False,Cooling Down,3.02,0.15,12.54,-0.84,12.5,-2.52,7.64,-13.25,4.86,10.73,12,60.7,False,Cooling Down,True,True,False,True,True
+MEBL,55,2026-02-11,2026-02-13,2,False,Cooling Down,9.8,1.31,-0.71,-3.24,-6.97,-1.5,-14.85,-7.72,7.88,6.22,5,85.7,True,Rolling Over,False,False,False,True,True
+MEBL,56,2026-02-18,2026-02-18,0,False,Rolling Over,0.94,-0.23,0.0,-5.77,-10.77,-6.69,-13.73,-8.92,2.96,2.23,18,39.3,False,Stabilising,False,False,False,True,True
+MEBL,57,2026-04-07,2026-04-22,15,False,Recovering,-0.22,10.06,1.7,-2.09,2.15,,13.21,,-11.06,,11,64.3,False,Recovering,True,True,,False,
+MEBL,58,2026-04-24,2026-04-30,6,False,Rolling Over,8.27,-1.29,-0.43,-4.14,-0.22,,1.95,,-2.17,,23,21.4,False,Cooling Down,False,False,,False,
+MEBL,59,2026-05-07,2026-05-07,0,False,Rolling Over,12.43,-0.43,0.0,-3.15,,,,,,,18,39.3,False,Rolling Over,False,,,,
+MEBL,60,2026-05-21,2026-05-21,0,False,Rolling Over,0.06,-2.05,0.0,-1.13,,,,,,,25,14.3,False,Rolling Over,False,,,,
+MEBL,61,2026-05-25,2026-05-29,4,True,Recovering,-4.18,1.69,0.65,-1.67,,,,,,,24,17.9,False,Cooling Down,,,,,
+NBP,1,2020-10-21,2020-10-28,7,False,Recovering,-1.63,7.46,1.27,-4.81,-3.13,6.92,-2.4,10.58,-0.73,-3.66,2,95.5,True,Recovering,True,False,True,False,False
+NBP,2,2020-11-03,2020-11-06,3,False,Recovering,-1.33,4.66,1.23,-2.15,1.5,5.23,2.93,14.77,-1.43,-9.54,7,72.7,True,Stabilising,True,True,True,False,False
+NBP,3,2020-11-10,2020-11-11,1,False,Rolling Over,1.72,-2.45,-0.67,-1.14,2.19,3.38,2.31,14.05,-0.12,-10.67,6,77.3,True,Rolling Over,False,True,True,False,False
+NBP,4,2020-11-26,2021-01-18,53,False,Cooling Down,4.45,3.42,7.3,-2.18,7.55,-2.56,5.81,11.84,1.74,-14.4,12,50.0,False,Rolling Over,True,True,False,True,False
+NBP,5,2021-01-28,2021-01-28,0,False,Rolling Over,0.21,-1.43,0.0,-2.52,-16.35,-13.95,-0.65,-1.05,-15.7,-12.9,9,63.6,False,Rolling Over,False,False,False,False,False
+NBP,6,2022-02-09,2022-02-15,6,False,Cooling Down,8.43,7.67,-3.17,-3.82,-16.31,-22.89,-7.11,-7.43,-9.2,-15.46,7,72.7,True,Cooling Down,False,False,False,False,False
+NBP,7,2023-11-13,2023-12-19,36,False,Cooling Down,6.82,5.54,36.27,-2.93,51.12,17.77,16.79,13.48,34.33,4.29,14,40.9,False,Cooling Down,True,True,True,True,True
+NBP,8,2023-12-21,2023-12-21,0,False,Rolling Over,42.09,-5.81,0.0,-2.64,-5.84,-10.66,0.94,4.48,-6.78,-15.14,7,72.7,True,Rolling Over,False,False,False,False,False
+NBP,9,2023-12-27,2023-12-28,1,False,Rolling Over,36.56,-9.0,-1.2,-4.39,-6.51,9.38,6.5,7.05,-13.01,2.33,3,90.9,True,Rolling Over,False,False,True,False,True
+NBP,10,2024-01-01,2024-01-02,1,False,Rolling Over,25.48,-5.89,-0.09,-2.39,-12.72,19.07,-2.92,2.92,-9.8,16.15,3,90.9,True,Rolling Over,False,False,True,False,True
+NBP,11,2024-03-21,2024-04-26,36,False,Cooling Down,17.61,14.1,24.16,0.0,27.04,7.84,10.14,19.66,16.9,-11.82,23,21.4,False,Stabilising,True,True,True,True,False
+NBP,12,2024-05-14,2024-05-21,7,False,Stabilising,-1.63,-0.08,0.53,-1.35,-12.43,12.51,-2.33,4.8,-10.1,7.71,12,60.7,False,Rolling Over,True,False,True,False,True
+NBP,13,2024-05-23,2024-05-30,7,False,Recovering,-2.13,4.5,-0.64,-1.81,-9.15,28.1,4.21,4.6,-13.36,23.5,14,53.6,False,Cooling Down,False,False,True,False,True
+NBP,14,2024-06-20,2024-06-21,1,False,Rolling Over,0.44,-3.03,1.27,-4.29,23.89,49.82,-0.33,2.11,24.22,47.71,3,92.9,True,Cooling Down,True,True,True,True,True
+NBP,15,2024-07-02,2024-07-30,28,False,Heating Up,2.78,11.61,18.36,-8.88,13.56,44.79,-2.28,1.96,15.84,42.83,2,96.4,True,Heating Up,True,True,True,True,True
+NBP,16,2024-08-02,2024-08-02,0,False,Rolling Over,29.02,-3.14,0.0,-3.11,26.32,44.9,0.07,16.16,26.25,28.74,3,92.9,True,Rolling Over,False,True,True,True,True
+NBP,17,2024-08-09,2024-08-09,0,False,Rolling Over,29.29,-1.17,0.0,-1.66,24.53,25.58,0.06,17.48,24.47,8.1,6,82.1,True,Rolling Over,False,True,True,True,True
+NBP,18,2024-08-20,2024-09-23,34,False,Cooling Down,8.73,1.43,21.13,-7.28,23.8,29.05,3.49,20.08,20.31,8.97,17,42.9,False,Stabilising,True,True,True,True,True
+NBP,19,2024-09-25,2024-10-29,34,False,Rolling Over,27.58,-0.86,18.09,-5.08,15.64,13.08,6.01,35.04,9.63,-21.96,19,35.7,False,Recovering,True,True,True,True,False
+NBP,20,2024-11-22,2024-12-17,25,False,Recovering,-5.53,3.76,16.14,-4.76,-3.29,25.41,11.98,15.63,-15.27,9.78,19,35.7,False,Heating Up,True,False,True,False,True
+NBP,21,2024-12-31,2025-01-02,2,False,Rolling Over,10.59,-7.61,-0.94,-2.12,-5.08,15.26,-2.69,2.3,-2.39,12.96,17,42.9,False,Cooling Down,False,False,True,False,True
+NBP,22,2025-02-03,2025-03-13,38,False,Cooling Down,14.82,14.41,15.14,-1.8,12.45,19.57,-0.0,0.73,,18.84,2,96.4,True,Cooling Down,True,True,True,,True
+NBP,23,2025-03-20,2025-03-20,0,False,Rolling Over,11.42,-3.6,0.0,-1.23,9.57,36.59,-1.3,2.93,10.87,33.66,22,25.0,False,Stabilising,False,True,True,True,True
+NBP,24,2025-03-26,2025-03-26,0,False,Rolling Over,4.53,-3.88,0.0,-0.56,9.87,40.92,-2.46,6.67,12.33,34.25,18,39.3,False,Stabilising,False,True,True,True,True
+NBP,25,2025-04-04,2025-04-04,0,False,Heating Up,2.4,6.11,0.0,-3.73,8.59,47.61,-3.95,10.01,12.54,37.6,11,64.3,False,Cooling Down,False,True,True,True,True
+NBP,26,2025-04-10,2025-04-29,19,False,Cooling Down,4.3,2.83,6.93,-2.71,-0.64,51.24,-7.71,14.16,7.07,37.08,20,32.1,False,Stabilising,True,False,True,True,True
+NBP,27,2025-05-02,2025-05-06,4,False,Rolling Over,15.88,-0.48,-0.88,-3.23,12.99,44.27,4.17,21.29,8.82,22.98,9,71.4,True,Recovering,False,True,True,True,True
+NBP,28,2025-05-12,2025-06-20,39,False,Rolling Over,13.22,-1.4,19.88,-1.74,21.91,59.67,5.79,24.17,16.12,35.5,5,85.7,True,Heating Up,True,True,True,True,True
+NBP,29,2025-06-24,2025-10-10,108,False,Cooling Down,41.37,3.4,90.08,-2.36,15.75,70.27,14.05,27.76,1.7,42.51,11,64.3,False,Cooling Down,True,True,True,True,True
+NBP,30,2025-10-14,2025-10-23,9,False,Cooling Down,35.04,1.33,1.18,-2.42,3.54,25.68,-4.6,12.72,8.14,12.96,5,85.7,True,Cooling Down,True,True,True,True,True
+NBP,31,2025-10-27,2025-10-27,0,False,Cooling Down,11.63,3.84,0.0,-1.46,2.77,32.93,-0.11,16.32,2.88,16.61,3,92.9,True,Cooling Down,False,True,True,True,True
+NBP,32,2025-10-29,2025-11-10,12,False,Rolling Over,13.15,-2.08,8.39,-0.82,4.86,33.37,2.98,18.44,1.88,14.93,1,100.0,True,Rolling Over,True,True,True,True,True
+NBP,33,2025-11-13,2025-11-18,5,False,Recovering,-1.79,1.35,0.41,-0.61,0.84,23.81,4.93,13.5,-4.09,10.31,20,32.1,False,Recovering,True,True,True,False,True
+NBP,34,2025-11-26,2025-11-28,2,False,Cooling Down,2.68,1.45,-0.49,-5.65,11.45,22.0,4.68,6.12,6.77,15.88,26,10.7,False,Recovering,False,True,True,True,True
+NBP,35,2025-12-02,2025-12-04,2,False,Stabilising,-0.51,-0.11,0.02,-1.92,12.33,22.18,3.82,0.75,8.51,21.43,27,7.1,False,Recovering,True,True,True,True,True
+NBP,36,2025-12-08,2026-02-04,58,False,Cooling Down,7.05,4.16,30.1,-2.75,16.92,11.57,9.96,-7.44,6.96,19.01,15,50.0,False,Recovering,True,True,True,True,True
+NBP,37,2026-02-18,2026-02-18,0,False,Rolling Over,3.98,-3.72,0.0,-6.78,-31.04,-33.71,-13.73,-8.92,-17.31,-24.79,18,39.3,False,Stabilising,False,False,False,False,False
+NBP,38,2026-02-20,2026-02-20,0,False,Recovering,-0.58,0.12,0.0,-2.95,-32.39,-29.21,-11.09,-2.69,-21.3,-26.52,12,60.7,False,Stabilising,False,False,False,False,False
+NBP,39,2026-02-25,2026-02-27,2,False,Stabilising,-4.16,-0.85,-0.32,-3.56,-35.75,-25.95,-7.85,5.67,-27.9,-31.62,10,67.9,True,Stabilising,False,False,False,False,False
+SBL,1,2021-09-16,2021-10-08,22,False,Cooling Down,71.87,71.87,-8.91,-17.27,-13.45,13.64,-5.51,-7.51,-7.94,21.15,2,95.5,True,Heating Up,False,False,True,False,True
+SBL,2,2021-10-13,2021-10-13,0,False,Rolling Over,64.17,-4.65,0.0,0.0,16.75,31.07,7.23,4.3,9.52,26.77,1,100.0,True,Heating Up,False,True,True,True,True
+SBL,3,2021-10-15,2021-10-29,14,False,Rolling Over,66.98,-6.16,6.37,-8.65,10.93,21.2,2.04,2.38,8.89,18.82,1,100.0,True,Cooling Down,True,True,True,True,True
+SBL,4,2021-11-02,2021-11-17,15,False,Heating Up,3.29,4.56,4.55,-3.55,14.82,12.55,-4.33,-4.72,19.15,17.27,1,100.0,True,Cooling Down,True,True,True,True,True
+SBL,5,2021-11-19,2021-11-22,3,False,Rolling Over,15.7,-3.32,0.34,-14.15,4.77,0.59,-5.57,-0.88,10.34,1.47,2,95.5,True,Rolling Over,True,True,True,True,True
+SBL,6,2021-11-24,2021-12-07,13,False,Cooling Down,20.82,0.7,8.7,-4.26,11.05,4.87,-0.43,2.98,11.48,1.89,3,90.9,True,Rolling Over,True,True,True,True,True
+SBL,7,2021-12-09,2022-01-14,36,False,Cooling Down,14.26,10.18,0.71,-9.16,-0.47,-2.76,3.59,2.31,-4.06,-5.07,4,86.4,True,Stabilising,True,False,False,False,False
+SBL,8,2022-01-26,2022-01-26,0,False,Rolling Over,7.99,-0.78,0.0,-3.15,-5.43,-9.92,0.4,1.55,-5.83,-11.47,5,81.8,True,Rolling Over,False,False,False,False,False
+SBL,9,2022-02-03,2022-02-03,0,False,Stabilising,-2.78,-1.18,0.0,-4.92,-3.57,-18.65,-2.92,-2.23,-0.65,-16.42,7,72.7,True,Cooling Down,False,False,False,False,False
+SBL,10,2022-02-07,2022-02-08,1,False,Cooling Down,2.46,0.89,0.0,0.0,-1.6,-14.4,-5.62,-5.1,4.02,-9.3,9,63.6,False,Cooling Down,False,False,False,True,False
+SBL,11,2022-02-14,2022-02-15,1,False,Recovering,-0.32,1.79,1.28,-3.52,-2.32,-25.54,-4.99,-6.39,2.67,-19.15,1,100.0,True,Cooling Down,True,False,False,True,False
+SBL,12,2022-03-03,2022-03-03,0,False,Falling,-0.16,-0.95,0.0,-2.63,-5.83,-25.7,1.41,-7.21,-7.24,-18.49,8,68.2,True,Falling,False,False,False,False,False
+SBL,13,2022-03-07,2022-03-07,0,False,Recovering,-3.33,1.05,0.0,-3.85,-3.45,-21.15,1.53,-3.93,-4.98,-17.22,5,81.8,True,Stabilising,False,False,False,False,False
+SBL,14,2022-03-10,2022-03-11,1,False,Heating Up,0.88,5.08,-2.46,-2.46,-11.5,-24.66,1.35,-4.19,-12.85,-20.47,6,77.3,True,Stabilising,False,False,False,False,False
+SBL,15,2022-03-15,2022-03-15,0,False,Recovering,-1.57,4.08,0.0,0.0,-14.0,-28.0,5.59,-5.22,-19.59,-22.78,4,86.4,True,Stabilising,False,False,False,False,False
+SBL,16,2022-03-18,2022-03-18,0,False,Cooling Down,10.0,5.35,0.0,-4.55,-11.44,-31.82,8.16,-2.91,-19.6,-28.91,8,68.2,True,Stabilising,False,False,False,False,False
+SBL,17,2022-03-30,2022-03-31,1,False,Recovering,-0.79,2.88,2.32,0.0,-3.2,-32.0,2.7,-6.86,-5.9,-25.14,12,50.0,False,Stabilising,True,False,False,False,False
+SBL,18,2023-11-01,2023-11-03,2,False,Rolling Over,11.25,-1.11,1.12,-0.11,7.08,8.99,15.64,21.91,-8.56,-12.92,6,77.3,True,Cooling Down,True,True,True,False,False
+SBL,19,2023-11-30,2023-11-30,0,False,Recovering,-7.01,15.31,0.0,-4.31,30.38,31.58,3.17,4.44,27.21,27.14,8,68.2,True,Cooling Down,False,True,True,True,True
+SBL,20,2023-12-04,2024-01-02,29,False,Recovering,-5.36,9.29,29.75,-6.61,20.07,40.5,2.97,3.34,17.1,37.16,16,31.8,False,Cooling Down,True,True,True,True,True
+SBL,21,2024-01-04,2024-01-08,4,False,Rolling Over,51.1,-3.86,0.27,-0.18,-3.37,-7.93,-3.47,3.34,0.1,-11.27,3,90.9,True,Cooling Down,True,False,False,True,False
+SBL,22,2024-01-17,2024-01-19,2,False,Rolling Over,23.97,-4.09,3.13,-2.75,-8.06,-1.42,-5.81,10.58,-2.25,-12.0,5,81.8,True,Rolling Over,True,False,False,False,False
+SBL,23,2024-01-25,2024-01-25,0,False,Cooling Down,22.2,1.77,0.0,-8.21,-3.38,15.75,-1.54,13.13,-1.84,2.62,4,86.4,True,Recovering,False,False,True,False,True
+SBL,24,2024-01-29,2024-02-20,22,False,Rolling Over,23.66,-5.45,1.92,-2.79,-7.69,7.6,1.48,13.27,-9.17,-5.67,4,86.4,True,Recovering,True,False,True,False,False
+SBL,25,2024-02-29,2024-02-29,0,False,Stabilising,-7.06,-1.75,0.0,-14.92,7.41,6.0,3.97,17.5,3.44,-11.5,7,78.6,True,Recovering,False,True,True,True,False
+SBL,26,2024-03-20,2024-03-20,0,False,Rolling Over,2.73,-1.03,0.0,-0.09,-0.47,13.74,8.56,18.57,-9.03,-4.83,25,14.3,False,Stabilising,False,False,True,False,False
+SBL,27,2024-03-29,2024-04-22,24,False,Heating Up,8.91,15.79,2.18,-5.36,-3.36,13.64,7.31,19.82,-10.67,-6.18,20,32.1,False,Heating Up,True,False,True,False,False
+SBL,28,2024-05-20,2024-05-29,9,False,Cooling Down,14.0,6.15,-1.84,-7.81,1.14,14.21,4.96,4.23,-3.82,9.98,13,57.1,False,Cooling Down,False,True,True,False,True
+SBL,29,2024-06-07,2024-06-07,0,False,Falling,-2.67,-3.95,0.0,-8.49,13.7,-2.47,8.25,6.59,5.45,-9.06,12,60.7,False,Rolling Over,False,True,False,True,False
+SBL,30,2024-06-13,2024-06-25,12,False,Heating Up,0.36,1.01,8.27,-1.27,5.82,-8.91,7.39,4.1,-1.57,-13.01,11,64.3,False,Rolling Over,True,True,False,False,False
+SBL,31,2024-06-28,2024-07-01,3,False,Cooling Down,15.45,14.31,-3.17,-4.72,6.09,2.92,0.23,4.1,5.86,-1.18,1,100.0,True,Heating Up,False,True,True,True,False
+SBL,32,2024-07-03,2024-07-12,9,False,Cooling Down,18.81,6.19,0.0,-4.17,2.08,0.75,-2.5,1.96,4.58,-1.21,1,100.0,True,Cooling Down,False,True,True,True,False
+SBL,33,2024-07-29,2024-08-09,11,False,Rolling Over,10.74,-3.97,3.37,-7.0,-6.16,-2.7,-0.94,10.61,-5.22,-13.31,1,100.0,True,Rolling Over,True,False,False,False,False
+SBL,34,2024-08-13,2024-08-15,2,False,Cooling Down,11.51,0.51,6.54,-0.17,-7.72,-2.68,0.99,18.8,-8.71,-21.48,9,71.4,True,Rolling Over,True,False,False,False,False
+SBL,35,2024-08-20,2024-08-26,6,False,Cooling Down,4.17,2.04,1.6,-6.96,-20.16,-20.48,3.49,20.08,-23.65,-40.56,17,42.9,False,Stabilising,True,False,False,False,False
+SBL,36,2024-10-02,2024-10-03,1,False,Heating Up,15.71,33.03,-9.3,-11.03,-10.95,-28.43,10.15,34.72,-21.1,-63.15,16,46.4,False,Recovering,False,False,False,False,False
+SBL,37,2024-10-08,2024-10-08,0,False,Recovering,-9.3,9.95,0.0,-3.1,-1.72,-18.1,7.75,36.59,-9.47,-54.69,16,46.4,False,Recovering,False,False,False,False,False
+SBL,38,2024-10-10,2024-10-10,0,False,Heating Up,1.69,3.36,0.0,-4.17,-4.17,-18.5,8.27,37.6,-12.44,-56.1,8,75.0,True,Heating Up,False,False,False,False,False
+SBL,39,2024-10-14,2024-10-14,0,False,Rolling Over,15.31,-0.83,0.0,0.0,-9.92,-20.17,9.84,36.11,-19.76,-56.28,6,82.1,True,Heating Up,False,False,False,False,False
+SBL,40,2024-10-23,2024-10-30,7,False,Cooling Down,10.29,4.35,-1.08,-7.17,-19.08,-22.33,9.58,30.55,-28.66,-52.88,6,82.1,True,Cooling Down,False,False,False,False,False
+SBL,41,2024-11-01,2024-11-01,0,False,Cooling Down,12.38,7.27,0.0,-5.42,-11.53,-21.19,11.55,24.94,-23.08,-46.13,8,75.0,True,Cooling Down,False,False,False,False,False
+SBL,42,2024-11-08,2024-11-08,0,False,Cooling Down,0.78,0.52,0.0,-7.76,-10.86,-22.33,16.9,20.85,-27.76,-43.18,15,50.0,False,Rolling Over,False,False,False,False,False
+SBL,43,2025-09-25,2025-10-09,14,False,Cooling Down,12.7,12.46,5.3,-1.04,23.11,44.41,3.33,7.96,19.78,36.45,21,28.6,False,Rolling Over,True,True,True,True,True
+SBL,44,2025-10-16,2025-11-04,19,False,Rolling Over,26.47,-4.3,5.08,-9.75,-1.27,33.64,-2.3,12.14,1.03,21.5,2,96.4,True,Rolling Over,True,False,True,True,True
+SBL,45,2025-12-05,2026-01-13,39,False,Recovering,-3.07,8.43,18.95,-1.67,27.6,-5.63,9.17,-5.96,18.43,0.33,17,42.9,False,Recovering,True,True,False,True,True
+SBL,46,2026-01-20,2026-01-23,3,False,Rolling Over,9.59,-4.22,-1.58,-7.83,-4.41,-32.89,-5.18,-7.78,0.77,-25.11,3,92.9,True,Rolling Over,False,False,False,True,False
+SBL,47,2026-02-04,2026-02-11,7,False,Rolling Over,0.13,-0.4,-1.26,-6.78,-20.68,-36.9,-14.17,-12.29,-6.51,-24.61,3,92.9,True,Rolling Over,False,False,False,False,False
+SBL,48,2026-02-18,2026-02-18,0,False,Recovering,-8.44,2.69,0.0,-3.51,-22.37,-31.18,-13.73,-8.92,-8.64,-22.26,18,39.3,False,Stabilising,False,False,False,False,False
+SCBPL,1,2020-11-02,2020-11-12,10,False,Cooling Down,12.41,0.88,1.72,-5.67,-3.47,-11.77,5.0,18.35,-8.47,-30.12,8,68.2,True,Stabilising,True,False,False,False,False
+SCBPL,2,2020-11-16,2020-11-20,4,False,Cooling Down,14.36,1.64,0.03,-3.47,-3.75,-9.86,6.82,15.16,-10.57,-25.02,14,40.9,False,Recovering,True,False,False,False,False
+SCBPL,3,2020-12-15,2020-12-15,0,False,Recovering,-2.71,0.75,0.0,-2.38,-1.41,-22.48,6.57,-1.09,-7.98,-21.39,11,54.5,False,Cooling Down,False,False,False,False,False
+SCBPL,4,2020-12-18,2020-12-21,3,False,Recovering,-5.15,2.35,0.66,-3.54,-4.11,-22.71,4.54,2.55,-8.65,-25.26,12,50.0,False,Cooling Down,True,False,False,False,False
+SCBPL,5,2020-12-30,2021-01-01,2,False,Recovering,-3.3,2.44,0.4,-7.23,-10.59,-13.17,6.32,4.18,-16.91,-17.35,18,22.7,False,Cooling Down,True,False,False,False,False
+SCBPL,6,2021-01-05,2021-01-05,0,False,Stabilising,-2.72,-0.91,0.0,-0.55,-5.51,-13.49,4.32,-0.5,-9.83,-12.99,20,13.6,False,Cooling Down,False,False,False,False,False
+SCBPL,7,2021-01-14,2021-01-14,0,False,Stabilising,-1.88,-1.06,0.0,-2.52,-7.89,-5.05,-0.39,-2.2,-7.5,-2.85,7,72.7,True,Cooling Down,False,False,False,False,False
+SCBPL,8,2021-05-04,2021-06-03,30,False,Cooling Down,25.42,12.96,2.12,-9.97,-4.72,-1.86,7.21,5.74,-11.93,-7.6,6,77.3,True,Stabilising,True,False,False,False,False
+SCBPL,9,2021-06-15,2021-06-15,0,False,Rolling Over,8.66,-1.37,0.0,-3.38,5.37,-2.42,-2.37,-3.58,7.74,1.16,19,18.2,False,Rolling Over,False,True,False,True,True
+SCBPL,10,2021-06-23,2021-06-30,7,False,Cooling Down,3.01,1.51,0.98,-4.62,2.03,3.19,-0.48,-4.81,2.51,8.0,20,13.6,False,Cooling Down,True,True,True,True,True
+SCBPL,11,2021-07-05,2021-07-08,3,False,Heating Up,1.9,4.45,2.07,-5.05,-2.77,4.11,0.45,-5.03,-3.22,9.14,17,27.3,False,Rolling Over,True,False,True,False,True
+SCBPL,12,2021-07-13,2021-07-23,10,False,Falling,-0.39,-0.42,4.18,-4.33,0.6,4.48,-0.65,-7.58,1.25,12.06,18,22.7,False,Recovering,True,True,True,True,True
+SCBPL,13,2021-07-30,2021-07-30,0,False,Heating Up,3.57,3.73,0.0,-6.49,-6.11,-3.68,0.77,-2.68,-6.88,-1.0,12,50.0,False,Recovering,False,False,False,False,False
+SCBPL,14,2021-08-03,2021-08-03,0,False,Cooling Down,3.0,0.71,0.0,0.0,-7.33,-3.47,-1.79,-3.29,-5.54,-0.18,15,36.4,False,Recovering,False,False,False,False,False
+SCBPL,15,2021-08-10,2021-08-23,13,False,Cooling Down,1.55,0.57,0.75,-2.52,-12.84,-1.35,-1.08,0.34,-11.76,-1.69,15,36.4,False,Stabilising,True,False,False,False,False
+SCBPL,16,2021-08-30,2021-08-31,1,False,Cooling Down,4.05,1.98,3.08,-1.2,-1.56,-7.43,-5.38,-5.1,3.82,-2.33,8,68.2,True,Stabilising,True,False,False,True,False
+SCBPL,17,2021-10-05,2021-10-08,3,False,Heating Up,3.55,12.9,0.23,-5.06,-2.62,2.59,5.3,-0.91,-7.92,3.5,2,95.5,True,Stabilising,True,False,True,False,True
+SCBPL,18,2021-10-12,2021-10-29,17,False,Cooling Down,1.65,0.68,2.9,-8.4,-2.72,-6.86,6.26,3.47,-8.98,-10.33,1,100.0,True,Cooling Down,True,False,False,False,False
+SCBPL,19,2022-01-03,2022-01-17,14,False,Heating Up,10.88,14.9,-2.28,-6.77,-13.9,-17.76,1.09,-1.0,-14.99,-16.76,13,45.5,False,Stabilising,False,False,False,False,False
+SCBPL,20,2023-08-11,2023-08-18,7,False,Cooling Down,9.6,1.49,0.67,-2.18,5.6,40.06,-5.28,10.97,10.88,29.09,2,95.5,True,Cooling Down,True,True,True,True,True
+SCBPL,21,2023-08-22,2023-09-05,14,False,Cooling Down,4.6,3.19,22.47,-3.53,3.88,39.37,-3.18,21.05,7.06,18.32,1,100.0,True,Rolling Over,True,True,True,True,True
+SCBPL,22,2023-09-20,2023-10-16,26,False,Cooling Down,13.23,5.6,12.81,-3.65,12.36,46.41,9.75,44.11,2.61,2.3,11,54.5,False,Stabilising,True,True,True,True,True
+SCBPL,23,2023-10-18,2023-12-18,61,False,Falling,-0.43,-4.7,30.54,-5.29,14.29,29.14,16.11,30.76,-1.82,-1.62,12,50.0,False,Cooling Down,True,True,True,False,False
+SCBPL,24,2023-12-21,2023-12-22,1,False,Rolling Over,11.11,-1.77,1.94,0.0,3.93,1.01,0.94,4.48,2.99,-3.47,7,72.7,True,Rolling Over,True,True,True,True,False
+SCBPL,25,2023-12-28,2024-01-29,32,False,Cooling Down,11.04,1.95,2.99,-4.23,3.66,5.63,3.62,5.6,0.04,0.03,2,95.5,True,Rolling Over,True,True,True,True,True
+SCBPL,26,2024-01-31,2024-02-09,9,False,Cooling Down,3.51,0.06,2.01,-2.04,4.17,36.59,5.4,16.01,-1.23,20.58,2,95.5,True,Cooling Down,True,True,True,False,True
+SCBPL,27,2024-02-14,2024-03-14,29,False,Cooling Down,3.06,1.2,4.11,-2.73,3.57,28.14,3.05,20.13,0.52,8.01,3,92.9,True,Heating Up,True,True,True,True,True
+SCBPL,28,2024-03-25,2024-03-25,0,False,Rolling Over,4.17,-2.65,0.0,0.0,44.0,64.48,11.01,19.72,32.99,44.76,27,7.1,False,Falling,False,True,True,True,True
+SCBPL,29,2024-03-27,2024-05-02,36,False,Cooling Down,4.41,0.81,30.39,-6.81,32.54,86.44,6.84,19.54,25.7,66.9,23,21.4,False,Recovering,True,True,True,True,True
+SCBPL,30,2024-05-20,2024-07-11,52,False,Rolling Over,17.75,-1.48,36.69,-3.33,30.58,24.63,4.96,4.23,25.62,20.4,13,57.1,False,Cooling Down,True,True,True,True,True
+SCBPL,31,2024-07-15,2024-07-15,0,False,Rolling Over,15.08,-2.07,0.0,-2.04,-10.07,-14.96,-3.76,5.33,-6.31,-20.29,1,100.0,True,Cooling Down,False,False,False,False,False
+SCBPL,32,2024-08-16,2024-08-21,5,False,Recovering,-17.37,2.87,1.85,-2.54,-3.98,-16.43,1.65,19.99,-5.63,-36.42,11,64.3,False,Falling,True,False,False,False,False
+SCBPL,33,2024-08-23,2024-08-26,3,False,Recovering,-12.81,9.36,0.38,-2.46,1.11,-16.75,3.87,20.55,-2.76,-37.3,27,7.1,False,Recovering,True,True,False,False,False
+SCBPL,34,2025-01-08,2025-01-15,7,False,Cooling Down,15.93,7.92,-2.65,-6.98,-7.0,-0.23,-3.37,-1.1,-3.63,0.87,23,21.4,False,Cooling Down,False,False,False,False,True
+SCBPL,35,2025-01-20,2025-01-21,1,False,Recovering,-4.56,1.85,1.8,-1.64,-0.91,12.29,-2.38,2.19,1.47,10.1,25,14.3,False,Stabilising,True,False,True,True,True
+SCBPL,36,2025-01-23,2025-01-24,1,False,Rolling Over,1.58,-1.96,-0.68,-3.31,5.51,9.16,-1.08,0.86,6.59,8.3,7,78.6,True,Cooling Down,False,True,True,True,True
+SCBPL,37,2025-02-21,2025-03-13,20,False,Heating Up,3.44,11.43,10.92,-10.09,-4.94,-1.61,5.0,5.59,-9.94,-7.2,2,96.4,True,Cooling Down,True,False,False,False,False
+SCBPL,38,2025-04-14,2025-04-24,10,False,Recovering,-4.02,3.2,4.6,-1.25,1.95,14.93,1.88,15.39,0.07,-0.46,23,21.4,False,Recovering,True,True,True,True,False
+SCBPL,39,2025-04-29,2025-04-30,1,False,Recovering,-7.71,1.76,-0.42,-7.2,-2.6,13.5,3.57,21.33,-6.17,-7.83,15,50.0,False,Stabilising,False,False,True,False,False
+SCBPL,40,2025-05-05,2025-05-06,1,False,Rolling Over,4.77,-2.28,-0.23,-4.37,-1.67,13.33,5.56,22.16,-7.23,-8.83,14,53.6,False,Stabilising,False,False,True,False,False
+SCBPL,41,2025-05-12,2025-05-20,8,False,Cooling Down,8.9,3.03,0.02,-4.26,0.26,12.35,5.79,24.17,-5.53,-11.82,5,85.7,True,Heating Up,True,True,True,False,False
+SCBPL,42,2025-06-02,2025-06-12,10,False,Stabilising,-2.27,-1.86,2.95,-1.69,11.83,33.05,9.65,23.95,2.18,9.1,17,42.9,False,Heating Up,True,True,True,True,True
+SCBPL,43,2025-06-16,2025-06-16,0,False,Recovering,-0.37,2.29,0.0,-1.14,12.66,23.93,11.68,28.09,0.98,-4.16,7,78.6,True,Cooling Down,False,True,True,True,False
+SCBPL,44,2025-06-18,2025-06-18,0,False,Heating Up,1.44,1.53,0.0,-0.6,10.65,22.65,13.21,29.61,-2.56,-6.96,7,78.6,True,Cooling Down,False,True,True,False,False
+SCBPL,45,2025-06-24,2025-06-25,1,False,Rolling Over,5.52,-1.61,-0.27,-0.85,11.71,19.5,14.05,27.76,-2.34,-8.26,11,64.3,False,Cooling Down,False,True,True,False,False
+SCBPL,46,2025-06-27,2025-09-03,68,False,Heating Up,0.72,0.79,31.91,-0.53,15.14,19.74,11.92,26.67,3.22,-6.93,12,60.7,False,Cooling Down,True,True,True,True,False
+SCBPL,47,2025-10-02,2025-10-02,0,False,Stabilising,-11.31,-0.29,0.0,-3.0,-10.86,-5.2,-6.98,2.32,-3.88,-7.52,7,78.6,True,Cooling Down,False,False,False,False,False
+SCBPL,48,2025-12-18,2026-01-28,41,False,Cooling Down,9.61,3.44,5.09,-1.98,6.15,-2.2,7.64,-13.25,-1.49,11.05,12,60.7,False,Cooling Down,True,True,False,False,True
+SCBPL,49,2026-02-03,2026-02-04,1,False,Rolling Over,5.75,-1.97,0.43,-0.69,-10.76,-20.94,-16.65,-12.28,5.89,-8.66,4,89.3,True,Rolling Over,True,False,False,True,False
+SCBPL,50,2026-02-11,2026-02-13,2,False,Cooling Down,12.0,5.03,-2.59,-7.69,-11.95,-24.71,-14.85,-7.72,2.9,-16.99,5,85.7,True,Rolling Over,False,False,False,True,False
+SCBPL,51,2026-02-17,2026-02-18,1,False,Cooling Down,2.76,2.46,0.66,-5.11,-12.57,-21.24,-13.36,-6.55,0.79,-14.69,22,25.0,False,Stabilising,True,False,False,True,False
+SILK,1,2020-10-21,2020-10-27,6,False,Recovering,-2.86,4.08,-1.96,-5.88,-7.84,17.65,-2.4,10.58,-5.44,7.07,2,95.5,True,Recovering,False,False,True,False,True
+SILK,2,2020-11-09,2020-11-11,2,False,Recovering,-2.83,1.98,-3.88,-4.85,-11.65,49.51,3.26,14.21,-14.91,35.3,9,63.6,False,Falling,False,False,True,False,True
+SILK,3,2020-12-29,2021-02-19,52,False,Heating Up,5.26,7.53,50.0,-3.0,21.0,19.0,6.94,5.65,14.06,13.35,15,36.4,False,Cooling Down,True,True,True,True,True
+SILK,4,2021-04-20,2021-04-29,9,False,Heating Up,10.61,15.87,-8.22,-17.81,-0.68,24.66,3.11,5.01,-3.79,19.65,19,18.2,False,Recovering,False,False,True,False,True
+SILK,5,2021-05-03,2021-05-18,15,False,Rolling Over,10.92,-4.35,3.03,-5.3,20.45,31.06,9.24,7.75,11.21,23.31,7,72.7,True,Recovering,True,True,True,True,True
+SILK,6,2021-05-21,2021-07-12,52,False,Cooling Down,20.87,3.73,34.53,-5.76,31.65,30.94,5.06,3.67,26.59,27.27,7,72.7,True,Cooling Down,True,True,True,True,True
+SILK,7,2021-07-27,2021-07-27,0,False,Rolling Over,17.95,-5.64,0.0,-2.17,-6.52,-20.65,-0.68,-4.42,-5.84,-16.23,14,40.9,False,Recovering,False,False,False,False,False
+SILK,8,2021-08-04,2021-08-04,0,False,Heating Up,0.55,1.66,0.0,-4.89,-5.98,-21.2,-1.74,-1.71,-4.24,-19.49,12,50.0,False,Recovering,False,False,False,False,False
+SILK,9,2021-08-13,2021-08-23,10,False,Recovering,-14.08,0.57,2.26,-6.21,-10.17,-20.34,-0.59,-1.14,-9.58,-19.2,14,40.9,False,Stabilising,True,False,False,False,False
+SILK,10,2021-09-02,2021-09-02,0,False,Rolling Over,0.57,-1.12,0.0,-6.21,-15.25,-25.42,-4.27,-5.95,-10.98,-19.47,11,54.5,False,Stabilising,False,False,False,False,False
+SILK,11,2023-06-01,2023-06-05,4,False,Cooling Down,5.61,2.73,-2.65,-2.65,-11.5,-18.58,5.55,9.05,-17.05,-27.63,12,50.0,False,Falling,False,False,False,False,False
+SILK,12,2023-06-09,2023-06-09,0,False,Cooling Down,9.9,7.77,0.0,-4.5,-9.91,-12.61,8.62,9.81,-18.53,-22.42,18,22.7,False,Stabilising,False,False,False,False,False
+SILK,13,2023-12-06,2023-12-22,16,False,Rolling Over,12.5,-2.7,7.41,-0.93,2.78,-7.41,1.13,3.18,1.65,-10.59,14,40.9,False,Cooling Down,True,True,False,True,False
+SILK,14,2024-01-01,2024-01-01,0,False,Rolling Over,11.65,-5.74,0.0,-5.22,-7.83,-16.52,-2.92,2.92,-4.91,-19.44,3,90.9,True,Rolling Over,False,False,False,False,False
+SILK,15,2024-12-11,2024-12-17,6,False,Recovering,-8.47,17.39,-4.63,-6.48,-7.41,5.56,1.65,3.24,-9.06,2.32,22,25.0,False,Cooling Down,False,False,True,False,True
+SILK,16,2024-12-23,2024-12-26,3,False,Rolling Over,15.56,-4.59,1.92,-5.77,-2.88,,0.98,3.55,-3.86,,15,50.0,False,Rolling Over,True,False,,False,
+SILK,17,2024-12-30,2025-01-07,8,False,Cooling Down,12.9,1.94,-1.9,-4.76,-5.71,,-1.51,1.19,-4.2,,14,53.6,False,Cooling Down,False,False,,False,
+SILK,18,2025-01-14,2025-01-15,1,False,Cooling Down,12.9,2.94,-2.86,-5.71,1.9,,-1.64,1.72,3.54,,23,21.4,False,Heating Up,False,True,,True,
+SILK,19,2025-01-17,2025-01-20,3,False,Stabilising,-3.77,-1.92,0.98,-1.96,4.9,,-3.06,1.77,7.96,,22,25.0,False,Stabilising,True,True,,True,
+SILK,20,2025-02-03,2025-03-18,43,True,Rolling Over,3.06,-1.94,13.86,-0.99,10.89,,-0.0,0.73,,,2,96.4,True,Cooling Down,,True,,,
+SNBL,1,2021-01-08,2021-01-25,17,False,Cooling Down,5.01,3.21,2.04,-2.24,-0.29,-14.98,2.34,-2.74,-2.63,-12.24,11,54.5,False,Cooling Down,True,False,False,False,False
+SNBL,2,2021-01-27,2021-01-27,0,False,Cooling Down,5.43,1.75,0.0,-1.62,-2.38,-19.07,-1.06,-3.77,-1.32,-15.3,8,68.2,True,Rolling Over,False,False,False,False,False
+SNBL,3,2021-01-29,2021-02-01,3,False,Rolling Over,4.72,-0.38,0.77,-0.58,-1.63,-18.91,-1.71,-2.36,0.08,-16.55,10,59.1,False,Rolling Over,True,False,False,True,False
+SNBL,4,2021-02-16,2021-02-19,3,False,Rolling Over,3.3,-1.62,1.16,-1.26,-3.19,-15.49,-4.29,-2.76,1.1,-12.73,12,50.0,False,Rolling Over,True,False,False,True,False
+SNBL,5,2021-02-23,2021-02-23,0,False,Heating Up,1.36,2.05,0.0,-1.53,-15.58,-12.91,-0.4,2.32,-15.18,-15.23,21,9.1,False,Stabilising,False,False,False,False,False
+SNBL,6,2021-11-16,2021-12-01,15,False,Cooling Down,5.76,2.85,0.72,-3.39,0.51,3.29,-7.08,-1.28,7.59,4.57,4,86.4,True,Rolling Over,True,True,True,True,True
+SNBL,7,2021-12-09,2021-12-09,0,False,Cooling Down,3.62,0.31,0.0,-1.44,2.16,6.57,3.59,2.31,-1.43,4.26,4,86.4,True,Stabilising,False,True,True,False,True
+SNBL,8,2021-12-14,2021-12-15,1,False,Rolling Over,3.38,-1.21,0.2,-2.35,0.72,8.38,6.09,-0.85,-5.37,9.23,4,86.4,True,Stabilising,True,True,True,False,True
+SNBL,9,2021-12-17,2021-12-27,10,False,Heating Up,1.13,1.76,-0.2,-6.11,0.41,-7.03,4.24,-0.56,-3.83,-6.47,4,86.4,True,Stabilising,False,True,False,False,False
+SNBL,10,2022-01-04,2022-01-04,0,False,Heating Up,0.2,2.82,0.0,-1.02,0.81,-7.11,0.62,-2.32,0.19,-4.79,17,27.3,False,Recovering,False,True,False,True,False
+SNBL,11,2022-01-06,2022-01-12,6,False,Recovering,-0.2,0.41,0.51,-1.52,-0.51,-7.11,1.73,0.15,-2.24,-7.26,17,27.3,False,Stabilising,True,False,False,False,False
+SNBL,12,2022-01-14,2022-01-17,3,False,Recovering,-0.51,1.44,1.52,-0.91,2.03,-2.54,0.69,0.83,1.34,-3.37,12,50.0,False,Cooling Down,True,True,False,True,False
+SNBL,13,2022-01-19,2022-01-19,0,False,Cooling Down,2.18,2.18,0.0,0.0,6.29,-0.71,1.9,3.68,4.39,-4.39,5,81.8,True,Cooling Down,False,True,False,True,False
+SNBL,14,2022-01-26,2022-01-26,0,False,Cooling Down,2.57,0.4,0.0,-0.2,4.2,-2.4,0.4,1.55,3.8,-3.95,5,81.8,True,Rolling Over,False,True,False,True,False
+SNBL,15,2022-01-28,2022-02-03,6,False,Cooling Down,4.5,1.94,-0.1,-5.91,3.1,-3.4,-2.43,2.21,5.53,-5.61,7,72.7,True,Rolling Over,False,True,False,True,False
+SNBL,16,2022-02-07,2022-02-07,0,False,Cooling Down,0.82,0.71,0.0,-0.71,4.25,-7.69,-5.62,-5.1,9.87,-2.59,9,63.6,False,Cooling Down,False,True,False,True,False
+SNBL,17,2022-02-09,2022-03-04,23,False,Cooling Down,0.91,0.0,5.41,-0.9,3.9,-9.41,-7.11,-7.43,11.01,-1.98,7,72.7,True,Cooling Down,True,True,False,True,False
+SNBL,18,2022-03-09,2022-03-15,6,False,Rolling Over,3.9,-0.29,2.12,-0.96,-8.48,-9.92,1.73,-3.04,-10.21,-6.88,7,72.7,True,Stabilising,True,False,False,False,False
+SNBL,19,2022-09-13,2022-09-13,0,False,Cooling Down,11.38,6.11,0.0,-5.65,-2.78,-5.46,0.37,-0.43,-3.15,-5.03,9,63.6,False,Rolling Over,False,False,False,False,False
+SNBL,20,2022-09-20,2022-09-20,0,False,Rolling Over,5.97,-0.2,0.0,0.0,6.45,2.46,1.5,1.25,4.95,1.21,15,36.4,False,Stabilising,False,True,True,True,True
+SNBL,21,2022-09-28,2022-09-28,0,False,Cooling Down,4.62,1.25,0.0,-2.06,0.82,3.8,0.25,-3.85,0.57,7.65,14,40.9,False,Stabilising,False,True,True,True,True
+SNBL,22,2022-09-30,2022-09-30,0,False,Heating Up,1.66,1.98,0.0,-0.51,0.0,1.94,0.03,-2.37,,4.31,14,40.9,False,Stabilising,False,False,True,,True
+SNBL,23,2022-10-07,2022-10-27,20,False,Recovering,-0.21,0.0,4.17,-3.12,2.08,4.06,-0.54,-3.02,2.62,7.08,18,22.7,False,Recovering,True,True,True,True,True
+SNBL,24,2022-11-02,2022-11-04,2,False,Rolling Over,3.75,-1.29,0.2,-4.81,-4.71,0.3,1.07,-2.62,-5.78,2.92,12,50.0,False,Stabilising,True,False,True,False,True
+SNBL,25,2022-11-10,2022-11-10,0,False,Rolling Over,6.88,-0.49,0.0,-1.98,-5.84,-3.96,-2.91,-5.05,-2.93,1.09,4,86.4,True,Heating Up,False,False,False,False,True
+SNBL,26,2022-11-16,2022-11-16,0,False,Cooling Down,3.08,2.24,0.0,-2.29,-6.88,-3.49,-2.9,-2.93,-3.98,-0.56,9,63.6,False,Heating Up,False,False,False,False,False
+SNBL,27,2022-11-18,2022-11-18,0,False,Cooling Down,4.59,4.59,0.0,0.0,-2.44,-12.2,-3.34,-2.31,0.9,-9.89,3,90.9,True,Heating Up,False,False,False,True,False
+SNBL,28,2022-11-28,2022-11-28,0,False,Cooling Down,3.54,1.43,0.0,0.0,0.6,-9.46,-4.55,-3.32,5.15,-6.14,1,100.0,True,Rolling Over,False,True,False,True,False
+SNBL,29,2022-12-01,2022-12-01,0,False,Heating Up,1.02,2.06,0.0,0.0,1.01,-9.09,-6.24,-3.67,7.25,-5.42,3,90.9,True,Rolling Over,False,True,False,True,False
+SNBL,30,2022-12-26,2022-12-26,0,False,Heating Up,0.1,6.38,0.0,-3.7,-4.9,-10.0,-4.26,1.9,-0.64,-11.9,7,72.7,True,Stabilising,False,False,False,False,False
+SNBL,31,2022-12-30,2023-01-16,17,False,Heating Up,2.04,5.15,-0.1,-6.6,-7.0,-10.0,0.07,-1.04,-7.07,-8.96,5,81.8,True,Stabilising,False,False,False,False,False
+SNBL,32,2023-01-26,2023-01-26,0,False,Rolling Over,2.26,-0.6,0.0,-2.41,-8.55,-3.22,-0.02,1.51,-8.53,-4.73,7,72.7,True,Recovering,False,False,False,False,False
+SNBL,33,2023-07-27,2023-08-03,7,False,Cooling Down,5.26,0.51,-1.02,-2.04,-4.59,-4.08,0.85,8.39,-5.44,-12.47,2,95.5,True,Cooling Down,False,False,False,False,False
+SNBL,34,2023-11-10,2023-11-21,11,False,Cooling Down,13.13,7.33,-1.46,-8.39,0.68,25.95,19.56,15.18,-18.88,10.77,13,45.5,False,Cooling Down,False,True,True,False,True
+SNBL,35,2023-11-27,2023-11-27,0,False,Rolling Over,8.6,-4.86,0.0,-1.8,0.3,35.57,-1.07,3.52,1.37,32.05,14,40.9,False,Cooling Down,False,True,True,True,True
+SNBL,36,2023-11-30,2023-12-19,19,False,Rolling Over,7.03,-3.04,7.07,-1.52,6.06,33.54,3.17,4.44,2.89,29.1,8,68.2,True,Cooling Down,True,True,True,True,True
+SNBL,37,2023-12-21,2023-12-21,0,False,Cooling Down,4.8,3.77,0.0,-1.81,4.78,-9.55,0.94,4.48,3.84,-14.03,7,72.7,True,Rolling Over,False,True,False,True,False
+SNBL,38,2023-12-28,2024-01-11,14,False,Rolling Over,2.64,-6.74,0.38,-3.24,3.62,-9.13,3.62,5.6,0.0,-14.73,2,95.5,True,Rolling Over,True,True,False,False,False
+SNBL,39,2024-01-16,2024-01-17,1,False,Cooling Down,5.79,1.05,-0.38,-2.74,20.38,-5.0,-4.26,10.35,24.64,-15.35,5,81.8,True,Rolling Over,False,True,False,True,False
+SNBL,40,2024-01-19,2024-02-27,39,False,Cooling Down,8.72,4.38,20.51,-4.28,18.05,-8.02,-4.45,12.88,22.5,-20.9,8,68.2,True,Stabilising,True,True,False,True,False
+SNBL,41,2024-05-15,2024-06-04,20,False,Cooling Down,12.85,7.75,2.0,-1.64,-0.36,37.07,2.07,4.53,-2.43,32.54,10,67.9,True,Cooling Down,True,False,True,False,True
+SNBL,42,2024-06-14,2024-08-05,52,False,Rolling Over,7.62,-2.48,20.44,-1.0,18.71,20.8,4.45,3.63,14.26,17.17,9,71.4,True,Cooling Down,True,True,True,True,True
+SNBL,43,2024-08-07,2024-08-30,23,False,Rolling Over,13.68,-3.9,16.39,-1.43,3.98,5.71,2.27,17.82,1.71,-12.11,10,67.9,True,Rolling Over,True,True,True,True,False
+SNBL,44,2024-09-23,2024-09-23,0,False,Cooling Down,4.45,0.07,0.0,-3.11,1.23,23.19,5.14,41.93,-3.91,-18.74,21,28.6,False,Recovering,False,True,True,False,False
+SNBL,45,2024-09-26,2024-10-02,6,False,Recovering,-1.0,3.04,-0.29,-1.51,3.45,17.33,8.93,30.15,-5.48,-12.82,12,60.7,False,Recovering,False,True,True,False,False
+SNBL,46,2024-10-08,2024-10-15,7,False,Recovering,-3.98,3.33,2.07,-1.93,0.07,27.25,7.75,36.59,-7.68,-9.34,16,46.4,False,Recovering,True,True,True,False,False
+SNBL,47,2024-10-21,2024-10-31,10,False,Heating Up,1.3,1.97,1.0,-3.21,4.28,31.62,10.39,33.4,-6.11,-1.78,5,85.7,True,Cooling Down,True,True,True,False,False
+SNBL,48,2024-11-07,2024-12-17,40,False,Rolling Over,1.44,-1.95,22.25,-1.49,26.44,29.48,16.99,23.49,9.45,5.99,15,50.0,False,Rolling Over,True,True,True,True,True
+SNBL,49,2024-12-23,2024-12-26,3,False,Rolling Over,17.66,-7.53,-1.7,-4.4,7.03,-6.21,0.98,3.55,6.05,-9.76,15,50.0,False,Rolling Over,False,True,False,True,False
+SNBL,50,2024-12-30,2025-02-06,38,False,Cooling Down,20.91,0.0,12.96,-5.14,5.31,-5.37,-1.51,1.19,6.82,-6.56,14,53.6,False,Cooling Down,True,True,False,True,False
+SNBL,51,2025-02-12,2025-02-14,2,False,Cooling Down,4.35,0.38,0.49,-2.43,-10.76,-12.39,1.03,4.97,-11.79,-17.36,2,96.4,True,Cooling Down,True,False,False,False,False
+SNBL,52,2025-02-18,2025-02-28,10,False,Rolling Over,4.67,-4.37,0.91,-1.72,-13.75,-12.46,3.46,5.2,-17.21,-17.66,1,100.0,True,Rolling Over,True,False,False,False,False
+SNBL,53,2025-06-05,2025-06-20,15,False,Cooling Down,9.13,7.52,-2.58,-3.72,26.48,28.77,9.64,24.12,16.84,4.65,7,78.6,True,Cooling Down,False,True,True,True,True
+SNBL,54,2025-06-24,2025-08-26,63,False,Rolling Over,22.77,-2.77,41.16,-1.1,27.27,29.59,14.05,27.76,13.22,1.83,11,64.3,False,Cooling Down,True,True,True,True,True
+SNBL,55,2025-09-18,2025-09-23,5,False,Recovering,-2.69,5.1,-1.32,-5.91,23.11,9.36,4.11,6.72,19.0,2.64,14,53.6,False,Cooling Down,False,True,True,True,True
+SNBL,56,2025-09-25,2025-10-10,15,False,Recovering,-6.7,3.63,3.81,-3.68,18.18,15.19,3.33,7.96,14.85,7.23,21,28.6,False,Rolling Over,True,True,True,True,True
+SNBL,57,2025-10-14,2025-10-24,10,False,Rolling Over,6.41,-0.5,10.79,-1.71,9.28,21.25,-4.6,12.72,13.88,8.53,5,85.7,True,Cooling Down,True,True,True,True,True
+SNBL,58,2025-10-31,2025-11-04,4,False,Rolling Over,13.86,-12.61,0.08,-4.58,-2.6,2.98,3.12,16.68,-5.72,-13.7,1,100.0,True,Rolling Over,True,False,True,False,False
+SNBL,59,2025-11-10,2025-11-11,1,False,Cooling Down,11.56,2.16,0.27,-1.0,-3.3,-8.21,4.19,15.7,-7.49,-23.91,5,85.7,True,Falling,True,False,False,False,False
+SNBL,60,2025-11-13,2025-11-13,0,False,Heating Up,3.42,3.96,0.0,-0.54,-1.12,-8.89,4.93,13.5,-6.05,-22.39,20,32.1,False,Recovering,False,False,False,False,False
+SNBL,61,2025-11-18,2025-11-18,0,False,Rolling Over,5.35,-0.95,0.0,-0.58,-0.35,-10.36,5.91,12.16,-6.26,-22.52,23,21.4,False,Stabilising,False,False,False,False,False
+SNBL,62,2025-11-20,2025-11-20,0,False,Cooling Down,6.73,1.52,0.0,-0.69,2.35,-11.42,5.54,7.07,-3.19,-18.49,25,14.3,False,Stabilising,False,True,False,False,False
+SNBL,63,2025-11-24,2025-11-24,0,False,Rolling Over,12.0,-0.42,0.0,-0.58,0.96,-8.55,5.69,10.41,-4.73,-18.96,21,28.6,False,Falling,False,True,False,False,False
+SNBL,64,2025-11-26,2025-11-26,0,False,Recovering,-1.33,0.89,0.0,-2.31,0.62,-11.45,4.68,6.12,-4.06,-17.57,26,10.7,False,Recovering,False,True,False,False,False
+SNBL,65,2025-12-11,2025-12-11,0,False,Cooling Down,2.8,0.71,0.0,-1.48,10.78,-31.71,9.39,-13.11,1.39,-18.6,17,42.9,False,Cooling Down,False,True,False,True,False
+SNBL,66,2025-12-15,2026-01-13,29,False,Recovering,-2.15,1.05,6.27,-1.89,6.27,-26.97,7.74,-8.72,-1.47,-18.25,26,10.7,False,Recovering,True,True,False,False,False
+SNBL,67,2026-01-16,2026-01-20,4,False,Cooling Down,7.61,1.53,1.06,-1.03,-15.58,-26.39,-5.75,-8.96,-9.83,-17.43,3,92.9,True,Cooling Down,True,False,False,False,False
+UBL,1,2021-01-11,2021-01-26,15,False,Cooling Down,19.36,12.49,-3.09,-5.0,-4.29,-19.32,2.34,-3.62,-6.63,-15.7,10,59.1,False,Cooling Down,False,False,False,False,False
+UBL,2,2021-01-28,2021-01-29,1,False,Rolling Over,7.68,-0.67,-0.84,-1.35,-7.57,-8.15,-0.65,-1.05,-6.92,-7.1,9,63.6,False,Rolling Over,False,False,False,False,False
+UBL,3,2021-02-02,2021-02-08,6,False,Rolling Over,6.93,-1.94,1.21,-1.43,-8.76,-6.66,-0.9,-3.69,-7.86,-2.97,10,59.1,False,Rolling Over,True,False,False,False,False
+UBL,4,2021-06-14,2021-06-16,2,False,Cooling Down,6.61,2.31,-1.6,-3.22,-6.31,-7.99,-2.62,-2.99,-3.69,-5.0,18,22.7,False,Rolling Over,False,False,False,False,False
+UBL,5,2021-06-24,2021-06-24,0,False,Rolling Over,3.75,-1.6,0.0,-2.03,-1.46,-6.71,-0.57,-5.56,-0.89,-1.15,21,9.1,False,Rolling Over,False,False,False,False,False
+UBL,6,2021-08-12,2021-08-25,13,False,Cooling Down,5.39,2.39,-0.15,-0.77,-5.81,4.89,-0.0,-1.84,,6.73,14,40.9,False,Falling,False,False,True,,True
+UBL,7,2021-10-25,2021-11-10,16,False,Cooling Down,22.65,14.98,-4.82,-5.17,-0.85,-0.05,0.7,0.4,-1.55,-0.45,1,100.0,True,Cooling Down,False,False,False,False,False
+UBL,8,2021-11-15,2021-12-09,24,False,Rolling Over,15.04,-2.47,4.15,-2.14,1.25,3.25,-6.25,0.23,7.5,3.02,3,90.9,True,Rolling Over,True,True,True,True,True
+UBL,9,2021-12-31,2022-01-28,28,False,Recovering,-2.44,1.31,2.56,-1.87,2.56,0.91,1.08,-1.49,1.48,2.4,7,72.7,True,Stabilising,True,True,True,True,True
+UBL,10,2022-02-01,2022-02-04,3,False,Rolling Over,4.64,-0.78,0.26,-0.68,5.78,-2.33,-1.91,-0.31,7.69,-2.02,8,68.2,True,Cooling Down,True,True,False,True,False
+UBL,11,2022-02-09,2022-03-04,23,False,Cooling Down,5.55,0.27,5.55,-0.84,2.87,-8.12,-7.11,-7.43,9.98,-0.69,7,72.7,True,Cooling Down,True,True,False,True,False
+UBL,12,2022-03-10,2022-03-14,4,False,Rolling Over,5.34,-0.33,-0.94,-2.45,-6.32,-14.74,1.35,-4.19,-7.67,-10.55,6,77.3,True,Stabilising,False,False,False,False,False
+UBL,13,2022-03-16,2022-03-17,1,False,Cooling Down,4.47,0.27,0.63,-0.82,-3.57,-19.47,5.7,-5.11,-9.27,-14.36,7,72.7,True,Stabilising,True,False,False,False,False
+UBL,14,2023-05-08,2023-05-09,1,False,Heating Up,10.58,18.9,1.41,-1.2,-8.6,11.63,-0.39,16.15,-8.21,-4.52,1,100.0,True,Cooling Down,True,False,True,False,False
+UBL,15,2023-05-11,2023-05-17,6,False,Cooling Down,12.17,5.42,3.58,-1.41,-3.36,22.32,0.87,16.7,-4.23,5.62,2,95.5,True,Cooling Down,True,False,True,False,True
+UBL,16,2023-06-02,2023-06-02,0,False,Cooling Down,12.73,1.21,0.0,-4.02,7.19,18.2,5.32,9.58,1.87,8.62,7,72.7,True,Rolling Over,False,True,True,True,True
+UBL,17,2023-07-03,2023-08-04,32,False,Heating Up,1.9,10.33,13.47,-1.27,21.38,14.13,9.87,5.62,11.51,8.51,9,63.6,False,Heating Up,True,True,True,True,True
+UBL,18,2023-08-09,2023-08-18,9,False,Rolling Over,32.47,-6.46,1.82,-3.7,-3.41,6.58,-5.12,10.15,1.71,-3.57,2,95.5,True,Cooling Down,True,False,True,True,False
+UBL,19,2023-08-24,2023-08-30,6,False,Rolling Over,8.88,-0.06,0.08,-1.89,-0.18,10.31,-3.24,19.53,3.06,-9.22,1,100.0,True,Rolling Over,True,False,True,True,False
+UBL,20,2023-09-19,2023-09-27,8,False,Cooling Down,1.72,1.33,1.03,-1.85,9.58,25.68,7.67,42.56,1.91,-16.88,9,63.6,False,Recovering,True,True,True,True,False
+UBL,21,2023-10-02,2023-11-02,31,False,Recovering,-3.08,3.67,15.2,-1.65,12.89,18.8,10.41,30.53,2.48,-11.73,8,68.2,True,Recovering,True,True,True,True,False
+UBL,22,2023-11-08,2023-11-13,5,False,Cooling Down,9.46,1.56,0.44,-1.92,14.64,14.28,19.27,16.11,-4.63,-1.83,13,45.5,False,Cooling Down,True,True,True,False,False
+UBL,23,2023-11-16,2023-12-15,29,False,Rolling Over,7.9,-4.84,12.27,-1.84,12.88,17.29,14.03,6.67,-1.15,10.62,20,13.6,False,Cooling Down,True,True,True,False,True
+UBL,24,2023-12-29,2024-01-09,11,False,Rolling Over,11.91,-0.86,1.0,-2.1,3.01,0.43,2.18,5.53,0.83,-5.1,3,90.9,True,Rolling Over,True,True,True,True,False
+UBL,25,2024-01-11,2024-01-29,18,False,Recovering,-2.7,2.97,1.77,-0.97,1.11,4.98,-5.5,8.82,6.61,-3.84,7,72.7,True,Cooling Down,True,True,True,True,False
+UBL,26,2024-01-31,2024-02-09,9,False,Rolling Over,5.21,-0.56,1.15,-0.59,5.81,6.68,5.4,16.01,0.41,-9.33,2,95.5,True,Cooling Down,True,True,True,True,False
+UBL,27,2024-02-13,2024-02-14,1,False,Cooling Down,4.81,1.75,-0.22,-3.27,-2.53,7.14,5.84,21.73,-8.37,-14.59,2,95.5,True,Rolling Over,False,False,True,False,False
+UBL,28,2024-02-21,2024-03-06,14,False,Rolling Over,1.97,-0.78,6.85,-1.4,-1.61,18.56,6.78,21.76,-8.39,-3.2,2,96.4,True,Rolling Over,True,False,True,False,False
+UBL,29,2024-04-08,2024-04-29,21,False,Recovering,-1.61,5.47,7.07,-2.03,4.97,38.92,4.98,14.9,-0.01,24.02,9,71.4,True,Heating Up,True,True,True,False,True
+UBL,30,2024-05-03,2024-05-08,5,False,Rolling Over,8.9,-0.3,0.39,-1.4,14.08,30.16,5.11,7.21,8.97,22.95,6,82.1,True,Rolling Over,True,True,True,True,True
+UBL,31,2024-05-10,2024-07-24,75,False,Rolling Over,10.71,-2.68,32.08,-1.03,10.7,28.18,0.23,6.7,10.47,21.48,12,60.7,False,Rolling Over,True,True,True,True,True
+UBL,32,2024-07-26,2024-07-31,5,False,Rolling Over,18.65,-0.98,1.0,-1.62,-1.33,14.68,0.69,10.81,-2.02,3.87,2,96.4,True,Rolling Over,True,False,True,False,True
+UBL,33,2024-08-21,2024-08-28,7,False,Recovering,-3.24,0.21,-0.23,-1.22,6.74,27.5,4.09,20.36,2.65,7.14,22,25.0,False,Recovering,False,True,True,True,True
+UBL,34,2024-08-30,2024-08-30,0,False,Recovering,-5.16,3.16,0.0,-0.88,15.08,36.64,3.35,24.96,11.73,11.68,24,17.9,False,Stabilising,False,True,True,True,True
+UBL,35,2024-09-04,2024-12-12,99,False,Stabilising,-2.55,-0.24,42.96,-0.78,16.83,32.63,4.91,26.93,11.92,5.7,25,14.3,False,Stabilising,True,True,True,True,True
+UBL,36,2024-12-17,2024-12-18,1,False,Cooling Down,11.91,3.22,-2.02,-5.42,7.91,8.22,-0.32,0.2,8.23,8.02,22,25.0,False,Rolling Over,False,True,True,True,True
+UBL,37,2024-12-23,2025-01-09,17,False,Rolling Over,13.41,-3.22,4.76,-2.1,10.39,9.02,0.98,3.55,9.41,5.47,15,50.0,False,Rolling Over,True,True,True,True,True
+UBL,38,2025-01-13,2025-02-18,36,False,Rolling Over,10.74,-0.64,10.28,-1.84,9.81,25.73,-1.07,1.89,10.88,23.84,20,32.1,False,Rolling Over,True,True,True,True,True
+UBL,39,2025-02-24,2025-02-24,0,False,Rolling Over,8.61,-2.53,0.0,-3.44,-5.16,27.91,1.85,3.4,-7.01,24.51,4,89.3,True,Cooling Down,False,False,True,False,True
+UBL,40,2025-03-10,2025-03-10,0,False,Cooling Down,3.72,0.37,0.0,-2.06,9.53,28.99,0.25,8.51,9.28,20.48,2,96.4,True,Cooling Down,False,True,True,True,True
+UBL,41,2025-03-26,2025-04-28,33,False,Recovering,-3.03,3.63,20.06,-5.13,18.78,-31.02,-2.46,6.67,21.24,-37.69,18,39.3,False,Stabilising,True,True,False,True,False
+UBL,42,2025-05-02,2025-05-06,4,False,Cooling Down,28.99,0.58,-1.5,-5.63,2.2,-26.54,4.17,21.29,-1.97,-47.83,9,71.4,True,Recovering,False,True,False,False,False
+UBL,43,2025-05-12,2025-06-20,39,False,Rolling Over,31.59,-1.25,4.54,-2.27,3.74,-24.06,5.79,24.17,-2.05,-48.23,5,85.7,True,Heating Up,True,True,False,False,False
+UBL,44,2025-10-21,2025-10-22,1,False,Rolling Over,4.16,-0.38,-1.11,-1.35,-5.8,21.71,-3.83,9.1,-1.97,12.61,1,100.0,True,Cooling Down,False,False,True,False,True
+UBL,45,2025-12-19,2026-02-12,55,False,Cooling Down,9.49,9.49,17.66,-1.47,20.07,-11.46,9.54,-12.48,10.53,1.02,12,60.7,False,Heating Up,True,True,False,True,True
+UBL,46,2026-02-18,2026-02-18,0,False,Stabilising,-2.67,-2.07,0.0,-5.98,-21.92,-21.92,-13.73,-8.92,-8.19,-13.0,18,39.3,False,Stabilising,False,False,False,False,False
+UBL,47,2026-02-20,2026-02-20,0,False,Falling,-1.5,-2.79,0.0,-2.29,-23.01,-15.2,-11.09,-2.69,-11.92,-12.51,12,60.7,False,Stabilising,False,False,False,False,False
