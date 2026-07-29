@@ -2,11 +2,22 @@
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Transient / editor / probe files
+.fuse_hidden*
+*.tmp
+test_*.bin
 
 # Secrets
 .env
 secrets.toml
 .streamlit/secrets.toml
+notes/
+*key*.txt
+*.key
 
 # Python
 __pycache__/
