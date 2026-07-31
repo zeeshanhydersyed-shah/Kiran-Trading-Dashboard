@@ -42,7 +42,7 @@ _PG_URL = _os.environ.get("DATABASE_URL") or _os.environ.get("SUPABASE_DB_URL")
 from database import (
     init_db, get_price_date_range, count_prices, count_sectors,
     get_latest_stock_date, get_latest_index_date,
-    save_trade_setup, get_trade_setups, update_trade_setup, close_trade_setup,
+    save_trade_setup, get_trade_setups, update_trade_setup,
     activate_trade_setup, delete_trade_setup, get_backtest_summary,
     auto_save_stm_picks, get_sim_portfolio_data,
     add_portfolio_transaction, get_portfolio_transactions, delete_portfolio_transaction,
@@ -3139,127 +3139,6 @@ elif cur == PAGES[5]:  # Trade Log
                     )
         else:
             st.info("No closed Actual trades with regime data yet.")
-
-    # ── Partial close ─────────────────────────────────────────────────────────
-    if actual_trades:
-        partial_trades = [t for t in actual_trades if t.get("status") in ("Active", "Pending")]
-        if partial_trades:
-            st.divider()
-            st.markdown("**Partially close a position**")
-            st.caption("Close part of an Actual trade and keep the rest open. Creates a partial exit record.")
-
-            partial_opts = {
-                f"#{t['id']} · {t['symbol']} {t['direction']} @ {t['entry_price']:.2f}"
-                f"  (entry {fmt_date(t['created_date'])})": t
-                for t in partial_trades
-            }
-            partial_label = st.selectbox(
-                "Position", list(partial_opts.keys()), key="partial_sel",
-                label_visibility="collapsed"
-            )
-            partial_trade = partial_opts[partial_label]
-
-            pc1, pc2, pc3, pc4, pc5 = st.columns([1.2, 1.2, 1.2, 2, 1])
-            pc_px     = pc1.number_input("Exit Price", min_value=0.0, step=0.01,
-                                         format="%.2f", key="pc_px", label_visibility="collapsed")
-            pc_dt     = pc2.date_input("Exit Date", value=datetime.now().date(),
-                                       key="pc_dt", label_visibility="collapsed")
-            pc_pct    = pc3.number_input("% Closed", min_value=0.1, max_value=99.9, value=50.0,
-                                         step=0.1, format="%.1f", key="pc_pct", label_visibility="collapsed")
-            pc_notes  = pc4.text_input("Notes", placeholder="e.g. took 50%, holding 50%", key="pc_notes",
-                                       label_visibility="collapsed")
-            pc1.caption("Exit Price"); pc2.caption("Exit Date"); pc3.caption("% Closed"); pc4.caption("Notes")
-
-            with pc5:
-                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-                if st.button("📊 Partial Close", key="btn_partial", type="primary"):
-                    if pc_px <= 0:
-                        st.error("Enter a valid exit price.")
-                    else:
-                        entry = float(partial_trade["entry_price"])
-                        dirn  = partial_trade["direction"]
-                        if entry > 0:
-                            pl = (pc_px - entry) / entry * 100 if dirn == "LONG" else (entry - pc_px) / entry * 100
-
-                        # Create new position for the remaining amount
-                        remainder_notes = f"Partial close recorded. {pc_pct:.1f}% closed at {pc_px:.2f} on {pc_dt.isoformat()}. Remainder open. {pc_notes.strip()}"
-
-                        # Close the original position marked as partial
-                        close_trade_setup(
-                            setup_id               = int(partial_trade["id"]),
-                            exit_price             = float(pc_px),
-                            exit_date              = pc_dt.isoformat(),
-                            status                 = "Closed",
-                            outcome                = "Breakeven",
-                            notes                  = f"Partial close: {pc_pct:.1f}% @ {pc_px:.2f}. {pc_notes.strip()}",
-                            actual_pl_pkr_override = None,
-                        )
-                        st.success(f"#{partial_trade['id']} · {pc_pct:.1f}% closed at {pc_px:.2f}  ·  P&L {pl:+.2f}%")
-                        st.rerun()
-
-    # ── Close an open position ────────────────────────────────────────────────
-    if actual_trades:
-        active_trades = [t for t in actual_trades if t.get("status") in ("Active", "Pending")]
-        if active_trades:
-            st.divider()
-            st.markdown("**Close a position**")
-            st.caption("Select an open trade, enter exit price and date to close it and record P&L.")
-
-            active_opts = {
-                f"#{t['id']} · {t['symbol']} {t['direction']} @ {t['entry_price']:.2f}"
-                f"  (entry {fmt_date(t['created_date'])})": t
-                for t in active_trades
-            }
-            chosen_label = st.selectbox(
-                "Open trade", list(active_opts.keys()), key="close_sel",
-                label_visibility="collapsed"
-            )
-            chosen_trade = active_opts[chosen_label]
-
-            cl1, cl2, cl3, cl4, cl5, cl6 = st.columns([1.5, 1.5, 1.5, 2, 2, 1])
-            cl1.caption("Exit Price")
-            cl2.caption("Exit Date")
-            cl3.caption("P&L (PKR)")
-            cl4.caption("Result")
-            cl5.caption("Notes")
-
-            exit_px   = cl1.number_input("Exit Price", min_value=0.0, step=0.01,
-                                          format="%.2f", key="cl_px", label_visibility="collapsed")
-            exit_dt   = cl2.date_input("Exit Date", value=datetime.now().date(),
-                                       key="cl_dt", label_visibility="collapsed")
-            cl_pkr    = cl3.number_input("P&L PKR", step=100.0, format="%.0f",
-                                          key="cl_pkr", label_visibility="collapsed",
-                                          help="Your actual profit/loss in PKR (e.g. −15000). Leave 0 to auto-calculate.")
-            cl_result = cl4.selectbox("Result", ["Win", "Loss", "Breakeven", "Cancelled"],
-                                      key="cl_result", label_visibility="collapsed")
-            cl_notes  = cl5.text_input("Notes", placeholder="e.g. trailed stop", key="cl_notes",
-                                       label_visibility="collapsed")
-
-            with cl6:
-                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-                if st.button("✅ Close", key="btn_close", type="primary"):
-                    if exit_px <= 0:
-                        st.error("Enter a valid exit price.")
-                    else:
-                        pkr_override = float(cl_pkr) if cl_pkr != 0 else None
-                        close_trade_setup(
-                            setup_id               = int(chosen_trade["id"]),
-                            exit_price             = float(exit_px),
-                            exit_date              = exit_dt.isoformat(),
-                            status                 = "Closed",
-                            outcome                = cl_result,
-                            notes                  = cl_notes.strip() or None,
-                            actual_pl_pkr_override = pkr_override,
-                        )
-                        entry = float(chosen_trade["entry_price"])
-                        dirn  = chosen_trade["direction"]
-                        if entry > 0:
-                            pl = (exit_px - entry) / entry * 100 if dirn == "LONG" else (entry - exit_px) / entry * 100
-                            pkr_str = f"  ·  PKR {float(cl_pkr):+,.0f}" if cl_pkr != 0 else ""
-                            st.success(f"#{chosen_trade['id']} closed  ·  P&L {pl:+.2f}%{pkr_str}")
-                        else:
-                            st.success(f"#{chosen_trade['id']} closed.")
-                        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

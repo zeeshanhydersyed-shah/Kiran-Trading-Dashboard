@@ -230,6 +230,22 @@ def init_db():
         "ALTER TABLE prices ADD COLUMN IF NOT EXISTS volume BIGINT",
         "ALTER TABLE prices ADD COLUMN IF NOT EXISTS high   DOUBLE PRECISION",
         "ALTER TABLE prices ADD COLUMN IF NOT EXISTS low    DOUBLE PRECISION",
+        # portfolio_values.date was declared UNIQUE in the CREATE TABLE above, but
+        # CREATE TABLE IF NOT EXISTS never retrofits constraints onto a table that
+        # already existed pre-UNIQUE — add_portfolio_value()'s ON CONFLICT (date)
+        # silently fails on any such deployment without this. DO block (not plain
+        # ALTER) so a rerun after the constraint already exists doesn't error and
+        # abort the rest of this migrations loop.
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'portfolio_values_date_key'
+            ) THEN
+                ALTER TABLE portfolio_values ADD CONSTRAINT portfolio_values_date_key UNIQUE (date);
+            END IF;
+        END $$;
+        """,
     ]
     with get_conn() as conn:
         for sql in migrations:

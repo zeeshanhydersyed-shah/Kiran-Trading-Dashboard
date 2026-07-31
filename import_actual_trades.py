@@ -79,7 +79,16 @@ def _outcome_from_pl(pl_pct) -> str | None:
         return None
 
 
-def import_trades(filepath: str, dry_run: bool = False) -> dict:
+def _parse_journal(filepath: str) -> tuple[list[dict], int, int] | None:
+    """
+    Read + parse the JOURNAL-2 sheet into a list of normalized trade dicts.
+    Shared by both the SQLite and Postgres writers so their business logic
+    (column mapping, P&L derivation, status/outcome rules) can never drift
+    apart between the two backends.
+
+    Returns (rows, not_initiated_count, parse_error_count), or None if the
+    sheet/header couldn't be read at all.
+    """
     logger.info("Reading sheet '%s' from: %s", SHEET_NAME, filepath)
 
     try:
@@ -88,7 +97,7 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
     except Exception as e:
         logger.error("Could not read sheet '%s': %s", SHEET_NAME, e)
         logger.info("Available sheets: %s", pd.ExcelFile(filepath).sheet_names)
-        return {"imported": 0, "skipped": 0, "errors": 1}
+        return None
 
     # Find the row that contains "Date1" (the column header row)
     header_row = None
@@ -100,7 +109,7 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
     if header_row is None:
         logger.error("Could not find header row with 'Date1' in sheet '%s'", SHEET_NAME)
         logger.info("First 5 rows: %s", raw.head().to_string())
-        return {"imported": 0, "skipped": 0, "errors": 1}
+        return None
 
     logger.info("Found header row at Excel row %d", header_row + 1)
 
@@ -108,7 +117,7 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
         df = pd.read_excel(filepath, sheet_name=SHEET_NAME, header=header_row)
     except Exception as e:
         logger.error("Could not re-read with header=%d: %s", header_row, e)
-        return {"imported": 0, "skipped": 0, "errors": 1}
+        return None
 
     logger.info("Rows read: %d   Columns: %s", len(df), list(df.columns))
 
@@ -131,56 +140,91 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
     }
     df = df.rename(columns={k: v for k, v in col_rename.items() if k in df.columns})
 
-    imported = skipped = errors = not_initiated = updated = 0
+    parsed: list[dict] = []
+    not_initiated = errors = 0
+
+    for idx, row in df.iterrows():
+        try:
+            # Skip rows with no symbol
+            symbol = str(row.get("symbol", "")).strip().upper()
+            if not symbol or symbol in ("NAN", "NAME", ""):
+                continue
+
+            # Skip not-initiated trades (Status blank)
+            status_raw = str(row.get("status", "")).strip().upper()
+            if status_raw not in ("C", "O"):
+                not_initiated += 1
+                continue
+
+            entry_dt = _parse_date(row.get("entry_date"))
+            if not entry_dt:
+                logger.warning("Row %d (%s): no entry date — skipped", idx + 2, symbol)
+                errors += 1
+                continue
+
+            direction    = _normalise_direction(row.get("direction", "Long"))
+            entry_price  = float(row["entry_price"]) if pd.notna(row.get("entry_price")) else None
+            exit_price   = float(row["exit_price"])  if pd.notna(row.get("exit_price"))  else None
+            exit_dt      = _parse_date(row.get("exit_date"))
+            stop_loss    = float(row["stop_loss"])   if pd.notna(row.get("stop_loss"))   else None
+            qty          = float(row["qty"])          if pd.notna(row.get("qty"))          else None
+            holding_days = int(row["holding_days"])  if pd.notna(row.get("holding_days")) else None
+            actual_rr    = float(row["actual_rr"])   if pd.notna(row.get("actual_rr"))    else None
+            pl_pkr       = float(row["pl_pkr"])      if pd.notna(row.get("pl_pkr"))       else None
+
+            # P&L % — prefer column value, calculate as fallback
+            pl_pct = None
+            if pd.notna(row.get("pl_pct")):
+                raw_pct = row["pl_pct"]
+                pl_pct = float(raw_pct) * 100 if abs(float(raw_pct)) < 5 else float(raw_pct)
+            elif entry_price and exit_price and entry_price > 0:
+                pl_pct = (
+                    (exit_price - entry_price) / entry_price * 100
+                    if direction == "LONG"
+                    else (entry_price - exit_price) / entry_price * 100
+                )
+
+            outcome = _outcome_from_pl(pl_pct) if status_raw == "C" else None
+            db_status = "Closed" if status_raw == "C" else "Active"
+
+            ep = entry_price or 0.0
+            sl = stop_loss or ep * 0.94
+            risk_pct = abs((ep - sl) / ep * 100) if ep > 0 else 0.0
+
+            parsed.append(dict(
+                symbol=symbol, direction=direction, entry_dt=entry_dt,
+                entry_price=ep, exit_price=exit_price, exit_dt=exit_dt,
+                stop_loss=sl, qty=qty, holding_days=holding_days,
+                actual_rr=actual_rr, pl_pkr=pl_pkr, pl_pct=pl_pct,
+                outcome=outcome, db_status=db_status, risk_pct=risk_pct,
+                row_num=idx + 2,
+            ))
+
+        except Exception as e:
+            logger.warning("Row %d: error — %s", idx + 2, e)
+            errors += 1
+
+    return parsed, not_initiated, errors
+
+
+def import_trades(filepath: str, dry_run: bool = False) -> dict:
+    parsed = _parse_journal(filepath)
+    if parsed is None:
+        return {"imported": 0, "skipped": 0, "errors": 1}
+    rows, not_initiated, parse_errors = parsed
+
+    imported = skipped = errors = 0
+    errors += parse_errors
 
     with get_conn() as conn:
-        for idx, row in df.iterrows():
+        for r in rows:
             try:
-                # Skip rows with no symbol
-                symbol = str(row.get("symbol", "")).strip().upper()
-                if not symbol or symbol in ("NAN", "NAME", ""):
-                    continue
-
-                # Skip not-initiated trades (Status blank)
-                status_raw = str(row.get("status", "")).strip().upper()
-                if status_raw not in ("C", "O"):
-                    not_initiated += 1
-                    continue
-
-                entry_dt = _parse_date(row.get("entry_date"))
-                if not entry_dt:
-                    logger.warning("Row %d (%s): no entry date — skipped", idx + 2, symbol)
-                    errors += 1
-                    continue
-
-                direction    = _normalise_direction(row.get("direction", "Long"))
-                entry_price  = float(row["entry_price"]) if pd.notna(row.get("entry_price")) else None
-                exit_price   = float(row["exit_price"])  if pd.notna(row.get("exit_price"))  else None
-                exit_dt      = _parse_date(row.get("exit_date"))
-                stop_loss    = float(row["stop_loss"])   if pd.notna(row.get("stop_loss"))   else None
-                qty          = float(row["qty"])          if pd.notna(row.get("qty"))          else None
-                holding_days = int(row["holding_days"])  if pd.notna(row.get("holding_days")) else None
-                actual_rr    = float(row["actual_rr"])   if pd.notna(row.get("actual_rr"))    else None
-                pl_pkr       = float(row["pl_pkr"])      if pd.notna(row.get("pl_pkr"))       else None
-
-                # P&L % — prefer column value, calculate as fallback
-                pl_pct = None
-                if pd.notna(row.get("pl_pct")):
-                    raw = row["pl_pct"]
-                    pl_pct = float(raw) * 100 if abs(float(raw)) < 5 else float(raw)
-                elif entry_price and exit_price and entry_price > 0:
-                    pl_pct = (
-                        (exit_price - entry_price) / entry_price * 100
-                        if direction == "LONG"
-                        else (entry_price - exit_price) / entry_price * 100
-                    )
-
-                outcome = _outcome_from_pl(pl_pct) if status_raw == "C" else None
-                db_status = "Closed" if status_raw == "C" else "Active"
-
-                ep = entry_price or 0.0
-                sl = stop_loss or ep * 0.94
-                risk_pct = abs((ep - sl) / ep * 100) if ep > 0 else 0.0
+                symbol, direction, entry_dt = r["symbol"], r["direction"], r["entry_dt"]
+                exit_price, exit_dt = r["exit_price"], r["exit_dt"]
+                qty, holding_days, actual_rr = r["qty"], r["holding_days"], r["actual_rr"]
+                pl_pkr, pl_pct = r["pl_pkr"], r["pl_pct"]
+                outcome, db_status, risk_pct = r["outcome"], r["db_status"], r["risk_pct"]
+                ep, sl = r["entry_price"], r["stop_loss"]
 
                 # Check for existing record
                 existing = conn.execute(
@@ -213,7 +257,7 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
 
                     if dry_run:
                         logger.info(
-                            "  [DRY RUN UPDATE] %s %s | %s→%s | outcome %s→%s",
+                            "  [DRY RUN UPDATE] %s %s | %s->%s | outcome %s->%s",
                             direction, symbol,
                             existing_status, db_status,
                             existing_outcome or "none", outcome or "none",
@@ -238,7 +282,7 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
                     )
                     imported += 1
                     logger.info(
-                        "  UPDATED %s %s | %s→%s | outcome: %s | P&L: %s%%",
+                        "  UPDATED %s %s | %s->%s | outcome: %s | P&L: %s%%",
                         direction, symbol,
                         existing_status, db_status,
                         outcome or "open",
@@ -284,7 +328,7 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
                 imported += 1
 
             except Exception as e:
-                logger.warning("Row %d: error — %s", idx + 2, e)
+                logger.warning("Row %d: error — %s", r["row_num"], e)
                 errors += 1
 
     # ── Fix existing Breakeven records that should be Win or Loss ────────────────
@@ -304,32 +348,19 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
                      AND actual_pl_pct != 0"""
             ).rowcount
             if fixed:
-                logger.info("  Reclassified %d Breakeven → Win/Loss", fixed)
+                logger.info("  Reclassified %d Breakeven -> Win/Loss", fixed)
 
     # ── Sync portfolio value from JOURNAL-2!B3 → portfolio_values ────────────────
     # B3 holds the current portfolio value, manually updated daily in Excel.
     # Writing it here keeps the DB current so Streamlit Cloud has a fresh capital
     # base for Kelly sizing without any manual Audit-page entry.
     if not dry_run:
-        try:
-            import openpyxl
-            wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
-            ws = wb[SHEET_NAME]
-            raw_val = ws["B3"].value
-            wb.close()
-            if raw_val is not None:
-                portfolio_val = float(raw_val)
-                if portfolio_val > 0:
-                    from database import add_portfolio_value
-                    today = pd.Timestamp.today().strftime("%Y-%m-%d")
-                    add_portfolio_value(today, portfolio_val, notes="Auto-synced from JOURNAL-2!B3")
-                    logger.info("Portfolio value synced: PKR %.0f (as of %s)", portfolio_val, today)
-                else:
-                    logger.warning("B3 value is zero or negative (%.0f) — portfolio_values not updated", portfolio_val)
-            else:
-                logger.warning("B3 is empty — portfolio_values not updated")
-        except Exception as e:
-            logger.warning("Could not sync portfolio value from B3: %s", e)
+        portfolio_val = _read_portfolio_b3_value(filepath)
+        if portfolio_val is not None:
+            from database import add_portfolio_value
+            today = pd.Timestamp.today().strftime("%Y-%m-%d")
+            add_portfolio_value(today, portfolio_val, notes="Auto-synced from JOURNAL-2!B3")
+            logger.info("Portfolio value synced: PKR %.0f (as of %s)", portfolio_val, today)
 
     logger.info(
         "\n=== SUMMARY ===\n"
@@ -345,9 +376,193 @@ def import_trades(filepath: str, dry_run: bool = False) -> dict:
     return {"imported": imported, "skipped": skipped, "errors": errors}
 
 
+def _read_portfolio_b3_value(filepath: str) -> float | None:
+    """Read the current portfolio value from JOURNAL-2!B3 (manually updated daily in Excel)."""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
+        ws = wb[SHEET_NAME]
+        raw_val = ws["B3"].value
+        wb.close()
+        if raw_val is None:
+            logger.warning("B3 is empty — portfolio_values not updated")
+            return None
+        portfolio_val = float(raw_val)
+        if portfolio_val <= 0:
+            logger.warning("B3 value is zero or negative (%.0f) — portfolio_values not updated", portfolio_val)
+            return None
+        return portfolio_val
+    except Exception as e:
+        logger.warning("Could not read portfolio value from B3: %s", e)
+        return None
+
+
+def sync_trades_to_supabase(filepath: str, dry_run: bool = False) -> dict:
+    """
+    Mirror the Excel-journal import into Supabase Postgres.
+
+    import_trades() only ever writes to local SQLite (psx_data.db). The
+    deployed Streamlit Cloud dashboard has DATABASE_URL set in its secrets
+    and reads exclusively from Supabase — with no bridge between the two,
+    Actual trades synced from Excel never reached the live Trade Log page.
+    This closes that gap by replaying the same parsed rows against Postgres,
+    using the identical upsert rules as the SQLite writer above (both are
+    driven by the same _parse_journal() output, so the two backends can't
+    drift apart).
+
+    Best-effort: any failure here is logged, never raised, so it can never
+    break the SQLite import that already ran successfully.
+    """
+    from dotenv import load_dotenv
+    dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    load_dotenv(dotenv_path)
+    supabase_url = os.environ.get("SUPABASE_DB_URL")
+    if not supabase_url:
+        logger.info("SUPABASE_DB_URL not set in .env — skipping Supabase sync")
+        return {"imported": 0, "skipped": 0, "errors": 0}
+
+    parsed = _parse_journal(filepath)
+    if parsed is None:
+        return {"imported": 0, "skipped": 0, "errors": 1}
+    rows, _not_initiated, parse_errors = parsed
+
+    os.environ["SUPABASE_DB_URL"] = supabase_url  # database_pg reads this lazily per-call
+    import database_pg as pg
+
+    pg.init_db()
+
+    imported = skipped = 0
+    errors = parse_errors
+
+    with pg.get_conn() as conn:
+        for r in rows:
+            try:
+                symbol, direction, entry_dt = r["symbol"], r["direction"], r["entry_dt"]
+                exit_price, exit_dt = r["exit_price"], r["exit_dt"]
+                holding_days, actual_rr = r["holding_days"], r["actual_rr"]
+                pl_pkr, pl_pct = r["pl_pkr"], r["pl_pct"]
+                outcome, db_status, risk_pct = r["outcome"], r["db_status"], r["risk_pct"]
+                ep, sl = r["entry_price"], r["stop_loss"]
+
+                existing = pg._fetchone(
+                    conn,
+                    """SELECT id, status, outcome, actual_pl_pkr, actual_pl_pct
+                       FROM trade_setups
+                       WHERE symbol=%s AND created_date=%s AND direction=%s AND source='Actual'""",
+                    (symbol, entry_dt, direction),
+                )
+
+                if existing:
+                    existing_status  = existing["status"]  or ""
+                    existing_outcome = existing["outcome"] or ""
+                    # Postgres can return these as decimal.Decimal — normalize to float
+                    # so drift comparison against Excel's plain floats doesn't TypeError.
+                    existing_pl_pkr  = float(existing["actual_pl_pkr"]) if existing["actual_pl_pkr"] is not None else 0.0
+                    existing_pl_pct  = float(existing["actual_pl_pct"]) if existing["actual_pl_pct"] is not None else 0.0
+
+                    needs_update = (
+                        existing_status  != db_status or
+                        existing_outcome != (outcome or "") or
+                        abs(existing_pl_pkr - (pl_pkr or 0)) > 0.5 or
+                        abs(existing_pl_pct - (pl_pct or 0)) > 0.01
+                    )
+                    if not needs_update:
+                        skipped += 1
+                        continue
+
+                    if dry_run:
+                        imported += 1
+                        continue
+
+                    pg._exec(
+                        conn,
+                        """UPDATE trade_setups SET
+                               status=%s, outcome=%s,
+                               actual_exit=%s, actual_pl_pct=%s, actual_pl_pkr=%s,
+                               holding_days=%s, actual_rr=%s, exit_date=%s,
+                               entry_price=%s, actual_entry=%s, stop_loss=%s, risk_pct=%s
+                           WHERE id=%s""",
+                        (
+                            db_status, outcome,
+                            exit_price, pl_pct, pl_pkr,
+                            holding_days, actual_rr, exit_dt,
+                            ep, ep, sl, risk_pct,
+                            existing["id"],
+                        ),
+                    )
+                    imported += 1
+                    continue
+
+                if dry_run:
+                    imported += 1
+                    continue
+
+                pg._exec(
+                    conn,
+                    """INSERT INTO trade_setups
+                        (created_date, direction, symbol, sector, sector_momentum,
+                         stock_perf_30d, stock_perf_10d, latest_close,
+                         entry_price, stop_loss, target_1r, target_2r,
+                         risk_pct, atr_pct,
+                         status, outcome,
+                         actual_entry, actual_exit, actual_pl_pct, actual_pl_pkr,
+                         holding_days, actual_rr,
+                         exit_date, source)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (
+                        entry_dt, direction, symbol,
+                        "Unknown", "—",
+                        0.0, 0.0, ep,
+                        ep, sl,
+                        ep * 1.07, ep * 1.14,
+                        risk_pct, 0.0,
+                        db_status, outcome,
+                        ep, exit_price, pl_pct, pl_pkr,
+                        holding_days, actual_rr,
+                        exit_dt, "Actual",
+                    ),
+                )
+                imported += 1
+
+            except Exception as e:
+                logger.warning("[Supabase] Row %d: error — %s", r["row_num"], e)
+                errors += 1
+
+    if not dry_run:
+        with pg.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE trade_setups
+                       SET outcome = CASE
+                           WHEN actual_pl_pct > 0 THEN 'Win'
+                           WHEN actual_pl_pct < 0 THEN 'Loss'
+                           ELSE 'Breakeven'
+                       END
+                       WHERE source = 'Actual'
+                         AND outcome = 'Breakeven'
+                         AND actual_pl_pct IS NOT NULL
+                         AND actual_pl_pct != 0"""
+                )
+                fixed = cur.rowcount
+            if fixed:
+                logger.info("[Supabase] Reclassified %d Breakeven -> Win/Loss", fixed)
+
+        portfolio_val = _read_portfolio_b3_value(filepath)
+        if portfolio_val is not None:
+            today = pd.Timestamp.today().strftime("%Y-%m-%d")
+            pg.add_portfolio_value(today, portfolio_val, notes="Auto-synced from JOURNAL-2!B3")
+            logger.info("[Supabase] Portfolio value synced: PKR %.0f (as of %s)", portfolio_val, today)
+
+    logger.info(
+        "[Supabase] Imported: %d   Skipped: %d   Errors: %d",
+        imported, skipped, errors
+    )
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Import Journal-2 trades from ASSET ALLOCATION.xlsx into psx_data.db"
+        description="Import Journal-2 trades from ASSET ALLOCATION.xlsx into psx_data.db (+ Supabase if configured)"
     )
     parser.add_argument("--file", required=True, help="Full path to ASSET ALLOCATION.xlsx")
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing to DB")
@@ -359,6 +574,11 @@ def main():
 
     init_db()
     import_trades(args.file, dry_run=args.dry_run)
+
+    try:
+        sync_trades_to_supabase(args.file, dry_run=args.dry_run)
+    except Exception as e:
+        logger.error("Supabase sync failed (local SQLite import already succeeded): %s", e)
 
 
 if __name__ == "__main__":
