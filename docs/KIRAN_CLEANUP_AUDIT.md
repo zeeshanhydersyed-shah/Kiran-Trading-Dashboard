@@ -8,7 +8,7 @@
 2. <span style="color:#16a34a;">**RESOLVED — local working tree synced with git, and pushed.**</span> All previously-uncommitted production edits and previously-untracked files (research folders, one-off scripts, backup files, etc. — 542 files) are committed and now live on GitHub's `main` — confirmed matching, commit `bec906a` on both sides. This is now the code Streamlit Cloud's next deploy will pick up. → §7.3
 3. <span style="color:#16a34a;">**RESOLVED — whole `Flows` page retired from the dashboard (2026-07-29).**</span> User confirmed the premise directly against the Big Fish verdict (0/360 forward cells, null in both directions and across every participant bucket) and asked to retire the page, not just `Decision Signals` — a wider scope than this finding alone. See §1's updated note and §12 for the full retirement record. → §1, Priority Finding #1
 4. <span style="color:#16a34a;">**RESOLVED — folded into the same `Flows` page retirement above.**</span> `UIN-Wise Settlement Analysis` (and `settlement_scraper.py`, `uin_settlement`) is now fully unreached — no code path calls it. Table left in place (0 rows, nothing to lose), per archive-don't-delete. → §1, Priority Finding #3
-5. <span style="color:#dc2626;">**HIGH — `Leaders` page → `Watchlist` tab needs an explicit monitoring-only relabel now.**</span> The 2026-07-29 audit found the live-window population negative EV (5d/10d/20d: −0.79%/−2.57%/−3.47%) despite a sound mechanism — the single most important relabeling task in this whole audit. → §2, `Leaders`
+5. <span style="color:#16a34a;">**RESOLVED (2026-07-29) — `Leaders` page → `Watchlist` tab now carries an explicit monitoring-only label.**</span> User decided to preserve the page and its codebase intact (significant work went into building it) rather than prune or restructure anything — this was a labeling-only fix, not a code or data change. A `st.warning()` banner now sits at the top of the `Watchlist` tab, stating the live-window negative EV (5d/10d/20d: −0.79%/−2.57%/−3.47%) plainly and that it is not a trading signal pending revisit. Nothing else on the page (RS Leaders, Deep Scan, Radar tabs; all underlying scan/scoring code) was touched. → §2, `Leaders`; §13
 6. <span style="color:#dc2626;">**MEDIUM-HIGH — every page load runs a blocking subprocess call before routing even starts.**</span> `dashboard.py` lines ~892–909 call `subprocess.run()` twice (30s timeout each) unconditionally, once per calendar day. Currently Cloud-safe by accident (the target script is local-only), not by design — fix the pattern before that stops being true. → §8.1
 7. <span style="color:#dc2626;">**MEDIUM-HIGH — no CI test gate and no staging environment between `git push` and production.**</span> A broken commit reaches live traders in ~60 seconds with nothing checking it first. → §7.2, §10
 8. <span style="color:#dc2626;">**MEDIUM — `Flows` page → `Intelligence Engine` → `Pattern Analysis` hunts patterns with no pre-registration or holdout.**</span> Same failure shape that already produced two false positives in this program (Support Reversal, RSI Divergence). → §1, Priority Finding #2
@@ -159,7 +159,7 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 | Component | Verdict | Basis |
 |---|---|---|
 | Tab `🏆 RS Leaders` → Top 20 Market-Wide RS Leaders, Top 3 Per Sector | **KEEP** — Clarity/ranking | Built on `rs_score_20`, validated by the BOS/Breakout backtest batch. |
-| Tab `📋 Watchlist` | <span style="color:#dc2626;">**🔴 KEEP, must relabel monitoring-only NOW**</span> | Carries the 2026-07-29 Leaders Active Breakout audit verdict: mechanism sound, live-window population negative EV (5d/10d/20d: −0.79%/−2.57%/−3.47%). **The single most important relabeling task in the whole audit.** |
+| Tab `📋 Watchlist` | <span style="color:#16a34a;">**🟢 KEEP, relabeled monitoring-only (2026-07-29)**</span> | Carries the 2026-07-29 Leaders Active Breakout audit verdict: mechanism sound, live-window population negative EV (5d/10d/20d: −0.79%/−2.57%/−3.47%). User chose to preserve the page and codebase intact and revisit later; a `st.warning()` banner now states the finding explicitly in the UI. See §13. |
 | Tab `🔬 Deep Scan` (`Today's Picks` / `Audit Trail`, A–F factor grades) | **RECOVER/VERIFY** | Traces to ZH_research S-002–S-005, most DEAD. Confirm live scoring doesn't still weight a killed factor. |
 | Tab `📡 Radar` | **RECOVER/VERIFY** | Not yet inspected at component level. |
 
@@ -181,7 +181,7 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 2. <span style="color:#16a34a;">✅ MOOT 2026-07-29</span> — ~~Run any `Flows → Intelligence Engine → Pattern Analysis` "✅ SIGNIFICANT" pattern through an out-of-sample check~~ — no longer reachable, retired with the page.
 3. <span style="color:#16a34a;">✅ DONE 2026-07-29</span> — ~~Confirm zero other consumers of `settlement_scraper.py`, then retire `Flows → UIN-Wise Settlement Analysis`~~ — confirmed (`grep` found only `page_flows.py` and `migrate_to_supabase.py`, no live daily-hook or GH Actions reference); retired with the page. See §12.
 4. <span style="color:#16a34a;">✅ DONE 2026-07-29</span> — ~~Relabel `Market → Rotation Radar → Sector Signal Table`'s `Flow` column as descriptive-only~~ — removed outright instead, at the user's request. See §12.
-5. Relabel `Leaders → Watchlist` as explicitly monitoring-only, matching `Recovery Bases`.
+5. <span style="color:#16a34a;">✅ DONE 2026-07-29</span> — ~~Relabel `Leaders → Watchlist` as explicitly monitoring-only, matching `Recovery Bases`~~ — done as a UI-label-only change; page and codebase left otherwise intact per user's explicit instruction to preserve this feature for a later revisit. See §13.
 6. Confirm `Analytics → vs Benchmark` reads the corrected Support Reversal figure.
 7. Force a kill-or-resume decision on `Model Health`.
 8. Confirm `Agent → Today's Opportunities` / `Discovered Patterns` have a real significance/benchmark check or get demoted.
@@ -345,3 +345,19 @@ This document is **Phase 0**. Nothing past this point has been started, **except
 **Deliberately left untouched:** `sector_signals.py`'s `compute_flow_signals()` / `_compute_flow_signals_pg()` (the writer side) and `main.py`'s daily call to `page_flows.scrape_flows_today()` — both keep running, so `market_flows` and the `sector_signals.flow_*` columns keep getting populated daily. The user's original instruction was to retain the scraped data; stopping ingestion would work against that. This does mean `sector_signals.flow_direction`/`flow_smart_net_5d`/`flow_smart_net_20d` are now write-only — populated daily, read by no UI anywhere — worth a dedicated future decision (stop writing them vs. leave as retained-but-unused data), not decided here.
 
 **Committed and pushed** this session, per explicit user instruction — `git push origin main` triggers a Streamlit Cloud auto-redeploy in ~60 seconds (§10); see the commit message for the exact file list.
+
+---
+
+## 13. <span style="color:#16a34a;">🟢 Resolved — `Leaders` page → `Watchlist` tab relabeled monitoring-only (2026-07-29)</span>
+
+**Trigger:** user directive on Priority Finding #5 (§3 backlog item 5) — unlike the `Flows` page (§12), which was retired outright, the user explicitly wants **both the `Leaders` page and its underlying codebase preserved intact**, citing the significant work already invested in building it. The instruction: add a clear, explicit "Monitoring Only" label in the UI now, and revisit the underlying negative-EV finding later — a labeling fix, not a structural one.
+
+**What changed:** `dashboard.py`'s `Leaders` page, `📋 Watchlist` tab (`_ld_tab_unified` block, immediately inside `with _ld_tab_unified:`) now opens with an `st.warning()` banner:
+
+> 🔍 **Monitoring Only** — the 2026-07-29 audit found this list's live-window population is negative EV (5d/10d/20d: −0.79% / −2.57% / −3.47%) despite a sound mechanism. Not a trading signal until this is revisited and re-validated.
+
+This mirrors the existing `Recovery Bases` page's own "monitoring only, not an entry" caption pattern (§2, `Recovery Bases`), so the two pages now read consistently to a user clicking between them.
+
+**What was deliberately left untouched:** the tab's data-fetch (`_get_leaders_unified_data()`), scoring, filtering, and table-rendering logic; the other three `Leaders` tabs (`RS Leaders`, `Deep Scan`, `Radar`); every backing table (`leaders_scan`, `leaders_top_picks`) and script (`leaders_scan.py`). Nothing was pruned, archived, or restructured — matching the user's explicit "preserve both the page and its codebase intact" instruction. Verified via `ast.parse` on `dashboard.py` after the edit (clean).
+
+**Not done, deliberately:** no kill/resume decision on the underlying negative-EV finding itself — that's the user's explicit "I'll revisit this feature later," not something this change should preempt.

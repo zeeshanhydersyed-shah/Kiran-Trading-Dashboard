@@ -889,29 +889,6 @@ if "_ksestocks_source_date" not in st.session_state:
 if "_ksestocks_source_date_fetched_at" not in st.session_state:
     st.session_state["_ksestocks_source_date_fetched_at"] = None
 
-# ── Auto-log today's predictions once per calendar day ───────────────────────
-import datetime as _dt, os as _auto_os, subprocess as _auto_sp, sys as _auto_sys
-_today_key = f"predictions_logged_{_dt.date.today()}"
-if _today_key not in st.session_state:
-    st.session_state[_today_key] = False
-
-if not st.session_state[_today_key]:
-    try:
-        _log_script = _auto_os.path.join(_MODEL_DIR, "part7_prediction_log.py")
-        if _auto_os.path.exists(_log_script):
-            _auto_sp.run(
-                [_auto_sys.executable, _log_script, "log-today"],
-                capture_output=True, text=True, timeout=30,
-            )
-            _auto_sp.run(
-                [_auto_sys.executable, _log_script, "update-outcomes"],
-                capture_output=True, text=True, timeout=30,
-            )
-    except Exception:
-        pass
-    finally:
-        st.session_state[_today_key] = True
-
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
@@ -6139,6 +6116,30 @@ elif cur == PAGES[11]:  # Model Health
     import subprocess as _sp
     import traceback as _tb
 
+    # ── Auto-log today's predictions once per calendar day ───────────────────
+    # Moved here from the unconditional top-of-script path (was blocking every
+    # page load with up to two 30s subprocess calls) — only relevant to this page.
+    import datetime as _dt
+    _today_key = f"predictions_logged_{_dt.date.today()}"
+    if _today_key not in st.session_state:
+        st.session_state[_today_key] = False
+    if not st.session_state[_today_key]:
+        try:
+            _log_script = _os.path.join(_MODEL_DIR, "part7_prediction_log.py")
+            if _os.path.exists(_log_script):
+                _sp.run(
+                    [__import__("sys").executable, _log_script, "log-today"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                _sp.run(
+                    [__import__("sys").executable, _log_script, "update-outcomes"],
+                    capture_output=True, text=True, timeout=30,
+                )
+        except Exception:
+            pass
+        finally:
+            st.session_state[_today_key] = True
+
     st.markdown("### 🏥 Model Health Dashboard")
     st.caption("Live accuracy tracking for both ML models. Refresh daily after logging predictions.")
 
@@ -7372,6 +7373,12 @@ elif cur == PAGES[14]:  # Leaders
     # ── Tab 2: Pre-Breakout ────────────────────────────────────────────────
     # ── Tab 2: Unified Watchlist ──────────────────────────────────────────────
     with _ld_tab_unified:
+        st.warning(
+            "🔍 **Monitoring Only** — the 2026-07-29 audit found this list's live-window "
+            "population is negative EV (5d/10d/20d: −0.79% / −2.57% / −3.47%) despite a sound "
+            "mechanism. Not a trading signal until this is revisited and re-validated."
+        )
+
         _uw_scan_date, _uw_df, _uw_bo_dates = _get_leaders_unified_data()
 
         if not _uw_scan_date:
