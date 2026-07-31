@@ -1,9 +1,13 @@
 name: Weekly ML Retrain
 
-# Run every Sunday at 10:00 UTC (15:00 PKT) — after backtest finishes.
+# Scheduled trigger disabled 2026-07-31 — the model this trains
+# (kiran_model.pkl) was killed (see docs/KIRAN_CLEANUP_AUDIT.md §14):
+# coin-flip CV AUC, zero live consumers, and this workflow's own output
+# was already disconnected from production (uploads a 30-day CI artifact,
+# never commits back to the repo — kiran_model.pkl has been frozen since
+# 2026-05-29 regardless of this schedule running weekly). Kept as a manual
+# utility (workflow_dispatch only) rather than deleted.
 on:
-  schedule:
-    - cron: "0 10 * * 0"   # Sunday 10:00 UTC
   workflow_dispatch:
 
 jobs:
