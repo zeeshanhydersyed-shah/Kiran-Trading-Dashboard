@@ -140,10 +140,10 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 | `🧠 Discovered Patterns` | **RECOVER/VERIFY** | Same data-dredging concern as `Flows → Intelligence Engine → Pattern Analysis`. |
 | `📚 Teach the Agent — Reference Breakouts` | **KEEP** — calibration tool | |
 
-### `Valuation`
+### `Valuation` — <span style="color:#16a34a;">RETIRED, whole page, 2026-07-31 (see §17)</span>
 | Component | Verdict | Basis |
 |---|---|---|
-| Income Statement / Balance Sheet / Cash Flow, Piotroski F-Score, Altman Z-Score, DuPont ROE, Ratio Dashboard, Valuation Assumptions & Results, Advanced Valuation Methods, Sum-of-Parts, Bull/Base/Bear Targets, Sensitivity Tornado / Scenario Matrix / Monte Carlo, Entry Timing, Save Research Finding | **RECOVER/VERIFY** (whole page) | Manual, PDF-upload-driven tool. Two backing tables (financial snapshots, saved valuation findings) have **zero rows in production** — confirm actual usage. |
+| Income Statement / Balance Sheet / Cash Flow, Piotroski F-Score, Altman Z-Score, DuPont ROE, Ratio Dashboard, Valuation Assumptions & Results, Advanced Valuation Methods, Sum-of-Parts, Bull/Base/Bear Targets, Sensitivity Tornado / Scenario Matrix / Monte Carlo, Entry Timing, Save Research Finding | **RETIRED** | Confirmed usage: `valuation_findings` 0 rows ever, `financial_snapshots` 0 rows and not even wired into `page_valuation.py`'s code (only referenced in `migrate_to_supabase.py`'s table list — a dead table). Only real activity: `fs_line_items`/`fs_analysis` for one ticker (LUCK), entered once 2026-05-28, nothing since. User-directed retirement. See §17. |
 
 ### `Flows` — <span style="color:#16a34a;">RETIRED, whole page, 2026-07-29 (see §12)</span>
 | Component | Verdict | Basis |
@@ -186,7 +186,7 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 6. <span style="color:#16a34a;">✅ DONE 2026-07-31</span> — ~~Confirm `Analytics → vs Benchmark` reads the corrected Support Reversal figure~~ — moot, section removed entirely; also found it was never comparing to Support Reversal in the first place (compared to `config.BENCHMARK`, "Current System"). See §15.
 7. <span style="color:#16a34a;">✅ DONE 2026-07-31</span> — ~~Force a kill-or-resume decision on `Model Health`~~ — killed. See §14.
 8. Confirm `Agent → Today's Opportunities` / `Discovered Patterns` have a real significance/benchmark check or get demoted.
-9. Confirm actual usage of the `Valuation` page.
+9. <span style="color:#16a34a;">✅ DONE 2026-07-31</span> — ~~Confirm actual usage of the `Valuation` page~~ — confirmed essentially unused (one manual entry, 2026-05-28, nothing since); retired from the nav at the user's direction. See §17.
 10. Confirm `Leaders → Deep Scan`'s A–F scoring doesn't weight a killed S-002/S-003 factor.
 11. <span style="color:#16a34a;">✅ DONE 2026-07-31</span> — ~~Root-cause the `market_regime`/`index_prices` divergence between local SQLite and production Postgres~~ — root-caused (Decimal/float staleness-guard bug) and fixed with backup + independent re-verification. See §16.
 
@@ -442,3 +442,25 @@ This mirrors the existing `Recovery Bases` page's own "monitoring only, not an e
 **Result — not the number originally expected, and that's worth stating plainly.** The corrected `days_since` (via the dashboard's own recompute-from-history algorithm, not the stored `regime_days` column) is **13**, not the "10" the user recalled seeing earlier — because **local SQLite's own `market_regime` table turned out to have a separate, unrelated gap**: it is missing rows entirely for 2026-07-20, 2026-07-21, and 2026-07-29 (confirmed via direct query — `regime_days` jumps from 6 on 07-22 straight to 8 on 07-23, and from 11 on 07-28 straight to 12 on 07-30, with no row for the skipped dates), even though local's own `index_prices` has complete, correct data for those same dates. This is consistent with a local dev machine's scheduled hook simply not running on those particular days (unlike GitHub Actions' reliable cloud schedule) — a data-completeness gap, not a corruption bug, and not something affecting the live Streamlit Cloud app since it reads Postgres, not local SQLite. The "10" was therefore never the true count on either side; **13 is the correct, now-verified answer**, and the live dashboard will show it on next load.
 
 **Not done, deliberately:** local SQLite's own `market_regime` gap (07-20/07-21/07-29) was not fixed — it doesn't affect production, and is a separate, lower-urgency finding, not part of what was asked. The 6 remaining shared OHLC invariant violations (2020-07-28, 2022-08-11, 2026-05-08 × 5 symbols) were left untouched for the same reason — confirmed pre-existing in both databases, not a sync problem, and not part of this fix's scope.
+
+---
+
+## 17. <span style="color:#16a34a;">🟢 Resolved — `Valuation` page retired from the dashboard (2026-07-31)</span>
+
+**Trigger:** §3 backlog item 9 — confirm actual usage of the `Valuation` page, whose two backing tables showed zero rows in the original audit pass.
+
+**Usage confirmed, not assumed:** queried production directly.
+- `valuation_findings` (the page's "Save Research Finding" feature) — **0 rows, ever.**
+- `financial_snapshots` — **0 rows**, and a `grep` across the repo found it isn't even wired into `page_valuation.py`'s code at all — its only reference anywhere is in `migrate_to_supabase.py`'s migration table list. A dead table that was never live.
+- `fs_line_items` (manual financial-statement entry, saved via an explicit "💾 Save Manual Entry" button) — **580 rows, all for a single ticker, LUCK (Lucky Cement)**, spanning a few fiscal years.
+- `fs_analysis` (AI-generated company writeup) — **1 row**, LUCK, `analyzed_at` timestamp **2026-05-28**, no further rows since.
+
+Net picture: a 2,471-line page — one of the largest single pages in the codebase — used exactly once, for one company, on one day, over two months ago, while every other part of the dashboard has been actively iterated on daily since. Presented this to the user as a judgment call (not an empirical KEEP/PRUNE guardrail case, since there's no backtest/screener claim to falsify) — user chose retirement.
+
+**Dependency mapping done first (per §4), before touching anything:** `grep` across the repo for `render_valuation_page` / `from page_valuation` found exactly one live caller — `dashboard.py`'s own `elif cur == PAGES[12]` block — plus references only in old, dead `dashboard_backup_*.py` files. No daily hook, no other page, and no other script reads `fs_line_items`/`fs_analysis`/`valuation_findings`/`financial_snapshots` besides `page_valuation.py` itself and the historical `migrate_to_supabase.py` migration list.
+
+**What actually changed:**
+- `dashboard.py`: removed `"💰 Valuation"` from `PAGES` (was index 12 of 15) and replaced the `elif cur == PAGES[12]:` render block with an inert `elif False:  # Valuation page removed — retired 2026-07-31 ...` marker, following the same convention used for the killed STM/Minervini pages and the retired `Flows`/`Model Health` pages. Renumbered the two downstream hardcoded indices: `Leaders` (`PAGES[13]`→`PAGES[12]`), `Setup History` (`PAGES[14]`→`PAGES[13]`), `Data Health` (`PAGES[15]`→`PAGES[14]`). Verified via `ast.parse` (clean) and a full re-grep of every `PAGES[n]` reference in the file (0–14, no gaps, no duplicates).
+- `CLAUDE.md`: dashboard-pages list updated to drop `💰 Valuation` and renumber, matching the corrected live `PAGES` array.
+
+**Deliberately left untouched (archive, don't delete):** `page_valuation.py` itself (2,471 lines, not deleted or moved), `fs_line_items`, `fs_analysis`, `financial_snapshots`, and `valuation_findings` all stay in place — nothing dropped from the database, no file deleted. The LUCK data from the one real usage session is preserved, just unreached by any page now.

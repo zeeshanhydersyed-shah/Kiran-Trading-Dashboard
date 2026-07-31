@@ -786,7 +786,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🤖 Agent", "💰 Valuation", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🤖 Agent", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
 
 
 def fmt_date(d) -> str:
@@ -6783,13 +6783,6 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 """)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE — 💰 Valuation   (Financial Highlights / DCF Data)
-# ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[12]:  # Valuation
-    from page_valuation import render_valuation_page
-    render_valuation_page()
-
-# ══════════════════════════════════════════════════════════════════════════════
 
 
 elif False:  # Minervini page removed — killed (N=29 proxy, 86% BREAKOUT overlap, <5 signals/yr)
@@ -6802,7 +6795,14 @@ elif False:  # Flows page removed — retired 2026-07-29 (Big Fish study: FIPI/L
     # (Rotation Radar) still reads market_flows, and that column is unaffected by this.
     pass
 
-elif cur == PAGES[13]:  # Leaders
+elif False:  # Valuation page removed — retired 2026-07-31 (2,471-line page, essentially
+    # unused: valuation_findings 0 rows ever, financial_snapshots 0 rows and not even wired
+    # into page_valuation.py's own code; only real activity was fs_line_items/fs_analysis
+    # for a single ticker (LUCK), entered once on 2026-05-28, nothing since. See
+    # docs/KIRAN_CLEANUP_AUDIT.md Section 17. page_valuation.py itself is untouched.
+    pass
+
+elif cur == PAGES[12]:  # Leaders
     st.markdown("### 🏆 Leaders — Stock Signal Board")
 
     _ld_tab_rs, _ld_tab_unified, _ld_tab_scan, _ld_tab_radar = st.tabs([
@@ -7458,7 +7458,7 @@ elif cur == PAGES[13]:  # Leaders
                         unsafe_allow_html=True
                     )
 
-elif cur == PAGES[14]:  # Setup History
+elif cur == PAGES[13]:  # Setup History
     st.header('📋 Setup History')
     tab1, tab2 = st.tabs(['📊 Screen Performance', '🔍 Stock Lookup'])
 
@@ -7636,7 +7636,7 @@ elif cur == PAGES[14]:  # Setup History
                     hide_index=True
                 )
 
-elif cur == PAGES[15]:  # Data Health
+elif cur == PAGES[14]:  # Data Health
     import sqlite3
     from config import DB_PATH as _dh_db
     from datetime import datetime as _dh_dt

@@ -65,12 +65,11 @@ Local edits alone **never** update the live app.
 9. 🤖 Backtest
 10. 🗂️ Portfolio
 11. 🤖 Agent
-12. 💰 Valuation
-13. 🏆 Leaders
-14. 📋 Setup History
-15. 🏥 Data Health
+12. 🏆 Leaders
+13. 📋 Setup History
+14. 🏥 Data Health
 
-*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap. 📡 Flows retired 2026-07-29 — Big Fish study found the underlying FIPI/LIPI flow data null, 0/360 forward cells; see docs/KIRAN_CLEANUP_AUDIT.md. `page_flows.py`'s `scrape_flows_today()` is still called from `main.py`'s daily hook — it still feeds `sector_signals.py`'s descriptive-only `Flow` column on the Market page. 🏥 Model Health retired 2026-07-31 — its ML conviction model was killed (coin-flip CV AUC 0.524±0.059, zero live consumers, retrain pipeline disconnected from production); page removed from nav, kiran_model.pkl/phase4_train.py/prediction_log.csv kept in place, unread by any page; see docs/KIRAN_CLEANUP_AUDIT.md §14.)*
+*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap. 📡 Flows retired 2026-07-29 — Big Fish study found the underlying FIPI/LIPI flow data null, 0/360 forward cells; see docs/KIRAN_CLEANUP_AUDIT.md. `page_flows.py`'s `scrape_flows_today()` is still called from `main.py`'s daily hook — it still feeds `sector_signals.py`'s descriptive-only `Flow` column on the Market page. 🏥 Model Health retired 2026-07-31 — its ML conviction model was killed (coin-flip CV AUC 0.524±0.059, zero live consumers, retrain pipeline disconnected from production); page removed from nav, kiran_model.pkl/phase4_train.py/prediction_log.csv kept in place, unread by any page; see docs/KIRAN_CLEANUP_AUDIT.md §14. 💰 Valuation retired 2026-07-31 — 2,471-line page, essentially unused (valuation_findings 0 rows ever, financial_snapshots 0 rows and not even wired into the page's code, only real activity one manually-entered ticker analyzed once on 2026-05-28); page removed from nav, page_valuation.py and its data kept in place, unread by any page; see docs/KIRAN_CLEANUP_AUDIT.md §17.)*
 
 ## ML model architecture
 Two separate models:
