@@ -14,10 +14,11 @@
 8. <span style="color:#dc2626;">**MEDIUM — `Flows` page → `Intelligence Engine` → `Pattern Analysis` hunts patterns with no pre-registration or holdout.**</span> Same failure shape that already produced two false positives in this program (Support Reversal, RSI Divergence). → §1, Priority Finding #2
 9. <span style="color:#16a34a;">**RESOLVED (2026-07-31) — `Model Health` page's parked ML model has been KILLED.**</span> Coin-flip cross-validated AUC (0.524±0.059), zero live consumers, retrain automation disconnected from production for 2+ months, supporting scripts already deleted from disk. See §14 for the full evidence and what changed.
 10. <span style="color:#16a34a;">**RESOLVED (2026-07-31) — production `market_regime`/`index_prices` divergence root-caused and fixed.**</span> A Decimal-vs-float comparison bug silently disabled the scraper's duplicate-session guard on Postgres only, letting two historical KSE-100 rows (2026-07-08, 2026-07-16) get corrupted with a neighboring day's data. Backed up, corrected, and recomputed `market_regime` downstream, with independent re-verification. Corrected `days_since` is 13 (not the "10" originally recalled — local SQLite turned out to have its own separate, unrelated gap). → §16
+11. <span style="color:#16a34a;">**RESOLVED (2026-07-31) — `Valuation` page retired from the dashboard.**</span> Confirmed essentially unused: `valuation_findings` 0 rows ever, `financial_snapshots` 0 rows and not even wired into the page's own code; only real activity was one ticker (LUCK) manually entered and analyzed once on 2026-05-28, nothing since. A 2,471-line page for one test session. User-directed retirement, page and data kept in place. → §17
 
 ---
 
-**Status:** IN PROGRESS — Phase 0 (audit + classification) only. **No file, table, dashboard code, or database row has been modified, deleted, or moved as part of this document.** Everything below is a read-only inventory and a proposed plan for a future, explicitly-approved execution session.
+**Status (updated 2026-07-31):** IN PROGRESS, well past Phase 0 — the original "read-only inventory" framing below is now historical. Every execution since has been done one item at a time, each with the user's explicit direction in the same turn (not a batch-approved phase run). **Resolved so far:** Groq key purge (§7.1), working-tree sync (§7.3), `Flows` page retirement (§12), `Model Health`/ML-model kill + retirement (§14), `Analytics` page trimmed to 2 components (§15), production `market_regime`/`index_prices` divergence root-caused and fixed (§16), `Valuation` page retirement (§17), and the §8.1 subprocess fix. **Still open, paused here for the next session:** Agent → Today's Opportunities/Discovered Patterns significance check (§3 item 8), Leaders → Deep Scan factor check (§3 item 10), and the §7.2/§10 CI-test-gate + staging-environment gap. Pick up at the "Next session starts here" line in §11.
 
 **This document now carries two mandates, added in sequence:**
 
@@ -307,21 +308,24 @@ This is the one workstream this document **cannot** fully resolve from code alon
 
 ---
 
-## 11. Phased execution plan (for a future, explicitly-approved session)
+## 11. Phased execution plan — superseded by ad-hoc, user-directed execution (see below)
 
-This document is **Phase 0**. Nothing past this point has been started, **except the Groq key response (§7.1) and the working-tree sync (§7.3)**, both completed this session at the user's explicit direction — the key exposure because it didn't need to wait for a scheduled cleanup, and the sync because leaving months of local-only work uncommitted was itself a risk. Both are **local-only, unpushed** commits; the one remaining step (force-pushing the rewritten history to `origin/main`) is deliberately left for the user to run themselves — see §7.1.
+This section originally described a 9-phase batch-approval plan for a future session. That's not how execution actually went: the user has instead directed items one at a time across several sessions (2026-07-29 through 2026-07-31), each with explicit sign-off in the same turn it was executed — closer to Phase 1 (empirical verification) and Phase 4 (the §8.1 subprocess fix) interleaved with items that weren't in the original phase list at all (the `market_regime` production-data fix, §16). The original phase breakdown is kept below for reference, but treat the **"Next session starts here"** line as the actual current pointer, not the phase list.
 
-- **Phase 1 — Empirical verification pass.** Work the §3 backlog in order.
-- **Phase 2 — Dependency verification pass.** Run §4's checks against every RECOVER/VERIFY and PRUNE-candidate item in §5/§6.
-- **Phase 3 — Code-quality mechanical pass.** §7.1 and §7.3 are done locally — the one remaining action is the user running the force-push in §7.1 when ready. From there: add lint/format tooling and run once repo-wide. Consolidate `test_*.py` into `tests/` and wire a smoke-test CI workflow (§7.2, §10 Option A).
-- **Phase 4 — Performance pass.** Measure real per-page load times (§8.3.1), fix the top-of-script subprocess block (§8.1), audit cache TTLs (§8.3.2), check heavy-query indexing (§8.3.3).
-- **Phase 5 — Design pass.** Actual browser-based visual review, page by page (§9), extract shared styled-component helpers.
-- **Phase 6 — Archive, not delete.** Move confirmed-dead scripts/backups/result-artifacts into dated `_ARCHIVE_*` folders; stage (don't run) `DROP TABLE` statements. Fresh DB backup + git tag first.
-- **Phase 7 — Observation window.** Run the dashboard normally (local + Cloud, or `staging` if Option B is adopted) with archives in place but nothing dropped from the DB. Confirm nothing breaks.
-- **Phase 8 — Execute drops + relabels + deploy strategy.** Only after Phase 7 passes, and only with the user's explicit sign-off, matching this project's existing production-write discipline.
-- **Phase 9 — Re-point documentation.** Regenerate `CLAUDE.md`'s dashboard-pages table and GitHub Actions workflow list from the live code (fixing both drifts found in §0/§7.2); mark this audit `Concluded`.
+- ~~Phase 1 — Empirical verification pass.~~ §3 items 1–7, 9 done (Flows, Model Health, Analytics vs-Benchmark-moot, Valuation). Items 8 and 10 still open.
+- ~~Phase 2 — Dependency verification pass.~~ Done inline for every item actually executed (§4's methodology applied each time — see §12/§14/§16/§17's "dependency mapping done first" notes) rather than as a separate batch pass.
+- **Phase 3 — Code-quality mechanical pass.** Groq key purge and working-tree sync (§7.1, §7.3) are done and pushed. Lint/format tooling, `tests/` consolidation, and a smoke-test CI workflow (§7.2, §10 Option A) are **not started** — part of the CI/staging gap still open below.
+- ~~Phase 4 — Performance pass.~~ The subprocess block (§8.1) is fixed. Per-page load-time measurement, cache TTL audit, and heavy-query indexing checks (§8.3) are **not started**.
+- **Phase 5 — Design pass.** Not started.
+- **Phase 6 — Archive, not delete.** Not started as a batch — but every individual retirement (Flows, Model Health, Valuation) has already followed archive-don't-delete discipline item-by-item.
+- **Phase 7 — Observation window.** Not applicable in this form — each change has been verified live (local preview + independent re-verification) at the time it was made, rather than batched into one observation window.
+- **Phase 8 — Execute drops + relabels + deploy strategy.** No `DROP TABLE` has been run anywhere. Deploy-strategy decision (Option A vs B, §10) not made.
+- **Phase 9 — Re-point documentation.** Ongoing, not a final step — `CLAUDE.md`'s dashboard-pages list and this document have been kept in sync after every single change so far, not deferred to the end.
 
-**Recommended first action of the next session (after the key rotation in §7.1, which doesn't need to wait):** Priority Findings #1 and #3 (`Flows → Decision Signals` and `Flows → UIN-Wise Settlement Analysis`) — the two places the dashboard currently implies real trading relevance for data this program has independent, rigorous evidence carries none — paired with the §8.1 subprocess fix, since both are concrete, already-verified issues rather than open questions.
+**Next session starts here.** Three items remain open, none blocking each other:
+1. **Agent → Today's Opportunities / Discovered Patterns significance check** (§3 item 8) — same data-dredging concern already found and fixed elsewhere (Support Reversal, RSI Divergence, the retired Flows Pattern Analysis tab). Confirm whether `agent.py`'s opportunity generator and pattern discovery have any real out-of-sample check, or demote/label them the same way.
+2. **Leaders → Deep Scan factor check** (§3 item 10) — confirm the A–F scoring doesn't still weight a killed ZH_research S-002/S-003 factor.
+3. **§7.2/§10 — CI test gate + staging environment.** No smoke-test workflow, no staging branch; a broken commit still reaches live traders in ~60 seconds with nothing checking it first. Bigger scope than the other two — likely its own session.
 
 ---
 
