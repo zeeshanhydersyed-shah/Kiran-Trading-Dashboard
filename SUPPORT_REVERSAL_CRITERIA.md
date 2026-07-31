@@ -1,9 +1,23 @@
 # Support Reversal Setup - Complete Criteria
 
-**Version:** 1.0  
-**Status:** Active  
-**Expected Expectancy:** +5.2% per trade (20-day hold with trailing stop)  
-**Risk:Reward Ratio:** 5.03x  
+**Version:** 2.0  
+**Status:** 🔴 KILLED 2026-07-23 — not a live strategy, kept for historical record only  
+**Expected Expectancy:** ~~+5.2% per trade~~ **-1.88% net** (full 21.5-year path-aware retest, 16,425 trades, negative in all five eras)  
+**Risk:Reward Ratio:** ~~5.03x~~ **1.51x** (full-period, path-aware)  
+
+> **Re-audited 2026-07-23 and confirmed dead — do not trade this setup.** The original
+> +5.2%/5.03x headline below was a look-ahead artefact: the "trailing stop" was never
+> simulated on a real price path (`max(max_favorable - 2%, return_20d)`, no path
+> ordering, no check the stop was hit first) and was measured on a single quarter
+> (2026-01-01 to 2026-04-08, 360 signals) mislabeled as "out-of-sample". A genuine
+> path-aware re-run across the full 2005-2026 history (1,580,310 bars, 16,425 filled
+> signals) gives WR 29.1%, R:R 1.51x, **-1.88% net of costs**, negative in every one of
+> five eras and 21 of 22 individual years. The screener is disabled in the live
+> pipeline (`processor.py`'s `generate_support_reversal_setups` returns an empty list;
+> `config.py`'s `SUPPORT_REVERSAL_STATS` carries the corrected numbers). Everything
+> below this notice describes the pattern as it was originally specified and tested —
+> read it as history, not as a plan to execute. Full verdict:
+> `C:\Users\Lenovo\RESEARCH_LOG.md`, "Support/Resistance + Support Reversal" row.
 
 ---
 
@@ -187,7 +201,7 @@ Apply these for fewer but higher-quality setups:
 2. **On signal:** Place entry order (high + 1), SL (-6%)
 3. **Monitor:** Trail the stop daily as price moves
 4. **Record:** Log entry, SL, exit, return, date
-5. **Weekly review:** Check performance vs 5.21% expected
+5. ~~**Weekly review:** Check performance vs 5.21% expected~~ — moot, screener is disabled (see status banner above)
 
 ---
 
@@ -197,7 +211,7 @@ Apply these for fewer but higher-quality setups:
 2. **Rejection candle is observable** → Price *actually* rejected lower prices
 3. **High wick + recovery** → Not a fluke, shows real rejection
 4. **Trailing stop captures full move** → Doesn't cap winners at arbitrary levels
-5. **5.21% edge beats the market** → Positive expectancy over time
+5. ~~**5.21% edge beats the market** → Positive expectancy over time~~ — this was the artefact; the real full-period edge is -1.88% net, see status banner above
 
 ---
 
@@ -222,11 +236,7 @@ Save every setup with:
 - Actual exit price
 - Trailing stop hit? (Y/N)
 
-**Monthly Review:**
-- Calculate actual win rate
-- Compare to 30.5% expected
-- Track average wins/losses
-- Verify 5.21% expectancy
+**Monthly Review:** ~~Calculate actual win rate, compare to 30.5% expected, track average wins/losses, verify 5.21% expectancy~~ — moot, screener disabled 2026-07-23 (see status banner above)
 
 ---
 
@@ -235,4 +245,5 @@ Save every setup with:
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | 2026-05-21 | Initial criteria document. 200-MA, 75% recovery, 60% wick, trailing 2% stop. Expected 5.21% EV. |
+| 2.0 | 2026-07-31 | KILLED. Re-audit (2026-07-23, recorded in RESEARCH_LOG.md) found the 5.21% headline was a look-ahead artefact measured on one quarter; full 21.5-year path-aware retest gives -1.88% net, negative in all five eras. Screener disabled in the live pipeline. Doc kept for historical record, status banner added at top, live-monitoring instructions struck through as moot. |
 
