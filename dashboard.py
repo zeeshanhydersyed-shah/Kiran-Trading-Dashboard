@@ -6113,65 +6113,30 @@ Frequency 2.5× higher, EV drops 74%. The 30% threshold is load-bearing — loos
 # ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
 elif cur == PAGES[11]:  # Model Health
     import os as _os
-    import subprocess as _sp
-    import traceback as _tb
-
-    # ── Auto-log today's predictions once per calendar day ───────────────────
-    # Moved here from the unconditional top-of-script path (was blocking every
-    # page load with up to two 30s subprocess calls) — only relevant to this page.
-    import datetime as _dt
-    _today_key = f"predictions_logged_{_dt.date.today()}"
-    if _today_key not in st.session_state:
-        st.session_state[_today_key] = False
-    if not st.session_state[_today_key]:
-        try:
-            _log_script = _os.path.join(_MODEL_DIR, "part7_prediction_log.py")
-            if _os.path.exists(_log_script):
-                _sp.run(
-                    [__import__("sys").executable, _log_script, "log-today"],
-                    capture_output=True, text=True, timeout=30,
-                )
-                _sp.run(
-                    [__import__("sys").executable, _log_script, "update-outcomes"],
-                    capture_output=True, text=True, timeout=30,
-                )
-        except Exception:
-            pass
-        finally:
-            st.session_state[_today_key] = True
 
     st.markdown("### 🏥 Model Health Dashboard")
-    st.caption("Live accuracy tracking for both ML models. Refresh daily after logging predictions.")
+    st.caption("Historical record for the killed ML conviction model. No further action expected.")
 
-    st.warning(
-        "**ML expansion parked — needs a planning conversation before any new work starts.**  \n"
-        "Open questions before scoping: (1) prediction target — probability of WINNER label, expected EV, "
-        "or time-to-resolution? (2) train/test split methodology given PSX's regime imbalance (89% non-bear "
-        "history caused one contaminated backtest this session — same risk applies to ML); "
-        "(3) feature leak safety — sector rank and RS columns need point-in-time correctness, not look-ahead; "
-        "(4) what would the model add that the rule-based Weinstein gates don't already capture "
-        "(EV 10.50%, 92/yr, validated). This page tracks the *existing* model. New ML work: separate session."
+    st.error(
+        "**KILLED 2026-07-31 — see RESEARCH_LOG.md / docs/KIRAN_CLEANUP_AUDIT.md §14 for full evidence.**  \n"
+        "Cross-validated AUC 0.524 ± 0.059 (coin flip, no leakage); its only true out-of-sample test "
+        "(53 live 2026 setups) produced 0 high-confidence calls; top feature is `month` (seasonal artifact); "
+        "never wired into any live setup card; the weekly retrain workflow only ever produced a throwaway "
+        "GitHub Actions artifact and never reached production — `kiran_model.pkl` has been frozen since "
+        "2026-05-29. Comparison point (Weinstein Stage-2 gate, +10.50% EV, validated) already covers this "
+        "surface without the model. Model files, training report, and prediction log kept in place for "
+        "reference — nothing deleted, no new ML work planned against this line."
     )
-
-    try:
-        from part5_model_health import generate_health_report
-        report = generate_health_report()
-        st.code(report, language=None)
-    except ImportError:
-        st.info("📌 Model Health Report: Available on local development only (part5_model_health module)")
-    except Exception as _e:
-        st.error(f"Could not generate report: {_e}")
-        st.code(_tb.format_exc())
 
     st.divider()
 
-    # ── Prediction log summary ────────────────────────────────────────────────
+    # ── Prediction log (historical, read-only — nothing writes to it anymore) ─
     _pred_log_path = _os.path.join(_MODEL_DIR, "prediction_log.csv")
     if _os.path.exists(_pred_log_path):
         log_df    = pd.read_csv(_pred_log_path)
         evaluated = log_df.dropna(subset=["was_correct"])
 
-        st.markdown("#### Prediction Log")
+        st.markdown("#### Prediction Log (historical)")
         col1, col2, col3 = st.columns(3)
         col1.metric("Total logged", len(log_df))
         col2.metric("Evaluated",    len(evaluated))
@@ -6190,28 +6155,7 @@ elif cur == PAGES[11]:  # Model Health
                 recent["was_correct"]    = recent["was_correct"].map(lambda x: "✔" if x == 1 else ("✖" if x == 0 else "—"))
             st.dataframe(recent, width='stretch', hide_index=True)
     else:
-        st.info("No prediction log yet. Use the buttons below to start logging predictions.")
-
-    st.divider()
-    st.markdown("**Quick actions**")
-    c1, c2, c3 = st.columns(3)
-    _py = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "python.exe") if False else __import__("sys").executable
-    if c1.button("Log today's predictions"):
-        r = _sp.run([_py, _os.path.join(_MODEL_DIR, "part7_prediction_log.py"), "log-today"],
-                    capture_output=True, text=True)
-        st.code(r.stdout or r.stderr)
-    if c2.button("Update outcomes"):
-        r = _sp.run([_py, _os.path.join(_MODEL_DIR, "part7_prediction_log.py"), "update-outcomes"],
-                    capture_output=True, text=True)
-        st.code(r.stdout or r.stderr)
-    if c3.button("Force retrain now"):
-        _retrain_script = _os.path.join(_MODEL_DIR, "part4_monthly_retrain.py")
-        if not _os.path.exists(_retrain_script):
-            st.warning("part4_monthly_retrain.py not found — local-only script, not deployed. Run `retrain.bat` on your local machine instead.")
-        else:
-            r = _sp.run([_py, _retrain_script, "--force"],
-                        capture_output=True, text=True, timeout=300)
-            st.code(r.stdout or r.stderr)
+        st.info("No prediction log on record.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 11 — 🗂️ Portfolio  (Weinstein Stage 2 Portfolio Screener)

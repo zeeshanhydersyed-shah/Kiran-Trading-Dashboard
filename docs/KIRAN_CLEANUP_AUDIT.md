@@ -12,7 +12,7 @@
 6. <span style="color:#dc2626;">**MEDIUM-HIGH — every page load runs a blocking subprocess call before routing even starts.**</span> `dashboard.py` lines ~892–909 call `subprocess.run()` twice (30s timeout each) unconditionally, once per calendar day. Currently Cloud-safe by accident (the target script is local-only), not by design — fix the pattern before that stops being true. → §8.1
 7. <span style="color:#dc2626;">**MEDIUM-HIGH — no CI test gate and no staging environment between `git push` and production.**</span> A broken commit reaches live traders in ~60 seconds with nothing checking it first. → §7.2, §10
 8. <span style="color:#dc2626;">**MEDIUM — `Flows` page → `Intelligence Engine` → `Pattern Analysis` hunts patterns with no pre-registration or holdout.**</span> Same failure shape that already produced two false positives in this program (Support Reversal, RSI Divergence). → §1, Priority Finding #2
-9. <span style="color:#dc2626;">**MEDIUM — `Model Health` page has a parked ML model with no written kill/resume verdict since 2026-06-23.**</span> Needs a decisive call, not indefinite limbo. → §2, `Model Health`
+9. <span style="color:#16a34a;">**RESOLVED (2026-07-31) — `Model Health` page's parked ML model has been KILLED.**</span> Coin-flip cross-validated AUC (0.524±0.059), zero live consumers, retrain automation disconnected from production for 2+ months, supporting scripts already deleted from disk. See §14 for the full evidence and what changed.
 
 ---
 
@@ -127,7 +127,7 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 ### `Model Health`
 | Component | Verdict | Basis |
 |---|---|---|
-| Prediction Log, Quick Actions (whole page) | **RECOVER/VERIFY** | Backs the ML conviction model, **Parked 2026-06-23 with no written accept/reject verdict**. Needs a decisive kill-or-resume call. See also §7/§8 — this page's "Quick actions" buttons are also a concrete performance/architecture finding. |
+| Prediction Log, Quick Actions (whole page) | <span style="color:#16a34a;">**🟢 KILLED (2026-07-31)**</span> | Backs the ML conviction model — parked 2026-06-23, no verdict since; **killed 2026-07-31** on coin-flip CV AUC, failed live out-of-sample test, zero live consumers, and a dead retrain pipeline. See §14 for full evidence and what changed. |
 
 ### `Agent`
 | Component | Verdict | Basis |
@@ -183,7 +183,7 @@ Legend: **KEEP** (clears one of the two guardrails today) · **DEMOTE** (keep th
 4. <span style="color:#16a34a;">✅ DONE 2026-07-29</span> — ~~Relabel `Market → Rotation Radar → Sector Signal Table`'s `Flow` column as descriptive-only~~ — removed outright instead, at the user's request. See §12.
 5. <span style="color:#16a34a;">✅ DONE 2026-07-29</span> — ~~Relabel `Leaders → Watchlist` as explicitly monitoring-only, matching `Recovery Bases`~~ — done as a UI-label-only change; page and codebase left otherwise intact per user's explicit instruction to preserve this feature for a later revisit. See §13.
 6. Confirm `Analytics → vs Benchmark` reads the corrected Support Reversal figure.
-7. Force a kill-or-resume decision on `Model Health`.
+7. <span style="color:#16a34a;">✅ DONE 2026-07-31</span> — ~~Force a kill-or-resume decision on `Model Health`~~ — killed. See §14.
 8. Confirm `Agent → Today's Opportunities` / `Discovered Patterns` have a real significance/benchmark check or get demoted.
 9. Confirm actual usage of the `Valuation` page.
 10. Confirm `Leaders → Deep Scan`'s A–F scoring doesn't weight a killed S-002/S-003 factor.
@@ -361,3 +361,30 @@ This mirrors the existing `Recovery Bases` page's own "monitoring only, not an e
 **What was deliberately left untouched:** the tab's data-fetch (`_get_leaders_unified_data()`), scoring, filtering, and table-rendering logic; the other three `Leaders` tabs (`RS Leaders`, `Deep Scan`, `Radar`); every backing table (`leaders_scan`, `leaders_top_picks`) and script (`leaders_scan.py`). Nothing was pruned, archived, or restructured — matching the user's explicit "preserve both the page and its codebase intact" instruction. Verified via `ast.parse` on `dashboard.py` after the edit (clean).
 
 **Not done, deliberately:** no kill/resume decision on the underlying negative-EV finding itself — that's the user's explicit "I'll revisit this feature later," not something this change should preempt.
+
+---
+
+## 14. <span style="color:#16a34a;">🟢 Resolved — `Model Health`'s ML conviction model KILLED (2026-07-31)</span>
+
+**Trigger:** user directive to force the kill-or-resume decision that had been sitting open since the 2026-06-23 park, per §3 backlog item 7 / top-priority item 9.
+
+**Evidence gathered before deciding (re-read the model's own artifacts and audited the live pipeline, not just the audit's prior summary):**
+- **`reports/phase4_report.txt` (last training run, 2026-05-21):** the only honest metric — 3-fold time-series cross-validation, no leakage — gives LightGBM Mean AUC **0.524 ± 0.059**, statistically indistinguishable from random. The headline 72.6% accuracy / 0.795 AUC quoted elsewhere is in-sample full-train fit, not a held-out test; the report itself states a clean test AUC cannot be produced without a true holdout year.
+- **Its only genuine out-of-sample check** — 53 live 2026 setups never seen in training — failed outright: avg confidence 35.7%, **0 of 53** reached high confidence (≥65%), 43 of 53 were low confidence (≤45%).
+- **Top feature by importance is `month` (22.2%)** — a seasonal/calendar artifact, the same failure shape that already killed RSI Divergence (look-ahead) and Momentum Rank (beta-vs-alpha) in this program.
+- **Zero live consumers** — grepped `dashboard.py` for `predict_proba`/confidence-badge wiring (Phase 5 of the model's own documented next-steps plan): never built. The model has never actually driven anything a user sees.
+- **Retrain automation is disconnected from production.** `weekly_ml_retrain.yml` has run 12/12 successful times (confirmed via the GitHub Actions run list), but only uploads the retrained `.pkl` as a 30-day GitHub Actions artifact — it never commits it back to the repo. `git log -- kiran_model.pkl` shows exactly two commits ever, the last on 2026-05-29. The live model has been frozen 2+ months regardless of the nominal weekly cadence.
+- **Supporting scripts no longer exist on disk:** `part4_monthly_retrain.py`, `part5_model_health.py`, `part7_prediction_log.py` are all gone (confirmed via `ls` + `git log --diff-filter=D`) — the Model Health page's "Log today's predictions" / "Update outcomes" / "Force retrain now" buttons pointed at deleted files.
+- **`prediction_log.csv`** has 9 rows, all from 2026-05-09/11, `was_correct` never filled — the live-tracking loop meant to prove or disprove the model in production never actually ran.
+- **Baseline comparison:** always-predict-majority-class already gets 65.0% win rate on this dataset — the model's real lift is negligible. The comparison point named in its own parked-warning banner, the Weinstein Stage-2 gate, already has a validated +10.50% EV live in production.
+
+**Decision:** user confirmed **KILL** given this evidence.
+
+**What actually changed:**
+- `RESEARCH_LOG.md`: the "ML conviction model (phase 4)" row updated from `Parked` to `Killed`, full verdict written into `Description` (the "only substantial work in the program with no accept/reject document" now has one), CSV mirror re-synced via `sync_research_log.py`.
+- This document: top-priority item #9, §2's `Model Health` row, and §3 backlog item 7 all updated to reflect the kill.
+- `dashboard.py`'s `Model Health` page banner and Quick Actions — see the follow-up note below.
+
+**Deliberately left untouched (archive, don't delete):** `kiran_model.pkl`, `kiran_model_features.pkl`, `phase4_train.py`, `reports/phase4_report.txt`, `feature_importance.csv`, `prediction_log.csv`, and the `Model Health` page itself all stay in place — nothing dropped from the database, no file deleted. The page now reports the killed status instead of an open question.
+
+**Not done, deliberately:** `weekly_ml_retrain.yml`'s scheduled trigger was flagged as pointless (it trains a killed model into a throwaway artifact every week) but not touched — disabling a scheduled GitHub Actions workflow is a CI/CD change and needs its own explicit go-ahead, not a side effect of this decision.
