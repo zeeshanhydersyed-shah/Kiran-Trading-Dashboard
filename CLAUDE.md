@@ -50,7 +50,7 @@ Local edits alone **never** update the live app.
 |----------|----------|-------------|
 | `daily_scraper.yml` | Mon–Fri 11:35 UTC (16:35 PKT) | Scrapes PSX prices, generates trade setups |
 | `weekly_backtest.yml` | Sunday | Runs backtest engine |
-| `weekly_ml_retrain.yml` | Sunday 10:00 UTC | Retrains kiran_model.pkl via phase4_train.py |
+| `weekly_ml_retrain.yml` | Manual only (`workflow_dispatch`) | Retrains kiran_model.pkl via phase4_train.py — schedule disabled 2026-07-31, model killed (see docs/KIRAN_CLEANUP_AUDIT.md §14) |
 
 ## Dashboard pages (PAGES list in dashboard.py)
 0. 🎯 Market Gates Dashboard
@@ -71,7 +71,7 @@ Local edits alone **never** update the live app.
 15. 📋 Setup History
 16. 🏥 Data Health
 
-*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap. 📡 Flows retired 2026-07-29 — Big Fish study found the underlying FIPI/LIPI flow data null, 0/360 forward cells; see docs/KIRAN_CLEANUP_AUDIT.md. `page_flows.py`'s `scrape_flows_today()` is still called from `main.py`'s daily hook — it still feeds `sector_signals.py`'s descriptive-only `Flow` column on the Market page.)*
+*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap. 📡 Flows retired 2026-07-29 — Big Fish study found the underlying FIPI/LIPI flow data null, 0/360 forward cells; see docs/KIRAN_CLEANUP_AUDIT.md. `page_flows.py`'s `scrape_flows_today()` is still called from `main.py`'s daily hook — it still feeds `sector_signals.py`'s descriptive-only `Flow` column on the Market page. 🏥 Model Health's ML conviction model killed 2026-07-31 — coin-flip CV AUC (0.524±0.059), zero live consumers, retrain pipeline disconnected from production; page itself kept, now shows the killed verdict; see docs/KIRAN_CLEANUP_AUDIT.md §14.)*
 
 ## ML model architecture
 Two separate models:
