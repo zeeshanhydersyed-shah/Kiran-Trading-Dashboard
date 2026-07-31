@@ -64,14 +64,13 @@ Local edits alone **never** update the live app.
 8. 🎯 Setup Perf
 9. 🤖 Backtest
 10. 🗂️ Portfolio
-11. 🏥 Model Health
-12. 🤖 Agent
-13. 💰 Valuation
-14. 🏆 Leaders
-15. 📋 Setup History
-16. 🏥 Data Health
+11. 🤖 Agent
+12. 💰 Valuation
+13. 🏆 Leaders
+14. 📋 Setup History
+15. 🏥 Data Health
 
-*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap. 📡 Flows retired 2026-07-29 — Big Fish study found the underlying FIPI/LIPI flow data null, 0/360 forward cells; see docs/KIRAN_CLEANUP_AUDIT.md. `page_flows.py`'s `scrape_flows_today()` is still called from `main.py`'s daily hook — it still feeds `sector_signals.py`'s descriptive-only `Flow` column on the Market page. 🏥 Model Health's ML conviction model killed 2026-07-31 — coin-flip CV AUC (0.524±0.059), zero live consumers, retrain pipeline disconnected from production; page itself kept, now shows the killed verdict; see docs/KIRAN_CLEANUP_AUDIT.md §14.)*
+*(STM killed June 2026 — 82% overlap, Z-histogram unvalidated. Minervini killed June 2026 — N=29 proxy, 86% BREAKOUT overlap. 📡 Flows retired 2026-07-29 — Big Fish study found the underlying FIPI/LIPI flow data null, 0/360 forward cells; see docs/KIRAN_CLEANUP_AUDIT.md. `page_flows.py`'s `scrape_flows_today()` is still called from `main.py`'s daily hook — it still feeds `sector_signals.py`'s descriptive-only `Flow` column on the Market page. 🏥 Model Health retired 2026-07-31 — its ML conviction model was killed (coin-flip CV AUC 0.524±0.059, zero live consumers, retrain pipeline disconnected from production); page removed from nav, kiran_model.pkl/phase4_train.py/prediction_log.csv kept in place, unread by any page; see docs/KIRAN_CLEANUP_AUDIT.md §14.)*
 
 ## ML model architecture
 Two separate models:

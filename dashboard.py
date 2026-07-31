@@ -786,7 +786,7 @@ GUIDANCE = {
     "Bearish":         "Most sectors declining. Short setups carry highest probability.",
 }
 
-PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🏥 Model Health", "🤖 Agent", "💰 Valuation", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
+PAGES = ["🎯 Market Gates Dashboard", "🧭 Regime", "📊 Market", "🔍 Explorer", "📈 History", "📋 Trade Log", "📉 Analytics", "🔄 Recovery Bases", "🎯 Setup Perf", "🤖 Backtest", "🗂️ Portfolio", "🤖 Agent", "💰 Valuation", "🏆 Leaders", "📋 Setup History", "🏥 Data Health"]
 
 
 def fmt_date(d) -> str:
@@ -6110,52 +6110,11 @@ Frequency 2.5× higher, EV drops 74%. The 30% threshold is load-bearing — loos
         "Regime: KSE-100 close vs 10 days ago"
     )
 
-# ── MODEL HEALTH PAGE ─────────────────────────────────────────────────────────
-elif cur == PAGES[11]:  # Model Health
-    import os as _os
-
-    st.markdown("### 🏥 Model Health Dashboard")
-    st.caption("Historical record for the killed ML conviction model. No further action expected.")
-
-    st.error(
-        "**KILLED 2026-07-31 — see RESEARCH_LOG.md / docs/KIRAN_CLEANUP_AUDIT.md §14 for full evidence.**  \n"
-        "Cross-validated AUC 0.524 ± 0.059 (coin flip, no leakage); its only true out-of-sample test "
-        "(53 live 2026 setups) produced 0 high-confidence calls; top feature is `month` (seasonal artifact); "
-        "never wired into any live setup card; the weekly retrain workflow only ever produced a throwaway "
-        "GitHub Actions artifact and never reached production — `kiran_model.pkl` has been frozen since "
-        "2026-05-29. Comparison point (Weinstein Stage-2 gate, +10.50% EV, validated) already covers this "
-        "surface without the model. Model files, training report, and prediction log kept in place for "
-        "reference — nothing deleted, no new ML work planned against this line."
-    )
-
-    st.divider()
-
-    # ── Prediction log (historical, read-only — nothing writes to it anymore) ─
-    _pred_log_path = _os.path.join(_MODEL_DIR, "prediction_log.csv")
-    if _os.path.exists(_pred_log_path):
-        log_df    = pd.read_csv(_pred_log_path)
-        evaluated = log_df.dropna(subset=["was_correct"])
-
-        st.markdown("#### Prediction Log (historical)")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total logged", len(log_df))
-        col2.metric("Evaluated",    len(evaluated))
-        if len(evaluated) > 0:
-            col3.metric("Overall accuracy", f"{evaluated['was_correct'].mean():.1%}")
-
-        if len(evaluated) >= 5:
-            st.markdown("**Recent predictions**")
-            show_cols = [c for c in ["log_date", "symbol", "prediction", "ml_probability", "was_correct", "actual_return"] if c in log_df.columns]
-            recent = log_df[show_cols].tail(30).sort_index(ascending=False).copy()
-            if "ml_probability" in recent.columns:
-                recent["ml_probability"] = pd.to_numeric(recent["ml_probability"], errors="coerce").map(lambda x: f"{x:.0%}" if pd.notna(x) else "—")
-            if "actual_return" in recent.columns:
-                recent["actual_return"]  = pd.to_numeric(recent["actual_return"],  errors="coerce").map(lambda x: f"{x:+.2%}" if pd.notna(x) else "—")
-            if "was_correct" in recent.columns:
-                recent["was_correct"]    = recent["was_correct"].map(lambda x: "✔" if x == 1 else ("✖" if x == 0 else "—"))
-            st.dataframe(recent, width='stretch', hide_index=True)
-    else:
-        st.info("No prediction log on record.")
+elif False:  # Model Health page removed — retired 2026-07-31 (ML conviction model killed:
+    # coin-flip CV AUC 0.524±0.059, zero live consumers, retrain pipeline disconnected from
+    # production; see docs/KIRAN_CLEANUP_AUDIT.md §14). kiran_model.pkl, phase4_train.py,
+    # reports/phase4_report.txt, and prediction_log.csv all kept in place, unread by any page.
+    pass
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 11 — 🗂️ Portfolio  (Weinstein Stage 2 Portfolio Screener)
@@ -6386,7 +6345,7 @@ elif st.session_state.page == PAGES[10]:
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE — 🤖 Agent   (Claude Trading Desk Agent)
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[12]:  # Agent
+elif cur == PAGES[11]:  # Agent
     import subprocess as _agent_sp
     import sys as _agent_sys
 
@@ -7227,7 +7186,7 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE — 💰 Valuation   (Financial Highlights / DCF Data)
 # ══════════════════════════════════════════════════════════════════════════════
-elif cur == PAGES[13]:  # Valuation
+elif cur == PAGES[12]:  # Valuation
     from page_valuation import render_valuation_page
     render_valuation_page()
 
@@ -7244,7 +7203,7 @@ elif False:  # Flows page removed — retired 2026-07-29 (Big Fish study: FIPI/L
     # (Rotation Radar) still reads market_flows, and that column is unaffected by this.
     pass
 
-elif cur == PAGES[14]:  # Leaders
+elif cur == PAGES[13]:  # Leaders
     st.markdown("### 🏆 Leaders — Stock Signal Board")
 
     _ld_tab_rs, _ld_tab_unified, _ld_tab_scan, _ld_tab_radar = st.tabs([
@@ -7900,7 +7859,7 @@ elif cur == PAGES[14]:  # Leaders
                         unsafe_allow_html=True
                     )
 
-elif cur == PAGES[15]:  # Setup History
+elif cur == PAGES[14]:  # Setup History
     st.header('📋 Setup History')
     tab1, tab2 = st.tabs(['📊 Screen Performance', '🔍 Stock Lookup'])
 
@@ -8078,7 +8037,7 @@ elif cur == PAGES[15]:  # Setup History
                     hide_index=True
                 )
 
-elif cur == PAGES[16]:  # Data Health
+elif cur == PAGES[15]:  # Data Health
     import sqlite3
     from config import DB_PATH as _dh_db
     from datetime import datetime as _dh_dt
