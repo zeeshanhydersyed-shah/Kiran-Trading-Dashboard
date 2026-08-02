@@ -6519,37 +6519,15 @@ elif cur == PAGES[11]:  # Agent
                     "or wait for Sunday's automated learning loop."
                 )
 
-        st.divider()
-
-        # ── Pattern Library ───────────────────────────────────────────────────
-        st.markdown("#### 🧠 Discovered Patterns")
-        _patterns = _adb.get_agent_patterns(active_only=False)
-        if _patterns:
-            for _pat in _patterns:
-                _is_active = bool(_pat.get("is_active", 1))
-                _active_badge = "🟢 Active" if _is_active else "🔴 Retired"
-                _conf = _pat.get("confidence", "Low")
-                _wr_display = f"{_pat['win_rate_pct']:.0f}%" if _pat.get("win_rate_pct") else "—"
-                with st.expander(
-                    f"**{_pat['pattern_name']}** · {_active_badge} · Conf: {_conf} · Win Rate: {_wr_display}",
-                    expanded=False,
-                ):
-                    st.markdown(f"**Description:** {_pat.get('description','')}")
-                    _conds = _pat.get("conditions", "{}")
-                    if isinstance(_conds, str):
-                        try:
-                            _conds = json.loads(_conds)
-                        except Exception:
-                            _conds = {}
-                    if _conds:
-                        st.json(_conds)
-                    _pc1, _pc2, _pc3 = st.columns(3)
-                    _pc1.metric("Signals", _pat.get("signal_count", 0))
-                    _pc2.metric("Wins", _pat.get("win_count", 0))
-                    _pc3.metric("Losses", _pat.get("loss_count", 0))
-                    st.caption(f"First seen: {_pat.get('first_seen','?')} · Last updated: {_pat.get('last_updated','?')}")
-        else:
-            st.info("No patterns discovered yet. Run the agent first — it will analyse your trade history and populate this library.")
+        # 🧠 Discovered Patterns section removed 2026-08-02 — PatternAnalyzerAgent's
+        # output was 100% unverified LLM self-estimate (win_count/loss_count were 0
+        # for all 76 rows; the intended verification join in agent_learn.py's
+        # update_pattern_stats() can never match, since agent_opportunities.pattern_name
+        # and agent_patterns.pattern_name are free text from two independent Claude
+        # calls with no shared vocabulary — confirmed 0 overlap across 30 vs 76 names).
+        # Fails both KEEP guardrails (not Clarity, not a proven Screening edge).
+        # agent_patterns table and its 76 existing rows kept in place, unread by any
+        # page now. See docs/KIRAN_CLEANUP_AUDIT.md §18.
 
         st.divider()
 
