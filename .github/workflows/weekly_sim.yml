@@ -1,9 +1,14 @@
 name: Weekly Portfolio Simulation
 
-# Runs every Sunday after the backtest completes (backtest is at 08:00 UTC).
+# Scheduled trigger disabled 2026-08-05 — kiran_sim.py replays the same
+# active-trading, buy-on-strength/1%-risk mechanism as the "Active-trading
+# simulation (kiran_sim)" study already Concluded — negative on 2026-05-12
+# (RESEARCH_LOG.md: best case 7.45% CAGR vs ~22% KSE-100 buy-and-hold; that
+# result is what drove the program's pivot to the Stage 2 portfolio
+# approach). Dashboard's "Kiran Setup Simulation" section retired the same
+# day (see docs/KIRAN_CLEANUP_AUDIT.md §19). Kept as a manual utility
+# (workflow_dispatch only) rather than deleted.
 on:
-  schedule:
-    - cron: "0 9 * * 0"    # Sunday 09:00 UTC (backtest starts at 08:00)
   workflow_dispatch:
 
 jobs:

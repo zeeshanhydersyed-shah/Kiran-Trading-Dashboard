@@ -44,7 +44,7 @@ from database import (
     get_latest_stock_date, get_latest_index_date,
     save_trade_setup, get_trade_setups, update_trade_setup,
     activate_trade_setup, delete_trade_setup, get_backtest_summary,
-    auto_save_stm_picks, get_sim_portfolio_data,
+    auto_save_stm_picks,
     add_portfolio_transaction, get_portfolio_transactions, delete_portfolio_transaction,
     add_portfolio_value, get_portfolio_values, delete_portfolio_value,
     evaluate_paper_trades,
@@ -4237,109 +4237,15 @@ elif cur == PAGES[9]:  # Backtest
         width='stretch', hide_index=True, height=380,
     )
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # KIRAN SETUP SIMULATION — buy-on-strength, 1% risk, 6% max SL
-    # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-    st.divider()
-    st.markdown("### Kiran Setup Simulation")
-    st.caption(
-        "Same screener signals as above — different execution: entry 1 PKR above signal-day HIGH, "
-        "max 6% SL, 1% portfolio risk per trade, 99% capital cap, no margin. "
-        "Initial capital PKR 1,000,000. Run `python kiran_sim.py` to (re)generate."
-    )
-
-    raw_sim = get_sim_portfolio_data()
-
-    if not raw_sim:
-        st.info("Simulation not yet run. Execute: `python kiran_sim.py`")
-    else:
-        sim = pd.DataFrame(raw_sim)
-        sim["setup_date"] = pd.to_datetime(sim["setup_date"])
-
-        SIM_WIN  = ["Win_Trail"]
-        SIM_LOSS = ["Loss"]
-        sim_trig = sim[sim["trigger_date"].notna() & ~sim["outcome"].isin(["Skipped"])]
-        sim_wins = sim[sim["outcome"] == "Win_Trail"]
-        sim_loss = sim[sim["outcome"] == "Loss"]
-        sim_skip = sim[sim["outcome"] == "Skipped"]
-        sim_stal = sim[sim["outcome"].isin(["Stale", "Expired"])]
-
-        n_sim_total   = len(sim)
-        n_sim_trig    = len(sim_trig)
-        n_sim_wins    = len(sim_wins)
-        n_sim_loss    = len(sim_loss)
-        n_sim_skip    = len(sim_skip)
-
-        sim_trigger_r = n_sim_trig  / n_sim_total * 100 if n_sim_total else 0
-        sim_win_r     = n_sim_wins  / n_sim_trig  * 100 if n_sim_trig  else 0
-        sim_loss_r    = n_sim_loss  / n_sim_trig  * 100 if n_sim_trig  else 0
-
-        sd_min = sim["setup_date"].min().strftime("%b %Y")
-        sd_max = sim["setup_date"].max().strftime("%b %Y")
-
-        st.caption(f"{n_sim_total:,} signals  ·  {sd_min} – {sd_max}")
-
-        sr1 = st.columns(4)
-        sr1[0].markdown(kpi("Total Signals",   f"{n_sim_total:,}",
-                            f"{n_sim_skip:,} skipped (risk > 6%)", "#3b82f6"), unsafe_allow_html=True)
-        sr1[1].markdown(kpi("Trigger Rate",    f"{sim_trigger_r:.1f}%",
-                            f"{n_sim_trig:,} entries fired", "#f59e0b"), unsafe_allow_html=True)
-        sr1[2].markdown(kpi("Win Rate",        f"{sim_win_r:.1f}%",
-                            f"{n_sim_wins:,} Win_Trail", gc(sim_win_r / 100 - 0.5)), unsafe_allow_html=True)
-        sr1[3].markdown(kpi("Loss Rate",       f"{sim_loss_r:.1f}%",
-                            f"{n_sim_loss:,} losses", gc(0.5 - sim_loss_r / 100)), unsafe_allow_html=True)
-
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-        # ── Equity curve from simulation ──────────────────────────────────────
-        sim_closed = (
-            sim[sim["portfolio_after"].notna() & sim["exit_date"].notna()]
-            .copy()
-            .sort_values("exit_date")
-        )
-
-        if not sim_closed.empty:
-            sim_closed["trade_n"] = range(1, len(sim_closed) + 1)
-            final_port  = sim_closed["portfolio_after"].iloc[-1]
-            peak_port   = sim_closed["portfolio_after"].max()
-            total_pl    = sim[sim["pl_pkr"].notna()]["pl_pkr"].sum()
-            drawdowns   = (sim_closed["portfolio_after"].expanding().max()
-                           - sim_closed["portfolio_after"])
-            max_dd      = drawdowns.max()
-            max_dd_pct  = max_dd / peak_port * 100 if peak_port else 0
-            total_r     = sim[sim["realized_r"].notna()]["realized_r"].sum()
-
-            eq1, eq2, eq3, eq4 = st.columns(4)
-            eq1.markdown(kpi("Final Portfolio",  f"PKR {final_port:,.0f}",
-                             f"from PKR 1,000,000", gc(final_port - 1_000_000)), unsafe_allow_html=True)
-            eq2.markdown(kpi("Total P&L",        f"PKR {total_pl:+,.0f}",
-                             "1% risk compounding", gc(total_pl)), unsafe_allow_html=True)
-            eq3.markdown(kpi("Total R Earned",   f"{total_r:+.1f} R",
-                             f"across {n_sim_trig:,} triggered", gc(total_r)), unsafe_allow_html=True)
-            eq4.markdown(kpi("Max Drawdown",      f"{max_dd_pct:.1f}%",
-                             f"PKR {max_dd:,.0f} from peak", "#ef4444"), unsafe_allow_html=True)
-
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-            fig_sim = go.Figure()
-            fig_sim.add_trace(go.Scatter(
-                x=sim_closed["trade_n"], y=sim_closed["portfolio_after"],
-                mode="lines", name="Portfolio",
-                line={"color": "#22c55e", "width": 2.5},
-                hovertemplate="Trade #%{x}<br>PKR %{y:,.0f}<extra></extra>",
-            ))
-            fig_sim.add_hline(y=1_000_000, line_dash="dot", line_color="#94a3b8",
-                              annotation_text="1M start", annotation_position="right")
-            fig_sim.update_layout(
-                height=300, margin={"l": 4, "r": 4, "t": 8, "b": 8},
-                xaxis={"title": "Trade #", "tickfont": {"size": 9}},
-                yaxis={"title": "PKR", "tickfont": {"size": 9}, "tickformat": ",.0f"},
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig_sim, width='stretch')
-        else:
-            st.info("No closed trades yet in simulation.")
+    # Kiran Setup Simulation section retired 2026-08-05 — same active-trading
+    # buy-on-strength/1%-risk mechanism as the "Active-trading simulation
+    # (kiran_sim)" study already Concluded — negative on 2026-05-12
+    # (RESEARCH_LOG.md: best case 7.45% CAGR vs ~22% KSE-100 buy-and-hold;
+    # that result is what drove the program's pivot to the Stage 2 portfolio
+    # approach). This section kept re-showing that already-answered question
+    # live, unlabeled. See docs/KIRAN_CLEANUP_AUDIT.md §19.
+    # get_sim_portfolio_data() and the sim_portfolio_trades table are left in
+    # place, unread by any page now (archive, don't delete).
 
     # ══════════════════════════════════════════════════════════════════════════
     # BOS BREAKOUT BACKTEST FINDINGS  — run: 2026-06-19
