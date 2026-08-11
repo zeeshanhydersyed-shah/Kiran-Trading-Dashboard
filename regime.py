@@ -2,9 +2,23 @@
 Daily regime hook for the PSX pipeline.
 
 append_latest_regime() is called from cmd_update() in main.py after
-index_prices is updated. It pulls the last 250 rows of KSE-100 (enough
-for EWM warm-up), recomputes indicators, and upserts a single row for
-the latest date into market_regime.
+index_prices is updated. It pulls the full KSE-100 history, recomputes
+indicators, and backfills every trading date since the last row written
+to market_regime -- not just the single latest date.
+
+Why "backfill every missing date" instead of just the latest one: this
+hook is wrapped in its own try/except in main.py's cmd_update() so a
+failure here can't take down the rest of the daily pipeline. Before this
+fix, a transient failure on any one day (e.g. a Supabase connection
+blip) meant that day's row was never written and never revisited -- the
+next successful run just wrote whatever the new latest date was,
+silently skipping the missed day forever. That happened for real on
+2026-08-07 (see docs/KIRAN_CLEANUP_AUDIT.md): market_regime jumped
+straight from 2026-08-06 to 2026-08-10 even though prices/index_prices
+had 2026-08-07 the whole time, and the dashboard's "Market Regime"
+widget stayed pinned to "as of 2026-08-06" until the next run happened
+to succeed. stock_signals.py already backfills a date range this way;
+this brings regime.py (and sector_signals.py) up to the same standard.
 """
 
 import logging
@@ -15,8 +29,6 @@ import pandas as pd
 
 DB = "psx_data.db"
 logger = logging.getLogger(__name__)
-
-WARMUP = 250  # rows pulled for EWM warm-up; only the last row is written
 
 _PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
@@ -62,6 +74,29 @@ def _classify(row: pd.Series, position_in_full_history: int) -> str:
     return "RANGING"
 
 
+def _pending_regime_rows(df: pd.DataFrame, total_rows: int, last_written_date, prev_regime, prev_days):
+    """Pure generator: given the full, ascending, indicators-computed KSE-100
+    dataframe and where market_regime currently leaves off, yields
+    (date_str, row, regime, regime_days) for every date still needing a
+    write, in chronological order, chaining regime_days across the run
+    exactly as if each date had been written by its own successful daily run.
+
+    No DB I/O here on purpose -- both backends share this, and it's directly
+    unit-testable without a database.
+    """
+    pulled = len(df)
+    for i in range(pulled):
+        row = df.iloc[i]
+        date_str = row["date"].strftime("%Y-%m-%d")
+        if last_written_date is not None and date_str <= last_written_date:
+            continue
+        position = total_rows - pulled + i
+        regime = _classify(row, position)
+        regime_days = prev_days + 1 if prev_regime == regime else 1
+        yield date_str, row, regime, regime_days
+        prev_regime, prev_days = regime, regime_days
+
+
 def append_latest_regime() -> None:
     if _PG_URL:
         _append_latest_regime_pg()
@@ -70,9 +105,14 @@ def append_latest_regime() -> None:
 
 
 def _append_latest_regime_pg() -> None:
-    from database_pg import get_kse100_for_regime, get_latest_market_regime, write_market_regime
+    from database_pg import (
+        get_kse100_full_for_regime,
+        get_latest_market_regime,
+        get_latest_market_regime_date,
+        write_market_regime,
+    )
 
-    total_rows, kse_rows = get_kse100_for_regime(WARMUP)
+    kse_rows = get_kse100_full_for_regime()
     if not kse_rows:
         logger.warning("Regime hook (PG): no KSE-100 data found.")
         return
@@ -83,51 +123,50 @@ def _append_latest_regime_pg() -> None:
     df["low"]   = df["low"].astype(float)
     df["close"] = df["close"].astype(float)
     df = _compute_indicators(df)
+    total_rows = len(df)
 
-    row = df.iloc[-1]
-    date_str = row["date"].strftime("%Y-%m-%d")
-
-    position = total_rows - 1
-    regime = _classify(row, position)
-
+    last_written_date = get_latest_market_regime_date()
     prev = get_latest_market_regime()
-    if prev and prev[0] == regime:
-        regime_days = prev[1] + 1
-    else:
-        regime_days = 1
+    prev_regime, prev_days = (prev[0], prev[1]) if prev else (None, 0)
 
-    write_market_regime(
-        date_str,
-        float(row["close"]),
-        float(row["ema_20"]),
-        float(row["ema_50"]),
-        float(row["ema_200"]),
-        float(row["atr_20"])     if pd.notna(row["atr_20"])     else None,
-        float(row["atr_pct"])    if pd.notna(row["atr_pct"])    else None,
-        float(row["return_20d"]) if pd.notna(row["return_20d"]) else None,
-        regime,
-        regime_days,
-    )
-    logger.info("Regime logged (PG): %s -> %s (day %d)", date_str, regime, regime_days)
+    written = 0
+    last_date = last_regime = last_days = None
+    for date_str, row, regime, regime_days in _pending_regime_rows(
+        df, total_rows, last_written_date, prev_regime, prev_days
+    ):
+        write_market_regime(
+            date_str,
+            float(row["close"]),
+            float(row["ema_20"]),
+            float(row["ema_50"]),
+            float(row["ema_200"]),
+            float(row["atr_20"])     if pd.notna(row["atr_20"])     else None,
+            float(row["atr_pct"])    if pd.notna(row["atr_pct"])    else None,
+            float(row["return_20d"]) if pd.notna(row["return_20d"]) else None,
+            regime,
+            regime_days,
+        )
+        written += 1
+        last_date, last_regime, last_days = date_str, regime, regime_days
+
+    if written == 0:
+        logger.info("Regime hook (PG): already up to date at %s.", last_written_date)
+    else:
+        logger.info(
+            "Regime backfilled (PG): %d date(s), through %s -> %s (day %d)",
+            written, last_date, last_regime, last_days,
+        )
 
 
 def _append_latest_regime_sqlite() -> None:
     conn = sqlite3.connect(DB)
     try:
-        # Total KSE-100 rows — needed to determine whether we're still in
-        # the INSUFFICIENT_DATA warmup period relative to full history.
-        total_rows = conn.execute(
-            "SELECT COUNT(*) FROM index_prices WHERE symbol = 'KSE-100'"
-        ).fetchone()[0]
-
-        # Pull last WARMUP rows for indicator computation
         df = pd.read_sql(
-            f"""
+            """
             SELECT date, high, low, close
             FROM index_prices
             WHERE symbol = 'KSE-100'
-            ORDER BY date DESC
-            LIMIT {WARMUP}
+            ORDER BY date
             """,
             conn,
         )
@@ -137,46 +176,51 @@ def _append_latest_regime_sqlite() -> None:
 
         df["date"] = pd.to_datetime(df["date"])
         df = _compute_indicators(df)
+        total_rows = len(df)
 
-        row = df.iloc[-1]
-        date_str = row["date"].strftime("%Y-%m-%d")
+        last_written_row = conn.execute("SELECT MAX(date) FROM market_regime").fetchone()
+        last_written_date = last_written_row[0] if last_written_row else None
 
-        # position_in_full_history: index of this row across the entire history
-        position = total_rows - 1
-        regime = _classify(row, position)
-
-        # regime_days: look up the previous row in market_regime and continue
-        # the streak if the regime matches, else start at 1.
-        prev = conn.execute(
+        prev_row = conn.execute(
             "SELECT regime, regime_days FROM market_regime ORDER BY date DESC LIMIT 1"
         ).fetchone()
-        if prev and prev[0] == regime:
-            regime_days = prev[1] + 1
-        else:
-            regime_days = 1
+        prev_regime, prev_days = (prev_row[0], prev_row[1]) if prev_row else (None, 0)
 
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO market_regime
-                (date, close, ema_20, ema_50, ema_200,
-                 atr_20, atr_pct, return_20d, regime, regime_days, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-            """,
-            (
-                date_str,
-                float(row["close"]),
-                float(row["ema_20"]),
-                float(row["ema_50"]),
-                float(row["ema_200"]),
-                float(row["atr_20"])     if pd.notna(row["atr_20"])     else None,
-                float(row["atr_pct"])    if pd.notna(row["atr_pct"])    else None,
-                float(row["return_20d"]) if pd.notna(row["return_20d"]) else None,
-                regime,
-                regime_days,
-            ),
-        )
+        written = 0
+        last_date = last_regime = last_days = None
+        for date_str, row, regime, regime_days in _pending_regime_rows(
+            df, total_rows, last_written_date, prev_regime, prev_days
+        ):
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO market_regime
+                    (date, close, ema_20, ema_50, ema_200,
+                     atr_20, atr_pct, return_20d, regime, regime_days, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    date_str,
+                    float(row["close"]),
+                    float(row["ema_20"]),
+                    float(row["ema_50"]),
+                    float(row["ema_200"]),
+                    float(row["atr_20"])     if pd.notna(row["atr_20"])     else None,
+                    float(row["atr_pct"])    if pd.notna(row["atr_pct"])    else None,
+                    float(row["return_20d"]) if pd.notna(row["return_20d"]) else None,
+                    regime,
+                    regime_days,
+                ),
+            )
+            written += 1
+            last_date, last_regime, last_days = date_str, regime, regime_days
         conn.commit()
-        logger.info("Regime logged: %s -> %s (day %d)", date_str, regime, regime_days)
 
+        if written == 0:
+            logger.info("Regime hook: already up to date at %s.", last_written_date)
+        else:
+            logger.info(
+                "Regime backfilled: %d date(s), through %s -> %s (day %d)",
+                written, last_date, last_regime, last_days,
+            )
     finally:
         conn.close()

@@ -11,6 +11,12 @@
 *.tmp
 test_*.bin
 
+# Local virtualenvs -- never commit an interpreter/site-packages tree
+.venv/
+.venv_check/
+venv/
+env/
+
 # Secrets
 .env
 secrets.toml
@@ -21,6 +27,7 @@ notes/
 
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.pyo
 *.pyd

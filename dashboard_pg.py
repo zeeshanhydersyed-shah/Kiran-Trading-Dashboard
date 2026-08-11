@@ -245,34 +245,61 @@ def get_portfolio_signals_pg() -> tuple:
 
 def get_regime_status_pg() -> tuple | None:
     """PG sibling of dashboard.py's _get_regime_status() (E10.2 merge).
-    Returns (current_regime, latest_date, days_since) or None.
+    Returns (current_regime, latest_date, days_since, has_gap) or None.
 
     Deliberately recomputes from full history rather than reading
     market_regime.regime_days -- that column is currently non-idempotent
     across same-date re-runs (confirmed ~2x inflated on both Supabase and
     local) and must not be trusted until regime.py's increment logic is
     fixed separately.
+
+    has_gap (added 2026-08-12): True if market_regime is missing one or
+    more KSE-100 trading dates between the detected transition and the
+    latest date. When True, days_since should not be trusted as exact --
+    the transition it's counted from might not even be the real most
+    recent one, if an undetected regime change is sitting inside the gap.
+    This isn't hypothetical: backfilling a real gap on 2026-08-07 found a
+    genuine one-day VOLATILE dip inside what otherwise looked like an
+    unbroken TRENDING_UP streak (see docs/KIRAN_CLEANUP_AUDIT.md) -- days
+    since the true (corrected) transition can end up smaller, larger, or
+    coincidentally the same as the ungapped reading, so there's no single
+    direction to "correct" for. Deliberately does NOT try to derive a
+    better number from index_prices' trading-day count instead -- that
+    would just trade one confidently-wrong number for a different one.
+    Surfacing the uncertainty is the honest fix; regime.py's backfill (or
+    a one-off historical repair) is what actually resolves it.
     """
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute("SELECT date, regime FROM market_regime ORDER BY date")
         rows = cur.fetchall()
 
-    if not rows:
-        return None
+        if not rows:
+            return None
 
-    dates   = [r[0] for r in rows]
-    regimes = [r[1] for r in rows]
-    last_transition_idx = None
-    for i in range(len(regimes) - 1, 0, -1):
-        if regimes[i] != regimes[i - 1]:
-            last_transition_idx = i
-            break
-    days_since = (
-        len(dates) - 1 - last_transition_idx
-        if last_transition_idx is not None else len(dates) - 1
-    )
-    return regimes[-1], dates[-1], days_since
+        dates   = [r[0] for r in rows]
+        regimes = [r[1] for r in rows]
+        last_transition_idx = None
+        for i in range(len(regimes) - 1, 0, -1):
+            if regimes[i] != regimes[i - 1]:
+                last_transition_idx = i
+                break
+        days_since = (
+            len(dates) - 1 - last_transition_idx
+            if last_transition_idx is not None else len(dates) - 1
+        )
+        transition_date = dates[last_transition_idx] if last_transition_idx is not None else dates[0]
+        latest_date = dates[-1]
+
+        cur.execute(
+            "SELECT COUNT(*) FROM index_prices "
+            "WHERE symbol = 'KSE-100' AND date > %s AND date <= %s",
+            (transition_date, latest_date),
+        )
+        trading_days_in_window = cur.fetchone()[0]
+
+    has_gap = trading_days_in_window > days_since
+    return regimes[-1], latest_date, days_since, has_gap
 
 
 # ── E10.3 PG siblings ────────────────────────────────────────────────────────

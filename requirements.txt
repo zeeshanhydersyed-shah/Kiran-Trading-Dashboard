@@ -1,14 +1,43 @@
-streamlit>=1.35.0,<1.40.0
-pandas>=2.0.0,<3.0.0
-numpy>=1.26.0,<2.0.0
-plotly>=5.18.0  # REQUIRED for 4-GATES visualization
-joblib>=1.3.0
-scikit-learn>=1.3.0,<2.0.0
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-lxml>=4.9.0
-openpyxl>=3.1.0
-psycopg2-binary>=2.9.6
-tornado>=6.0.0,<6.5.0
-pyarrow>=14.0.0,<20.0.0
-playwright>=1.40.0
+# Exact pins, not ranges -- verified 2026-08-12 by installing clean into a
+# fresh venv on Python 3.12 (numpy<2.0/pandas<3.0 have no prebuilt wheels
+# for 3.13+ and this machine has no C compiler, so ranges alone silently
+# drift or fail outright depending on which interpreter runs the install --
+# see docs/KIRAN_CLEANUP_AUDIT.md 2026-08-12 for the incident this closes).
+# CLAUDE.md documents Streamlit Cloud on Python 3.11; these versions were
+# chosen to sit inside the ORIGINAL range pins below the exact-pin change,
+# which is the closest available signal for Cloud compatibility -- there
+# was no way to install-verify against literal Python 3.11 in this session
+# (not present on this machine, and no package manager available to add
+# one cleanly). Before ever deploying from this file, confirm what
+# Streamlit Cloud's build log actually resolves and reconcile if different.
+#
+# To reproduce/update this file: create a fresh venv on a matching
+# interpreter, `pip install -r requirements.in` (the range-pinned intent,
+# kept below in comments for reference), smoke-test the app, then
+# `pip freeze` and hand-trim to just these direct dependencies.
+streamlit==1.39.1        # was >=1.35.0,<1.40.0
+pandas==2.3.3             # was >=2.0.0,<3.0.0
+numpy==1.26.4              # was >=1.26.0,<2.0.0
+plotly==6.9.0               # was >=5.18.0 -- REQUIRED for 4-GATES visualization
+requests==2.34.2
+beautifulsoup4==4.15.0
+openpyxl==3.1.5
+psycopg2-binary==2.9.12
+tornado==6.4.2              # was >=6.0.0,<6.5.0
+pyarrow==19.0.1              # was >=14.0.0,<20.0.0
+
+# Removed 2026-08-12 (see docs/KIRAN_CLEANUP_AUDIT.md):
+# - lxml: grepped the whole codebase, zero imports anywhere. The one HTML
+#   parser actually in use (scraper.py's BeautifulSoup call) explicitly
+#   requests "html.parser" (stdlib), never lxml. No pd.read_html() calls
+#   either (the other common implicit consumer). Confirmed dead weight.
+# - joblib, scikit-learn: moved to requirements-optional.txt -- their only
+#   consumer, phase4_train.py, trains kiran_model.pkl, a model KILLED
+#   2026-07-31 (audit §14). Nothing in the live daily pipeline or dashboard
+#   touches either package today.
+# - playwright: moved to requirements-optional.txt -- its only consumer,
+#   page_flows.py's scraper, feeds a fully write-only, orphaned chain
+#   (market_flows -> sector_signals.flow_* columns -> nothing reads them,
+#   since the Flow column was removed from the dashboard). Also the
+#   heaviest package here: needs a separate `playwright install` browser
+#   binary download (hundreds of MB) beyond the pip install itself.

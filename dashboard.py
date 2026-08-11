@@ -15,6 +15,20 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+# ── Page config — must be the first Streamlit command in the script ───────────
+# Even a no-op st.secrets read (below) enqueues a script-context element on
+# some Streamlit versions (confirmed: 1.39.1, the pinned upper bound, raises
+# StreamlitSetPageConfigMustBeFirstCommandError if set_page_config() runs
+# after it -- 1.57.x tolerates the ordering, which is how this went
+# unnoticed locally). set_page_config() has no dependency on anything below,
+# so it's safe to call this early. See docs/KIRAN_CLEANUP_AUDIT.md §8.3.
+st.set_page_config(
+    page_title="KIRAN · PSX",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 # ✅ Safe Plotly import
 try:
     import plotly.graph_objects as go
@@ -76,14 +90,6 @@ except ImportError as e:
     warnings.warn(f"Could not import refresh_manager: {e}", RuntimeWarning)
 
 logger = logging.getLogger(__name__)
-
-# ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="KIRAN · PSX",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
 # ── Global CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -841,7 +847,7 @@ def _get_regime_status():
     header (E10.2 merge — both independently ran the identical query and
     days-since-transition algorithm before this).
 
-    Returns (current_regime, latest_date, days_since) or None if
+    Returns (current_regime, latest_date, days_since, has_gap) or None if
     market_regime has no data.
 
     Deliberately recomputes from full history every call rather than
@@ -849,6 +855,14 @@ def _get_regime_status():
     non-idempotent across same-date re-runs (confirmed ~2x inflated on both
     Supabase and local as of 2026-07-08) and must not be trusted until
     regime.py's increment logic is fixed separately.
+
+    has_gap (added 2026-08-12): True if market_regime is missing one or
+    more index_prices trading dates between the detected transition and
+    the latest date — see get_regime_status_pg()'s docstring (dashboard_pg.py)
+    for why days_since shouldn't be trusted as exact when this is True
+    (it can be wrong in either direction, not just understated), and why
+    this deliberately doesn't try to "correct" the count from index_prices
+    instead of just flagging the uncertainty.
     """
     if _PG_URL:
         from dashboard_pg import get_regime_status_pg
@@ -857,9 +871,9 @@ def _get_regime_status():
     rows = conn.execute(
         "SELECT date, regime FROM market_regime ORDER BY date"
     ).fetchall()
-    conn.close()
 
     if not rows:
+        conn.close()
         return None
 
     dates   = [r[0] for r in rows]
@@ -873,7 +887,18 @@ def _get_regime_status():
         len(dates) - 1 - last_transition_idx
         if last_transition_idx is not None else len(dates) - 1
     )
-    return regimes[-1], dates[-1], days_since
+    transition_date = dates[last_transition_idx] if last_transition_idx is not None else dates[0]
+    latest_date = dates[-1]
+
+    trading_days_in_window = conn.execute(
+        "SELECT COUNT(*) FROM index_prices "
+        "WHERE symbol = 'KSE-100' AND date > ? AND date <= ?",
+        (transition_date, latest_date),
+    ).fetchone()[0]
+    conn.close()
+
+    has_gap = trading_days_in_window > days_since
+    return regimes[-1], latest_date, days_since, has_gap
 
 
 # ── Session state — active page ───────────────────────────────────────────────
@@ -921,7 +946,7 @@ with st.sidebar:
         _regime_status = None
 
     if _regime_status:
-        _r_current, _r_latest_d, _r_days_since = _regime_status
+        _r_current, _r_latest_d, _r_days_since, _r_has_gap = _regime_status
         _r_regime_color = {
             "TRENDING_UP":   "#22c55e",
             "VOLATILE":      "#f59e0b",
@@ -934,13 +959,25 @@ with st.sidebar:
             if _r_days_since <= 2
             else "font-weight:bold"
         )
+        # has_gap: market_regime is missing one or more trading dates in the
+        # current streak's window -- days_since isn't trustworthy as exact
+        # (see _get_regime_status()'s docstring). Surfaced rather than
+        # silently trusted, since a hidden gap has already once turned out
+        # to hide a real regime change (2026-08-07).
+        _r_gap_html = (
+            "<span title='market_regime has a data gap in this window — "
+            "days-since-change may be inaccurate' "
+            "style=\"color:#b45309; font-size:0.72rem; margin-left:4px;\">"
+            "⚠ incomplete history</span>"
+            if _r_has_gap else ""
+        )
         st.markdown(
             f"<div style='font-size:0.78rem; margin-bottom:2px; color:#94a3b8;'>Market Regime</div>"
             f"<div style='font-size:0.88rem; font-weight:700; color:{_r_regime_color}; "
             f"margin-bottom:1px;'>{_r_current.replace('_', ' ')}</div>"
             f"<div style='font-size:0.78rem;'>"
             f"<span style='{_r_days_style}'>{_r_days_since}d</span>"
-            f" since last change &nbsp;·&nbsp; as of {fmt_date(_r_latest_d)}</div>",
+            f" since last change &nbsp;·&nbsp; as of {fmt_date(_r_latest_d)}{_r_gap_html}</div>",
             unsafe_allow_html=True,
         )
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
@@ -1111,7 +1148,7 @@ try:
     _rh_status = _get_regime_status()
 
     if _rh_status:
-        _rh_regime, _rh_latest_date, _rh_days_since = _rh_status
+        _rh_regime, _rh_latest_date, _rh_days_since, _rh_has_gap = _rh_status
 
         if _rh_regime == "TRENDING_UP":
             if _rh_days_since >= 6:
@@ -1154,6 +1191,21 @@ try:
         else:
             _rh_label = _rh_regime
             _rh_bg = "#f8fafc"; _rh_border = "#94a3b8"; _rh_color = "#475569"; _rh_extra = ""
+
+        # has_gap: market_regime has a hole in this streak's window, so
+        # _rh_days_since isn't trustworthy as exact -- a real regime change
+        # could be sitting invisibly inside the gap (confirmed to happen for
+        # real on 2026-08-07, see docs/KIRAN_CLEANUP_AUDIT.md). This block
+        # drives actual risk-framing copy ("Stable uptrend" vs "just
+        # started, proceed carefully"), so a gap forces the cautious framing
+        # regardless of what the day count claims, rather than silently
+        # trusting a number that might be wrong in either direction.
+        if _rh_has_gap:
+            _rh_label  = f"{_rh_label} — data gap, unverified duration"
+            _rh_bg     = "#fef3c7"
+            _rh_border = "#f59e0b"
+            _rh_color  = "#92400e"
+            _rh_extra  = " ⚠️"
 
         # ── Kelly pill (computed once, appended to header) ────────────────────
         try:

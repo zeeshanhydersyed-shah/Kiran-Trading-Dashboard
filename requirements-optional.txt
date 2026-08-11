@@ -1,0 +1,24 @@
+# Packages needed only to revive a currently-retired feature. Nothing in
+# the live daily pipeline or dashboard imports these today (verified by
+# grepping the whole codebase, 2026-08-12) -- kept separate from
+# requirements.txt so the production install stays minimal, matching
+# archive-don't-delete: the capability is still one `pip install -r
+# requirements-optional.txt` away if a future session revives it.
+#
+# joblib, scikit-learn -- only consumer is phase4_train.py, which trains
+#   kiran_model.pkl. That model was KILLED 2026-07-31 (coin-flip CV AUC,
+#   zero live consumers, retrain pipeline disconnected from production --
+#   see docs/KIRAN_CLEANUP_AUDIT.md §14). Needed again only if a future
+#   session decides to resurrect ML-based conviction scoring.
+joblib>=1.3.0
+scikit-learn>=1.3.0,<2.0.0
+
+# playwright -- only consumer is page_flows.py's participant-flow scraper.
+#   Still called daily from main.py's hook, but its output
+#   (market_flows -> sector_signals.flow_* columns) is now write-only --
+#   nothing reads it since the Flow column was removed from the Rotation
+#   Radar table (see docs/KIRAN_CLEANUP_AUDIT.md §12). Also needs a
+#   separate `playwright install` browser-binary download (hundreds of MB)
+#   beyond the pip install itself. Needed again only if that pipeline is
+#   revived or the scraper is repurposed.
+playwright>=1.40.0

@@ -1340,6 +1340,43 @@ def get_latest_market_regime() -> tuple[str, int] | None:
     return (row["regime"], row["regime_days"]) if row else None
 
 
+def get_latest_market_regime_date() -> str | None:
+    """Return the date ('YYYY-MM-DD') of the most recent market_regime row, or None.
+
+    Used by the backfill loop in regime.py to find where to resume after a
+    gap, separately from get_latest_market_regime()'s (regime, regime_days).
+    """
+    with get_conn() as conn:
+        row = _fetchone(conn, "SELECT MAX(date)::text AS d FROM market_regime")
+    if row and row["d"]:
+        d = row["d"]
+        return d.isoformat() if hasattr(d, "isoformat") else str(d)
+    return None
+
+
+def get_kse100_full_for_regime() -> list[dict]:
+    """Return every KSE-100 index_prices row (date, high, low, close), ascending.
+
+    Regime classification needs a fully continuous KSE-100 series to compute
+    correct EWM/ATR/return_20d indicators; a bounded 'last N rows' window
+    (the old get_kse100_for_regime(warmup) behaviour) only ever supports
+    writing the single latest date. Full history is a few thousand rows for
+    KSE-100 -- cheap to pull every run -- and lets the backfill loop in
+    regime.py recompute every missing date's indicators correctly in one pass.
+    """
+    with get_conn() as conn:
+        rows = _fetchall(
+            conn,
+            """
+            SELECT date::text AS date, high, low, close
+            FROM index_prices
+            WHERE symbol = 'KSE-100'
+            ORDER BY date
+            """,
+        )
+    return rows
+
+
 def write_market_regime(
     date_str: str,
     close: float,
@@ -1601,6 +1638,42 @@ def get_sector_signals_count_for_date_pg(date_str: str) -> int:
     with get_conn() as conn:
         row = _fetchone(conn, "SELECT COUNT(*) AS n FROM sector_signals WHERE date = %s", (date_str,))
     return row["n"] if row else 0
+
+
+def get_sector_signals_max_date_pg() -> str | None:
+    """Returns MAX(date) from sector_signals, or None."""
+    with get_conn() as conn:
+        row = _fetchone(conn, "SELECT MAX(date)::text AS d FROM sector_signals")
+    if row and row["d"]:
+        d = row["d"]
+        return d.isoformat() if hasattr(d, "isoformat") else str(d)
+    return None
+
+
+def get_prices_adjusted_dates_between_pg(since_date: str | None, until_date: str) -> list[str]:
+    """Returns sorted distinct prices_adjusted dates in (since_date, until_date],
+    or all dates <= until_date when since_date is None.
+
+    Used by the sector_signals backfill loop to find exactly which trading
+    dates are missing after a hook failure, rather than only ever recomputing
+    the single latest date (see docs/KIRAN_CLEANUP_AUDIT.md, 2026-08-07 gap).
+    """
+    with get_conn() as conn:
+        if since_date:
+            rows = _fetchall(
+                conn,
+                "SELECT DISTINCT date::text AS d FROM prices_adjusted "
+                "WHERE date > %s AND date <= %s ORDER BY date",
+                (since_date, until_date),
+            )
+        else:
+            rows = _fetchall(
+                conn,
+                "SELECT DISTINCT date::text AS d FROM prices_adjusted "
+                "WHERE date <= %s ORDER BY date",
+                (until_date,),
+            )
+    return [r["d"] for r in rows]
 
 
 def get_prices_warmup_with_sector_pg(target_date: str) -> list:
