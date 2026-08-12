@@ -1,9 +1,11 @@
 # Deployment — CI gate and staging environment
 
-**Status:** repo-side work is done and verified (2026-08-12). The one-time
-Streamlit Cloud console setup in §3 has **not** been done — it needs the
-account owner, and creating apps/branches on someone's behalf is outside what
-this project lets an assistant do unattended.
+**Status:** repo-side work is done and verified (2026-08-12), and **`main` is
+now protected** — PR required, all three checks required, no admin bypass;
+verified by a real push from the repo owner being rejected with
+`GH006 ... Changes must be made through a pull request`. What is still
+outstanding from §3 is the Streamlit Cloud half: the `staging` branch, the
+second Cloud app, and the staging-database decision.
 
 Background: docs/KIRAN_CLEANUP_AUDIT.md §7.2 (structural gaps), §10 (deploy
 strategy, Option A vs B), §22 (what the 2026-08-12 data-loss incident taught
@@ -27,10 +29,13 @@ us about this gap specifically).
          ▼                              ▼
    staging Streamlit Cloud app ── you click through it
          │
-         │  fast-forward merge, only after the above
+         │  open a PR into main, only after the above
          ▼
-   push to  main ──────────────► CI runs again ──► production Cloud app
+   PR to  main ────────────────► 3 checks must pass ──► merge ──► production
 ```
+
+`main` is protected: PR required, all three checks required, **no admin
+bypass**. A direct `git push origin main` is rejected.
 
 Before 2026-08-12 the whole left column did not exist: `git push origin main`
 put code in front of a live trader in ~60 seconds with nothing checking it.
@@ -112,9 +117,13 @@ Nothing below can be done from this repo; it is all in
    main file `dashboard.py`, and a distinct URL (e.g. `…-staging`).
 3. **Give it secrets.** Copy the production app's secrets, *but see the
    warning below about which database it points at*.
-4. **Protect `main`** — GitHub → Settings → Branches → add a rule for `main`:
-   require status checks `clean-install`, `unit-tests`, `app-boot` to pass
-   before merging. Without this the CI gate is advisory; with it, it is a gate.
+4. ~~**Protect `main`**~~ — **DONE 2026-08-12.** Settings → Branches, rule on
+   `main`: require a pull request, require the three checks (`Clean install on
+   Python 3.11`, `Unit tests`, `App boot smoke test`), and **do not allow
+   bypassing** — so it binds the repo owner too, who is the only person who
+   pushes here. **Required approvals must be `0`**: GitHub defaults it to 1, a
+   PR author cannot approve their own PR, and with bypass disabled that
+   combination locks the sole maintainer out of merging entirely.
 
 ### Which database should staging point at?
 
@@ -128,23 +137,29 @@ Not decided yet — flagged here rather than chosen unilaterally.
 
 ## 4. Day-to-day flow
 
+**`main` is protected** (enabled 2026-08-12): a pull request is required, all
+three CI jobs must pass, and the rule applies to admins too — there is no
+bypass, deliberately. `git push origin main` is rejected outright. That is the
+point: the gate binds the only person who pushes here, or it is decoration.
+
 ```bash
 git checkout staging
 # ... work, commit ...
 git push origin staging          # CI runs; staging Cloud app redeploys
 ```
 
-Then, once CI is green **and** the staging app has been clicked through:
+Then, once CI is green **and** the staging app has been clicked through, open a
+PR from `staging` into `main` and merge it when the three checks go green:
 
 ```bash
-git checkout main
-git merge --ff-only staging      # refuses if main has diverged - that is the point
-git push origin main             # CI runs again; production redeploys
+# GitHub CLI is not installed on this machine -- open the PR in the browser,
+# or install gh and use:
+gh pr create --base main --head staging --fill
 ```
 
-`--ff-only` guarantees production is byte-identical to what was verified on
-staging. If it refuses, something landed on `main` directly — rebase `staging`
-onto `main` and re-verify rather than forcing the merge.
+Merging promotes to production and Cloud redeploys in ~60s. Prefer a merge that
+keeps `staging` and `main` identical afterwards; if they drift, fast-forward
+`staging` back up to `main` so the next PR is a clean diff.
 
 **What to click through on staging** before promoting (the boot test proves
 pages render, not that they are *right*): the sidebar regime widget's date and
@@ -153,10 +168,22 @@ actually touched.
 
 ### Hotfixes
 
-A genuine production emergency can still go straight to `main` — CI runs on it
-either way, and the deploy is not blocked on a human. Afterwards, fast-forward
-`staging` back up to `main` (`git checkout staging && git merge --ff-only main`)
-so the branches do not silently diverge.
+There is no direct-push escape hatch any more — that was the deliberate
+trade-off when admin bypass was disabled. A genuine emergency is still fast:
+
+```bash
+git checkout -b hotfix/<what> main
+# ... fix, commit ...
+git push -u origin hotfix/<what>
+gh pr create --base main --fill    # or open the PR in the browser
+```
+
+CI takes about a minute (the three jobs run in parallel; the slowest, the
+15-page boot test, finished in 58s on its first green run). Merge when green.
+
+If CI is broken *and* production is on fire at the same time, the honest move is
+to turn the protection rule off in Settings, push, and turn it back on —
+a deliberate, visible act, not an accidental bypass. Do not leave it off.
 
 ### Rollback
 
