@@ -292,7 +292,8 @@ def append_new_prices_adjusted(con) -> int:
     min_date, max_date = row
 
     cur.execute(
-        "INSERT INTO prices_adjusted SELECT * FROM prices WHERE date > ?",
+        """INSERT INTO prices_adjusted (symbol, date, close, volume, high, low, open)
+           SELECT symbol, date, close, volume, high, low, open FROM prices WHERE date > ?""",
         (last_adjusted,)
     )
     con.commit()
