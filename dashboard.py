@@ -2191,13 +2191,30 @@ def _render_boring_breakouts_section():
                 .sort_values("signal_date", ascending=False)
                 .head(30)
             )
+            # Resolution price for a STOP exit is current_stop itself (the modeled
+            # trailing-stop level, not the printed Low) -- same convention
+            # update_open_signal_statuses() uses. Win/Loss follows this project's
+            # existing >0/<=0 convention (see Excel Journal Sync outcome labelling).
+            _bo_stopped_grouped["gain_pct"] = (
+                (_bo_stopped_grouped["current_stop"] - _bo_stopped_grouped["trigger_price"])
+                / _bo_stopped_grouped["trigger_price"] * 100
+            )
+            _bo_stopped_grouped["outcome"] = _bo_stopped_grouped["gain_pct"].apply(
+                lambda v: "✅ Win" if v > 0 else "❌ Loss"
+            )
+
             _res_cols = ["symbol", "signal_date", "lookback_n", "trigger_price",
-                         "current_stop", "status", "resolution_date"]
+                         "current_stop", "outcome", "gain_pct", "status", "resolution_date"]
             _res_names = ["Ticker", "Fire Date", "N", "Entry Price",
-                          "Stop (final)", "Status", "Resolution Date"]
+                          "Stop (final)", "Outcome", "% Gain/Loss", "Status", "Resolution Date"]
             _res_disp = _bo_stopped_grouped[_res_cols].copy()
             _res_disp.columns = _res_names
-            st.dataframe(_res_disp, hide_index=True, use_container_width=True)
+            st.dataframe(
+                _res_disp, hide_index=True, use_container_width=True,
+                column_config={
+                    "% Gain/Loss": st.column_config.NumberColumn(format="%.2f%%"),
+                },
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -4286,7 +4303,7 @@ elif cur == PAGES[9]:  # Backtest
         .apply(style_direction,  subset=["Dir"])
         .apply(style_bt_outcome, subset=["Outcome"])
         .format(fmt_bt, na_rep="—"),
-        width='stretch', hide_index=True, height=380,
+        use_container_width=True, hide_index=True, height=380,
     )
 
     # Kiran Setup Simulation section retired 2026-08-05 — same active-trading
@@ -4828,7 +4845,7 @@ elif cur == PAGES[1]:  # Regime
             if "weinstein_opt_results" in st.session_state:
                 st.markdown("**Top 10 parameter combinations**")
                 res = st.session_state["weinstein_opt_results"].head(10)
-                st.dataframe(res, width='stretch', hide_index=True)
+                st.dataframe(res, use_container_width=True, hide_index=True)
 
                 best_p = st.session_state.get("weinstein_best_params", {})
                 if best_p and st.button("Apply best parameters & refresh signals", key="apply_best"):
@@ -5049,7 +5066,7 @@ elif cur == PAGES[8]:  # Setup Perf
 
         st.dataframe(
             act_df.style.map(_colour_unreal, subset=["Unreal %"]),
-            width='stretch', hide_index=True,
+            use_container_width=True, hide_index=True,
         )
 
     st.divider()
@@ -5080,7 +5097,7 @@ elif cur == PAGES[8]:  # Setup Perf
                 disp.style
                     .map(_outcome_colour, subset=["Outcome"])
                     .map(lambda v: f"color:{'#22c55e' if isinstance(v,(int,float)) and v>=0 else '#ef4444'}" if isinstance(v,(int,float)) else "", subset=["P&L %"]),
-                width='stretch', hide_index=True,
+                use_container_width=True, hide_index=True,
             )
 
     with col_chart:
@@ -5233,7 +5250,7 @@ elif cur == PAGES[8]:  # Setup Perf
             pend_disp["created_date"] = pend_disp["created_date"].dt.strftime("%d %b %Y")
             pend_disp.columns = ["Date", "Symbol", "Dir", "Sector",
                                   "Entry", "SL", "T1", "Risk %", "Quality"]
-            st.dataframe(pend_disp, width='stretch', hide_index=True)
+            st.dataframe(pend_disp, use_container_width=True, hide_index=True)
 
 
 elif False:  # STM page removed — killed (82% overlap, Z-histogram gate unvalidated)
@@ -5653,7 +5670,7 @@ elif st.session_state.page == PAGES[10]:
 
         st.dataframe(
             display.style.apply(lambda _: [""] * len(display), axis=0).pipe(_style),
-            width='stretch',
+            use_container_width=True,
             hide_index=True,
         )
 
