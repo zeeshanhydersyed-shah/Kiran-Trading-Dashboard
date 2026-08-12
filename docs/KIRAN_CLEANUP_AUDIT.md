@@ -665,7 +665,7 @@ Same page review that produced §19. Neither of these has a user decision yet �
 
 **B4.** <span style="color:#eab308;">◐ PARTIAL — CI gates `staging` already and [`docs/DEPLOYMENT.md`](DEPLOYMENT.md) documents the whole flow; the branch, the second Cloud app, branch protection, and the staging-database decision all need the account owner (§23.4).</span> **Build the staging environment from §10 Option B, and use it to close A8 for real.** A second Streamlit Cloud app on a `staging` branch, so a push gets a genuine boot-and-render check against Cloud's actual resolved Python/dependency versions before promotion to `main` — not an assumption based on local reproduction. §10 already recommends this; A8 is now concrete evidence for why it matters, not a hypothetical.
 
-**B5. Systematically audit every remaining daily hook for the A1/A2 defect shape (closes A10).** Read `setup_log`'s and `leaders_scan.py`'s date-handling logic and the flow-signal enrichment path with the specific question "does a transient failure on day N get silently and permanently skipped, or does the next successful run backfill it?" — using `stock_signals.py`'s pattern (and now `regime.py`/`sector_signals.py`'s) as the standard every hook should meet, not an assumption that finding two means the rest are clean.
+**B5.** <span style="color:#eab308;">◐ DONE as an audit (§24) — every `cmd_update()` hook read. `setup_log`'s defect was real, had already lost 11 dates locally, and is fixed with 10 regression tests. `leaders_scan` and `boring_signals.scan_boring_breakouts` have the same shape and are **not** fixed; existing gaps do not self-heal and production has not been checked (§24.4).</span> **Systematically audit every remaining daily hook for the A1/A2 defect shape (closes A10).** Read `setup_log`'s and `leaders_scan.py`'s date-handling logic and the flow-signal enrichment path with the specific question "does a transient failure on day N get silently and permanently skipped, or does the next successful run backfill it?" — using `stock_signals.py`'s pattern (and now `regime.py`/`sector_signals.py`'s) as the standard every hook should meet, not an assumption that finding two means the rest are clean.
 
 **B6. Add a lightweight daily freshness check (closes A9, partially A11).** Compare `MAX(date)` across every hook-output table (`market_regime`, `sector_signals`, `stock_signals`, `setup_log`, `prices_adjusted`) against `MAX(date)` in `prices`/`index_prices` — either as a GitHub Actions step that fails/warns loudly (not just a logged `WARNING` nobody reads) or a dashboard banner in the style of the existing corporate-action-suspects pill. Turns "a human happened to notice" into "the system says so," closing the actual detection gap A9 describes, not just this one incident.
 
@@ -735,3 +735,69 @@ Neither would have been caught by anything; both were introduced by the previous
 - **It checks that pages render, not that they are right.** A page showing confidently wrong numbers passes.
 - **Found and left alone, flagged here:** `eod-scraper.yml` installs its own hand-written, **completely unpinned** package list (`pandas`, `numpy`, … plus `lxml`, which is confirmed dead code) rather than `requirements.txt` — the same drift class as §22 A4, in a workflow that writes to production Supabase. It is `workflow_dispatch`-only today, so nothing is running it on a schedule; changing a production scraper's dependency set deserves its own verified session rather than a drive-by edit here.
 - **Also found:** `anthropic` is not in any requirements file, though `main.py`'s daily hook constructs `TradingDeskAgent`. On a GitHub Actions run that import fails and is swallowed by the hook's `try/except`, logging `ERROR anthropic package not installed` — consistent with CLAUDE.md's note that the agent is local/manual-only, but it means the daily pipeline silently runs without its agent step. Not changed: adding `anthropic` to `requirements.txt` would put it on Streamlit Cloud's install path and enable API calls from a workflow that currently makes none — a cost decision, not a cleanup.
+
+---
+
+## 24. <span style="color:#eab308;">◐ Partly resolved — §22 B5's hook audit done; `setup_log`'s silent-loss defect found and fixed, two more found and left for a decision (2026-08-12)</span>
+
+§22 B5 asked for every remaining daily hook to be read with one specific question: *does a transient failure on day N get silently and permanently skipped, or does the next successful run backfill it?* — using `stock_signals.py`'s pattern as the standard, rather than assuming that finding two bad hooks meant the rest were clean. Every hook in `main.py`'s `cmd_update()` has now been read.
+
+### 24.1 The audit, hook by hook
+
+| Hook | Date logic | Verdict |
+|---|---|---|
+| `append_new_prices_adjusted` (+`_pg`) | `INSERT ... WHERE date > MAX(prices_adjusted.date)` — a range copy | ✅ backfills by construction |
+| `auto_detect_suspects` | scans a rolling window (since `MAX(suspect_date)`, floor of the last 5 dates) | ◐ self-heals within 5 trading days; a longer outage skips dates permanently. Bounded, low severity, not changed |
+| `append_latest_regime` | fixed in §21 | ✅ |
+| `backfill_days_to_nearest` | fills every row where the column `IS NULL` | ✅ self-healing by design |
+| `append_latest_sector_signals` | fixed in §21 | ✅ |
+| **flow-signal enrichment** (`compute_flow_signals` / `_pg`) — B5 named this specifically | takes an explicit `date_str`, and is called from inside `_compute_and_write_sector_signals_for_date_{pg,sqlite}()` | ✅ **already covered by §21's loop** — checked rather than assumed |
+| `append_latest_stock_signals` | the reference pattern | ✅ |
+| **`append_setup_log_today`** (both paths) | `target_date = MAX(stock_signals.date)`, single date, no loop | 🔴 **DEFECT — fixed here, §24.2** |
+| `compute_forward_returns.main` | iterates every symbol, fills rows where forward returns are `NULL` | ✅ self-healing |
+| **`leaders_scan.append_leaders_scan` / `save_top_picks`** | `scan_date = MAX(stock_signals.date)`, single date, no loop | 🔴 **DEFECT — found, not fixed, §24.4** |
+| `fill_leaders_forward_returns` | fills rows with NULL forward returns | ✅ self-healing |
+| **`boring_signals.scan_boring_breakouts`** | `date` argument defaults to `all_dates[-1]` — newest only | 🔴 defect, but SQLite-only and it already accepts an explicit date, §24.4 |
+| `update_open_signal_statuses` | re-evaluates every still-open signal | ✅ |
+| agent subprocess · breadth oscillator · rolling trim | not date-keyed writes | n/a |
+
+### 24.2 `setup_log` — the defect was real and had already produced gaps
+
+Checked against the local database rather than argued from the code shape. `stock_signals` holds **all 147 trading dates of 2026**; `setup_log` was missing **11 of them**:
+
+```
+2026-07-13, 07-20, 07-21, 07-29, and an unbroken run 08-03 → 08-11
+```
+
+Three things make this conclusive rather than circumstantial:
+
+1. **Those dates had data.** Re-running each missing date's own selection queries read-only returns a full 20 `RS_LEADER_MARKET` rows plus 9–16 breakout candidates per day. They are not legitimately-empty days.
+2. **`stock_signals` covers them.** Both hooks read the same table in the same `cmd_update()` run; one caught up and the other did not. That is the defect, visible in a single database.
+3. **07-20 / 07-21 / 07-29 are the same dates** as local `market_regime`'s already-documented gap (CLAUDE.md, Known Gaps) — the fingerprint of days when the local pipeline partly failed. `market_regime` can now self-heal; `setup_log` could not.
+
+**Why it matters:** `setup_log` is the record behind the `Setup Perf` page and every forward-return/outcome statistic computed from it. A missing day is not a visible error — it silently drops that day's setups out of the win-rate denominator.
+
+### 24.3 The fix
+
+Same shape as §21's, deliberately: a pure, DB-free `_pending_setup_log_dates(signal_dates, last_logged)` holding the policy, called by both the SQLite and Postgres paths so they cannot drift apart again, plus a loop that commits **per date** (a failure part-way through a multi-day catch-up keeps the days already written). A multi-date backfill logs at `WARNING`, not `INFO`, so a catch-up is visible in the run log rather than buried.
+
+One deliberate asymmetry, documented in the function: when `setup_log` is **empty**, only the newest date is written, not all of history. The historical backfill in the same module inserts BREAKOUT on *every* `bos_flag=1` day, while this path inserts transition days only (`prev bos_flag = 0`) — replaying history through here would write rows that disagree with the historical record.
+
+**Verified against the pre-fix code, not just asserted.** Same scenario (5 trading days of signals, `setup_log` stopping at day 2), run against both versions:
+
+```
+PRE-FIX   setup_log now has : ['2026-07-28', '2026-07-31']
+          PERMANENTLY LOST  : ['2026-07-29', '2026-07-30']
+POST-FIX  setup_log now has : ['2026-07-28', '07-29', '07-30', '07-31']
+          PERMANENTLY LOST  : none
+```
+
+10 new tests in `tests/test_setup_log_backfill.py` (45 in the suite now): the pure policy including the empty-table and setup_log-ahead-of-signals edges, multi-day gap coverage end-to-end, idempotent re-runs, pre-gap rows left untouched, and the BREAKOUT transition-day rule still honoured *on a backfilled date* — the path that did not exist before and could plausibly have got the previous-day lookup wrong. The tests build their temp database from the real schema in `tests/fixtures/psx_fixture.db`, and redirect **both** `backfill_setup_log.DB_PATH` and `compute_forward_returns.DB_PATH`, since both bind the path at import time and step 2 of the function would otherwise write `UPDATE`s into the live `psx_data.db`.
+
+### 24.4 Not fixed — three things that need a decision, not more code
+
+**a. The existing gaps will not self-heal.** The fix fills dates *after* `MAX(setup_date)`. Locally that means `08-03 → 08-11` will fill themselves on the next pipeline run, but the older holes (`07-13`, `07-20`, `07-21`, `07-29`) sit before the high-water mark and will stay empty forever unless deliberately backfilled. That is a bulk write to a trading-record table and needs explicit sign-off, so it was not done.
+
+**b. Production's gaps are unknown.** Everything above is measured on local SQLite. Whether Supabase's `setup_log` has the same holes has **not** been checked — it needs a read-only query with the production connection string. Do this before assuming the production record is intact; the two databases are known to diverge (§16, §21).
+
+**c. `leaders_scan` and `boring_signals` have the same defect shape.** `leaders_scan` last wrote `2026-07-31` locally and covers only 28 of the trading dates since it started on 06-16, with holes at 06-25/26, 07-11/13, 07-18/21 and 07-29. It is an audit trail and a monitoring page rather than a performance statistic, so the cost of a gap is lower — but it is the same bug, and fixing it is the same pattern. `boring_signals.scan_boring_breakouts()` already takes an explicit `date` argument, so its fix is close to a one-liner; it is SQLite-only and watch-only, the lowest severity of the three. Neither was changed in this pass: both are production write paths and this session had already made one such change.

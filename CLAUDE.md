@@ -564,7 +564,7 @@ append_setup_log_today()
 4. `append_latest_regime()`
 5. `sector_signals.append_latest_sector_signals()`
 6. `stock_signals.append_latest_stock_signals()`
-7. `append_setup_log_today()` — BREAKOUT inserts transition day only (prev bos_flag=0 check)
+7. `append_setup_log_today()` — BREAKOUT inserts transition day only (prev bos_flag=0 check). **Backfills every trading date since its last write** (fixed 2026-08-12 — it previously wrote only `MAX(stock_signals.date)`, silently losing any day it missed; see docs/KIRAN_CLEANUP_AUDIT.md §24). An empty `setup_log` deliberately gets the newest date only, not replayed history
 8. `TradingDeskAgent("daily").run()` — reads from setup_log / stock_signals / recovery_signals
 9. Leaders deep scan
 10. `auto_save_setups()` + `auto_save_setups_with_source()`

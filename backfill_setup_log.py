@@ -162,17 +162,36 @@ def _append_setup_log_today_pg() -> int:
         with get_conn() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-            cur.execute("SELECT MAX(date) AS d FROM stock_signals")
-            target_date = cur.fetchone()["d"]
-            if not target_date:
+            cur.execute("SELECT MAX(setup_date) AS d FROM setup_log")
+            already = cur.fetchone()["d"]
+
+            # Bounded scan is an optimisation only; _pending_setup_log_dates()
+            # holds the policy, shared with the SQLite path above.
+            if already:
+                cur.execute(
+                    "SELECT DISTINCT date AS d FROM stock_signals "
+                    "WHERE date >= %s ORDER BY date",
+                    (already,),
+                )
+                signal_dates = [r["d"] for r in cur.fetchall()]
+            else:
+                cur.execute("SELECT MAX(date) AS d FROM stock_signals")
+                row = cur.fetchone()
+                signal_dates = [row["d"]] if row and row["d"] else []
+
+            if not signal_dates:
                 log.warning("setup_log hook (PG): no data in stock_signals.")
                 return 0
 
-            cur.execute("SELECT MAX(setup_date) AS d FROM setup_log")
-            already = cur.fetchone()["d"]
-            if already and already >= target_date:
-                log.info("setup_log already up to date for %s (PG).", target_date)
+            pending = _pending_setup_log_dates(signal_dates, already)
+            if not pending:
+                log.info("setup_log already up to date for %s (PG).", already)
                 return 0
+            if len(pending) > 1:
+                log.warning(
+                    "setup_log (PG): backfilling %d missing date(s), %s -> %s.",
+                    len(pending), pending[0], pending[-1],
+                )
 
             setup_insert_pg = """
                 INSERT INTO setup_log
@@ -245,16 +264,25 @@ def _append_setup_log_today_pg() -> int:
                 """),
             ]
 
-            try:
-                for setup_type, select_sql in queries_pg:
-                    cur.execute(select_sql, (target_date,))
-                    rows = [tuple(r.values()) for r in cur.fetchall()]
-                    if rows:
-                        psycopg2.extras.execute_batch(cur, setup_insert_pg, rows)
-                        total_inserted += len(rows)
-                log.info("setup_log (PG): %d rows inserted for %s.", total_inserted, target_date)
-            except Exception as exc:
-                log.warning("setup_log step 1 (insert, PG) failed: %s", exc)
+            for target_date in pending:
+                # Commit per date for the same reason as the SQLite path: a
+                # mid-backfill failure keeps the days already written.
+                try:
+                    day_inserted = 0
+                    for setup_type, select_sql in queries_pg:
+                        cur.execute(select_sql, (target_date,))
+                        rows = [tuple(r.values()) for r in cur.fetchall()]
+                        if rows:
+                            psycopg2.extras.execute_batch(cur, setup_insert_pg, rows)
+                            day_inserted += len(rows)
+                    conn.commit()
+                    total_inserted += day_inserted
+                    log.info("setup_log (PG): %d rows inserted for %s.",
+                             day_inserted, target_date)
+                except Exception as exc:
+                    conn.rollback()
+                    log.warning("setup_log step 1 (insert, PG) failed for %s: %s",
+                                target_date, exc)
 
         # Step 2 — forward returns (own connection, branches on _PG_URL internally)
         try:
@@ -288,8 +316,44 @@ def _append_setup_log_today_pg() -> int:
     return total_inserted
 
 
+def _pending_setup_log_dates(signal_dates, last_logged):
+    """Which trading dates still need setup_log rows written.
+
+    Pure and DB-free on purpose, so the policy can be unit-tested directly and
+    stays identical across the SQLite and Postgres paths -- same shape as
+    regime.py's _pending_regime_rows().
+
+    Before 2026-08-12 this logic was `target_date = MAX(stock_signals.date)`
+    with no loop, which meant a transient failure on any single day lost that
+    day permanently: the next successful run just wrote whatever the newest
+    date was and moved on. `stock_signals.py` (which this reads from) has
+    always backfilled a date range, so the two drifted apart silently --
+    confirmed in the local DB, where stock_signals holds every trading date
+    through 2026-08-11 while setup_log stops at 2026-07-31, plus older
+    one-day holes at 2026-07-13/20/21/29. Same defect class as the
+    market_regime/sector_signals loss (docs/KIRAN_CLEANUP_AUDIT.md §21, §22
+    A1/A2, audited under B5).
+
+    Two cases:
+      * `last_logged is None` (setup_log empty) -> the newest date only. An
+        empty table is NOT a licence to replay all history through here: the
+        historical backfill in this same module inserts BREAKOUT on every
+        bos_flag=1 day, while this function inserts transition days only
+        (prev bos_flag = 0), so replaying history here would write rows that
+        disagree with the historical record. Deliberate, not an oversight.
+      * otherwise -> every signal date after `last_logged`, oldest first.
+    """
+    dates = sorted(set(signal_dates))
+    if not dates:
+        return []
+    if last_logged is None:
+        return dates[-1:]
+    return [d for d in dates if d > last_logged]
+
+
 def append_setup_log_today() -> int:
-    """Insert today's setups, fill forward returns, label outcomes."""
+    """Insert setups for every pending trading date, fill forward returns,
+    label outcomes."""
     import logging
     log = logging.getLogger(__name__)
 
@@ -302,18 +366,35 @@ def append_setup_log_today() -> int:
 
     try:
         # ── STEP 1: Insert today's setups ─────────────────────────────────
-        row = cur.execute("SELECT MAX(date) FROM stock_signals").fetchone()
-        target_date = row[0] if row else None
-        if not target_date:
-            log.warning("setup_log hook: no data in stock_signals.")
-            return 0
-
         already = cur.execute(
             "SELECT MAX(setup_date) FROM setup_log"
         ).fetchone()[0]
-        if already and already >= target_date:
-            log.info("setup_log already up to date for %s.", target_date)
+
+        # Bounding the scan by `already` is a pure optimisation -- the policy
+        # itself lives in _pending_setup_log_dates(), which re-filters anyway.
+        if already:
+            signal_dates = [r[0] for r in cur.execute(
+                "SELECT DISTINCT date FROM stock_signals WHERE date >= ? ORDER BY date",
+                (already,),
+            ).fetchall()]
+        else:
+            signal_dates = [r[0] for r in cur.execute(
+                "SELECT MAX(date) FROM stock_signals"
+            ).fetchall() if r[0]]
+
+        if not signal_dates:
+            log.warning("setup_log hook: no data in stock_signals.")
             return 0
+
+        pending = _pending_setup_log_dates(signal_dates, already)
+        if not pending:
+            log.info("setup_log already up to date for %s.", already)
+            return 0
+        if len(pending) > 1:
+            log.warning(
+                "setup_log: backfilling %d missing date(s), %s -> %s.",
+                len(pending), pending[0], pending[-1],
+            )
 
         setup_insert = """
             INSERT OR IGNORE INTO setup_log
@@ -385,15 +466,21 @@ def append_setup_log_today() -> int:
             """),
         ]
 
-        try:
-            for setup_type, select_sql in queries:
-                rows = cur.execute(select_sql, (target_date,)).fetchall()
-                cur.executemany(setup_insert, rows)
-                total_inserted += cur.rowcount
-            conn.commit()
-            log.info("setup_log: %d rows inserted for %s.", total_inserted, target_date)
-        except Exception as exc:
-            log.warning("setup_log step 1 (insert) failed: %s", exc)
+        for target_date in pending:
+            # Each date commits on its own, so a failure part-way through a
+            # multi-day backfill keeps the days already written rather than
+            # rolling the whole catch-up back.
+            try:
+                day_inserted = 0
+                for setup_type, select_sql in queries:
+                    rows = cur.execute(select_sql, (target_date,)).fetchall()
+                    cur.executemany(setup_insert, rows)
+                    day_inserted += cur.rowcount
+                conn.commit()
+                total_inserted += day_inserted
+                log.info("setup_log: %d rows inserted for %s.", day_inserted, target_date)
+            except Exception as exc:
+                log.warning("setup_log step 1 (insert) failed for %s: %s", target_date, exc)
 
         # ── STEP 2: Fill forward returns ───────────────────────────────────
         try:
