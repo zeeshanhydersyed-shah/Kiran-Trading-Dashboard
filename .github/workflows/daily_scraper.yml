@@ -35,7 +35,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: Install Playwright Chromium
-        run: playwright install chromium --with-deps
+        # playwright is NOT in requirements.txt -- it was moved to
+        # requirements-optional.txt on 2026-08-12 because its only consumer
+        # (page_flows.py's participant-flow scraper) feeds a write-only chain.
+        # This step still needs it, so install it explicitly here rather than
+        # pulling the whole optional file in (which would also drag in
+        # scikit-learn/joblib for a killed model). Version matches the pin in
+        # requirements-optional.txt.
+        run: |
+          pip install "playwright>=1.40.0"
+          playwright install chromium --with-deps
 
       - name: Run daily update
         run: python main.py --update

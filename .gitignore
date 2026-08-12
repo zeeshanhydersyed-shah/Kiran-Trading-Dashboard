@@ -6,6 +6,13 @@
 *.db-shm
 *.db-wal
 
+# ...with one deliberate exception: the CI boot-test fixture. It is a slice of
+# the schema plus public market data only — every table holding personal data
+# (trades, portfolio capital, agent chat/reports) is emptied by
+# tests/fixtures/build_fixture_db.py before it is written. See
+# docs/DEPLOYMENT.md. Do not add other .db files here.
+!tests/fixtures/psx_fixture.db
+
 # Transient / editor / probe files
 .fuse_hidden*
 *.tmp

@@ -1,0 +1,143 @@
+name: CI
+
+# The deploy gate. Every push and PR to `main` or `staging` runs this before
+# anything reaches a Streamlit Cloud app.
+#
+# Why this exists: until 2026-08-12 there was no automated check of any kind
+# between `git push` and a live dashboard used for real trading decisions --
+# a broken commit reached production in ~60 seconds. Two real bugs shipped
+# that way and went unnoticed for days (a `set_page_config` ordering crash
+# that killed the whole app on the pinned Streamlit version, and a
+# `width='stretch'` TypeError that broke 3 of the 15 pages). Both are caught
+# by the `app-boot` job below. See docs/KIRAN_CLEANUP_AUDIT.md §7.2, §10, §22.
+#
+# The three jobs are deliberately separate so a red build says *which* kind
+# of thing broke: the environment, the logic, or the app itself.
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── B3: does the pinned environment actually install on the production
+  # interpreter? requirements.txt's old range pins were NOT installable on the
+  # dev machine (numpy<2.0 has no wheel for Python 3.13+), which was silently
+  # worked around by installing unconstrained latest versions -- the drift that
+  # hid the set_page_config crash for a week. This job is the check that would
+  # have caught it. Deliberately runs with NO pip cache: the point is a
+  # genuinely clean resolve, not a fast one.
+  clean-install:
+    name: Clean install on Python 3.11
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # matches Streamlit Cloud (see CLAUDE.md)
+
+      - name: Install pinned requirements into a clean environment
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check for dependency conflicts
+        run: pip check
+
+      - name: Import every production module
+        # Catches syntax errors, bad imports and missing packages in the
+        # non-Streamlit half of the codebase, which the app-boot job's single
+        # page render would not necessarily reach.
+        run: |
+          python - <<'PY'
+          import importlib, sys
+          mods = [
+              "config", "database", "database_pg", "dashboard_pg", "processor",
+              "regime", "sector_signals", "stock_signals", "weinstein",
+              "backtest", "scraper", "kelly", "stealth_rs", "leaders_scan",
+              "backfill_setup_log", "compute_forward_returns", "main",
+              "kse100_filter", "breakout_signal",
+          ]
+          failed = []
+          for m in mods:
+              try:
+                  importlib.import_module(m)
+              except Exception as exc:
+                  failed.append(f"{m}: {type(exc).__name__}: {exc}")
+          if failed:
+              print("::error::modules failed to import:")
+              for line in failed:
+                  print(f"  {line}")
+              sys.exit(1)
+          print(f"{len(mods)} modules imported cleanly")
+          PY
+
+      - name: Record what Python 3.11 actually resolved
+        # Uploaded so there is a durable record of the real resolved versions
+        # to compare against Streamlit Cloud's own build log -- the project has
+        # never had visibility into what Cloud actually installs (audit §22 A8).
+        run: pip freeze > resolved-py311.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resolved-requirements-py311
+          path: resolved-py311.txt
+          retention-days: 30
+
+  # ── B1: the unit suite. Currently the backfill/gap-detection regression
+  # tests added alongside the 2026-08-12 data-loss fix -- the failure mode
+  # that had already happened twice because the first fix shipped without one.
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: pytest tests/ --ignore=tests/test_app_boot.py -v
+
+  # ── B2: does the app actually render? Unit tests are pure logic and would
+  # not have caught either of the two bugs that really shipped. This runs the
+  # real dashboard.py through Streamlit's own AppTest harness, against a
+  # committed fixture database, once per page.
+  app-boot:
+    name: App boot smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Render every dashboard page
+        # No DATABASE_URL is set anywhere in this job -- the app falls back to
+        # SQLite and the test stages tests/fixtures/psx_fixture.db. Production
+        # Postgres is never reachable from CI, by construction.
+        run: pytest tests/test_app_boot.py -v

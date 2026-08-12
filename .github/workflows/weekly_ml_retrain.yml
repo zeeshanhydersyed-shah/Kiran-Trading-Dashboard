@@ -29,9 +29,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
+        # requirements-optional.txt is required here: scikit-learn and joblib
+        # were moved out of requirements.txt on 2026-08-12 (the model this
+        # workflow trains was killed 2026-07-31), and phase4_train.py cannot
+        # run without them.
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt -r requirements-optional.txt
 
       - name: Train ML model
         run: python phase4_train.py

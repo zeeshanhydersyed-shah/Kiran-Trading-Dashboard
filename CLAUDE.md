@@ -9,9 +9,26 @@
 ## How changes go live
 1. Edit files locally in `C:\Users\Lenovo\psx_pipeline\`
 2. `git add` + `git commit` + `git push origin main`
-3. Streamlit Cloud auto-redeploys on push — takes ~60 seconds
+3. **CI runs first** (`.github/workflows/ci.yml` — clean install on 3.11, unit
+   tests, and a boot smoke test that renders all 15 pages). It does not block
+   the deploy until branch protection is enabled on `main` — see
+   [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §3.
+4. Streamlit Cloud auto-redeploys on push — takes ~60 seconds
 
 Local edits alone **never** update the live app.
+
+**Preferred flow once the staging app exists:** push to `staging`, let CI go
+green, click through the staging Cloud app, then `git merge --ff-only staging`
+into `main`. Full procedure, rollback and hotfix paths: `docs/DEPLOYMENT.md`.
+
+**Before pushing anything, run the gate locally:**
+```
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+`pytest.ini` limits collection to `tests/` (the loose root `test_*.py` files
+are one-off research scripts, not a suite). If you change the database schema,
+regenerate the CI fixture too: `python tests/fixtures/build_fixture_db.py`.
 
 ## Key files
 | File | Purpose |
@@ -48,9 +65,12 @@ Local edits alone **never** update the live app.
 ## GitHub Actions (automated)
 | Workflow | Schedule | What it does |
 |----------|----------|-------------|
-| `daily_scraper.yml` | Mon–Fri 11:35 UTC (16:35 PKT) | Scrapes PSX prices, generates trade setups |
+| `ci.yml` | Every push/PR to `main` and `staging` | **The deploy gate** (added 2026-08-12). 3 jobs: `clean-install` (pip install + `pip check` + import all production modules on Python 3.11), `unit-tests` (`pytest tests/`), `app-boot` (renders all 15 dashboard pages via Streamlit's `AppTest` against `tests/fixtures/psx_fixture.db`). See `docs/DEPLOYMENT.md` |
+| `daily_scraper.yml` | Mon–Fri 11:35 UTC (16:35 PKT) | Scrapes PSX prices, generates trade setups. Installs `playwright` explicitly — it is in `requirements-optional.txt`, not `requirements.txt` |
 | `weekly_backtest.yml` | Sunday | Runs backtest engine |
-| `weekly_ml_retrain.yml` | Manual only (`workflow_dispatch`) | Retrains kiran_model.pkl via phase4_train.py — schedule disabled 2026-07-31, model killed (see docs/KIRAN_CLEANUP_AUDIT.md §14) |
+| `weekly_ml_retrain.yml` | Manual only (`workflow_dispatch`) | Retrains kiran_model.pkl via phase4_train.py — schedule disabled 2026-07-31, model killed (see docs/KIRAN_CLEANUP_AUDIT.md §14). Installs `requirements-optional.txt` too — scikit-learn/joblib live there |
+| `eod-scraper.yml` | Manual only (cron commented out) | Alternative headless EOD scrape → Supabase. **Installs its own unpinned package list, not `requirements.txt`** — known drift, see audit §23.5 |
+| `fix_gal_sector.yml` | Manual only | One-off sector-mapping fix |
 | `weekly_sim.yml` | Manual only (`workflow_dispatch`) | Runs kiran_sim.py (active-trading portfolio sim) — schedule disabled 2026-08-05, dashboard section retired, same mechanism already Concluded — negative 2026-05-12 (see docs/KIRAN_CLEANUP_AUDIT.md §19) |
 
 ## Dashboard pages (PAGES list in dashboard.py)
