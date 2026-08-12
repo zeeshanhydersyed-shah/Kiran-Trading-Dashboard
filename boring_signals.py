@@ -355,6 +355,65 @@ def scan_boring_breakouts(date: str | None = None) -> int:
         return inserted
 
 
+def scan_boring_breakouts_pending(max_lookback: int = 15) -> int:
+    """Scan every trading date that may not have been scanned yet, not just
+    the newest one.
+
+    `scan_boring_breakouts()` defaults to `all_dates[-1]` -- the newest date
+    only. Called once a day from main.py's hook, that meant any day the hook
+    missed was never scanned again: the next run just looked at the new
+    newest date. Same single-date defect as the market_regime/sector_signals
+    loss and setup_log's (docs/KIRAN_CLEANUP_AUDIT.md §21, §24, §25).
+
+    Deciding *where* to resume is the wrinkle here, and it is why this is a
+    bounded window rather than a true high-water mark: `boring_signals` only
+    gets a row when a signal actually fires, so an empty stretch is
+    indistinguishable from an unscanned one -- the table cannot tell you what
+    has been scanned. So resume from whichever is later:
+
+      * the most recent `signal_date` already recorded, or
+      * `max_lookback` trading dates back from the newest date.
+
+    That converts permanent silent loss into self-healing within
+    `max_lookback` days, the same bounded-window compromise
+    `auto_detect_suspects()` already makes in this codebase. A gap longer
+    than the window would still be missed; closing that properly needs an
+    explicit scan-progress marker, which is a schema change and is not worth
+    it for a watch-only, SQLite-only feature. Re-scanning is cheap and safe:
+    the per-date work is small next to the one-off universe/price load, and
+    UNIQUE(symbol, signal_date, lookback_n) + INSERT OR IGNORE makes a
+    repeat scan a no-op.
+
+    Returns total new rows inserted across all dates scanned.
+    """
+    with sqlite3.connect(DB_PATH) as conn:
+        ensure_boring_signals_table(conn)
+        universe = _eligible_universe(conn)
+        by_symbol = _load_price_history(conn, universe)
+        all_dates = sorted({d for pf in by_symbol.values() for d in pf["dates"]})
+        if not all_dates:
+            logger.warning("boring_signals: no price history found for eligible universe")
+            return 0
+        last_signal = conn.execute(
+            "SELECT MAX(signal_date) FROM boring_signals"
+        ).fetchone()[0]
+
+    window_start = all_dates[-max_lookback] if len(all_dates) > max_lookback else all_dates[0]
+    resume_from = max(window_start, last_signal) if last_signal else window_start
+    pending = [d for d in all_dates if d >= resume_from]
+
+    if len(pending) > 1:
+        logger.warning("boring_signals: scanning %d date(s), %s -> %s.",
+                       len(pending), pending[0], pending[-1])
+    total = 0
+    for scan_date in pending:
+        try:
+            total += scan_boring_breakouts(scan_date)
+        except Exception as exc:
+            logger.warning("boring_signals: scan failed for %s: %s", scan_date, exc)
+    return total
+
+
 def update_open_signal_statuses() -> int:
     """
     Advances status for every row not yet in a terminal state (Stopped).

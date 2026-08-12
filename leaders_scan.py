@@ -218,7 +218,8 @@ def _nearest_overhead_pct_pg(cur, symbol, scan_date, pivot_high):
 
 def _breakout_health_check_pg(cur, symbol, scan_date, pivot_high):
     cur.execute(
-        "SELECT MAX(date) AS d FROM stock_signals WHERE symbol = %s AND bos_flag = 0 AND date <= %s",
+        "SELECT MAX(date) AS d FROM stock_signals WHERE symbol = %s "
+        "AND bos_flag IS FALSE AND date <= %s",
         (symbol, scan_date),
     )
     last_zero = cur.fetchone()["d"]
@@ -227,7 +228,8 @@ def _breakout_health_check_pg(cur, symbol, scan_date, pivot_high):
         streak_start = cur.fetchone()["d"]
     else:
         cur.execute(
-            "SELECT MIN(date) AS d FROM stock_signals WHERE symbol = %s AND date > %s AND bos_flag = 1",
+            "SELECT MIN(date) AS d FROM stock_signals WHERE symbol = %s "
+            "AND date > %s AND bos_flag IS TRUE",
             (symbol, last_zero),
         )
         streak_start = cur.fetchone()["d"]
@@ -439,7 +441,7 @@ def _breakout_health_check(con, symbol, scan_date, pivot_high):
 
 # ── Main scan builder ─────────────────────────────────────────────────────────
 
-def _append_leaders_scan_pg() -> None:
+def _append_leaders_scan_pg(scan_date=None) -> None:
     """PG-backed equivalent of append_leaders_scan(). Same query/scoring logic,
     psycopg2 RealDictCursor instead of sqlite3.Row, ON CONFLICT instead of
     INSERT OR REPLACE. Assumes leaders_scan already exists in Supabase with
@@ -451,8 +453,9 @@ def _append_leaders_scan_pg() -> None:
     with get_conn() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute("SELECT MAX(date) AS d FROM stock_signals")
-        scan_date = cur.fetchone()["d"]
+        if scan_date is None:
+            cur.execute("SELECT MAX(date) AS d FROM stock_signals")
+            scan_date = cur.fetchone()["d"]
         if not scan_date:
             print("Leaders scan hook (PG): no data in stock_signals.")
             return
@@ -500,7 +503,9 @@ def _append_leaders_scan_pg() -> None:
                     FROM stock_signals ss
                     JOIN stock_metadata sm ON ss.symbol = sm.symbol
                     WHERE ss.date = %s
-                      AND ss.bos_flag = 1
+                      -- BOOLEAN in Postgres, INTEGER in SQLite -- see the
+                      -- SQLite twin of this query below, and audit §25.
+                      AND ss.bos_flag IS TRUE
                       AND ss.pivot_distance_pct < 15
                       AND ss.avg_vol_10d > 200000
                 """
@@ -605,14 +610,14 @@ def _append_leaders_scan_pg() -> None:
                 """, insert_rows)
 
 
-def append_leaders_scan(db_path=None):
+def append_leaders_scan(db_path=None, scan_date=None):
     """
     Build leaders_scan for today. Pulls stock_signals + sector_signals + prices,
     applies filters (base_tightness<7; not-extended for BO), scores each
     candidate, writes results. Idempotent — safe to re-run same day.
     """
     if _PG_URL:
-        _append_leaders_scan_pg()
+        _append_leaders_scan_pg(scan_date)
         return
 
     if db_path is None:
@@ -621,7 +626,8 @@ def append_leaders_scan(db_path=None):
     con = sqlite3.connect(db_path)
     ensure_tables(con)
 
-    scan_date = con.execute("SELECT MAX(date) FROM stock_signals").fetchone()[0]
+    if scan_date is None:
+        scan_date = con.execute("SELECT MAX(date) FROM stock_signals").fetchone()[0]
     if not scan_date:
         con.close()
         return
@@ -1041,7 +1047,60 @@ def fill_leaders_forward_returns(db_path=None):
 
 # ── Single entry point for main.py ───────────────────────────────────────────
 
+def _pending_scan_dates(db_path=None):
+    """Trading dates with stock_signals but no leaders_scan rows yet.
+
+    Policy is imported, not re-implemented: leaders_scan carried the exact
+    same single-date defect as setup_log -- `scan_date = MAX(stock_signals
+    .date)` with no loop, so any day the hook missed was lost the moment a
+    newer date was written. Sharing one function means the two cannot drift
+    apart the way the daily hooks already did once.
+    See docs/KIRAN_CLEANUP_AUDIT.md §24, §25.
+    """
+    from backfill_setup_log import _pending_setup_log_dates
+
+    if _PG_URL:
+        import psycopg2.extras
+        from database_pg import get_conn
+        with get_conn() as conn:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT MAX(scan_date) AS d FROM leaders_scan")
+            last = cur.fetchone()["d"]
+            if last:
+                cur.execute("SELECT DISTINCT date AS d FROM stock_signals "
+                            "WHERE date >= %s ORDER BY date", (last,))
+            else:
+                cur.execute("SELECT MAX(date) AS d FROM stock_signals")
+            dates = [str(r["d"]) for r in cur.fetchall() if r["d"]]
+        return _pending_setup_log_dates(dates, str(last) if last else None)
+
+    con = sqlite3.connect(db_path or config.DB_PATH)
+    try:
+        last = con.execute("SELECT MAX(scan_date) FROM leaders_scan").fetchone()[0]
+        if last:
+            rows = con.execute("SELECT DISTINCT date FROM stock_signals "
+                               "WHERE date >= ? ORDER BY date", (last,)).fetchall()
+        else:
+            rows = con.execute("SELECT MAX(date) FROM stock_signals").fetchall()
+        dates = [r[0] for r in rows if r[0]]
+    finally:
+        con.close()
+    return _pending_setup_log_dates(dates, last)
+
+
 def run_all(db_path=None):
-    append_leaders_scan(db_path)
+    pending = _pending_scan_dates(db_path)
+    if len(pending) > 1:
+        print(f"Leaders scan: backfilling {len(pending)} missing date(s), "
+              f"{pending[0]} -> {pending[-1]}.")
+    for scan_date in pending:
+        # Each date is a self-contained DELETE+rebuild for that scan_date, so
+        # one bad date cannot corrupt the others -- and a failure part-way
+        # through keeps the dates already written.
+        try:
+            append_leaders_scan(db_path, scan_date=scan_date)
+        except Exception as exc:
+            print(f"Leaders scan failed for {scan_date}: {exc}")
+    # Top picks and forward returns are whole-table operations, not per-date.
     save_top_picks(db_path)
     fill_leaders_forward_returns(db_path)

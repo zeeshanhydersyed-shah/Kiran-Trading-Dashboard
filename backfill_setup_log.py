@@ -4,6 +4,7 @@ Processes all 4 setup types per date. Outcome columns left NULL.
 Run with --dry-run to test on first month only (2015-01-01 to 2015-01-31).
 """
 
+import logging
 import os
 import sqlite3
 import sys
@@ -213,7 +214,17 @@ def _append_setup_log_today_pg() -> int:
                     LEFT JOIN market_regime mr ON ss.date = mr.date
                     LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
                     WHERE ss.date = %s
-                      AND ss.bos_flag = 1
+                      -- `bos_flag = 1` (what the SQLite twin of this query
+                      -- says) raises `operator does not exist: boolean =
+                      -- integer` on Postgres, where the column is BOOLEAN,
+                      -- not INTEGER. That error aborts the transaction, so
+                      -- all four queries for the date fail and NOTHING is
+                      -- written -- which is why production setup_log sat
+                      -- frozen at 2026-06-30 for six weeks while
+                      -- stock_signals stayed current. Same SQLite/Postgres
+                      -- type-mismatch class as the TEXT vs DATE gotcha in
+                      -- CLAUDE.md. See docs/KIRAN_CLEANUP_AUDIT.md §25.
+                      AND ss.bos_flag IS TRUE
                       AND ss.avg_vol_10d > 500000
                       AND COALESCE((
                           SELECT ss_prev.bos_flag
@@ -222,7 +233,7 @@ def _append_setup_log_today_pg() -> int:
                             AND ss_prev.date < ss.date
                           ORDER BY ss_prev.date DESC
                           LIMIT 1
-                      ), 0) = 0
+                      ), FALSE) IS FALSE
                 """),
                 ("PRE_BREAKOUT", """
                     SELECT ss.symbol, ss.date, 'PRE_BREAKOUT', mr.regime,
@@ -316,6 +327,94 @@ def _append_setup_log_today_pg() -> int:
     return total_inserted
 
 
+# ── Daily setup-detection rules, SQLite ───────────────────────────────────────
+# Module-level and shared: append_setup_log_today() (the daily hook) and
+# append_setup_log_for_dates() (one-off repair of holes below the high-water
+# mark) MUST insert by identical rules, or a repaired date would disagree with
+# the days around it. Note these are the DAILY rules -- BREAKOUT on the
+# transition day only -- which deliberately differ from run()'s historical
+# backfill above (every bos_flag=1 day). See docs/KIRAN_CLEANUP_AUDIT.md §24.
+_DAILY_SETUP_INSERT_SQLITE = """
+    INSERT OR IGNORE INTO setup_log
+        (symbol, setup_date, setup_type, regime,
+         rs_rank, sector_rs_rank, rank_change, rs_score_20,
+         base_tightness, vol_contraction, pivot_distance_pct,
+         bos_flag, sector, outcome_label)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+_DAILY_QUERIES_SQLITE = [
+    ("BREAKOUT", """
+        SELECT ss.symbol, ss.date, 'BREAKOUT', mr.regime,
+               ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+               ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+               ss.bos_flag, sm.sector, 'BREAKEVEN'
+        FROM stock_signals ss
+        LEFT JOIN market_regime mr ON ss.date = mr.date
+        LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = ?
+          AND ss.bos_flag = 1
+          AND ss.avg_vol_10d > 500000
+          AND COALESCE((
+              SELECT ss_prev.bos_flag
+              FROM stock_signals ss_prev
+              WHERE ss_prev.symbol = ss.symbol
+                AND ss_prev.date < ss.date
+              ORDER BY ss_prev.date DESC
+              LIMIT 1
+          ), 0) = 0
+    """),
+    ("PRE_BREAKOUT", """
+        SELECT ss.symbol, ss.date, 'PRE_BREAKOUT', mr.regime,
+               ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+               ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+               ss.bos_flag, sm.sector, 'BREAKEVEN'
+        FROM stock_signals ss
+        LEFT JOIN market_regime mr ON ss.date = mr.date
+        LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = ?
+          AND ss.pivot_distance_pct BETWEEN 0 AND 3
+          AND ss.base_tightness < 8
+          AND ss.avg_vol_10d > 200000
+    """),
+    ("RS_LEADER_MARKET", """
+        SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET', mr.regime,
+               ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+               ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+               ss.bos_flag, sm.sector, 'BREAKEVEN'
+        FROM stock_signals ss
+        LEFT JOIN market_regime mr ON ss.date = mr.date
+        LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = ?
+          AND ss.avg_vol_10d > 200000
+        ORDER BY ss.rs_score_20 DESC
+        LIMIT 20
+    """),
+    ("RS_LEADER_SECTOR", """
+        SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR', mr.regime,
+               ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+               ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+               ss.bos_flag, sm.sector, 'BREAKEVEN'
+        FROM stock_signals ss
+        LEFT JOIN market_regime mr ON ss.date = mr.date
+        LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = ?
+          AND ss.avg_vol_10d > 200000
+          AND ss.sector_rs_rank <= 3
+    """),
+]
+
+
+def _insert_setup_log_for_date(cur, target_date) -> int:
+    """Run all four daily setup queries for one date. Does not commit."""
+    inserted = 0
+    for _setup_type, select_sql in _DAILY_QUERIES_SQLITE:
+        rows = cur.execute(select_sql, (target_date,)).fetchall()
+        cur.executemany(_DAILY_SETUP_INSERT_SQLITE, rows)
+        inserted += cur.rowcount
+    return inserted
+
+
 def _pending_setup_log_dates(signal_dates, last_logged):
     """Which trading dates still need setup_log rows written.
 
@@ -396,86 +495,13 @@ def append_setup_log_today() -> int:
                 len(pending), pending[0], pending[-1],
             )
 
-        setup_insert = """
-            INSERT OR IGNORE INTO setup_log
-                (symbol, setup_date, setup_type, regime,
-                 rs_rank, sector_rs_rank, rank_change, rs_score_20,
-                 base_tightness, vol_contraction, pivot_distance_pct,
-                 bos_flag, sector, outcome_label)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-
-        queries = [
-            ("BREAKOUT", """
-                SELECT ss.symbol, ss.date, 'BREAKOUT', mr.regime,
-                       ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
-                       ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                       ss.bos_flag, sm.sector, 'BREAKEVEN'
-                FROM stock_signals ss
-                LEFT JOIN market_regime mr ON ss.date = mr.date
-                LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                WHERE ss.date = ?
-                  AND ss.bos_flag = 1
-                  AND ss.avg_vol_10d > 500000
-                  AND COALESCE((
-                      SELECT ss_prev.bos_flag
-                      FROM stock_signals ss_prev
-                      WHERE ss_prev.symbol = ss.symbol
-                        AND ss_prev.date < ss.date
-                      ORDER BY ss_prev.date DESC
-                      LIMIT 1
-                  ), 0) = 0
-            """),
-            ("PRE_BREAKOUT", """
-                SELECT ss.symbol, ss.date, 'PRE_BREAKOUT', mr.regime,
-                       ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
-                       ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                       ss.bos_flag, sm.sector, 'BREAKEVEN'
-                FROM stock_signals ss
-                LEFT JOIN market_regime mr ON ss.date = mr.date
-                LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                WHERE ss.date = ?
-                  AND ss.pivot_distance_pct BETWEEN 0 AND 3
-                  AND ss.base_tightness < 8
-                  AND ss.avg_vol_10d > 200000
-            """),
-            ("RS_LEADER_MARKET", """
-                SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET', mr.regime,
-                       ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
-                       ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                       ss.bos_flag, sm.sector, 'BREAKEVEN'
-                FROM stock_signals ss
-                LEFT JOIN market_regime mr ON ss.date = mr.date
-                LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                WHERE ss.date = ?
-                  AND ss.avg_vol_10d > 200000
-                ORDER BY ss.rs_score_20 DESC
-                LIMIT 20
-            """),
-            ("RS_LEADER_SECTOR", """
-                SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR', mr.regime,
-                       ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
-                       ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                       ss.bos_flag, sm.sector, 'BREAKEVEN'
-                FROM stock_signals ss
-                LEFT JOIN market_regime mr ON ss.date = mr.date
-                LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                WHERE ss.date = ?
-                  AND ss.avg_vol_10d > 200000
-                  AND ss.sector_rs_rank <= 3
-            """),
-        ]
 
         for target_date in pending:
             # Each date commits on its own, so a failure part-way through a
             # multi-day backfill keeps the days already written rather than
             # rolling the whole catch-up back.
             try:
-                day_inserted = 0
-                for setup_type, select_sql in queries:
-                    rows = cur.execute(select_sql, (target_date,)).fetchall()
-                    cur.executemany(setup_insert, rows)
-                    day_inserted += cur.rowcount
+                day_inserted = _insert_setup_log_for_date(cur, target_date)
                 conn.commit()
                 total_inserted += day_inserted
                 log.info("setup_log: %d rows inserted for %s.", day_inserted, target_date)
@@ -514,6 +540,84 @@ def append_setup_log_today() -> int:
     return total_inserted
 
 
+def append_setup_log_for_dates(dates, dry_run: bool = True) -> int:
+    """Repair specific `setup_log` dates, by the DAILY rules.
+
+    `append_setup_log_today()` only ever fills dates *after* setup_log's
+    high-water mark, which is correct for the daily hook but cannot reach a
+    hole below it. Those holes exist: before the 2026-08-12 backfill fix, a
+    day the hook missed was lost the moment a newer date was written (see
+    docs/KIRAN_CLEANUP_AUDIT.md §24). This is the deliberate, one-off repair
+    path for them.
+
+    Uses `_insert_setup_log_for_date()`, i.e. the exact same four queries the
+    daily hook runs, so a repaired date agrees with the days around it rather
+    than with run()'s different historical-backfill rules.
+
+    `dry_run=True` by default and reports per date without writing, matching
+    this project's standing production-write discipline (dry-run, then back
+    up, then execute, then re-verify independently). `INSERT OR IGNORE` plus
+    setup_log's UNIQUE(symbol, setup_date, setup_type) makes a real run
+    idempotent, so re-running cannot duplicate rows.
+
+    Postgres is deliberately NOT wired up here: repairing production is a
+    separate decision that needs explicit sign-off, not a flag on a utility.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    if _PG_URL:
+        raise RuntimeError(
+            "append_setup_log_for_dates() is SQLite-only by design. Repairing "
+            "production Supabase needs explicit sign-off and its own "
+            "backup/dry-run/verify pass -- see docs/KIRAN_CLEANUP_AUDIT.md §24.4."
+        )
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    total = 0
+    try:
+        for target_date in sorted(set(dates)):
+            has_signals = cur.execute(
+                "SELECT COUNT(*) FROM stock_signals WHERE date = ?", (target_date,)
+            ).fetchone()[0]
+            existing = cur.execute(
+                "SELECT COUNT(*) FROM setup_log WHERE setup_date = ?", (target_date,)
+            ).fetchone()[0]
+            if not has_signals:
+                log.warning("%s: no stock_signals rows -- skipped.", target_date)
+                continue
+
+            if dry_run:
+                would = sum(
+                    len(cur.execute(sql, (target_date,)).fetchall())
+                    for _t, sql in _DAILY_QUERIES_SQLITE
+                )
+                log.info("%s: DRY RUN -- %d row(s) would be written (%d already present).",
+                         target_date, would, existing)
+                total += would
+                continue
+
+            inserted = _insert_setup_log_for_date(cur, target_date)
+            conn.commit()
+            total += inserted
+            log.info("%s: %d row(s) written (%d present before).",
+                     target_date, inserted, existing)
+    finally:
+        conn.close()
+
+    if dry_run:
+        log.warning("DRY RUN -- nothing written. Re-run with dry_run=False to apply.")
+    return total
+
+
 if __name__ == "__main__":
-    dry_run = "--dry-run" in sys.argv
-    run(dry_run=dry_run)
+    if "--repair-dates" in sys.argv:
+        # python backfill_setup_log.py --repair-dates 2026-07-13,2026-07-20 [--execute]
+        idx = sys.argv.index("--repair-dates")
+        target_dates = [d.strip() for d in sys.argv[idx + 1].split(",") if d.strip()]
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        append_setup_log_for_dates(target_dates, dry_run="--execute" not in sys.argv)
+    else:
+        dry_run = "--dry-run" in sys.argv
+        run(dry_run=dry_run)

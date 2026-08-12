@@ -269,8 +269,11 @@ def cmd_update():
     # then advance status on anything already open (Target Hit/Stopped/Expired).
     # SQLite only, watch-and-manually-execute, not wired into leaders_scan/agent.
     try:
-        from boring_signals import scan_boring_breakouts, update_open_signal_statuses
-        n_new = scan_boring_breakouts()
+        # scan_boring_breakouts_pending(), not scan_boring_breakouts(): the
+        # latter scans the newest date only, so any day this hook missed was
+        # never scanned again (audit §25).
+        from boring_signals import scan_boring_breakouts_pending, update_open_signal_statuses
+        n_new = scan_boring_breakouts_pending()
         n_updated = update_open_signal_statuses()
         logger.info("Boring Breakouts: %d new signal(s), %d status update(s).", n_new, n_updated)
     except Exception as exc:
