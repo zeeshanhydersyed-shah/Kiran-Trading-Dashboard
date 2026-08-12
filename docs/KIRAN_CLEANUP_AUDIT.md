@@ -867,3 +867,38 @@ Suite is now **50 tests** (the 45 of §24, which already included setup_log's 10
 - **`agent.py` has the same boolean bug** (`stage2_bull = 1`, `agent.py:1140`/`1150`, plus `is_active = 1` at `:823`) and would fail the same way if it ever ran against Postgres. It is local/manual-only today (CLAUDE.md), and `main.py`'s daily subprocess call to it also fails on Actions for a separate reason — `anthropic` is in no requirements file (§23.5). Not fixed: it needs the agent's Postgres story decided first, not a one-line patch.
 - **Nothing sweeps for this bug class.** Four comparisons were found by grepping for known boolean columns. A cheap standing check — assert every boolean column in production is only ever compared with `IS TRUE`/`IS FALSE` in `_pg` code paths — would turn that into something automatic. Not built.
 - **§22 B6–B9** (freshness check, CLAUDE.md Known-Gaps update, local `prices_adjusted` staleness, interpreter standardisation) remain untouched.
+
+---
+
+## 26. <span style="color:#16a34a;">🟢 Resolved — the CI gate's first real verdict was red, and it was right (2026-08-12)</span>
+
+The first two CI runs after the gate went live both failed. Worth recording in full, because the failure is a small, precise example of the exact thing the gate was built to catch — found in the gate's own test suite.
+
+**Run results** (`clean-install` ✅ · `unit-tests` ❌ · `app-boot` ✅):
+
+The `app-boot` job passing is itself a result: all 15 pages render on Linux/Python 3.11 against the committed fixture, which is the first time this app has ever been proven to boot anywhere other than one Windows machine.
+
+**The failure.** GitHub's job-log API needs repo-admin rights, but check-run annotations are public, and they gave the decisive detail: `Process completed with exit code 2`. Exit 2 is pytest's *collection* failure — not an assertion failing, a test module failing to import. It also failed identically on the previous commit, which predates the tests added in §24/§25, so the fault lay in the §21 tests.
+
+**Cause.** `tests/test_regime_status_gap_detection.py` did `import dashboard` at module scope. Importing `dashboard.py` executes the entire Streamlit script, including `load_data()`, which queries `psx_data.db`. At module scope that runs during collection, so on any machine without a local database — i.e. every CI runner, since `psx_data.db` is gitignored — the import raised and pytest aborted the session:
+
+```
+ERROR tests/test_regime_status_gap_detection.py - sqlite3.OperationalError: no such table: prices
+!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!
+```
+
+Reproduced exactly in a fresh clone with no `psx_data.db` before changing anything.
+
+**These tests had only ever passed on a machine that happened to have the production database sitting next to them.** That is precisely the "works on my machine" class §22 A6 describes — and it was living inside the test suite written to prevent it. Nineteen tests that looked like coverage were, on any other machine, a collection error.
+
+**Fix.** `dashboard` is now imported lazily inside the fixture rather than at module scope, staging the committed fixture database first if there isn't a usable one and removing it afterwards. Every test still monkeypatches `DB_PATH` to its own temp database; the staged copy exists only to survive the import.
+
+**A second, smaller trap found while fixing it**, worth writing down because it cost a wrong diagnosis: checking `os.path.exists(psx_data.db)` is not enough. Any run that imports `dashboard.py` without a database *leaves an empty `psx_data.db` behind*, because `sqlite3.connect()` creates the file before the first query fails. The next run then sees a file, trusts it, and fails at fixture setup instead of collection — which is exactly what happened mid-fix and briefly sent this investigation after the wrong culprit (an imagined test leaking a file, disproved by running each module in isolation). The check is now "does this file actually have a `prices` table", and it refuses to overwrite a large-but-unreadable file rather than risk clobbering a real database.
+
+Verified under both conditions in a DB-less clone: fresh checkout → 34 passed, nothing left behind; stray empty `psx_data.db` present → 34 passed.
+
+**What this says about the gate.** It went red on its first real run, on a genuine defect, in code written the day before by the same session that built it. Three points worth keeping:
+
+1. **A test suite that has never run anywhere but one machine is not yet coverage.** The §21 tests were written, run locally, reported as passing, and committed — and would have failed for anyone else, including the CI job written specifically to run them.
+2. **The gate's value showed up immediately and was not the value advertised.** §23 justified `app-boot` as the job that catches what unit tests cannot. In practice the first thing caught was the unit tests themselves being unrunnable.
+3. **Red on the first run is the system working**, not a setup problem to be waved through. The temptation to treat an early CI failure as noise is exactly how a gate becomes decorative.

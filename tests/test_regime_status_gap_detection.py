@@ -26,14 +26,84 @@ the same reason the rest of this project's PG paths aren't: no live
 Postgres connection belongs in an automated test suite.
 """
 import os
+import shutil
 import sqlite3
 import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
 
-import dashboard  # noqa: E402
+# `dashboard` is imported LAZILY, inside the fixture -- not at module level.
+#
+# Importing dashboard.py executes the whole Streamlit script, including
+# load_data(), which queries psx_data.db. At module scope that runs during
+# pytest COLLECTION, so on any machine without a local database (i.e. a CI
+# runner, where psx_data.db is gitignored) the import raised and pytest
+# aborted the whole session with exit code 2 -- which is exactly what the
+# first two CI runs did on 2026-08-12. These tests had only ever passed on a
+# machine that happened to have the production database sitting next to them:
+# the "works on my machine" failure the CI gate exists to catch, caught in
+# the gate's own test suite. See docs/KIRAN_CLEANUP_AUDIT.md §26.
+dashboard = None
+
+LIVE_DB = os.path.join(_ROOT, "psx_data.db")
+FIXTURE_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "fixtures", "psx_fixture.db")
+
+
+def _is_usable(path: str) -> bool:
+    """Does this file actually carry the schema dashboard.py needs at import?
+
+    Mere existence is not enough, and that is not hypothetical: any run that
+    imports dashboard.py against a missing database leaves an EMPTY
+    psx_data.db behind, because sqlite3.connect() creates the file before the
+    first query fails. A later run then sees a file, trusts it, and fails at
+    fixture setup instead. Check for a real table rather than a filename.
+    """
+    if not os.path.exists(path):
+        return False
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            conn.execute("SELECT 1 FROM prices LIMIT 1").fetchone()
+            return True
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+
+
+def _import_dashboard():
+    """Import dashboard once, staging a database first if there isn't a usable one.
+
+    The staged copy is only needed to get through import; every test then
+    monkeypatches DB_PATH to its own temp database.
+    """
+    global dashboard
+    if dashboard is not None:
+        return dashboard
+    staged = False
+    if not _is_usable(LIVE_DB):
+        if not os.path.exists(FIXTURE_DB):
+            pytest.skip(f"no usable psx_data.db and no fixture at {FIXTURE_DB}")
+        if os.path.exists(LIVE_DB) and os.path.getsize(LIVE_DB) > 5_000_000:
+            # Unreadable but substantial -- that is not a stray empty file
+            # this suite created, so it is not ours to overwrite.
+            pytest.skip(f"{LIVE_DB} is large but unreadable -- refusing to replace it")
+        shutil.copyfile(FIXTURE_DB, LIVE_DB)
+        staged = True
+    try:
+        import dashboard as _dashboard
+    finally:
+        if staged:
+            for suffix in ("", "-journal", "-wal", "-shm"):
+                path = LIVE_DB + suffix
+                if os.path.exists(path):
+                    os.remove(path)
+    dashboard = _dashboard
+    return dashboard
 
 
 def _seed_db(path: str, market_regime_rows: list[tuple], index_prices_dates: list[str]):
@@ -61,6 +131,7 @@ def _seed_db(path: str, market_regime_rows: list[tuple], index_prices_dates: lis
 
 @pytest.fixture()
 def temp_db(tmp_path, monkeypatch):
+    dashboard = _import_dashboard()
     db_path = str(tmp_path / "test_psx_data.db")
     monkeypatch.setattr(dashboard, "DB_PATH", db_path)
     monkeypatch.delenv("DATABASE_URL", raising=False)
