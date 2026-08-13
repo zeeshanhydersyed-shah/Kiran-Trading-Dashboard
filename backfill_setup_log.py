@@ -233,11 +233,22 @@ def _append_setup_log_today_pg() -> int:
                     log.info("setup_log (PG): %d rows inserted for %s.",
                              day_inserted, target_date)
                 except _TRANSIENT_DB_ERRORS as exc:
-                    # Tolerated: a dropped connection or a lock timeout is a
-                    # blip, and the next run backfills the date anyway.
+                    # Tolerated for THIS date -- a dropped connection or a lock
+                    # timeout is a blip. But STOP, do not continue to the next
+                    # date. `pending` is ascending and the next run resumes
+                    # from MAX(setup_date), so the committed dates must stay a
+                    # contiguous prefix. Continuing would commit later dates,
+                    # push MAX past the one just skipped, and leave a hole
+                    # BELOW the high-water mark that `d > last_logged` can
+                    # never reach again -- the same permanent-loss shape as
+                    # §21 and §24, reintroduced through the error path.
+                    # Breaking leaves the gap at the tail, where tomorrow's
+                    # run picks it up automatically. See §28.
                     conn.rollback()
                     log.warning("setup_log step 1 (insert, PG) transient failure "
-                                "for %s, will retry next run: %s", target_date, exc)
+                                "for %s -- stopping here so the next run resumes "
+                                "from this date: %s", target_date, exc)
+                    break
                 except Exception:
                     # Everything else is a BUG, not a blip. This handler used
                     # to be `except Exception -> log.warning`, and it is what
