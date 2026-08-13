@@ -1,0 +1,88 @@
+name: setup_log repair (manual, scoped)
+
+# One-off, MANUALLY TRIGGERED repair of specific setup_log dates in production.
+#
+# Why this exists separately from daily_scraper.yml: the daily hook backfills
+# every pending date unattended. After production sat frozen from 2026-06-30
+# to 2026-08-12 behind two Postgres-only bugs, the first write back to that
+# table should be ONE date, inspected, rather than 2,029 rows landing while
+# nobody is looking. This workflow writes only the dates you name.
+#
+# Defaults to a DRY RUN. It reports what it would write and exits without
+# touching anything unless you explicitly set dry_run = false.
+#
+# It deliberately does NOT run forward returns or outcome labelling -- those
+# are whole-table operations and belong to the daily hook, not to a repair.
+#
+# See docs/KIRAN_CLEANUP_AUDIT.md §25, §27, §28.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dates:
+        description: 'Comma-separated dates, e.g. 2026-08-12 (start with ONE)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry run (report only, write nothing)'
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: setup-log-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Show what was requested
+        run: |
+          echo "dates   : ${{ inputs.dates }}"
+          echo "dry_run : ${{ inputs.dry_run }}"
+
+      - name: Repair
+        run: |
+          python backfill_setup_log.py \
+            --repair-dates "${{ inputs.dates }}" \
+            ${{ inputs.dry_run == false && '--execute' || '' }}
+
+      - name: Report resulting coverage
+        # Always prints the table's state afterwards, so the run's own log is
+        # the record of what changed rather than something to go and check.
+        run: |
+          python - <<'PY'
+          import os, psycopg2
+          conn = psycopg2.connect(os.environ["DATABASE_URL"])
+          conn.set_session(readonly=True, autocommit=True)
+          cur = conn.cursor()
+          cur.execute("SELECT MIN(setup_date), MAX(setup_date), COUNT(*) FROM setup_log")
+          print("setup_log: %s -> %s (%s rows)" % cur.fetchone())
+          cur.execute("""
+              SELECT setup_date, COUNT(*) FROM setup_log
+              WHERE setup_date > '2026-06-30'
+              GROUP BY setup_date ORDER BY setup_date
+          """)
+          rows = cur.fetchall()
+          print(f"dates after the freeze point: {len(rows)}")
+          for d, n in rows:
+              print(f"   {d}  {n}")
+          conn.close()
+          PY

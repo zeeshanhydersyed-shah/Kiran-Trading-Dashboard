@@ -267,9 +267,13 @@ def _pg_queries_block() -> str:
     business being aliased. Both showed up as false positives the first time
     these guards ran.
     """
+    import inspect
     import re
-    m = re.search(r"queries_pg = \[(.*?)\n            \]", _pg_source(), re.S)
-    assert m, "could not locate queries_pg -- guard is stale, fix the guard"
+    import backfill_setup_log
+
+    src = inspect.getsource(backfill_setup_log)
+    m = re.search(r"_DAILY_QUERIES_PG = \[(.*?)\n\]", src, re.S)
+    assert m, "could not locate _DAILY_QUERIES_PG -- guard is stale, fix the guard"
     return "\n".join(
         line for line in m.group(1).splitlines() if not line.strip().startswith("--")
     )
