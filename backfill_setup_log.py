@@ -25,7 +25,7 @@ INSERT OR IGNORE INTO setup_log (
 
 def fetch_pre_breakout(cur, date):
     cur.execute("""
-        SELECT ss.symbol, ss.date, 'PRE_BREAKOUT', mr.regime,
+        SELECT ss.symbol, ss.date, 'PRE_BREAKOUT' AS setup_type, mr.regime,
                ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
                ss.bos_flag, sm.sector
@@ -41,7 +41,7 @@ def fetch_pre_breakout(cur, date):
 
 def fetch_rs_leader_market(cur, date):
     cur.execute("""
-        SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET', mr.regime,
+        SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET' AS setup_type, mr.regime,
                ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
                ss.bos_flag, sm.sector
@@ -57,7 +57,7 @@ def fetch_rs_leader_market(cur, date):
 
 def fetch_rs_leader_sector(cur, date):
     cur.execute("""
-        SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR', mr.regime,
+        SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR' AS setup_type, mr.regime,
                ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
                ss.bos_flag, sm.sector
@@ -72,7 +72,7 @@ def fetch_rs_leader_sector(cur, date):
 
 def fetch_breakout(cur, date):
     cur.execute("""
-        SELECT ss.symbol, ss.date, 'BREAKOUT', mr.regime,
+        SELECT ss.symbol, ss.date, 'BREAKOUT' AS setup_type, mr.regime,
                ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
                ss.bos_flag, sm.sector
@@ -162,6 +162,9 @@ def _append_setup_log_today_pg() -> int:
     try:
         with get_conn() as conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            # Second, PLAIN cursor for the setup SELECT+INSERT loop below.
+            # It must not be the RealDictCursor: see the comment there.
+            tup_cur = conn.cursor()
 
             cur.execute("SELECT MAX(setup_date) AS d FROM setup_log")
             already = cur.fetchone()["d"]
@@ -206,10 +209,10 @@ def _append_setup_log_today_pg() -> int:
 
             queries_pg = [
                 ("BREAKOUT", """
-                    SELECT ss.symbol, ss.date, 'BREAKOUT', mr.regime,
+                    SELECT ss.symbol, ss.date, 'BREAKOUT' AS setup_type, mr.regime,
                            ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                            ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                           ss.bos_flag, sm.sector, 'BREAKEVEN'
+                           ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
                     FROM stock_signals ss
                     LEFT JOIN market_regime mr ON ss.date = mr.date
                     LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
@@ -236,10 +239,10 @@ def _append_setup_log_today_pg() -> int:
                       ), FALSE) IS FALSE
                 """),
                 ("PRE_BREAKOUT", """
-                    SELECT ss.symbol, ss.date, 'PRE_BREAKOUT', mr.regime,
+                    SELECT ss.symbol, ss.date, 'PRE_BREAKOUT' AS setup_type, mr.regime,
                            ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                            ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                           ss.bos_flag, sm.sector, 'BREAKEVEN'
+                           ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
                     FROM stock_signals ss
                     LEFT JOIN market_regime mr ON ss.date = mr.date
                     LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
@@ -249,10 +252,10 @@ def _append_setup_log_today_pg() -> int:
                       AND ss.avg_vol_10d > 200000
                 """),
                 ("RS_LEADER_MARKET", """
-                    SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET', mr.regime,
+                    SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET' AS setup_type, mr.regime,
                            ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                            ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                           ss.bos_flag, sm.sector, 'BREAKEVEN'
+                           ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
                     FROM stock_signals ss
                     LEFT JOIN market_regime mr ON ss.date = mr.date
                     LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
@@ -262,10 +265,10 @@ def _append_setup_log_today_pg() -> int:
                     LIMIT 20
                 """),
                 ("RS_LEADER_SECTOR", """
-                    SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR', mr.regime,
+                    SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR' AS setup_type, mr.regime,
                            ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                            ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                           ss.bos_flag, sm.sector, 'BREAKEVEN'
+                           ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
                     FROM stock_signals ss
                     LEFT JOIN market_regime mr ON ss.date = mr.date
                     LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
@@ -281,10 +284,25 @@ def _append_setup_log_today_pg() -> int:
                 try:
                     day_inserted = 0
                     for setup_type, select_sql in queries_pg:
-                        cur.execute(select_sql, (target_date,))
-                        rows = [tuple(r.values()) for r in cur.fetchall()]
+                        # Plain cursor, deliberately. Each of these SELECTs
+                        # projects two unnamed literals ('BREAKOUT' and
+                        # 'BREAKEVEN'), and Postgres names BOTH of them
+                        # "?column?". Through a RealDictCursor the duplicate
+                        # key collapses, so `tuple(r.values())` produced 13
+                        # values for 14 %s placeholders and execute_batch
+                        # raised `IndexError: tuple index out of range` on
+                        # every single row. The per-date except below caught
+                        # it, rolled back, logged a WARNING nobody reads, and
+                        # the pipeline carried on reporting success -- which
+                        # is why production setup_log wrote ZERO rows every
+                        # day from the E8.7 port until 2026-08-12, even after
+                        # the bos_flag fix. The literals are aliased now too
+                        # (defence in depth); this cursor is the actual fix.
+                        # See docs/KIRAN_CLEANUP_AUDIT.md §27.
+                        tup_cur.execute(select_sql, (target_date,))
+                        rows = tup_cur.fetchall()
                         if rows:
-                            psycopg2.extras.execute_batch(cur, setup_insert_pg, rows)
+                            psycopg2.extras.execute_batch(tup_cur, setup_insert_pg, rows)
                             day_inserted += len(rows)
                     conn.commit()
                     total_inserted += day_inserted
@@ -345,10 +363,10 @@ _DAILY_SETUP_INSERT_SQLITE = """
 
 _DAILY_QUERIES_SQLITE = [
     ("BREAKOUT", """
-        SELECT ss.symbol, ss.date, 'BREAKOUT', mr.regime,
+        SELECT ss.symbol, ss.date, 'BREAKOUT' AS setup_type, mr.regime,
                ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-               ss.bos_flag, sm.sector, 'BREAKEVEN'
+               ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
         FROM stock_signals ss
         LEFT JOIN market_regime mr ON ss.date = mr.date
         LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
@@ -365,10 +383,10 @@ _DAILY_QUERIES_SQLITE = [
           ), 0) = 0
     """),
     ("PRE_BREAKOUT", """
-        SELECT ss.symbol, ss.date, 'PRE_BREAKOUT', mr.regime,
+        SELECT ss.symbol, ss.date, 'PRE_BREAKOUT' AS setup_type, mr.regime,
                ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-               ss.bos_flag, sm.sector, 'BREAKEVEN'
+               ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
         FROM stock_signals ss
         LEFT JOIN market_regime mr ON ss.date = mr.date
         LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
@@ -378,10 +396,10 @@ _DAILY_QUERIES_SQLITE = [
           AND ss.avg_vol_10d > 200000
     """),
     ("RS_LEADER_MARKET", """
-        SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET', mr.regime,
+        SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET' AS setup_type, mr.regime,
                ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-               ss.bos_flag, sm.sector, 'BREAKEVEN'
+               ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
         FROM stock_signals ss
         LEFT JOIN market_regime mr ON ss.date = mr.date
         LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
@@ -391,10 +409,10 @@ _DAILY_QUERIES_SQLITE = [
         LIMIT 20
     """),
     ("RS_LEADER_SECTOR", """
-        SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR', mr.regime,
+        SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR' AS setup_type, mr.regime,
                ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
                ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-               ss.bos_flag, sm.sector, 'BREAKEVEN'
+               ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
         FROM stock_signals ss
         LEFT JOIN market_regime mr ON ss.date = mr.date
         LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
