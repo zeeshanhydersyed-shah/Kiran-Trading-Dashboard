@@ -2014,6 +2014,154 @@ def _get_sector_composite_history(sector, before_date):
     return hist
 
 
+# Round-trip cost under this project's own model: BROKERAGE_PCT * (1 + FED_ON_BROK)
+# + SLIPPAGE_PCT = 0.4225% per side (grand_test.py, derived from the BMA statement),
+# doubled for entry + exit. Kept as a local constant rather than imported --
+# grand_test.py is a research script, not a module dashboard.py should depend on;
+# if that model ever changes, this needs changing with it.
+# CGT is deliberately NOT included: it is 15% on net *annual* realized gain at
+# portfolio level (losses offset, Jul-Jun fiscal year), which cannot be attributed
+# to an individual trade without knowing the rest of the year's book.
+_BO_ROUND_TRIP_COST_PCT = 0.845
+
+
+def _boring_kse_return(start_date: str, end_date: str):
+    """
+    KSE-100 % change across the screener's own live window — the benchmark that
+    answers 'was this just index beta?' in place rather than by asking someone.
+    Returns None if the index series can't cover the window, so the caller can
+    omit the line instead of rendering a misleading 0.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        rows = conn.execute(
+            """SELECT close FROM index_prices
+               WHERE symbol = 'KSE-100' AND date BETWEEN ? AND ?
+               ORDER BY date""",
+            (start_date, end_date),
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return None
+    if len(rows) < 2 or not rows[0][0]:
+        return None
+    return (rows[-1][0] / rows[0][0] - 1) * 100
+
+
+def _render_boring_performance(_bo_df, confirmed_only: bool):
+    """
+    Live performance read for the Boring Breakouts screener, computed on the fly
+    from `boring_signals` — no precomputed table and no batch job, the same
+    live-compute pattern the Stealth RS toggle uses.
+
+    Two conventions this shares with the rest of the section, both load-bearing:
+
+      * N=20 and N=60 rows for the same symbol+signal_date are ONE real trade
+        (identical entry, identical trailing-stop walk) and are collapsed before
+        any statistic is computed. Roughly half the rows are such duplicates, so
+        skipping this would inflate every count and distort nothing else — which
+        is precisely what makes it easy to miss.
+      * A resolved trade's exit is `current_stop`, the modeled trailing-stop
+        level, not the printed Low. That is the optimistic-fill convention
+        update_open_signal_statuses() books and rounds 5-8 validated; on a market
+        with circuit locks, real fills can be worse.
+
+    Beyond the headline win/loss/EV numbers this deliberately surfaces the two
+    things that decide whether the headline is trustworthy at size: how much of
+    the record rests on a single trade (EV ex-best), and how concentrated the
+    symbols are. Both were live, unresolved caveats as of the first month.
+    """
+    _perf_src = _bo_df[_bo_df["strategy_confirmed"] == 1] if confirmed_only else _bo_df
+    _perf = _perf_src.drop_duplicates(subset=["symbol", "signal_date"]).copy()
+
+    _label = "Strategy Confirmed" if confirmed_only else "all fired signals"
+    with st.expander(f"📊 Live Performance — {_label}", expanded=True):
+        _open_n = int(_perf["status"].isin(["Pending", "Executed"]).sum())
+        _res = _perf[(_perf["status"] == "Stopped") & _perf["current_stop"].notna()].copy()
+        if _res.empty:
+            st.info(f"No resolved trades yet for {_label}. Open positions: {_open_n}.")
+            return
+
+        _res["ret"] = (_res["current_stop"] - _res["trigger_price"]) / _res["trigger_price"] * 100
+        _res = _res.sort_values(["signal_date", "id"])
+        _wins, _losses = _res[_res["ret"] > 0], _res[_res["ret"] <= 0]
+        _avg_w = _wins["ret"].mean() if len(_wins) else float("nan")
+        _avg_l = _losses["ret"].mean() if len(_losses) else float("nan")
+        _ev = _res["ret"].mean()
+
+        # Longest run of consecutive losers, in fire-date order -- the number that
+        # actually predicts how this feels to hold, which a win rate alone doesn't.
+        _streak = _worst_streak = 0
+        for _is_loss in (_res["ret"] <= 0):
+            _streak = _streak + 1 if _is_loss else 0
+            _worst_streak = max(_worst_streak, _streak)
+
+        _c = st.columns(5)
+        _c[0].metric("Resolved trades", f"{len(_res)}", help=f"{_open_n} still open (not counted here).")
+        _c[1].metric("Win rate", f"{len(_wins) / len(_res) * 100:.1f}%",
+                     help=f"{len(_wins)} win / {len(_losses)} loss. A trade is a win if the trailing "
+                          "stop ended above entry — there is no take-profit target in this system.")
+        _c[2].metric("Avg win", "n/a" if pd.isna(_avg_w) else f"{_avg_w:+.2f}%")
+        _c[3].metric("Avg loss", "n/a" if pd.isna(_avg_l) else f"{_avg_l:+.2f}%")
+        _c[4].metric("Reward:Risk",
+                     "n/a" if (pd.isna(_avg_w) or pd.isna(_avg_l) or _avg_l == 0)
+                     else f"{abs(_avg_w / _avg_l):.1f} : 1",
+                     help="Avg win ÷ avg loss. Looks extreme by design: this is an uncapped "
+                          "trend-follower — many small stops, rare large runners.")
+
+        _c2 = st.columns(5)
+        _c2[0].metric("EV / trade (gross)", f"{_ev:+.2f}%")
+        _c2[1].metric("EV / trade (net)", f"{_ev - _BO_ROUND_TRIP_COST_PCT:+.2f}%",
+                      help=f"Less {_BO_ROUND_TRIP_COST_PCT:.3f}% round-trip cost (0.15% brokerage "
+                           "× 1.15 FED + 0.25% slippage, per side). Excludes CGT, which settles "
+                           "annually at portfolio level and can't be charged per trade.")
+        _c2[2].metric("Worst single loss", f"{_res['ret'].min():+.2f}%",
+                      help="The trailing stop floors at −8% from entry, so this is the real "
+                           "downside experienced, not a theoretical maximum.")
+        _c2[3].metric("Longest losing streak", f"{_worst_streak}",
+                      help="Consecutive losers in fire-date order — the mental-capital number.")
+        _c2[4].metric("Median hold", f"{_res['days_open'].median():.0f}d")
+
+        # ── The two checks that decide whether the numbers above survive at size ──
+        _notes = []
+        if len(_res) > 1:
+            _ex_best = _res.drop(_res["ret"].idxmax())
+            _best = _res.loc[_res["ret"].idxmax()]
+            _notes.append(
+                f"**Tail dependence** — drop the single best trade ({_best['symbol']} "
+                f"{_best['ret']:+.1f}%) and EV goes {_ev:+.2f}% → **{_ex_best['ret'].mean():+.2f}%**. "
+                f"Median trade is {_res['ret'].median():+.2f}%. Being paid on tails is this "
+                "system's designed shape, but it means skipping signals is not a neutral act."
+            )
+        _n_sym = _res["symbol"].nunique()
+        _clusters = _res.groupby(_res["symbol"].str[:3]).agg(trades=("symbol", "size"),
+                                                             syms=("symbol", "nunique"))
+        _top = _clusters.sort_values("trades", ascending=False).iloc[0]
+        _top_name = _clusters.sort_values("trades", ascending=False).index[0]
+        _notes.append(
+            f"**Concentration** — {_n_sym} unique symbols across {len(_res)} trades. Largest "
+            f"ticker cluster `{_top_name}*`: {int(_top['trades'])} trades "
+            f"({_top['trades'] / len(_res) * 100:.0f}%) across {int(_top['syms'])} symbol(s). "
+            "Cluster is a 3-letter-prefix heuristic — usually one corporate group on PSX, but "
+            "check it before trusting it (PAK*, for instance, is several unrelated companies)."
+        )
+        _kse = _boring_kse_return(_res["signal_date"].min(), _res["resolution_date"].max())
+        if _kse is not None:
+            _notes.append(
+                f"**Benchmark** — KSE-100 moved **{_kse:+.2f}%** over the same window "
+                f"({_res['signal_date'].min()} → {_res['resolution_date'].max()}). Return earned "
+                "against a flat or falling index isn't index beta."
+            )
+        for _n in _notes:
+            st.caption(_n)
+
+        st.caption(
+            "⚠️ Exits are **modelled**: a resolved trade books out at the trailing-stop level, "
+            "not the printed Low. Real fills on circuit-locked days will be worse. Treat these "
+            "as the optimistic bound until enough live fills exist to measure the gap."
+        )
+
+
 def _render_boring_breakouts_section():
     """
     'Boring Breakouts' toggle content — RS_60-conditioned Donchian breakout,
@@ -2163,6 +2311,8 @@ def _render_boring_breakouts_section():
                 st.rerun()
             else:
                 st.info("No rows checked.")
+
+    _render_boring_performance(_bo_df, _bo_confirmed_only)
 
     # Resolved (Stopped) history -- deliberately outside/after the open-positions
     # if/else above, so it renders regardless of whether the main table is empty.
