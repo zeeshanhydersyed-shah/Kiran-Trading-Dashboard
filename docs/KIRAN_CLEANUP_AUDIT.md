@@ -954,3 +954,55 @@ Production `setup_log` has been dead since the E8.7 port — **not** since 2026-
 What would actually have caught both, on day one, is the thing §23.5 already names as the gate's largest hole: **a Postgres service container in CI**. Two silent six-week outages is now the empirical case for it, and it should be treated as the next piece of work rather than a nice-to-have.
 
 **Still not repaired:** production data. The fix is verified but the 30 dates remain missing until a successful run writes them.
+
+---
+
+## 28. Hook error handling narrowed, and the register of what is still swallowed (2026-08-13)
+
+Two Postgres-only bugs (§25, §27) each raised on every row of every date for weeks and were invisible because the handler around them was `except Exception -> log.warning`, and because `main()` never set an exit code. Thirty consecutive dead runs looked like thirty successful ones.
+
+### 28.1 What changed
+
+`setup_log`'s hook only. Transient database errors (`psycopg2.OperationalError`, `InterfaceError` — a dropped connection, a lock timeout) are still caught, logged and tolerated for that date, because the next run backfills it. **Everything else re-raises**, is logged with a traceback and a `::error::` annotation, is recorded in `main.py`'s `_HOOK_FAILURES`, and makes `cmd_update()` exit non-zero at the end — *after* every remaining hook has still had its turn, which is the part of the original design worth keeping.
+
+### 28.2 <span style="color:#dc2626;">The register: 15 handlers still swallowing, in `cmd_update()`</span>
+
+Recorded **2026-08-13**. The point of dating this is that "we'll narrow the rest later" is exactly the kind of promise that becomes permanent. If this table is still unchanged in a month, that is itself the finding.
+
+Everything below is still `except Exception -> logger.warning` + exit 0.
+
+| # | Line | Hook | Why it is still broad | Tier |
+|---|---|---|---|---|
+| 1 | 238 | `append_latest_regime()` | Writes `market_regime`, which drives the sidebar regime widget and every gate. **Already silently lost data once** (§21). | **1** |
+| 2 | 268 | `sector_signals` | Writes `sector_signals`; same 2026-08-07 silent loss as regime. | **1** |
+| 3 | 274 | `stock_signals` | Writes `stock_signals` — the table every setup query reads. | **1** |
+| 4 | 231 | `prices_adjusted` + suspects | Writes `prices_adjusted`; a corporate-action miss corrupts every downstream signal for that symbol. | **1** |
+| 5 | 168 | Leaders deep scan (early) | Writes `leaders_scan`; frozen since 2026-06-30 for the same boolean bug (§25). | 2 |
+| 6 | 337 | Leaders deep scan (late) | Second call site of the same hook — both need the same treatment, and the duplication is worth resolving. | 2 |
+| 7 | 250 | `days_to_nearest_transition` backfill | Writes a derived column; failure is quiet and cumulative. | 2 |
+| 8 | 182 | Rolling trim (early) | Deletes rows outside the 2-year window. A silent failure grows the DB; a silent *success* on the wrong predicate deletes real data. | 2 |
+| 9 | 379 | Rolling trim (late) | Second call site, as above. | 2 |
+| 10 | 153 | Same-day re-check | Decides whether to re-scrape when data looks current; failure means a stale day passes unnoticed. | 3 |
+| 11 | 343 | `run_analysis` | Read/report path, no writes. | 3 |
+| 12 | 362 | Breadth oscillator | Runs a subprocess; failure only affects a chart. | 3 |
+| 13 | 262 | Flow scrape | Feeds `market_flows` -> `sector_signals.flow_*`, a **write-only chain nothing reads** since the Flows page was retired (§12). Needs a keep/kill decision before it can be made fatal. | 4 |
+| 14 | 306 | Boring Breakouts | SQLite-only; on a fresh Actions checkout the eligible universe is empty, so it is a no-op there by design. | 4 |
+| 15 | 329 | Agent daily | `anthropic` is in no requirements file (§23.5), so this fails on every Actions run today. | 4 |
+
+**Tier 1** — make fatal next. They write the core signal chain and have a demonstrated history of silent loss.
+**Tier 2** — after tier 1, once each has been observed failing/not-failing for a week.
+**Tier 3** — low blast radius; narrow when convenient.
+**Tier 4** — <span style="color:#dc2626;">cannot be made fatal without a decision first</span>: each is *believed* to fail or no-op on Actions today. Making them fatal now would paint the daily run red every morning, and a permanently-red pipeline teaches you to ignore red — which is how this entire class survived.
+
+**Triage step 0, before any of the above:** confirm, from a real Actions log, which of these 15 currently fail on every run. That status is inferred from code and documentation here, **not** verified against a production log — the same shortcut that produced the wrong prediction in §27. Do that first.
+
+### 28.3 Sweep scope, for the record
+
+The §27 sweep covered **all of `psx_pipeline`**, not just Postgres-adjacent files, flagging any file containing `RealDictCursor` (16 files; 9 are dead `database_pg_backup_e*.py`). Files that talk to production through *plain* cursors are immune to this class by construction — a tuple cannot collapse — which is why they are not in the list.
+
+Checked and clear, so the boundary is explicit rather than assumed:
+
+- **Zahra** (`D:\BUSINESS\US Trading\zahra`) — 66 Python files, **zero** `psycopg2`, zero `RealDictCursor`, zero references to `DATABASE_URL`/`SUPABASE_DB_URL`. No shared code path with this pipeline's DB layer.
+- `big_fish`, `ml_feature_study`, `breadth_momentum_study`, `engulfing_Study`, `Linda_Raschke-Study` — all zero on both counts.
+- `ARCHIVED_PSX_SCRAPER` (1 file) and `backups/` (2 files), skipped by the original sweep — re-checked, zero hits, so the skip hid nothing.
+- `research_db.py`, the opt-in Postgres bridge for the six ZH_research scripts, uses `pd.read_sql_query`, not a dict cursor. Duplicate column names there produce visibly duplicated DataFrame columns, not a silent row-shortening.

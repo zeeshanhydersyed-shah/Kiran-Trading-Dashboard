@@ -197,86 +197,10 @@ def _append_setup_log_today_pg() -> int:
                     len(pending), pending[0], pending[-1],
                 )
 
-            setup_insert_pg = """
-                INSERT INTO setup_log
-                    (symbol, setup_date, setup_type, regime,
-                     rs_rank, sector_rs_rank, rank_change, rs_score_20,
-                     base_tightness, vol_contraction, pivot_distance_pct,
-                     bos_flag, sector, outcome_label)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT DO NOTHING
-            """
 
-            queries_pg = [
-                ("BREAKOUT", """
-                    SELECT ss.symbol, ss.date, 'BREAKOUT' AS setup_type, mr.regime,
-                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
-                           ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                           ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
-                    FROM stock_signals ss
-                    LEFT JOIN market_regime mr ON ss.date = mr.date
-                    LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                    WHERE ss.date = %s
-                      -- `bos_flag = 1` (what the SQLite twin of this query
-                      -- says) raises `operator does not exist: boolean =
-                      -- integer` on Postgres, where the column is BOOLEAN,
-                      -- not INTEGER. That error aborts the transaction, so
-                      -- all four queries for the date fail and NOTHING is
-                      -- written -- which is why production setup_log sat
-                      -- frozen at 2026-06-30 for six weeks while
-                      -- stock_signals stayed current. Same SQLite/Postgres
-                      -- type-mismatch class as the TEXT vs DATE gotcha in
-                      -- CLAUDE.md. See docs/KIRAN_CLEANUP_AUDIT.md §25.
-                      AND ss.bos_flag IS TRUE
-                      AND ss.avg_vol_10d > 500000
-                      AND COALESCE((
-                          SELECT ss_prev.bos_flag
-                          FROM stock_signals ss_prev
-                          WHERE ss_prev.symbol = ss.symbol
-                            AND ss_prev.date < ss.date
-                          ORDER BY ss_prev.date DESC
-                          LIMIT 1
-                      ), FALSE) IS FALSE
-                """),
-                ("PRE_BREAKOUT", """
-                    SELECT ss.symbol, ss.date, 'PRE_BREAKOUT' AS setup_type, mr.regime,
-                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
-                           ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                           ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
-                    FROM stock_signals ss
-                    LEFT JOIN market_regime mr ON ss.date = mr.date
-                    LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                    WHERE ss.date = %s
-                      AND ss.pivot_distance_pct BETWEEN 0 AND 3
-                      AND ss.base_tightness < 8
-                      AND ss.avg_vol_10d > 200000
-                """),
-                ("RS_LEADER_MARKET", """
-                    SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET' AS setup_type, mr.regime,
-                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
-                           ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                           ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
-                    FROM stock_signals ss
-                    LEFT JOIN market_regime mr ON ss.date = mr.date
-                    LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                    WHERE ss.date = %s
-                      AND ss.avg_vol_10d > 200000
-                    ORDER BY ss.rs_score_20 DESC
-                    LIMIT 20
-                """),
-                ("RS_LEADER_SECTOR", """
-                    SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR' AS setup_type, mr.regime,
-                           ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
-                           ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
-                           ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
-                    FROM stock_signals ss
-                    LEFT JOIN market_regime mr ON ss.date = mr.date
-                    LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
-                    WHERE ss.date = %s
-                      AND ss.avg_vol_10d > 200000
-                      AND ss.sector_rs_rank <= 3
-                """),
-            ]
+
+            setup_insert_pg = _DAILY_SETUP_INSERT_PG
+            queries_pg = _DAILY_QUERIES_PG
 
             for target_date in pending:
                 # Commit per date for the same reason as the SQLite path: a
@@ -308,18 +232,37 @@ def _append_setup_log_today_pg() -> int:
                     total_inserted += day_inserted
                     log.info("setup_log (PG): %d rows inserted for %s.",
                              day_inserted, target_date)
-                except Exception as exc:
+                except _TRANSIENT_DB_ERRORS as exc:
+                    # Tolerated: a dropped connection or a lock timeout is a
+                    # blip, and the next run backfills the date anyway.
                     conn.rollback()
-                    log.warning("setup_log step 1 (insert, PG) failed for %s: %s",
-                                target_date, exc)
+                    log.warning("setup_log step 1 (insert, PG) transient failure "
+                                "for %s, will retry next run: %s", target_date, exc)
+                except Exception:
+                    # Everything else is a BUG, not a blip. This handler used
+                    # to be `except Exception -> log.warning`, and it is what
+                    # hid BOTH Postgres-only bugs for six weeks: the boolean
+                    # comparison (§25) and the dict-cursor column loss (§27)
+                    # each raised here on every row of every date, were logged
+                    # as a warning nobody reads, and the pipeline reported
+                    # success. Re-raise so the run goes red. See §28.
+                    conn.rollback()
+                    log.exception("setup_log step 1 (insert, PG) FAILED for %s "
+                                  "-- unexpected error, failing the run", target_date)
+                    raise
 
         # Step 2 — forward returns (own connection, branches on _PG_URL internally)
         try:
             from compute_forward_returns import main as cfr_main
             cfr_main()
             log.info("setup_log (PG): forward returns updated.")
-        except Exception as exc:
-            log.warning("setup_log step 2 (forward returns, PG) failed: %s", exc)
+        except _TRANSIENT_DB_ERRORS as exc:
+            log.warning("setup_log step 2 (forward returns, PG) transient "
+                        "failure, will retry next run: %s", exc)
+        except Exception:
+            log.exception("setup_log step 2 (forward returns, PG) FAILED "
+                          "-- unexpected error, failing the run")
+            raise
 
         # Step 3 — label outcomes
         try:
@@ -336,13 +279,35 @@ def _append_setup_log_today_pg() -> int:
                       AND (outcome_label = 'BREAKEVEN' OR outcome_label IS NULL)
                 """)
                 log.info("setup_log (PG): %d rows labelled.", cur.rowcount)
-        except Exception as exc:
-            log.warning("setup_log step 3 (labelling, PG) failed: %s", exc)
+        except _TRANSIENT_DB_ERRORS as exc:
+            log.warning("setup_log step 3 (labelling, PG) transient failure, "
+                        "will retry next run: %s", exc)
+        except Exception:
+            log.exception("setup_log step 3 (labelling, PG) FAILED "
+                          "-- unexpected error, failing the run")
+            raise
 
-    except Exception as exc:
-        log.warning("setup_log hook (PG) failed: %s", exc)
+    except _TRANSIENT_DB_ERRORS as exc:
+        log.warning("setup_log hook (PG) transient failure, will retry next "
+                    "run: %s", exc)
 
     return total_inserted
+
+
+# Exceptions worth tolerating for a single date: a dropped connection or a
+# lock/serialization blip. The next run backfills that date anyway. ANYTHING
+# ELSE reaching a hook handler is a bug and must fail the run -- broad
+# `except Exception -> log.warning` is exactly what hid the two Postgres-only
+# bugs in §25 and §27 for six weeks. See docs/KIRAN_CLEANUP_AUDIT.md §28.
+def _transient_db_errors():
+    try:
+        import psycopg2
+        return (psycopg2.OperationalError, psycopg2.InterfaceError)
+    except ImportError:          # SQLite-only environments
+        return (sqlite3.OperationalError,)
+
+
+_TRANSIENT_DB_ERRORS = _transient_db_errors()
 
 
 # ── Daily setup-detection rules, SQLite ───────────────────────────────────────
@@ -431,6 +396,98 @@ def _insert_setup_log_for_date(cur, target_date) -> int:
         cur.executemany(_DAILY_SETUP_INSERT_SQLITE, rows)
         inserted += cur.rowcount
     return inserted
+
+
+# ── Daily setup-detection rules, Postgres ─────────────────────────────────────
+# Module level, same reason as the SQLite pair above: the daily hook and the
+# scoped repair path must insert by identical rules. Literals are ALIASED --
+# see §27: two unnamed literals both come back named "?column?" and collapse
+# if a row is ever round-tripped through a dict.
+_DAILY_SETUP_INSERT_PG = """
+                INSERT INTO setup_log
+                    (symbol, setup_date, setup_type, regime,
+                     rs_rank, sector_rs_rank, rank_change, rs_score_20,
+                     base_tightness, vol_contraction, pivot_distance_pct,
+                     bos_flag, sector, outcome_label)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING
+            """
+
+_DAILY_QUERIES_PG = [
+    ("BREAKOUT", """
+        SELECT ss.symbol, ss.date, 'BREAKOUT' AS setup_type, mr.regime,
+               ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+               ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+               ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
+        FROM stock_signals ss
+        LEFT JOIN market_regime mr ON ss.date = mr.date
+        LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = %s
+          -- `bos_flag = 1` (what the SQLite twin of this query
+          -- says) raises `operator does not exist: boolean =
+          -- integer` on Postgres, where the column is BOOLEAN,
+          -- not INTEGER. That error aborts the transaction, so
+          -- all four queries for the date fail and NOTHING is
+          -- written -- which is why production setup_log sat
+          -- frozen at 2026-06-30 for six weeks while
+          -- stock_signals stayed current. Same SQLite/Postgres
+          -- type-mismatch class as the TEXT vs DATE gotcha in
+          -- CLAUDE.md. See docs/KIRAN_CLEANUP_AUDIT.md §25.
+          AND ss.bos_flag IS TRUE
+          AND ss.avg_vol_10d > 500000
+          AND COALESCE((
+              SELECT ss_prev.bos_flag
+              FROM stock_signals ss_prev
+              WHERE ss_prev.symbol = ss.symbol
+                AND ss_prev.date < ss.date
+              ORDER BY ss_prev.date DESC
+              LIMIT 1
+          ), FALSE) IS FALSE
+    """),
+    ("PRE_BREAKOUT", """
+        SELECT ss.symbol, ss.date, 'PRE_BREAKOUT' AS setup_type, mr.regime,
+               ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+               ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+               ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
+        FROM stock_signals ss
+        LEFT JOIN market_regime mr ON ss.date = mr.date
+        LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = %s
+          AND ss.pivot_distance_pct BETWEEN 0 AND 3
+          AND ss.base_tightness < 8
+          AND ss.avg_vol_10d > 200000
+    """),
+    ("RS_LEADER_MARKET", """
+        SELECT ss.symbol, ss.date, 'RS_LEADER_MARKET' AS setup_type, mr.regime,
+               ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+               ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+               ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
+        FROM stock_signals ss
+        LEFT JOIN market_regime mr ON ss.date = mr.date
+        LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = %s
+          AND ss.avg_vol_10d > 200000
+        ORDER BY ss.rs_score_20 DESC
+        LIMIT 20
+    """),
+    ("RS_LEADER_SECTOR", """
+        SELECT ss.symbol, ss.date, 'RS_LEADER_SECTOR' AS setup_type, mr.regime,
+               ss.rs_rank, ss.sector_rs_rank, ss.rank_change, ss.rs_score_20,
+               ss.base_tightness, ss.vol_contraction, ss.pivot_distance_pct,
+               ss.bos_flag, sm.sector, 'BREAKEVEN' AS outcome_label
+        FROM stock_signals ss
+        LEFT JOIN market_regime mr ON ss.date = mr.date
+        LEFT JOIN stock_metadata sm ON ss.symbol = sm.symbol
+        WHERE ss.date = %s
+          AND ss.avg_vol_10d > 200000
+          AND ss.sector_rs_rank <= 3
+    """),
+]
+
+
+def _daily_queries_pg():
+    """Accessor so callers do not import the constant directly."""
+    return _DAILY_QUERIES_PG
 
 
 def _pending_setup_log_dates(signal_dates, last_logged):
@@ -558,6 +615,56 @@ def append_setup_log_today() -> int:
     return total_inserted
 
 
+def _append_setup_log_for_dates_pg(dates, dry_run, log) -> int:
+    """Postgres half of append_setup_log_for_dates(). Explicit dates only.
+
+    Deliberately narrow: it inserts setups for exactly the dates given and
+    does nothing else. It does NOT run forward returns or outcome labelling
+    (steps 2 and 3 of the daily hook) -- those are whole-table operations and
+    have no business running inside a scoped repair. The next daily run does
+    them.
+    """
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    total = 0
+    with get_conn() as conn:
+        tup_cur = conn.cursor()          # plain cursor -- see §27
+        for target_date in dates:
+            tup_cur.execute(
+                "SELECT COUNT(*) FROM stock_signals WHERE date = %s", (target_date,))
+            if not tup_cur.fetchone()[0]:
+                log.warning("%s: no stock_signals rows -- skipped.", target_date)
+                continue
+            tup_cur.execute(
+                "SELECT COUNT(*) FROM setup_log WHERE setup_date = %s", (target_date,))
+            existing = tup_cur.fetchone()[0]
+
+            rows_for_date = []
+            for _setup_type, select_sql in _daily_queries_pg():
+                tup_cur.execute(select_sql, (target_date,))
+                rows_for_date.extend(tup_cur.fetchall())
+
+            if dry_run:
+                log.info("%s: DRY RUN -- %d row(s) would be written (%d already present).",
+                         target_date, len(rows_for_date), existing)
+                total += len(rows_for_date)
+                continue
+
+            if rows_for_date:
+                psycopg2.extras.execute_batch(
+                    tup_cur, _DAILY_SETUP_INSERT_PG, rows_for_date)
+            conn.commit()
+            total += len(rows_for_date)
+            log.info("%s: %d row(s) written (%d present before).",
+                     target_date, len(rows_for_date), existing)
+
+    if dry_run:
+        log.warning("DRY RUN -- nothing written to Postgres. "
+                    "Add --execute to apply.")
+    return total
+
+
 def append_setup_log_for_dates(dates, dry_run: bool = True) -> int:
     """Repair specific `setup_log` dates, by the DAILY rules.
 
@@ -578,18 +685,18 @@ def append_setup_log_for_dates(dates, dry_run: bool = True) -> int:
     setup_log's UNIQUE(symbol, setup_date, setup_type) makes a real run
     idempotent, so re-running cannot duplicate rows.
 
-    Postgres is deliberately NOT wired up here: repairing production is a
-    separate decision that needs explicit sign-off, not a flag on a utility.
+    Postgres IS supported here, unlike the daily hook, precisely because this
+    path is explicit about which dates it touches. The daily hook backfills
+    every pending date unattended; this one writes only the dates named on the
+    command line, so the first production repair can be scoped to a single
+    date and inspected before anything runs against the whole backlog. It
+    never consults the high-water mark and never widens its own scope.
     """
     import logging
     log = logging.getLogger(__name__)
 
     if _PG_URL:
-        raise RuntimeError(
-            "append_setup_log_for_dates() is SQLite-only by design. Repairing "
-            "production Supabase needs explicit sign-off and its own "
-            "backup/dry-run/verify pass -- see docs/KIRAN_CLEANUP_AUDIT.md §24.4."
-        )
+        return _append_setup_log_for_dates_pg(sorted(set(dates)), dry_run, log)
 
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
