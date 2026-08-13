@@ -233,3 +233,81 @@ def test_breakout_transition_rule_holds_on_a_backfilled_date(temp_db):
 
     # only the transition day, not the continuation day
     assert _logged_dates(conn, "BREAKOUT") == [DATES[3]]
+
+
+# ── Postgres-path source guards ───────────────────────────────────────────────
+# These are source-level, not behavioural: the Postgres path cannot be
+# exercised without a live Postgres, and CI deliberately has none (audit
+# §23.5). They pin the two mistakes that actually shipped and silently wrote
+# ZERO rows to production for six weeks -- both invisible to every test here,
+# because every test here runs on SQLite. See §25 and §27.
+
+def _pg_source() -> str:
+    """Source of the Postgres hook with comment lines stripped.
+
+    Stripping matters: the fix is documented in comments that necessarily
+    quote the very strings these guards search for (`tuple(r.values())`,
+    `bos_flag = 1`), so an unfiltered source scan matches the explanation
+    rather than the code. Caught by these tests failing on their first run.
+    """
+    import inspect
+    import backfill_setup_log
+    src = inspect.getsource(backfill_setup_log._append_setup_log_today_pg)
+    return "\n".join(
+        line for line in src.splitlines() if not line.strip().startswith("#")
+    )
+
+
+def _pg_queries_block() -> str:
+    """Just the four SELECT statements, with SQL `--` comments stripped.
+
+    Scoping matters. Run against the whole function these checks also match
+    (a) the SQL comment explaining the bos_flag fix and (b) the labelling
+    UPDATE's `outcome_label = 'BREAKEVEN'`, which is correct and has no
+    business being aliased. Both showed up as false positives the first time
+    these guards ran.
+    """
+    import re
+    m = re.search(r"queries_pg = \[(.*?)\n            \]", _pg_source(), re.S)
+    assert m, "could not locate queries_pg -- guard is stale, fix the guard"
+    return "\n".join(
+        line for line in m.group(1).splitlines() if not line.strip().startswith("--")
+    )
+
+
+def test_pg_insert_does_not_round_trip_rows_through_a_dict():
+    """The bug: `tuple(r.values())` on a RealDictCursor.
+
+    Both `'BREAKOUT'` and `'BREAKEVEN'` come back from Postgres named
+    `?column?`. A dict collapses the duplicate key, so the row carried 13
+    values against 14 %s placeholders and execute_batch raised
+    `IndexError: tuple index out of range` for every row, every day -- caught
+    by the per-date except, logged as a WARNING, pipeline reported success.
+    """
+    src = _pg_source()
+    assert "tuple(r.values())" not in src, (
+        "rows must not be rebuilt from a dict's values -- unnamed duplicate "
+        "columns collapse and silently shorten the row"
+    )
+    assert "tup_cur.execute(select_sql" in src, "the SELECT must use the plain cursor"
+    assert "execute_batch(tup_cur" in src, "the INSERT must use the plain cursor"
+
+
+def test_pg_select_literals_are_aliased():
+    """Defence in depth: even through a dict cursor, aliased literals cannot
+    collide. Guards the same class if anyone reintroduces a dict round-trip."""
+    import re
+    unaliased = re.findall(
+        r"'(BREAKOUT|PRE_BREAKOUT|RS_LEADER_\w+|BREAKEVEN)'(?!\s+AS\b)",
+        _pg_queries_block(),
+    )
+    assert not unaliased, f"unaliased literal(s) in a Postgres SELECT: {unaliased}"
+
+
+def test_pg_boolean_columns_are_not_compared_to_integers():
+    """`bos_flag` is BOOLEAN in Supabase and INTEGER in SQLite; `= 1` raises
+    `operator does not exist: boolean = integer` and aborts the transaction.
+    That froze production setup_log at 2026-06-30 (§25)."""
+    import re
+    bad = re.findall(r"bos_flag\s*=\s*[01]\b", _pg_queries_block())
+    assert not bad, f"boolean compared to an integer on the Postgres path: {bad}"
