@@ -996,7 +996,45 @@ Everything below is still `except Exception -> logger.warning` + exit 0.
 
 **Triage step 0, before any of the above:** confirm, from a real Actions log, which of these 15 currently fail on every run. That status is inferred from code and documentation here, **not** verified against a production log — the same shortcut that produced the wrong prediction in §27. Do that first.
 
-### 28.3 Sweep scope, for the record
+### 28.3 <span style="color:#dc2626;">Tracked, untriaged: the same `continue` hazard in the SQLite path</span>
+
+Recorded **2026-08-13**, deliberately **not fixed**, so it cannot quietly
+disappear from the record.
+
+The Postgres loop now `break`s on a transient error instead of continuing to
+the next date (§28.1). `append_setup_log_today()`'s **SQLite** loop still has
+the original shape:
+
+```python
+except Exception as exc:                       # still broad
+    log.warning("setup_log step 1 (insert) failed for %s: %s", target_date, exc)
+                                               # ...and falls through to the next date
+```
+
+**Why it matters:** `pending` is ascending and the next run resumes from
+`MAX(setup_date)`, so the committed dates must stay a contiguous prefix. A
+failure on date N that then commits N+1 pushes the high-water mark past N, and
+`d > last_logged` can never reach N again. That is the same permanent-loss
+shape as §21 and §24 — reintroduced through the error path rather than the
+happy path.
+
+**Why it is not urgent:** this path only runs against local SQLite. Production
+is Postgres and is now fixed. The blast radius is the local database on one
+machine, which is also the one place a hole is easy to spot and repair with
+`append_setup_log_for_dates()`.
+
+**Why it is not fixed anyway:** the SQLite branch's handler is still a broad
+`except Exception`, so narrowing it is the same judgement call as the 15
+handlers in the table above — which transient types to tolerate, and whether a
+local run should fail loudly. Doing it properly means the same triage, and it
+was out of scope for the change that fixed the Postgres side. Doing it
+carelessly (a bare `break` under a broad `except`) would stop the loop on
+genuine bugs too, which may well be right, but is a decision, not a tidy-up.
+
+**Triage: same tier as the table above's Tier 2.** Ships with, or just after,
+the first batch of narrowed handlers.
+
+### 28.4 Sweep scope, for the record
 
 The §27 sweep covered **all of `psx_pipeline`**, not just Postgres-adjacent files, flagging any file containing `RealDictCursor` (16 files; 9 are dead `database_pg_backup_e*.py`). Files that talk to production through *plain* cursors are immune to this class by construction — a tuple cannot collapse — which is why they are not in the list.
 
