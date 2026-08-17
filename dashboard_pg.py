@@ -602,8 +602,21 @@ def get_dh_summary_pg() -> tuple[int, int, str]:
         )
         confirmed = cur.fetchone()[0]
 
-        cur.execute("SELECT MAX(suspect_date)::text FROM corporate_action_suspects")
-        last_checked = cur.fetchone()[0] or "—"
+        # Heartbeat, not MAX(suspect_date) -- see the SQLite sibling in
+        # dashboard.py for why that query could not detect a dead checker.
+        try:
+            cur.execute(
+                "SELECT run_date, status FROM pipeline_runs "
+                "WHERE hook_name = 'corporate_action' "
+                "ORDER BY run_date DESC LIMIT 1"
+            )
+            row = cur.fetchone()
+            last_checked = (
+                (row[0] if row[1] == "ok" else f"{row[0]} (failed)") if row else "never run"
+            )
+        except Exception:
+            conn.rollback()
+            last_checked = "never run"
 
     return pending, confirmed, last_checked
 

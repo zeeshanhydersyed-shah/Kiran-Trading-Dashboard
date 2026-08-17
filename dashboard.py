@@ -921,6 +921,82 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    # ── Data-health banner (global — first thing drawn on every page) ─────────
+    # Placed above the page selector on purpose: a health indicator you have to
+    # remember to go and look at is the failure mode this replaces (the old Data
+    # Health page's "Last Checked" read MAX(suspect_date) and sat at 2026-06-22
+    # for two months). Whole-system verdict, no partial credit — one table
+    # behind turns the whole thing red.
+    #
+    # Every path renders something. The outer except is the last line of defence:
+    # an unhandled error shows red with the message, never a blank gap, because
+    # a silent banner is indistinguishable from a healthy one.
+    try:
+        import data_health as _dh_mod
+
+        _dh_expected, _dh_src_err = None, None
+        if HAS_REFRESH_MANAGER:
+            try:
+                # Short-TTL cache on the network fetch only (30 min, owned by
+                # refresh_manager). The verdict below is never cached — it is
+                # recomputed from live queries on every render.
+                _dh_expected, _ = get_source_date_cached(st.session_state)
+                if _dh_expected is None:
+                    _dh_src_err = "ksestocks unreachable"
+            except Exception as _e:
+                _dh_src_err = f"{type(_e).__name__}: {_e}"
+        else:
+            _dh_src_err = "refresh_manager unavailable"
+
+        _dh_v = _dh_mod.check_all(expected_session=_dh_expected,
+                                  source_error=_dh_src_err)
+
+        if _dh_v.level == "green":
+            st.markdown(
+                "<div style='background:#064e3b; border-left:3px solid #22c55e; "
+                "padding:5px 8px; border-radius:3px; margin-bottom:6px;'>"
+                "<span style='font-size:0.8rem; font-weight:700; color:#4ade80;'>"
+                f"🟢 DATA CURRENT</span><br>"
+                f"<span style='font-size:0.72rem; color:#a7f3d0;'>{_dh_v.expected}</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            _dh_is_red = _dh_v.level == "red"
+            _dh_bg     = "#7f1d1d" if _dh_is_red else "#78350f"
+            _dh_edge   = "#ef4444" if _dh_is_red else "#f59e0b"
+            _dh_fg     = "#fca5a5" if _dh_is_red else "#fcd34d"
+            _dh_body   = "#fecaca" if _dh_is_red else "#fde68a"
+            _dh_head   = "🔴 DATA STALE" if _dh_is_red else "🟡 CANNOT VERIFY"
+            _dh_lines = "".join(
+                f"<div style='font-size:0.72rem; color:{_dh_body}; margin-top:2px;'>"
+                f"<b>{_i.label}</b> — {_i.detail}</div>"
+                for _i in _dh_v.failures[:6]
+            )
+            _dh_more = len(_dh_v.failures) - 6
+            if _dh_more > 0:
+                _dh_lines += (
+                    f"<div style='font-size:0.7rem; color:{_dh_body}; margin-top:2px;'>"
+                    f"+{_dh_more} more</div>"
+                )
+            st.markdown(
+                f"<div style='background:{_dh_bg}; border-left:3px solid {_dh_edge}; "
+                f"padding:5px 8px; border-radius:3px; margin-bottom:6px;'>"
+                f"<span style='font-size:0.8rem; font-weight:700; color:{_dh_fg};'>"
+                f"{_dh_head}</span>{_dh_lines}</div>",
+                unsafe_allow_html=True,
+            )
+    except Exception as _dh_exc:
+        st.markdown(
+            "<div style='background:#7f1d1d; border-left:3px solid #ef4444; "
+            "padding:5px 8px; border-radius:3px; margin-bottom:6px;'>"
+            "<span style='font-size:0.8rem; font-weight:700; color:#fca5a5;'>"
+            "🔴 HEALTH CHECK FAILED</span>"
+            f"<div style='font-size:0.72rem; color:#fecaca; margin-top:2px;'>"
+            f"{type(_dh_exc).__name__}: {_dh_exc}</div></div>",
+            unsafe_allow_html=True,
+        )
+
     # ── Page selector ──────────────────────────────────────────────────────────────
     if "page" not in st.session_state:
         st.session_state.page = PAGES[0]
@@ -7489,9 +7565,23 @@ elif cur == PAGES[14]:  # Data Health
                 "WHERE status = 'CONFIRMED' AND confirmed_at >= ?",
                 (str(_dh_dt.now().year),)
             ).fetchone()[0]
-            last_checked = _con.execute(
-                "SELECT MAX(suspect_date) FROM corporate_action_suspects"
-            ).fetchone()[0] or "—"
+            # Heartbeat, not MAX(suspect_date). The old query returned the date
+            # of the most recent *finding*, so a scan that ran cleanly and found
+            # nothing left it unchanged — identical to a scan that never ran at
+            # all. It displayed 2026-06-22 for two months while the label said
+            # "Last Checked". See docs/KIRAN_CLEANUP_AUDIT.md 31.
+            try:
+                _row = _con.execute(
+                    "SELECT run_date, status FROM pipeline_runs "
+                    "WHERE hook_name = 'corporate_action' "
+                    "ORDER BY run_date DESC LIMIT 1"
+                ).fetchone()
+                if _row:
+                    last_checked = _row[0] if _row[1] == "ok" else f"{_row[0]} (failed)"
+                else:
+                    last_checked = "never run"
+            except Exception:
+                last_checked = "never run"
         finally:
             _con.close()
         return pending, confirmed, last_checked
