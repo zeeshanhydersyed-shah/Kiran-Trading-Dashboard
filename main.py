@@ -94,8 +94,23 @@ def cmd_init(force: bool = False):
     )
 
 
+# Hooks whose failure must turn the whole run red rather than log a warning
+# and exit 0. Populated by cmd_update(), checked at the very end of it.
+#
+# Deliberately NOT applied to every hook yet: several are known to fail on
+# GitHub Actions for reasons already documented (the agent hook has no
+# `anthropic` package installed there, boring_signals is SQLite-only and
+# no-ops on a fresh checkout, the flows scraper feeds a retired page). Making
+# those fatal today would paint the daily run red every single morning, and a
+# permanently-red pipeline teaches you to ignore red -- which is how this
+# whole class of bug survived in the first place. Each needs triaging before
+# it joins this list. See docs/KIRAN_CLEANUP_AUDIT.md §28.
+_HOOK_FAILURES: list = []
+
+
 def cmd_update():
     """Scrape only dates that are newer than the last record in the database."""
+    _HOOK_FAILURES.clear()
     init_db()
 
     latest_str = get_latest_scraped_date()
@@ -263,7 +278,18 @@ def cmd_update():
         from backfill_setup_log import append_setup_log_today
         append_setup_log_today()
     except Exception as exc:
-        logger.warning("setup_log hook failed: %s", exc)
+        # NOT a warning any more. Transient database blips are caught and
+        # tolerated INSIDE the hook (see _TRANSIENT_DB_ERRORS there), so
+        # anything arriving here is a bug. This wrapper's old
+        # `except Exception -> logger.warning` is half the reason production
+        # setup_log sat frozen for six weeks across two separate Postgres-only
+        # bugs while every workflow run reported success. Recorded here and
+        # re-raised at the end of cmd_update() so the run exits non-zero --
+        # after the remaining hooks still get their turn, which is the part
+        # worth keeping about the original design.
+        logger.error("setup_log hook FAILED: %s", exc, exc_info=True)
+        print(f"::error::setup_log hook failed: {exc}")
+        _HOOK_FAILURES.append(("setup_log", exc))
 
     # Boring Breakouts (RS_60-conditioned Donchian) -- scan for new signals,
     # then advance status on anything already open (Target Hit/Stopped/Expired).
@@ -351,6 +377,18 @@ def cmd_update():
                 logger.info("Rolling trim: nothing to delete (all tables within 2-year window).")
     except Exception as exc:
         logger.warning("Rolling trim hook failed: %s", exc)
+
+    # ── Fail the run if any hook that matters failed ──────────────────────
+    # Every hook above still got its turn -- one bad hook must not stop the
+    # rest -- but the process now exits non-zero so GitHub Actions shows the
+    # run as FAILED instead of green. Before this, `main()` never set an exit
+    # code at all, which is why 30 consecutive days of a completely dead
+    # setup_log hook looked like 30 successful runs.
+    if _HOOK_FAILURES:
+        names = ", ".join(name for name, _ in _HOOK_FAILURES)
+        raise SystemExit(
+            f"pipeline finished, but {len(_HOOK_FAILURES)} hook(s) failed: {names}"
+        )
 
 
 def cmd_report():
