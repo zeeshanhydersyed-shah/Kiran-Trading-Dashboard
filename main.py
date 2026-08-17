@@ -94,6 +94,24 @@ def cmd_init(force: bool = False):
     )
 
 
+def _record_hook(hook_name, run_date, status="ok", rows_written=None,
+                 detail=None, mirror_to_postgres=False):
+    """Write one pipeline_runs heartbeat. Never raises.
+
+    Heartbeats answer "did this producer run?", which is the only honest
+    question for hooks whose tables can legitimately be empty on a given day
+    (leaders_top_picks writes nothing when nothing clears MIN_PICK_SCORE;
+    corporate_action finds nothing most days). For those, an empty table and a
+    dead job look identical -- see docs/KIRAN_CLEANUP_AUDIT.md 31.
+    """
+    try:
+        from data_health import record_run
+        record_run(hook_name, run_date, status=status, rows_written=rows_written,
+                   detail=detail, mirror_to_postgres=mirror_to_postgres)
+    except Exception as exc:  # telemetry must never break the pipeline
+        logger.debug("Heartbeat write failed for %s: %s", hook_name, exc)
+
+
 def cmd_update():
     """Scrape only dates that are newer than the last record in the database."""
     init_db()
@@ -149,8 +167,10 @@ def cmd_update():
             from leaders_scan import run_all as leaders_run_all
             leaders_run_all()
             logger.info("Leaders deep scan updated.")
+            _record_hook("leaders_scan", latest_str)
         except Exception as exc:
             logger.warning("Leaders deep scan hook failed: %s", exc)
+            _record_hook("leaders_scan", latest_str, status="error", detail=str(exc))
         # Rolling trim runs on every night, including no-new-data nights
         try:
             _trim_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
@@ -184,6 +204,12 @@ def cmd_update():
         count_sectors(), count_prices(), mn, mx,
     )
 
+    # The trading session every hook below is processing. Recorded against each
+    # heartbeat so "last ran" means "last covered this session", not "last
+    # executed at some wall-clock time" -- a hook that runs daily but silently
+    # processes nothing would otherwise still look healthy.
+    _session_date = mx
+
     # Append new prices to prices_adjusted and flag corporate action suspects
     try:
         _pa_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
@@ -212,8 +238,14 @@ def cmd_update():
             logger.warning("Corporate action suspects flagged: %d — review required.", n_suspects)
         else:
             logger.info("No new corporate action suspects detected.")
+        # Heartbeat, not a findings count. The retired "Last Checked" metric read
+        # MAX(suspect_date), so a scan that found nothing was indistinguishable
+        # from a scan that never ran -- it sat at 2026-06-22 for two months.
+        # n_suspects == 0 is a successful run and must record as one.
+        _record_hook("corporate_action", _session_date, rows_written=n_suspects)
     except Exception as exc:
         logger.warning("prices_adjusted hook failed: %s", exc)
+        _record_hook("corporate_action", _session_date, status="error", detail=str(exc))
 
     # Append today's regime row to market_regime
     try:
@@ -261,9 +293,11 @@ def cmd_update():
     # Append today's setups to setup_log and label outcomes
     try:
         from backfill_setup_log import append_setup_log_today
-        append_setup_log_today()
+        _n_setup = append_setup_log_today()
+        _record_hook("setup_log", _session_date, rows_written=_n_setup)
     except Exception as exc:
         logger.warning("setup_log hook failed: %s", exc)
+        _record_hook("setup_log", _session_date, status="error", detail=str(exc))
 
     # Boring Breakouts (RS_60-conditioned Donchian) -- scan for new signals,
     # then advance status on anything already open (Target Hit/Stopped/Expired).
@@ -276,8 +310,15 @@ def cmd_update():
         n_new = scan_boring_breakouts_pending()
         n_updated = update_open_signal_statuses()
         logger.info("Boring Breakouts: %d new signal(s), %d status update(s).", n_new, n_updated)
+        # mirror_to_postgres: boring_signals is SQLite-only and has no Supabase
+        # table at all, so this heartbeat is the ONLY way the Streamlit Cloud
+        # banner can see whether the local Task Scheduler job is still running.
+        _record_hook("boring_signals", _session_date, rows_written=n_new,
+                     mirror_to_postgres=True)
     except Exception as exc:
         logger.warning("Boring Breakouts hook failed: %s", exc)
+        _record_hook("boring_signals", _session_date, status="error", detail=str(exc),
+                     mirror_to_postgres=True)
 
     # Run daily agent analysis in a subprocess so it cannot block the pipeline.
     # Agent is bonus — a timeout or API failure must never stop stock_signals / setup_log
@@ -307,8 +348,10 @@ def cmd_update():
         from leaders_scan import run_all as leaders_run_all
         leaders_run_all()
         logger.info("Leaders deep scan updated.")
+        _record_hook("leaders_scan", _session_date)
     except Exception as exc:
         logger.warning("Leaders deep scan hook failed: %s", exc)
+        _record_hook("leaders_scan", _session_date, status="error", detail=str(exc))
 
     # Auto-save today's support reversal setups
     try:

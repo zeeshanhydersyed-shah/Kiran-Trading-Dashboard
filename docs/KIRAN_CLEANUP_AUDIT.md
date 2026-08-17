@@ -1257,3 +1257,96 @@ This confirms §29.2(B)'s warning not to "fix" 1694/1722: they select bare `date
 ### 29.6 How to re-verify any of this
 
 Every check above is read-only and repeatable. Connection string comes from `.env`'s `SUPABASE_DB_URL`, used in a scoped subprocess (never exported to the shell). Pattern used throughout: `conn.set_session(readonly=True)` for reads; for anything resembling a write, a real transaction that is **always rolled back**, with a before/after row count printed to prove nothing persisted.
+
+---
+
+## 30. `recovery_signals` has no producer — silent failure, not sparse cadence (2026-08-17)
+
+Found while auditing table freshness for the sidebar data-health banner. `recovery_signals` (Recovery Bases screener) is **~30 trading sessions stale in both databases** — local `MAX(as_of_date)` = 2026-07-01, production = 2026-07-15 — and nothing ever reported it.
+
+**This is not the screener's event-driven cadence.** The table is a *daily snapshot of which bases currently qualify*, not a log of the ~1 tradeable recovery per year. Three confirmations:
+
+1. **Consecutive daily coverage, then a hard stop.** Local holds 11 unbroken trading dates (2026-06-15 → 07-01) at 3–5 rows each, then nothing. A once-a-year event does not produce an unbroken daily run.
+2. **No automated caller exists.** `run_recovery_signals()` is reached only via `signal_engine.py`'s `main()`, and `signal_engine.py` is invoked by nothing — not `main.py`'s `cmd_update()`, none of the 8 GitHub Actions workflows, no `.bat`. `dashboard.py:5379` states it outright: *"run signal_engine.py to refresh."* It is a manual script that stopped being run.
+3. **The two databases disagree.** Production (07-15) is *newer* than local (07-01) — consistent only with separate ad-hoc manual runs against each backend, then abandonment.
+
+`signal_engine.main()` also drives `run_portfolio_signals()`, so **`portfolio_signals` is orphaned by the same root cause** — worth checking on the same pass.
+
+**Classification for the banner:** every-session table, not heartbeat. It will therefore read red from the moment the banner ships and stay red until it has a producer — correct behaviour, but not something the banner work can itself resolve.
+
+**To close:** either wire `signal_engine.main()` into `cmd_update()` (and give it a `pipeline_runs` heartbeat like every other hook), or retire the Recovery Bases screener. Not actioned — user decision, deliberately deferred 2026-08-17.
+
+---
+
+## 31. Sidebar data-health banner + `pipeline_runs` heartbeat ledger (2026-08-17)
+
+Always-visible whole-system freshness indicator in the sidebar, replacing the "remember to visit the Data Health page" model. Built to spec after design sign-off.
+
+### 31.1 Why the old "Last Checked" metric could never have worked
+
+`dashboard.py`'s Data Health summary read:
+
+```sql
+SELECT MAX(suspect_date) FROM corporate_action_suspects
+```
+
+That is **the date of the most recent detected suspect, not the date anything was last checked**. Local `MAX(suspect_date)` = 2026-06-22, exactly the stale figure reported. `dashboard_pg.py:605` had the identical bug.
+
+The label lies in two independent ways: a scan that runs daily and correctly finds nothing leaves the value frozen, and a scan that died months ago leaves it equally frozen. **A perfectly healthy system and a dead one render identically.** It measured when we last *found* something, never when we last *looked*.
+
+Both sites now read the `corporate_action` heartbeat, so a zero-findings run registers as a run. `test_zero_row_run_still_counts_as_a_run` pins that behaviour.
+
+### 31.2 Two classes of checked thing
+
+The "green means everything is current, no partial credit" rule is correct — but only directly applicable to tables that receive a row every session.
+
+| Class | Members | Test applied |
+|---|---|---|
+| **Every-session** | `prices`, `index_prices`, `prices_adjusted`, `stock_signals`, `sector_signals`, `market_regime`, `recovery_signals` | own `MAX(date)` vs expected session |
+| **Heartbeat** | `setup_log`, `leaders_scan`, `boring_signals`, `corporate_action` | `pipeline_runs.run_date` — when the producer last ran |
+
+Heartbeats exist because for the second group **empty is a legitimate daily outcome** — `save_top_picks()`'s own docstring: *"If none qualify, nothing is written — this is intentional."* For those, an empty table and a dead producer are indistinguishable from the table alone, which is precisely the §31.1 bug generalised. Checking the producer instead of the product is the only honest test.
+
+Deliberately not checked, so the omissions are explicit rather than forgotten: `market_flows` (feeds only the descriptive-only Flow column; Big Fish found the data null), `leaders_top_picks` (covered by the `leaders_scan` heartbeat; its own table is legitimately empty whenever nothing clears `MIN_PICK_SCORE`), and `sec_global_rank` (**not a table** — it is `sector_signals.rs_rank` aliased at `dashboard_pg.py:561`).
+
+### 31.3 Expected-session logic — the exchange is the authority
+
+There is **no PSX holiday calendar anywhere in this codebase** (searched; `run_update.bat` only skips weekends by day-of-week). Hand-maintaining one for a lunar-calendar market would rot silently.
+
+Instead the check is two-part:
+
+1. **Absolute** — does `prices` match what ksestocks publishes (`scraper.get_source_date()`, already used by the sidebar)? The exchange knows its own holidays by construction. Catches a wholly-frozen pipeline, which a relative-only check would pass as internally consistent.
+2. **Relative** — does every every-session table match `prices`? Catches partial hook failure.
+
+"Sessions behind" is counted as distinct `prices` dates in the interval, never calendar arithmetic — **`prices` is the trading calendar**. Without this, 2026-08-14 (Independence Day) plus the weekend would have reported as three missed sessions. `test_sessions_behind_ignores_non_trading_days` pins it.
+
+### 31.4 No silent-failure state
+
+Green is reachable only when every item explicitly passes. Every other route is visible:
+
+| Condition | Result |
+|---|---|
+| Any table behind | **red**, names the tables and session counts |
+| Source unreachable (the 08-13 Cloudflare 522s) | **amber** "cannot verify" — never green |
+| A check query throws | **red**, item marked unknown |
+| DB unreachable | **red** |
+| Unhandled exception in the widget | **red** with the exception text, never a blank gap |
+
+Red outranks amber: a known-stale table is a stronger statement than an unverifiable one. Five tests cover the never-green routes.
+
+### 31.5 The `boring_signals` Cloud problem
+
+`boring_signals` is SQLite-only, has **no Supabase table at all**, and is updated by `run_update.bat` — which Task Scheduler fires **at Windows logon on one specific machine**. The Streamlit Cloud app has no route to that data whatsoever.
+
+Nothing in this project calls `load_dotenv()`, so a local pipeline run has `SUPABASE_DB_URL` only in `.env`, never in `os.environ` — which is why the local run uses SQLite in the first place. `record_run(..., mirror_to_postgres=True)` therefore resolves the URL from `.env` explicitly and writes that one heartbeat to Supabase as well. It is the only way Cloud can see whether the local job is still alive.
+
+### 31.6 Verified
+
+- 20 new unit tests (`tests/test_data_health.py`); full suite **78 passed** (was 58).
+- Rendered live: banner sits above the page selector, persists across pages, zero console errors. First real output was `🔴 DATA STALE — boring_signals: no run ever recorded; recovery_signals: 2026-07-01, 31 sessions behind` **while the pre-existing widget directly beneath it still read "✅ DB up to date"** — the gap this feature closes, visible in one screenshot.
+- Postgres ledger DDL + `ON CONFLICT` upsert executed against live Supabase inside a transaction and **rolled back** — confirmed they succeed before relying on `record_run`'s deliberate exception-swallowing. Nothing persisted; `pipeline_runs` is created automatically by the first real heartbeat.
+- CI fixture regenerated (it copies DDL from `sqlite_master`, so it picked up `pipeline_runs`).
+
+### 31.7 Known: the banner ships red
+
+`recovery_signals` has no producer at all (§30) and will read red until `signal_engine.py` is scheduled or the screener is retired. `boring_signals` reads "no run recorded yet" until the local job next runs. Both are correct reports of real conditions, not banner defects.
