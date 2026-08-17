@@ -1080,7 +1080,9 @@ INFO  Scraped 1 dates -> 0 sector mappings, 0 price records, 0 index records
 
 The 08-14 run retried both days: `Scraped 2 dates -> 0 price records`, no errors — the source returned nothing. The local machine scraped 08-13 successfully at 15:02 UTC, ~3h *before* the Actions run hit the 522s. **Local holds 534 price rows for 08-13; production holds 0.**
 
-<span style="color:#dc2626;">**This cannot be re-scraped.**</span> `scraper.py` reads `MarketSummary`, which serves only the *latest* session — which is why re-trying 08-13 on 08-14 returned nothing. The only surviving copy of that session is the local SQLite database.
+<span style="color:#dc2626;">~~**This cannot be re-scraped.**~~ **CORRECTED 2026-08-17 — see §29.7. 08-13 is fully recoverable from the source; the claim below was wrong.**</span> ~~`scraper.py` reads `MarketSummary`, which serves only the *latest* session — which is why re-trying 08-13 on 08-14 returned nothing. The only surviving copy of that session is the local SQLite database.~~
+
+The reasoning error: `MarketSummary` was assumed to be latest-session-only because a re-try returned nothing. It is in fact a full date-addressable archive (`POST sdate=YYYY-MM-DD`), and the empty re-try was a transient source outage, not a closed window. Verified read-only against live ksestocks on 2026-08-17 — §29.7.
 
 **B. `sector_signals` — real Postgres-only SQL bug, swallowed.** Identical on both runs:
 
@@ -1123,6 +1125,134 @@ Ordered by dependency: 08-13 prices must land before anything downstream can com
 - **PR #4 is open and unmerged** — `main.py`'s fatal-exit change (setup_log's wrapper only; 15 handlers still swallow). Awaiting review.
 - §28.2's register of 15 unnarrowed handlers, and §28.3's tracked SQLite `continue` hazard, both still open.
 - The `rs_score_20` question (§20b) is now **live data**, not theoretical: the 2,029 backfilled rows include `RS_LEADER_MARKET`/`SECTOR` selected by `ORDER BY rs_score_20 DESC`, a construct S-002 confirmed dead.
+
+### 29.7 Pre-fix read-only checks (2026-08-17) — dedup clear, and §29.2's "unrecoverable" claim falsified
+
+Three checks run before applying any fix. All read-only; no writes to production or local.
+
+**(a) Full-history duplicate audit — all three tables are CLEAN. No dedup step needed.**
+
+Run against production over the *entire* table, not just recent rows, on the exact natural key each table's `ON CONFLICT` targets. Session forced `readonly=True`, connection rolled back.
+
+| Table | Natural key | Rows | Distinct keys | Dup groups | Excess rows | NULLs in key |
+|---|---|---|---|---|---|---|
+| `leaders_scan` | `(scan_date, setup_type, symbol)` | 164 | 164 | **0** | **0** | 0 |
+| `leaders_top_picks` | `(scan_date, setup_type, rank)` | 9 | 9 | **0** | **0** | 0 |
+| `setup_log` | `(symbol, setup_date, setup_type)` | 43,443 | 43,443 | **0** | **0** | 0 |
+
+Date coverage: `leaders_scan`/`leaders_top_picks` 2026-06-16 → 06-30; `setup_log` 2024-08-15 → 2026-08-12 (494 distinct dates).
+
+Constraint/index state confirmed directly from `pg_constraint`/`pg_indexes`: **all three tables have zero constraints of any kind** (no PK, no unique). `setup_log` has one non-unique index, `idx_sl_sym_date` on `(symbol, setup_date)` — which is why its duplicate risk was invisible; a non-unique index enforces nothing. This confirms §29.3: the migration DDL in `supabase_schema.sql` dropped every `UNIQUE(...)` the SQLite schema carries.
+
+All three proposed constraints match the SQLite originals *and* the code's `ON CONFLICT` targets exactly (`leaders_scan.py:585`, `:803`; `backfill_setup_log.py:424` uses bare `ON CONFLICT DO NOTHING`, which becomes genuinely idempotent once any unique constraint exists). Note `backfill_setup_log.py:152-154`'s docstring already *asserts* the constraint exists — it never did.
+
+**Verdict: the DDL can be applied as-is. No dedup, no data touched.**
+
+**(b) 2026-08-13 is NOT unrecoverable — §29.2's red-flagged claim is wrong.**
+
+`ksestocks.com/MarketSummary` is a **date-addressable historical archive**, not a latest-session-only endpoint. `scraper.py` already POSTs `sdate=YYYY-MM-DD` per date. Verified live, comparing each response against local SQLite:
+
+| Requested `sdate` | Rows returned | Match vs local *same* date |
+|---|---|---|
+| 2026-08-13 | 534 | **534/534 = 100%** |
+| 2026-08-12 | 531 | **531/531 = 100%** |
+| 2026-07-15 | 520 | **510/510 = 100%** |
+| 2026-03-10 | 517 | **494/494 = 100%** |
+| 2025-11-04 | 528 | **486/486 = 100%** |
+
+08-13 alone would have been ambiguous — it is *also* the currently-published latest session, so returning it proves nothing on its own. **2026-08-12 is the discriminator**: it returned 08-12's real data (531 rows, 100% match to local 08-12, only 2.7% match to 08-13). The archive demonstrably serves arbitrary past dates, confirmed back to at least Nov 2025.
+
+So the 08-13/08-14 failures were a **transient ksestocks outage** (the 522s are Cloudflare origin timeouts), not a closing window. Local SQLite is *not* the only surviving copy, and there is no time pressure on it.
+
+**(c) Running the pipeline today cannot corrupt anything — the ghost guard fires correctly.**
+
+Source currently publishes `Latest update was on August 13, 2026`. For any date it has no session for, it echoes 08-13's data:
+
+| Requested `sdate` | Rows | Match vs local 08-13 | `_is_stale()` |
+|---|---|---|---|
+| 2026-08-14 (Independence Day) | 534 | 100% | **True → skipped** |
+| 2026-08-17 (today, pre-close) | 534 | 100% | **True → skipped** |
+
+Both are correctly rejected before storage, so no ghost row is written. The `_is_stale` Decimal/float fix (2026-07-29) means this guard now works on Postgres too, so the same protection applies to production.
+
+**Consequence for fix #1:** production's next successful run does `dates_since(2026-08-12)` → `[08-13, 08-14]`; 08-13 returns real data (not stale vs 08-12) and stores, 08-14 echoes 08-13 and is skipped. **The pipeline self-heals on its own, provided ksestocks stays up.** A hand-copy from local SQLite is no longer the only option, and is the riskier of the two — it was justified entirely by the now-falsified "only surviving copy" premise.
+
+### 29.8 ✅ Fix #2 APPLIED (2026-08-17) — three UNIQUE constraints now live in production
+
+Applied after §29.7(a) confirmed zero duplicates. Dry-run first (real DDL inside a transaction, verified, rolled back), then committed, then re-verified on a separate read-only connection.
+
+| Table | Constraint added | Matches |
+|---|---|---|
+| `leaders_scan` | `leaders_scan_natural_key UNIQUE (scan_date, setup_type, symbol)` | `leaders_scan.py:585` |
+| `leaders_top_picks` | `leaders_top_picks_natural_key UNIQUE (scan_date, setup_type, rank)` | `leaders_scan.py:803` |
+| `setup_log` | `setup_log_natural_key UNIQUE (symbol, setup_date, setup_type)` | `backfill_setup_log.py:424` |
+
+Row counts before and after are identical (164 / 9 / 43,443) — additive DDL, no data touched. Each mirrors the SQLite `UNIQUE(...)` the migration dropped. Reversible via `ALTER TABLE <t> DROP CONSTRAINT <name>`.
+
+**Two consequences:**
+
+1. **The `setup_log` re-run freeze is lifted.** §29.3's hazard — a second backfill silently doubling every row — is closed. `backfill_setup_log.py:424`'s bare `ON CONFLICT DO NOTHING` now has a constraint to conflict *against*, so it is genuinely idempotent in production, which is what its own docstring (`:152-154`) already assumed. Re-running the daily backfill or `setup_log_repair.yml` is now safe.
+2. **`leaders_scan`'s `ON CONFLICT` error is fixed.** §29.2(C)'s `there is no unique or exclusion constraint matching the ON CONFLICT specification` was caused solely by the missing constraint. The next run should write to `leaders_scan`/`leaders_top_picks` for the first time since 2026-06-30. Unverified until a real run happens — worth confirming in the next Actions log.
+
+### 29.9 `leaders_scan` backfills its backlog; `leaders_top_picks` does **not** (2026-08-17)
+
+Checked because a latest-date-only hook would permanently skip the 06-30 → present backlog once it starts succeeding — the §24 defect class.
+
+**`leaders_scan` is fine.** `run_all()` (`leaders_scan.py:1091`) loops `_pending_scan_dates()`, which imports `_pending_setup_log_dates` rather than re-implementing the policy — the §25 fix. Asked production directly: it returns **30 pending dates, 2026-07-01 → 2026-08-12**, and `append_leaders_scan(scan_date=...)` is a self-contained DELETE+rebuild per date. So once the `ON CONFLICT` blocker is gone (§29.8), a normal run backfills the whole backlog. **No scoped workflow needed.**
+
+Two notes on that list: it is bounded by production `stock_signals` (currently 08-12, so it becomes 31 dates once 08-13 lands), and **2026-07-07 is absent** — production `stock_signals` has no row for that date, a pre-existing gap from the 2026-07 Postgres-dispatch outage that `leaders_scan` cannot self-heal.
+
+**`leaders_top_picks` carries the defect.** `save_top_picks()` → `_save_top_picks_pg()` (`:765`) does `SELECT MAX(scan_date) FROM leaders_scan`, deletes that one date, and writes top picks for it — **single date, no loop**. `run_all():1104`'s comment says "Top picks and forward returns are whole-table operations, not per-date"; that is **half wrong**. `fill_leaders_forward_returns()` genuinely is whole-table (it scans every `OPEN`/`NOT_TRIGGERED` pick). `save_top_picks()` is not — it is strictly latest-date.
+
+Consequence: the next run backfills 30 dates into `leaders_scan` but writes `leaders_top_picks` for **only the newest**. Top picks for 07-01 → 08-11 would never be generated, and because each run deletes and rewrites only `MAX(scan_date)`, they never would be on any later run either — silently, with no error. Same shape as §24, in the sibling table.
+
+**Fix shape** (not yet applied): give `save_top_picks()` a `scan_date` parameter mirroring `append_leaders_scan()`, and call it inside `run_all()`'s existing per-date loop instead of once after it. The `UNIQUE(scan_date, setup_type, rank)` constraint added in §29.8 makes that per-date write idempotent.
+
+### 29.10 ✅ Fix #3 root cause ISOLATED (2026-08-17) — `get_prices_adjusted_dates_between_pg()`
+
+The `sector_signals` swallow is **not** in `sector_signals.py` and **not** at the two candidates §29.2(B) named. It is `database_pg.py:1653`, `get_prices_adjusted_dates_between_pg()` — **both branches**, lines **1665** and **1672**:
+
+```sql
+SELECT DISTINCT date::text AS d FROM prices_adjusted
+WHERE date > %s AND date <= %s ORDER BY date
+```
+
+`DISTINCT` applies to the *projected* expression `date::text`. `ORDER BY date` names the raw `date` column, which is **not** in the select list — only its cast is. Postgres rejects this with exactly the observed message. SQLite accepts the analogous form, which is why it never appeared locally.
+
+Verified read-only against production, both directions:
+
+| Statement | Result |
+|---|---|
+| `:1665` (since_date branch) | **FAILS** — `InvalidColumnReference: for SELECT DISTINCT, ORDER BY expressions must appear in select list` |
+| `:1672` (no-since branch) | **FAILS** — same error |
+| `:1694` (audit candidate A) | OK — 60 rows |
+| `:1722` (audit candidate B) | OK — 60 rows |
+
+This confirms §29.2(B)'s warning not to "fix" 1694/1722: they select bare `date` and order by `date`, both in the select list, so they are legal and always were.
+
+**Why it froze the table:** this function is the sector_signals *backfill loop's* date-finder — the very thing added so the hook stops only ever recomputing the latest date (its own docstring says so). It throws before returning any dates, `main.py`'s Tier-1 handler swallows it, and `sector_signals` stays stuck at 2026-08-11.
+
+**Fix — ✅ APPLIED 2026-08-17, `ORDER BY date` → `ORDER BY d` in both branches.** Order by the select-list entry instead of the raw column. All three candidate forms were verified against production first, each returning the correct 30 dates in chronological order:
+
+| Form | Result |
+|---|---|
+| `ORDER BY d` (output alias) — **recommended** | 30 rows, chronological |
+| `ORDER BY 1` (ordinal) | 30 rows, chronological |
+| `ORDER BY date::text` | 30 rows, chronological |
+
+`date::text` is ISO `YYYY-MM-DD`, so lexical and chronological order agree — the loop's ordering guarantee is preserved. This is a source-code fix only; no production write.
+
+**Post-apply verification** (the patched function called directly against production, not a hand-copied query):
+
+| Call | Result |
+|---|---|
+| `get_prices_adjusted_dates_between_pg('2026-06-30', '2026-08-12')` | 30 dates, chronological, 07-01 → 08-12, 07-07 correctly absent |
+| `get_prices_adjusted_dates_between_pg(None, '2026-08-12')` | 495 dates, chronological, 2024-08-15 → 2026-08-12 |
+| Real hook path (`last_written` = 2026-08-11) | 1 pending date → `['2026-08-12']` |
+
+`pytest` gate: 58 passed. A docstring note was added at the same time recording why `ORDER BY d` is required, so the form is not "simplified" back.
+
+**Explicitly not touched in this change:** the `leaders_top_picks` defect in §29.9. No fix, no PR, nothing staged — it stays as documented until it gets the mutation-test treatment on normal cadence.
 
 ### 29.6 How to re-verify any of this
 
