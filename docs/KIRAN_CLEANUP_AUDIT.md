@@ -19,7 +19,7 @@
 13. <span style="color:#dc2626;">**UPDATED, STILL NOT RESOLVED (2026-08-03) — the `z_histogram` crossover has a real, replicated STOCK-LEVEL entry-timing edge (2013+, 7+ sectors) when paired with a -6%/10-day-trailing-low risk rule, but the raw INDEX-LEVEL visual (Regime page / Market Gates Dashboard's "Fast Z minus Signal" read) that the dashboard actually shows is still NULL.**</span> A separate, standalone project (`C:\Users\Lenovo\breadth_momentum_study`, the "BMX study" — deliberately kept out of this repo so it can't be confused with the already-validated Weinstein Stage-2 screener) went through three rounds on this. First, the raw index-level crossover (166 bull + 166 bear, full 2005-2026 KSE-100, no stop-loss): no significant forward-return edge (all p>0.19); bear crossovers were followed by KSE-100 RISING more often (71.8% win rate at 60d) than after bull crossovers (67.7%) — the dashboard's implied "sit on the bench" read is still directly contradicted by this. Second, stock-level with a tight 1-day trailing stop (Cement/Banks/Auto Assembler): also null. Third, loosened to a 10-day trailing low (same -6% initial stop): a real, statistically significant win-rate edge over random entries, replicated across all 23 non-excluded PSX sectors (18/23 individually significant, p<0.05), most reliable 2013 onward — 2005-2012 doesn't clear transaction costs even though it's still directionally better than baseline. Full writeup: `C:\Users\Lenovo\RESEARCH_LOG.md`, "Breadth Momentum Crossover (BMX) study" row, status **Concluded — positive**. **This positive verdict does NOT bless the dashboard's crossover visual as shown** — the dashboard displays the raw index-level read (still null, see above), not the risk-managed stock-level entry system that actually showed an edge; the two are different constructs. Also still a different mechanism from the Weinstein Stage-2 sector-rank gate (`sec_global_rank<=8`, EV@90d +10.50%) that §2's KEEP verdicts below cite as basis for `Market Gates Dashboard`'s 4-Gate display and the `Regime` page — that basis still doesn't cover the histogram-crossover visual either way. **Not auto-resolved: the user has said they will decide separately whether/how to reflect any of this on the dashboard** — no dashboard/verdict change made as part of this entry. → §2 (`Market Gates Dashboard`, `Regime`)
 14. <span style="color:#16a34a;">**RESOLVED (2026-08-05) — `Backtest` page's "Kiran Setup Simulation" section retired; `weekly_sim.yml` schedule disabled.**</span> Same active-trading, buy-on-strength/1%-risk mechanism as the "Active-trading simulation (kiran_sim)" study already **Concluded — negative** on 2026-05-12 (`RESEARCH_LOG.md`: best case 7.45% CAGR vs ~22% CAGR for KSE-100 buy-and-hold; that result is what drove this program's pivot to the Stage 2 portfolio approach it runs today). The section had been re-showing that already-answered question live, every week, with no caveat. User-directed retirement, page and data kept in place. → §19
 15. <span style="color:#dc2626;">**NOT RESOLVED (2026-08-05) — two more findings surfaced from the same `Backtest` page review, neither acted on yet.**</span> (a) **"KIRAN Screener Performance"** (the page's top KPI section, `backtest_setups` table) validates a support/resistance consolidation-base screener that is its own self-contained logic in `backtest.py` — not Weinstein Stage-2, Boring Donchian, or Recovery Bases — and confirmed to generate **zero live setups today** (`auto_save_setups()`, the `source='System'` writer, is called only from old `dashboard_backup_*.py` files, never from current `dashboard.py`/`main.py`; the live pipeline's only setup-saving call is `auto_save_setups_with_source(..., source="Support Reversal")`, and that generator has returned `[]` unconditionally since Support Reversal was killed 2026-07-23). (b) **"BOS Breakout Backtest — Research Findings"** presents `rs_score_20` as a durable, kept, positive-EV filter from the 2026-06-19 BOS batch — but three weeks later a higher-rigor study (S-002) retested it and found "no significant relationship with forward returns," and it was explicitly removed from `leaders_scan.py`'s live conviction-score formula (comment: *"removing the rs_score_20 and sector_rs_rank blocks (confirmed dead, S-002)"*). `rs_score_20` still does drive live setup selection elsewhere (`backfill_setup_log.py`'s `ORDER BY rs_score_20 DESC` for `RS_LEADER_MARKET`/`RS_LEADER_SECTOR`), so the contradiction is live, not academic. Same unresolved question as §3 backlog item 10 (`Leaders → Deep Scan` factor check), now confirmed to also apply to the Backtest page's own findings writeup. **No dashboard/verdict change made** — user has not yet decided keep/demote/relabel for either. → §20
-17. <span style="color:#dc2626;">**URGENT, STILL NOT REPAIRED — see also §27, where a SECOND Postgres-only bug was found after the first fix proved insufficient (a dict cursor silently dropping a column, so every insert raised `IndexError` and wrote zero rows). The 2026-08-12 17:55 UTC run succeeded on every step and still wrote nothing. (2026-08-12) — production `setup_log` and `leaders_scan` have been FROZEN SINCE 2026-06-30 (six weeks, 29 trading dates) because `bos_flag` is `BOOLEAN` in Supabase and `INTEGER` in SQLite.**</span> `bos_flag = 1` is valid SQLite and invalid Postgres (`operator does not exist: boolean = integer`); the error aborts the transaction, so all four setup queries fail and **nothing is written** — which is why the tables are frozen rather than partially filled. Third instance of this SQLite/Postgres type-mismatch class after the `TEXT` vs `DATE` gotcha (CLAUDE.md) and the Decimal-vs-float bug (§16). Four live comparisons fixed across `backfill_setup_log.py` and `leaders_scan.py`, and all queries verified executing read-only against real production rows. **The production data itself is NOT repaired** — no write was made; the 29 dates sit above the high-water mark, so the next successful daily run backfills them automatically (~1,950 rows) once this is pushed. Invisible for six weeks because the hook only logs a `WARNING`, the dashboard shows an empty `Setup Perf` rather than an error, and the CI gate deliberately does not exercise the Postgres path. → §25
+17. <span style="color:#dc2626;">**START HERE (2026-08-17) — see §29 for the current state and the four diagnosed causes. `setup_log` IS now fixed and caught up (2,029 rows backfilled); what remains is production missing all of 2026-08-13 (upstream 522s, only local has that session), `sector_signals` one date behind on a Postgres-only SQL bug, and `leaders_scan` still frozen at 06-30 on a MISSING UNIQUE CONSTRAINT, not the boolean bug. Nothing written to production. STILL NOT REPAIRED — see also §27, where a SECOND Postgres-only bug was found after the first fix proved insufficient (a dict cursor silently dropping a column, so every insert raised `IndexError` and wrote zero rows). The 2026-08-12 17:55 UTC run succeeded on every step and still wrote nothing. (2026-08-12) — production `setup_log` and `leaders_scan` have been FROZEN SINCE 2026-06-30 (six weeks, 29 trading dates) because `bos_flag` is `BOOLEAN` in Supabase and `INTEGER` in SQLite.**</span> `bos_flag = 1` is valid SQLite and invalid Postgres (`operator does not exist: boolean = integer`); the error aborts the transaction, so all four setup queries fail and **nothing is written** — which is why the tables are frozen rather than partially filled. Third instance of this SQLite/Postgres type-mismatch class after the `TEXT` vs `DATE` gotcha (CLAUDE.md) and the Decimal-vs-float bug (§16). Four live comparisons fixed across `backfill_setup_log.py` and `leaders_scan.py`, and all queries verified executing read-only against real production rows. **The production data itself is NOT repaired** — no write was made; the 29 dates sit above the high-water mark, so the next successful daily run backfills them automatically (~1,950 rows) once this is pushed. Invisible for six weeks because the hook only logs a `WARNING`, the dashboard shows an empty `Setup Perf` rather than an error, and the CI gate deliberately does not exercise the Postgres path. → §25
 18. <span style="color:#16a34a;">**RESOLVED (2026-08-12) — all three remaining single-date hook defects closed (§22 B5).**</span> `setup_log` (11 dates already lost locally, 4 repaired deliberately with backup/dry-run/verify), `leaders_scan`, and `boring_signals` now all backfill instead of writing only the newest date; the pending-date policy is shared by import so the hooks cannot drift apart again. 50 tests. → §24, §25
 16. <span style="color:#16a34a;">**RESOLVED (2026-08-12) — `market_regime`/`sector_signals` silent-gap bug root-caused and fixed; same failure class as item 10 above, this time originating in `regime.py`/`sector_signals.py` themselves rather than a Postgres-dispatch outage.**</span> The sidebar's "Market Regime" widget showed a stale date/duration; traced to `regime.py` and `sector_signals.py` only ever computing the single latest trading date (unlike `stock_signals.py`, which already backfills a date range) — a transient hook failure on 2026-08-07 permanently lost that date once the next successful run moved on to a newer one. Both now backfill every missing date since the last successful write. Production repaired (backup → dry-run → execute → independently reverified): recomputing the gap revealed a genuine one-day `VOLATILE` dip on 08-07 hiding inside what looked like an unbroken uptrend. The days-since-transition display was separately hardened to detect and flag this class of gap instead of silently trusting a possibly-wrong number. Also fixed a real, independently-discovered `StreamlitSetPageConfigMustBeFirstCommandError` crash and moved `requirements.txt` to exact, verified pins, dropping confirmed-dead packages. 19 new tests added — this project's first automated test coverage. → §21 (fix chronology), §22 (findings feeding into the §7.2/§10 CI+staging gap this whole incident is direct evidence for)
 
@@ -368,7 +368,7 @@ This section originally described a 9-phase batch-approval plan for a future ses
 
 **Next session starts here.** Five items remain open, none blocking each other:
 1. **Leaders → Deep Scan factor check** (§3 item 10) — confirm the A–F scoring doesn't still weight a killed ZH_research S-002/S-003 factor. Now directly tied to item 3 below — both trace back to the same S-002 `rs_score_20` kill.
-2. ~~**§7.2/§10 — CI test gate + staging environment.**~~ — **DONE 2026-08-12 on the repo side, see §23.** What's left is not code: push the `staging` branch, create the second Streamlit Cloud app, add branch protection on `main` requiring the three CI checks, and decide which database staging reads. All four need the account owner. §22's B5–B9 (hook audit, freshness check, CLAUDE.md Known-Gaps update, local `prices_adjusted` staleness, local interpreter standardization) were out of this session's scope and are still open.
+2. **PICK UP AT §29 (2026-08-17)** — production is one trading session behind with four diagnosed, unfixed causes; the proposed fix order is §29.4 and needs approval before any production write. Then: ~~**§7.2/§10 — CI test gate + staging environment.**~~ — **DONE 2026-08-12 on the repo side, see §23.** What's left is not code: push the `staging` branch, create the second Streamlit Cloud app, add branch protection on `main` requiring the three CI checks, and decide which database staging reads. All four need the account owner. §22's B5–B9 (hook audit, freshness check, CLAUDE.md Known-Gaps update, local `prices_adjusted` staleness, local interpreter standardization) were out of this session's scope and are still open.
 3. **`z_histogram` crossover visual — keep/demote/relabel decision** (top-of-file item 13) — the BMX study concluded negative on the raw crossover (no forecasting edge, index or stock level). Basis for `Market Gates Dashboard`/`Regime`'s current KEEP verdict is a different, still-valid gate (sector-rank), so nothing is broken today — but the crossover visual itself now has a null result against it. User has explicitly deferred this decision to a later session, not this one.
 4. **`Backtest → KIRAN Screener Performance` — keep/relabel/retire decision** (§3 item 13, §20a) — validates a screener confirmed to generate zero live setups today.
 5. **`Backtest → BOS Breakout Backtest — Research Findings` — keep/relabel/retire decision** (§3 item 14, §20b) — `rs_score_20` presented as durable-positive on this page, independently confirmed dead by S-002 and removed from live scoring elsewhere.
@@ -1044,3 +1044,86 @@ Checked and clear, so the boundary is explicit rather than assumed:
 - `big_fish`, `ml_feature_study`, `breadth_momentum_study`, `engulfing_Study`, `Linda_Raschke-Study` — all zero on both counts.
 - `ARCHIVED_PSX_SCRAPER` (1 file) and `backups/` (2 files), skipped by the original sweep — re-checked, zero hits, so the skip hid nothing.
 - `research_db.py`, the opt-in Postgres bridge for the six ZH_research scripts, uses `pd.read_sql_query`, not a dict cursor. Duplicate column names there produce visibly duplicated DataFrame columns, not a silent row-shortening.
+
+---
+
+## 29. <span style="color:#dc2626;">🔴 PICK UP HERE — production is a trading day behind; four causes diagnosed, none fixed (2026-08-17)</span>
+
+**Read this section first if you are starting cold.** Everything below is confirmed read-only against production and the Actions logs on 2026-08-17. **No fix has been applied and nothing has been written to production.** Four separate causes, only two of which are the swallow-and-continue pattern §28 predicted.
+
+### 29.1 State as of 2026-08-17 05:00 UTC
+
+| Table | Production (Supabase) | Local SQLite |
+|---|---|---|
+| `prices` / `index_prices` / `stock_signals` | **2026-08-12** | **2026-08-13** |
+| `market_regime` | 2026-08-12 | — |
+| `sector_signals` | **2026-08-11** (one date behind) | 2026-08-13 |
+| `setup_log` | **2026-08-12** ✅ 43,443 rows | 2026-08-13 |
+| `leaders_scan` | **2026-06-30** ❄️ 164 rows | — |
+| `boring_signals` | n/a (SQLite-only) | 2026-08-13, 140 rows |
+
+**What went right:** the §25/§27 setup_log fixes worked. The 2026-08-13 run backfilled all 30 missing dates — **2,029 rows**, exactly the count predicted read-only beforehand, zero missing dates, contiguous, daily counts in the normal 62–73 band. That defect is closed.
+
+2026-08-13 is the last completed PSX session (08-14 Independence Day, 08-15/16 weekend). Local is current; production is one session behind.
+
+### 29.2 The four causes, with evidence
+
+**A. Production is missing 2026-08-13 entirely — upstream failure, NOT a swallowed bug.** From the 08-13 Actions log:
+
+```
+INFO  Update: scraping 1 new date(s) since 2026-08-12…
+WARN  Attempt 1/3 failed for 2026-08-13: 522 Server Error ... ksestocks.com/MarketSummary
+WARN  Attempt 2/3 failed ...   WARN  Attempt 3/3 failed ...
+ERROR All retries exhausted for 2026-08-13
+INFO  Scraped 1 dates -> 0 sector mappings, 0 price records, 0 index records
+```
+
+The 08-14 run retried both days: `Scraped 2 dates -> 0 price records`, no errors — the source returned nothing. The local machine scraped 08-13 successfully at 15:02 UTC, ~3h *before* the Actions run hit the 522s. **Local holds 534 price rows for 08-13; production holds 0.**
+
+<span style="color:#dc2626;">**This cannot be re-scraped.**</span> `scraper.py` reads `MarketSummary`, which serves only the *latest* session — which is why re-trying 08-13 on 08-14 returned nothing. The only surviving copy of that session is the local SQLite database.
+
+**B. `sector_signals` — real Postgres-only SQL bug, swallowed.** Identical on both runs:
+
+```
+WARNING Sector signals hook failed: for SELECT DISTINCT, ORDER BY expressions must appear in select list
+```
+
+This is exactly the Tier-1 unnarrowed swallow-and-continue pattern from §28 — expected, not a new mystery. <span style="color:#eab308;">**The offending statement is NOT yet isolated.**</span> The two obvious candidates (`database_pg.py:1694` and `:1722`, both `date IN (SELECT DISTINCT … ORDER BY … LIMIT 60)`) each execute **cleanly** against production when run directly — verified, so do not start by "fixing" those. The handler logs `exc` with no traceback, which is why the location is unknown; narrowing Tier 1 (§28.2) would surface it.
+
+**C. `leaders_scan` — NOT the `bos_flag` pattern.** All three Postgres sites are `IS TRUE`/`IS FALSE`; the §25 boolean fix landed correctly there. The actual blocker:
+
+```
+WARNING Leaders deep scan hook failed:
+        there is no unique or exclusion constraint matching the ON CONFLICT specification
+```
+
+Confirmed against production: **`leaders_scan` and `leaders_top_picks` have no primary or unique constraint at all**, while the code writes `ON CONFLICT (scan_date, setup_type, symbol)` (`leaders_scan.py:585`) and `ON CONFLICT (scan_date, setup_type, rank)` (`:803`). A prediction that the boolean fix alone would unfreeze this table was **wrong**, for this reason.
+
+**D. Two Tier-4 hooks failed exactly as already documented** — Boring Breakouts (SQLite-only, no-ops on the runner) and Agent daily (`anthropic package not installed`, §23.5). Expected; no action.
+
+### 29.3 <span style="color:#dc2626;">Critical caveat before any re-run of the setup_log backfill</span>
+
+**`setup_log` also has no unique constraint.** Its insert works only because it uses bare `ON CONFLICT DO NOTHING` **with no target**, which is legal without one — but that provides **no deduplication whatsoever**. The 2,029 backfilled rows are clean (verified: 2,029 rows, 2,029 distinct on `symbol/setup_date/setup_type`, 0 duplicates) purely because those dates were empty beforehand.
+
+**Re-running that backfill today would duplicate every row.** The claim elsewhere in this document that `ON CONFLICT DO NOTHING` makes the Postgres path idempotent is **wrong in production** and is corrected here.
+
+### 29.4 Proposed fix order — approved by nobody yet
+
+Ordered by dependency: 08-13 prices must land before anything downstream can compute that date.
+
+| # | Fix | Shape | Blocker |
+|---|---|---|---|
+| 1 | Copy 08-13 `prices` + `index_prices` from local SQLite → production, then let the hooks compute downstream | Scoped workflow, one date, dry-run default — same shape as `setup_log_repair.yml` | User approval. Local is the **only** copy |
+| 2 | Add missing unique constraints on `leaders_scan`, `leaders_top_picks`, `setup_log` | One DDL per table against Supabase | Sign-off (production DDL). Unblocks leaders_scan's own backfill; makes setup_log re-runs idempotent |
+| 3 | Isolate and fix the `sector_signals` DISTINCT/ORDER BY statement | Read-only reproduction first | Easier once Tier 1 is narrowed and emits a traceback |
+| 4 | Narrow Tier 1 handlers (extend PR #4's pattern) | §28.2 register | Decision on PR #4 |
+
+### 29.5 Open items carried in
+
+- **PR #4 is open and unmerged** — `main.py`'s fatal-exit change (setup_log's wrapper only; 15 handlers still swallow). Awaiting review.
+- §28.2's register of 15 unnarrowed handlers, and §28.3's tracked SQLite `continue` hazard, both still open.
+- The `rs_score_20` question (§20b) is now **live data**, not theoretical: the 2,029 backfilled rows include `RS_LEADER_MARKET`/`SECTOR` selected by `ORDER BY rs_score_20 DESC`, a construct S-002 confirmed dead.
+
+### 29.6 How to re-verify any of this
+
+Every check above is read-only and repeatable. Connection string comes from `.env`'s `SUPABASE_DB_URL`, used in a scoped subprocess (never exported to the shell). Pattern used throughout: `conn.set_session(readonly=True)` for reads; for anything resembling a write, a real transaction that is **always rolled back**, with a before/after row count printed to prove nothing persisted.
