@@ -303,10 +303,11 @@ def check_all(expected_session: str | None = None,
               source_error: str | None = None) -> Verdict:
     """Build the whole-system verdict. Runs live queries; caches nothing.
 
-    expected_session: the latest completed session per ksestocks (the exchange
-        is the authority on its own holidays). None means the caller could not
-        determine it -- the absolute check then degrades to amber rather than
-        silently passing.
+    expected_session: the latest completed session per ksestocks (our source,
+        not PSX itself -- treated as the authority on its own holidays since
+        no separate PSX holiday calendar exists in this codebase). None means
+        the caller could not determine it -- the absolute check then degrades
+        to amber rather than silently passing.
     """
     items: list[Item] = []
     expected_source = "ksestocks" if expected_session else "unavailable"
@@ -332,7 +333,7 @@ def check_all(expected_session: str | None = None,
             prices_max = None
             items.append(Item("prices", "unknown", f"query failed: {exc}"))
 
-        # -- absolute: is prices itself level with the exchange? --
+        # -- absolute: is prices itself level with the ksestocks source? --
         if prices_max is None:
             pass  # already reported as unknown above
         elif expected_session is None:
@@ -344,7 +345,7 @@ def check_all(expected_session: str | None = None,
         elif prices_max < expected_session:
             items.append(Item(
                 "prices", "stale",
-                f"{prices_max}, exchange published {expected_session}",
+                f"{prices_max}, ksestocks source has {expected_session}",
                 behind=1,
             ))
         else:
