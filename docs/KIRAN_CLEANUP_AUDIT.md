@@ -1350,3 +1350,106 @@ Nothing in this project calls `load_dotenv()`, so a local pipeline run has `SUPA
 ### 31.7 Known: the banner ships red
 
 `recovery_signals` has no producer at all (§30) and will read red until `signal_engine.py` is scheduled or the screener is retired. `boring_signals` reads "no run recorded yet" until the local job next runs. Both are correct reports of real conditions, not banner defects.
+
+---
+
+## 32. Unadjusted corporate actions — DLL fixed, but it is one of at least 16 (2026-08-17)
+
+### 32.1 Verification that started this
+
+`corporate_action_suspects` was checked for whether it still detects, or merely reports honestly now. **Verdict: the detector is healthy — it is the scan window that fails.**
+
+- **Not orphaned.** Unlike `signal_engine.py` (§30, zero callers), `auto_detect_suspects` is invoked from `main.py:224`/`:235` via `daily_scraper.yml`, `eod-scraper.yml` and `run_update.bat`.
+- **Executes today.** Run against live data through a no-commit proxy connection: clean, returned `0 new suspect(s)`, nothing persisted.
+- **Correctly quiet.** Independent scan confirms zero qualifying drops after 2026-06-22.
+- **What actually qualifies:** a single-day close-to-close drop worse than −12% on a symbol in `stock_metadata` (`apply_price_adjustments.py:357`). This is a **price-discontinuity detector, not an events feed**. Routine dividends (PSX yields ~5–8%/yr, semi-annual → ~2–5% ex-div drops) cannot and should not trigger it. A quarter full of dividend declarations with zero suspects is correct behaviour.
+- **No announcements source exists** anywhere in this project to cross-check against. `announcements.db` has **zero tables**; `portfolio_transactions.type` is manual user entry; `page_valuation`'s dividend fields are retired financial-statement items. True split ratios are therefore not knowable from within this system.
+
+### 32.2 The real defect: a one-way scan ratchet
+
+`auto_detect_suspects` sets `scan_from = MAX(suspect_date)` and scans `date > scan_from`. On a cold start it scans only the **last 5 trading days**. The window therefore only ever moves forward — **any event before the table was first seeded is permanently unreachable**, silently.
+
+### 32.3 Full historical sweep — DLL was not isolated
+
+Read-only sweep across all of `prices_adjusted` (2005-01-03 → 2026-08-13): **24,481** qualifying discontinuities, **13,694** detector-eligible after the `stock_metadata` join, against **4 rows ever captured**.
+
+The raw total is dominated by genuine small-cap volatility (FCEL 15 hits in 2 years, PASM 10 — a stock cannot split 15 times). The meaningful subset is the DROP_50 band. **Last 2 years, DROP_50: 16 events. Exactly one (MTL) was ever caught** — and only because it occurred after the table was seeded.
+
+| Symbol | Date | Move | Observed ratio | Caught? |
+|---|---|---|---|---|
+| MARI | 2024-09-16 | −88.2% | 8.50 | no |
+| AHCL | 2025-03-27 | −89.4% | 9.47 | no |
+| LUCK | 2025-04-28 | −79.5% | 4.88 | no |
+| SYS | 2025-06-02 | −81.0% | 5.26 | no |
+| THCCL | 2025-07-14 | −79.5% | 4.89 | no |
+| LCI | 2025-07-21 | −79.5% | 4.88 | no |
+| KOHC | 2025-08-25 | −80.3% | 5.08 | no |
+| KTML | 2025-09-15 | −80.6% | 5.17 | no |
+| KML | 2025-10-06 | −90.1% | 10.09 | no |
+| BECO | 2025-11-17 | −88.6% | 8.77 | no |
+| BNL | 2025-12-08 | −89.0% | 9.09 | no |
+| TSBL | 2025-12-29 | −91.5% | 11.78 | no |
+| FNEL | 2026-02-02 | −90.7% | 10.73 | no |
+| CLOV | 2026-04-20 | −90.2% | 10.16 | no |
+| DLL | 2026-06-08 | −90.3% | 10.34 | no → **fixed §32.4** |
+| MTL | 2026-06-22 | −48.6% | 1.94 | **yes, CONFIRMED + adjusted** |
+
+In every case the price *stayed* at the new level, and these are major liquid names — LUCK, SYS, LCI, KOHC, MARI. Lucky Cement did not lose 80% of its value in a day.
+
+**MTL is the proof the remediation path works end-to-end**: detected → confirmed on the Data Health page → `rebuild_symbol_adjusted` applied → its 200-bar ratio is now a healthy 1.08. The machinery is sound; only detection failed.
+
+### 32.4 ✅ DLL corrected (production write)
+
+Factor **0.096714** (= 60.43 / 624.83) applied to all 3,576 `prices_adjusted` rows before 2026-06-08. Full DLL history backed up first to `backups/DLL_prices_adjusted_prefix_20260817_125803.csv`. Dry-run inside a rolled-back transaction first, then committed, then re-verified on a fresh read-only connection.
+
+| Check | Result |
+|---|---|
+| Rows updated | 3,576 (2005-01-03 → 2026-06-05) |
+| Continuity | 06-05 close 60.43 → 06-08 close 60.43 — gap eliminated |
+| 200-bar high | 767.97 → **74.27** |
+| Total DLL rows | 3,623, unchanged |
+| Remaining >12% breaks | 2, both ordinary volatility (2009-01-02 ratio 1.16, 2011-04-19 ratio 1.19) |
+
+**Ratio methodology:** the observed ratio was used rather than a "clean" 5:1/10:1. The observed ratios scatter too widely to infer clean integers reliably (8.50, 8.77, 9.09, 9.47, 10.09, 10.34, 11.78), and with no announcements feed the true ratios are unknowable. The observed ratio is the only uniformly applicable rule and guarantees series continuity — at the cost of absorbing that day's genuine return (−3.29% for DLL) into the adjustment.
+
+DLL's overhead gate still reads BLOCKED at ratio 1.36 — but that is now **correct**: DLL really did trade to 74.27 within 200 bars and sits at 54.75. Real overhead supply, not a data artifact.
+
+### 32.5 Impact — 11 tradeable names still corrupted
+
+Measured over 200 *trading bars* (matching `breakout_signal.py`'s `high_200d`), still failing the overhead gate `high_200d <= pivot_high * 1.15` **and** inside the tradeable universe:
+
+**LUCK, SYS, LCI, KOHC, KTML, THCCL, AHCL, KML, BECO, BNL, CLOV.**
+
+Older splits (MARI 2024-09, MTL) have already rolled clear as the break exits the 200-bar window — the corruption self-heals after ~200 sessions, but silently suppresses the symbol until then. `TSBL`, `FNEL` and `DLL` are in `EXCLUDED_SECTORS`, so they carry no screening impact — **DLL, the one fixed here, was the least commercially urgent of the set.**
+
+Failure direction is suppression, not false signals: affected names are silently locked out of BREAKOUT rather than wrongly flagged.
+
+### 32.6 Open — scan-window redesign deliberately not started
+
+Held pending review of §32.3's scope, per user instruction. Any redesign must address: the one-way ratchet, the 5-day cold-start window, whether a one-time historical remediation covers the 11 live names, and how ratios are chosen without an announcements feed.
+
+### 32.7 OPEN — downstream contamination of `setup_log` forward returns
+
+Raised as a concern at the end of the §32 session and then measured, so it is recorded here as fact rather than suspicion. **Not fixed.**
+
+**`backtest_setups` is effectively unaffected** — only **5 rows of 4,344** fall within ±20 days of any of the 15 unadjusted splits (MARI 1, THCCL 4). An earlier verbal flag that backtests spanning 2024–2026 would be materially distorted was an overstatement; the ML training set barely touches these events.
+
+**`setup_log` is the real exposure.** Forward returns are computed from `prices`/`prices_adjusted`, so any 5/10/20-day window spanning an unadjusted repricing records the mechanical drop as a genuine return:
+
+| Measure | Value |
+|---|---|
+| Rows with a forward return < −50% | **475** of 208,044 (**0.23%**) |
+| Distinct symbols affected | 25 |
+| On the 15 identified 2024–26 splits | 203 |
+| On other/older unadjusted actions | 272 |
+
+Top affected: `GCIL` 68, `BECO` 52, `AHCL` 36, `KOHP` 33, `PRL` 31, `LUCK` 29, `PAKRI` 27, `MUGHAL` 24. By year: 2025 (180), 2017 (66), 2021 (59), 2026 (47).
+
+Two things this establishes:
+
+1. **The problem is older and wider than the 2-year DROP_50 list in §32.3.** `GCIL`, `KOHP`, `PRL`, `PAKRI`, `MUGHAL` are unadjusted corporate actions outside that window, reaching back to at least 2015. §32.3's 16-event table is the recent slice, not the full population.
+2. **These rows are systematically mislabelled, not merely noisy.** `outcome_label` is set from `fwd_return_10d`'s sign (`> 0` WINNER, `< 0` LOSER), so a mechanical 80–90% repricing is recorded as a real trading loss. Any per-setup-type EV or win-rate computed from `setup_log` carries that bias. At 0.23% of rows the aggregate effect is probably small, but it is concentrated — `BECO`, `AHCL`, `LUCK`, `GCIL` carry dozens each — so per-symbol or per-year cuts will be affected far more than the headline percentage suggests.
+
+**Why this is not fixable by re-running `compute_forward_returns.py` alone:** it recomputes from the same uncorrected `prices_adjusted`, so it would reproduce the identical wrong values. The price history has to be adjusted first (§32.5's 11 live names plus whatever the full-history sweep turns up), and only then are the forward returns and `outcome_label`s worth recomputing.
+
+**Suggested order when this is picked up:** (1) settle the ratio methodology, (2) remediate `prices_adjusted` across all detected events, (3) recompute `setup_log` forward returns and labels, (4) only then fix the detection window so new events cannot accumulate. Sequencing matters — fixing detection first leaves the existing 475 rows wrong and adds no protection to what is already broken.
