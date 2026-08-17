@@ -66,7 +66,7 @@ regenerate the CI fixture too: `python tests/fixtures/build_fixture_db.py`.
 | Workflow | Schedule | What it does |
 |----------|----------|-------------|
 | `ci.yml` | Every push/PR to `main` and `staging` | **The deploy gate** (added 2026-08-12). 3 jobs: `clean-install` (pip install + `pip check` + import all production modules on Python 3.11), `unit-tests` (`pytest tests/`), `app-boot` (renders all 15 dashboard pages via Streamlit's `AppTest` against `tests/fixtures/psx_fixture.db`). See `docs/DEPLOYMENT.md` |
-| `daily_scraper.yml` | Mon–Fri 11:35 UTC (16:35 PKT) | Scrapes PSX prices, generates trade setups. Installs `playwright` explicitly — it is in `requirements-optional.txt`, not `requirements.txt` |
+| `daily_scraper.yml` | Mon–Fri 17:00 UTC (22:00 PKT) | Scrapes PSX prices, generates trade setups. This late hour is load-bearing, not incidental — ksestocks.com does not finish publishing final EOD figures until evening PKT; confirmed live 2026-08-17 that genuine same-day data (distinct KSE-100 close, not an echo of the prior session) was already available by ~19:40 PKT, well ahead of this job's 22:00 PKT run. Installs `playwright` explicitly — it is in `requirements-optional.txt`, not `requirements.txt` |
 | `weekly_backtest.yml` | Sunday | Runs backtest engine |
 | `weekly_ml_retrain.yml` | Manual only (`workflow_dispatch`) | Retrains kiran_model.pkl via phase4_train.py — schedule disabled 2026-07-31, model killed (see docs/KIRAN_CLEANUP_AUDIT.md §14). Installs `requirements-optional.txt` too — scikit-learn/joblib live there |
 | `eod-scraper.yml` | Manual only (cron commented out) | Alternative headless EOD scrape → Supabase. **Installs its own unpinned package list, not `requirements.txt`** — known drift, see audit §23.5 |
