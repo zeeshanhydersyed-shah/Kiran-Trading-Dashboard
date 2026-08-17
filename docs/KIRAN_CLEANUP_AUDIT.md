@@ -19,7 +19,7 @@
 13. <span style="color:#dc2626;">**UPDATED, STILL NOT RESOLVED (2026-08-03) — the `z_histogram` crossover has a real, replicated STOCK-LEVEL entry-timing edge (2013+, 7+ sectors) when paired with a -6%/10-day-trailing-low risk rule, but the raw INDEX-LEVEL visual (Regime page / Market Gates Dashboard's "Fast Z minus Signal" read) that the dashboard actually shows is still NULL.**</span> A separate, standalone project (`C:\Users\Lenovo\breadth_momentum_study`, the "BMX study" — deliberately kept out of this repo so it can't be confused with the already-validated Weinstein Stage-2 screener) went through three rounds on this. First, the raw index-level crossover (166 bull + 166 bear, full 2005-2026 KSE-100, no stop-loss): no significant forward-return edge (all p>0.19); bear crossovers were followed by KSE-100 RISING more often (71.8% win rate at 60d) than after bull crossovers (67.7%) — the dashboard's implied "sit on the bench" read is still directly contradicted by this. Second, stock-level with a tight 1-day trailing stop (Cement/Banks/Auto Assembler): also null. Third, loosened to a 10-day trailing low (same -6% initial stop): a real, statistically significant win-rate edge over random entries, replicated across all 23 non-excluded PSX sectors (18/23 individually significant, p<0.05), most reliable 2013 onward — 2005-2012 doesn't clear transaction costs even though it's still directionally better than baseline. Full writeup: `C:\Users\Lenovo\RESEARCH_LOG.md`, "Breadth Momentum Crossover (BMX) study" row, status **Concluded — positive**. **This positive verdict does NOT bless the dashboard's crossover visual as shown** — the dashboard displays the raw index-level read (still null, see above), not the risk-managed stock-level entry system that actually showed an edge; the two are different constructs. Also still a different mechanism from the Weinstein Stage-2 sector-rank gate (`sec_global_rank<=8`, EV@90d +10.50%) that §2's KEEP verdicts below cite as basis for `Market Gates Dashboard`'s 4-Gate display and the `Regime` page — that basis still doesn't cover the histogram-crossover visual either way. **Not auto-resolved: the user has said they will decide separately whether/how to reflect any of this on the dashboard** — no dashboard/verdict change made as part of this entry. → §2 (`Market Gates Dashboard`, `Regime`)
 14. <span style="color:#16a34a;">**RESOLVED (2026-08-05) — `Backtest` page's "Kiran Setup Simulation" section retired; `weekly_sim.yml` schedule disabled.**</span> Same active-trading, buy-on-strength/1%-risk mechanism as the "Active-trading simulation (kiran_sim)" study already **Concluded — negative** on 2026-05-12 (`RESEARCH_LOG.md`: best case 7.45% CAGR vs ~22% CAGR for KSE-100 buy-and-hold; that result is what drove this program's pivot to the Stage 2 portfolio approach it runs today). The section had been re-showing that already-answered question live, every week, with no caveat. User-directed retirement, page and data kept in place. → §19
 15. <span style="color:#dc2626;">**NOT RESOLVED (2026-08-05) — two more findings surfaced from the same `Backtest` page review, neither acted on yet.**</span> (a) **"KIRAN Screener Performance"** (the page's top KPI section, `backtest_setups` table) validates a support/resistance consolidation-base screener that is its own self-contained logic in `backtest.py` — not Weinstein Stage-2, Boring Donchian, or Recovery Bases — and confirmed to generate **zero live setups today** (`auto_save_setups()`, the `source='System'` writer, is called only from old `dashboard_backup_*.py` files, never from current `dashboard.py`/`main.py`; the live pipeline's only setup-saving call is `auto_save_setups_with_source(..., source="Support Reversal")`, and that generator has returned `[]` unconditionally since Support Reversal was killed 2026-07-23). (b) **"BOS Breakout Backtest — Research Findings"** presents `rs_score_20` as a durable, kept, positive-EV filter from the 2026-06-19 BOS batch — but three weeks later a higher-rigor study (S-002) retested it and found "no significant relationship with forward returns," and it was explicitly removed from `leaders_scan.py`'s live conviction-score formula (comment: *"removing the rs_score_20 and sector_rs_rank blocks (confirmed dead, S-002)"*). `rs_score_20` still does drive live setup selection elsewhere (`backfill_setup_log.py`'s `ORDER BY rs_score_20 DESC` for `RS_LEADER_MARKET`/`RS_LEADER_SECTOR`), so the contradiction is live, not academic. Same unresolved question as §3 backlog item 10 (`Leaders → Deep Scan` factor check), now confirmed to also apply to the Backtest page's own findings writeup. **No dashboard/verdict change made** — user has not yet decided keep/demote/relabel for either. → §20
-17. <span style="color:#dc2626;">**URGENT, STILL NOT REPAIRED — see also §27, where a SECOND Postgres-only bug was found after the first fix proved insufficient (a dict cursor silently dropping a column, so every insert raised `IndexError` and wrote zero rows). The 2026-08-12 17:55 UTC run succeeded on every step and still wrote nothing. (2026-08-12) — production `setup_log` and `leaders_scan` have been FROZEN SINCE 2026-06-30 (six weeks, 29 trading dates) because `bos_flag` is `BOOLEAN` in Supabase and `INTEGER` in SQLite.**</span> `bos_flag = 1` is valid SQLite and invalid Postgres (`operator does not exist: boolean = integer`); the error aborts the transaction, so all four setup queries fail and **nothing is written** — which is why the tables are frozen rather than partially filled. Third instance of this SQLite/Postgres type-mismatch class after the `TEXT` vs `DATE` gotcha (CLAUDE.md) and the Decimal-vs-float bug (§16). Four live comparisons fixed across `backfill_setup_log.py` and `leaders_scan.py`, and all queries verified executing read-only against real production rows. **The production data itself is NOT repaired** — no write was made; the 29 dates sit above the high-water mark, so the next successful daily run backfills them automatically (~1,950 rows) once this is pushed. Invisible for six weeks because the hook only logs a `WARNING`, the dashboard shows an empty `Setup Perf` rather than an error, and the CI gate deliberately does not exercise the Postgres path. → §25
+17. <span style="color:#dc2626;">**START HERE (2026-08-17) — see §29 for the current state and the four diagnosed causes. `setup_log` IS now fixed and caught up (2,029 rows backfilled); what remains is production missing all of 2026-08-13 (upstream 522s, only local has that session), `sector_signals` one date behind on a Postgres-only SQL bug, and `leaders_scan` still frozen at 06-30 on a MISSING UNIQUE CONSTRAINT, not the boolean bug. Nothing written to production. STILL NOT REPAIRED — see also §27, where a SECOND Postgres-only bug was found after the first fix proved insufficient (a dict cursor silently dropping a column, so every insert raised `IndexError` and wrote zero rows). The 2026-08-12 17:55 UTC run succeeded on every step and still wrote nothing. (2026-08-12) — production `setup_log` and `leaders_scan` have been FROZEN SINCE 2026-06-30 (six weeks, 29 trading dates) because `bos_flag` is `BOOLEAN` in Supabase and `INTEGER` in SQLite.**</span> `bos_flag = 1` is valid SQLite and invalid Postgres (`operator does not exist: boolean = integer`); the error aborts the transaction, so all four setup queries fail and **nothing is written** — which is why the tables are frozen rather than partially filled. Third instance of this SQLite/Postgres type-mismatch class after the `TEXT` vs `DATE` gotcha (CLAUDE.md) and the Decimal-vs-float bug (§16). Four live comparisons fixed across `backfill_setup_log.py` and `leaders_scan.py`, and all queries verified executing read-only against real production rows. **The production data itself is NOT repaired** — no write was made; the 29 dates sit above the high-water mark, so the next successful daily run backfills them automatically (~1,950 rows) once this is pushed. Invisible for six weeks because the hook only logs a `WARNING`, the dashboard shows an empty `Setup Perf` rather than an error, and the CI gate deliberately does not exercise the Postgres path. → §25
 18. <span style="color:#16a34a;">**RESOLVED (2026-08-12) — all three remaining single-date hook defects closed (§22 B5).**</span> `setup_log` (11 dates already lost locally, 4 repaired deliberately with backup/dry-run/verify), `leaders_scan`, and `boring_signals` now all backfill instead of writing only the newest date; the pending-date policy is shared by import so the hooks cannot drift apart again. 50 tests. → §24, §25
 16. <span style="color:#16a34a;">**RESOLVED (2026-08-12) — `market_regime`/`sector_signals` silent-gap bug root-caused and fixed; same failure class as item 10 above, this time originating in `regime.py`/`sector_signals.py` themselves rather than a Postgres-dispatch outage.**</span> The sidebar's "Market Regime" widget showed a stale date/duration; traced to `regime.py` and `sector_signals.py` only ever computing the single latest trading date (unlike `stock_signals.py`, which already backfills a date range) — a transient hook failure on 2026-08-07 permanently lost that date once the next successful run moved on to a newer one. Both now backfill every missing date since the last successful write. Production repaired (backup → dry-run → execute → independently reverified): recomputing the gap revealed a genuine one-day `VOLATILE` dip on 08-07 hiding inside what looked like an unbroken uptrend. The days-since-transition display was separately hardened to detect and flag this class of gap instead of silently trusting a possibly-wrong number. Also fixed a real, independently-discovered `StreamlitSetPageConfigMustBeFirstCommandError` crash and moved `requirements.txt` to exact, verified pins, dropping confirmed-dead packages. 19 new tests added — this project's first automated test coverage. → §21 (fix chronology), §22 (findings feeding into the §7.2/§10 CI+staging gap this whole incident is direct evidence for)
 
@@ -368,7 +368,7 @@ This section originally described a 9-phase batch-approval plan for a future ses
 
 **Next session starts here.** Five items remain open, none blocking each other:
 1. **Leaders → Deep Scan factor check** (§3 item 10) — confirm the A–F scoring doesn't still weight a killed ZH_research S-002/S-003 factor. Now directly tied to item 3 below — both trace back to the same S-002 `rs_score_20` kill.
-2. ~~**§7.2/§10 — CI test gate + staging environment.**~~ — **DONE 2026-08-12 on the repo side, see §23.** What's left is not code: push the `staging` branch, create the second Streamlit Cloud app, add branch protection on `main` requiring the three CI checks, and decide which database staging reads. All four need the account owner. §22's B5–B9 (hook audit, freshness check, CLAUDE.md Known-Gaps update, local `prices_adjusted` staleness, local interpreter standardization) were out of this session's scope and are still open.
+2. **PICK UP AT §29 (2026-08-17)** — production is one trading session behind with four diagnosed, unfixed causes; the proposed fix order is §29.4 and needs approval before any production write. Then: ~~**§7.2/§10 — CI test gate + staging environment.**~~ — **DONE 2026-08-12 on the repo side, see §23.** What's left is not code: push the `staging` branch, create the second Streamlit Cloud app, add branch protection on `main` requiring the three CI checks, and decide which database staging reads. All four need the account owner. §22's B5–B9 (hook audit, freshness check, CLAUDE.md Known-Gaps update, local `prices_adjusted` staleness, local interpreter standardization) were out of this session's scope and are still open.
 3. **`z_histogram` crossover visual — keep/demote/relabel decision** (top-of-file item 13) — the BMX study concluded negative on the raw crossover (no forecasting edge, index or stock level). Basis for `Market Gates Dashboard`/`Regime`'s current KEEP verdict is a different, still-valid gate (sector-rank), so nothing is broken today — but the crossover visual itself now has a null result against it. User has explicitly deferred this decision to a later session, not this one.
 4. **`Backtest → KIRAN Screener Performance` — keep/relabel/retire decision** (§3 item 13, §20a) — validates a screener confirmed to generate zero live setups today.
 5. **`Backtest → BOS Breakout Backtest — Research Findings` — keep/relabel/retire decision** (§3 item 14, §20b) — `rs_score_20` presented as durable-positive on this page, independently confirmed dead by S-002 and removed from live scoring elsewhere.
@@ -1044,3 +1044,412 @@ Checked and clear, so the boundary is explicit rather than assumed:
 - `big_fish`, `ml_feature_study`, `breadth_momentum_study`, `engulfing_Study`, `Linda_Raschke-Study` — all zero on both counts.
 - `ARCHIVED_PSX_SCRAPER` (1 file) and `backups/` (2 files), skipped by the original sweep — re-checked, zero hits, so the skip hid nothing.
 - `research_db.py`, the opt-in Postgres bridge for the six ZH_research scripts, uses `pd.read_sql_query`, not a dict cursor. Duplicate column names there produce visibly duplicated DataFrame columns, not a silent row-shortening.
+
+---
+
+## 29. <span style="color:#dc2626;">🔴 PICK UP HERE — production is a trading day behind; four causes diagnosed, none fixed (2026-08-17)</span>
+
+**Read this section first if you are starting cold.** Everything below is confirmed read-only against production and the Actions logs on 2026-08-17. **No fix has been applied and nothing has been written to production.** Four separate causes, only two of which are the swallow-and-continue pattern §28 predicted.
+
+### 29.1 State as of 2026-08-17 05:00 UTC
+
+| Table | Production (Supabase) | Local SQLite |
+|---|---|---|
+| `prices` / `index_prices` / `stock_signals` | **2026-08-12** | **2026-08-13** |
+| `market_regime` | 2026-08-12 | — |
+| `sector_signals` | **2026-08-11** (one date behind) | 2026-08-13 |
+| `setup_log` | **2026-08-12** ✅ 43,443 rows | 2026-08-13 |
+| `leaders_scan` | **2026-06-30** ❄️ 164 rows | — |
+| `boring_signals` | n/a (SQLite-only) | 2026-08-13, 140 rows |
+
+**What went right:** the §25/§27 setup_log fixes worked. The 2026-08-13 run backfilled all 30 missing dates — **2,029 rows**, exactly the count predicted read-only beforehand, zero missing dates, contiguous, daily counts in the normal 62–73 band. That defect is closed.
+
+2026-08-13 is the last completed PSX session (08-14 Independence Day, 08-15/16 weekend). Local is current; production is one session behind.
+
+### 29.2 The four causes, with evidence
+
+**A. Production is missing 2026-08-13 entirely — upstream failure, NOT a swallowed bug.** From the 08-13 Actions log:
+
+```
+INFO  Update: scraping 1 new date(s) since 2026-08-12…
+WARN  Attempt 1/3 failed for 2026-08-13: 522 Server Error ... ksestocks.com/MarketSummary
+WARN  Attempt 2/3 failed ...   WARN  Attempt 3/3 failed ...
+ERROR All retries exhausted for 2026-08-13
+INFO  Scraped 1 dates -> 0 sector mappings, 0 price records, 0 index records
+```
+
+The 08-14 run retried both days: `Scraped 2 dates -> 0 price records`, no errors — the source returned nothing. The local machine scraped 08-13 successfully at 15:02 UTC, ~3h *before* the Actions run hit the 522s. **Local holds 534 price rows for 08-13; production holds 0.**
+
+<span style="color:#dc2626;">~~**This cannot be re-scraped.**~~ **CORRECTED 2026-08-17 — see §29.7. 08-13 is fully recoverable from the source; the claim below was wrong.**</span> ~~`scraper.py` reads `MarketSummary`, which serves only the *latest* session — which is why re-trying 08-13 on 08-14 returned nothing. The only surviving copy of that session is the local SQLite database.~~
+
+The reasoning error: `MarketSummary` was assumed to be latest-session-only because a re-try returned nothing. It is in fact a full date-addressable archive (`POST sdate=YYYY-MM-DD`), and the empty re-try was a transient source outage, not a closed window. Verified read-only against live ksestocks on 2026-08-17 — §29.7.
+
+**B. `sector_signals` — real Postgres-only SQL bug, swallowed.** Identical on both runs:
+
+```
+WARNING Sector signals hook failed: for SELECT DISTINCT, ORDER BY expressions must appear in select list
+```
+
+This is exactly the Tier-1 unnarrowed swallow-and-continue pattern from §28 — expected, not a new mystery. <span style="color:#eab308;">**The offending statement is NOT yet isolated.**</span> The two obvious candidates (`database_pg.py:1694` and `:1722`, both `date IN (SELECT DISTINCT … ORDER BY … LIMIT 60)`) each execute **cleanly** against production when run directly — verified, so do not start by "fixing" those. The handler logs `exc` with no traceback, which is why the location is unknown; narrowing Tier 1 (§28.2) would surface it.
+
+**C. `leaders_scan` — NOT the `bos_flag` pattern.** All three Postgres sites are `IS TRUE`/`IS FALSE`; the §25 boolean fix landed correctly there. The actual blocker:
+
+```
+WARNING Leaders deep scan hook failed:
+        there is no unique or exclusion constraint matching the ON CONFLICT specification
+```
+
+Confirmed against production: **`leaders_scan` and `leaders_top_picks` have no primary or unique constraint at all**, while the code writes `ON CONFLICT (scan_date, setup_type, symbol)` (`leaders_scan.py:585`) and `ON CONFLICT (scan_date, setup_type, rank)` (`:803`). A prediction that the boolean fix alone would unfreeze this table was **wrong**, for this reason.
+
+**D. Two Tier-4 hooks failed exactly as already documented** — Boring Breakouts (SQLite-only, no-ops on the runner) and Agent daily (`anthropic package not installed`, §23.5). Expected; no action.
+
+### 29.3 <span style="color:#dc2626;">Critical caveat before any re-run of the setup_log backfill</span>
+
+**`setup_log` also has no unique constraint.** Its insert works only because it uses bare `ON CONFLICT DO NOTHING` **with no target**, which is legal without one — but that provides **no deduplication whatsoever**. The 2,029 backfilled rows are clean (verified: 2,029 rows, 2,029 distinct on `symbol/setup_date/setup_type`, 0 duplicates) purely because those dates were empty beforehand.
+
+**Re-running that backfill today would duplicate every row.** The claim elsewhere in this document that `ON CONFLICT DO NOTHING` makes the Postgres path idempotent is **wrong in production** and is corrected here.
+
+### 29.4 Proposed fix order — approved by nobody yet
+
+Ordered by dependency: 08-13 prices must land before anything downstream can compute that date.
+
+| # | Fix | Shape | Blocker |
+|---|---|---|---|
+| 1 | Copy 08-13 `prices` + `index_prices` from local SQLite → production, then let the hooks compute downstream | Scoped workflow, one date, dry-run default — same shape as `setup_log_repair.yml` | User approval. Local is the **only** copy |
+| 2 | Add missing unique constraints on `leaders_scan`, `leaders_top_picks`, `setup_log` | One DDL per table against Supabase | Sign-off (production DDL). Unblocks leaders_scan's own backfill; makes setup_log re-runs idempotent |
+| 3 | Isolate and fix the `sector_signals` DISTINCT/ORDER BY statement | Read-only reproduction first | Easier once Tier 1 is narrowed and emits a traceback |
+| 4 | Narrow Tier 1 handlers (extend PR #4's pattern) | §28.2 register | Decision on PR #4 |
+
+### 29.5 Open items carried in
+
+- **PR #4 is open and unmerged** — `main.py`'s fatal-exit change (setup_log's wrapper only; 15 handlers still swallow). Awaiting review.
+- §28.2's register of 15 unnarrowed handlers, and §28.3's tracked SQLite `continue` hazard, both still open.
+- The `rs_score_20` question (§20b) is now **live data**, not theoretical: the 2,029 backfilled rows include `RS_LEADER_MARKET`/`SECTOR` selected by `ORDER BY rs_score_20 DESC`, a construct S-002 confirmed dead.
+
+### 29.7 Pre-fix read-only checks (2026-08-17) — dedup clear, and §29.2's "unrecoverable" claim falsified
+
+Three checks run before applying any fix. All read-only; no writes to production or local.
+
+**(a) Full-history duplicate audit — all three tables are CLEAN. No dedup step needed.**
+
+Run against production over the *entire* table, not just recent rows, on the exact natural key each table's `ON CONFLICT` targets. Session forced `readonly=True`, connection rolled back.
+
+| Table | Natural key | Rows | Distinct keys | Dup groups | Excess rows | NULLs in key |
+|---|---|---|---|---|---|---|
+| `leaders_scan` | `(scan_date, setup_type, symbol)` | 164 | 164 | **0** | **0** | 0 |
+| `leaders_top_picks` | `(scan_date, setup_type, rank)` | 9 | 9 | **0** | **0** | 0 |
+| `setup_log` | `(symbol, setup_date, setup_type)` | 43,443 | 43,443 | **0** | **0** | 0 |
+
+Date coverage: `leaders_scan`/`leaders_top_picks` 2026-06-16 → 06-30; `setup_log` 2024-08-15 → 2026-08-12 (494 distinct dates).
+
+Constraint/index state confirmed directly from `pg_constraint`/`pg_indexes`: **all three tables have zero constraints of any kind** (no PK, no unique). `setup_log` has one non-unique index, `idx_sl_sym_date` on `(symbol, setup_date)` — which is why its duplicate risk was invisible; a non-unique index enforces nothing. This confirms §29.3: the migration DDL in `supabase_schema.sql` dropped every `UNIQUE(...)` the SQLite schema carries.
+
+All three proposed constraints match the SQLite originals *and* the code's `ON CONFLICT` targets exactly (`leaders_scan.py:585`, `:803`; `backfill_setup_log.py:424` uses bare `ON CONFLICT DO NOTHING`, which becomes genuinely idempotent once any unique constraint exists). Note `backfill_setup_log.py:152-154`'s docstring already *asserts* the constraint exists — it never did.
+
+**Verdict: the DDL can be applied as-is. No dedup, no data touched.**
+
+**(b) 2026-08-13 is NOT unrecoverable — §29.2's red-flagged claim is wrong.**
+
+`ksestocks.com/MarketSummary` is a **date-addressable historical archive**, not a latest-session-only endpoint. `scraper.py` already POSTs `sdate=YYYY-MM-DD` per date. Verified live, comparing each response against local SQLite:
+
+| Requested `sdate` | Rows returned | Match vs local *same* date |
+|---|---|---|
+| 2026-08-13 | 534 | **534/534 = 100%** |
+| 2026-08-12 | 531 | **531/531 = 100%** |
+| 2026-07-15 | 520 | **510/510 = 100%** |
+| 2026-03-10 | 517 | **494/494 = 100%** |
+| 2025-11-04 | 528 | **486/486 = 100%** |
+
+08-13 alone would have been ambiguous — it is *also* the currently-published latest session, so returning it proves nothing on its own. **2026-08-12 is the discriminator**: it returned 08-12's real data (531 rows, 100% match to local 08-12, only 2.7% match to 08-13). The archive demonstrably serves arbitrary past dates, confirmed back to at least Nov 2025.
+
+So the 08-13/08-14 failures were a **transient ksestocks outage** (the 522s are Cloudflare origin timeouts), not a closing window. Local SQLite is *not* the only surviving copy, and there is no time pressure on it.
+
+**(c) Running the pipeline today cannot corrupt anything — the ghost guard fires correctly.**
+
+Source currently publishes `Latest update was on August 13, 2026`. For any date it has no session for, it echoes 08-13's data:
+
+| Requested `sdate` | Rows | Match vs local 08-13 | `_is_stale()` |
+|---|---|---|---|
+| 2026-08-14 (Independence Day) | 534 | 100% | **True → skipped** |
+| 2026-08-17 (today, pre-close) | 534 | 100% | **True → skipped** |
+
+Both are correctly rejected before storage, so no ghost row is written. The `_is_stale` Decimal/float fix (2026-07-29) means this guard now works on Postgres too, so the same protection applies to production.
+
+**Consequence for fix #1:** production's next successful run does `dates_since(2026-08-12)` → `[08-13, 08-14]`; 08-13 returns real data (not stale vs 08-12) and stores, 08-14 echoes 08-13 and is skipped. **The pipeline self-heals on its own, provided ksestocks stays up.** A hand-copy from local SQLite is no longer the only option, and is the riskier of the two — it was justified entirely by the now-falsified "only surviving copy" premise.
+
+### 29.8 ✅ Fix #2 APPLIED (2026-08-17) — three UNIQUE constraints now live in production
+
+Applied after §29.7(a) confirmed zero duplicates. Dry-run first (real DDL inside a transaction, verified, rolled back), then committed, then re-verified on a separate read-only connection.
+
+| Table | Constraint added | Matches |
+|---|---|---|
+| `leaders_scan` | `leaders_scan_natural_key UNIQUE (scan_date, setup_type, symbol)` | `leaders_scan.py:585` |
+| `leaders_top_picks` | `leaders_top_picks_natural_key UNIQUE (scan_date, setup_type, rank)` | `leaders_scan.py:803` |
+| `setup_log` | `setup_log_natural_key UNIQUE (symbol, setup_date, setup_type)` | `backfill_setup_log.py:424` |
+
+Row counts before and after are identical (164 / 9 / 43,443) — additive DDL, no data touched. Each mirrors the SQLite `UNIQUE(...)` the migration dropped. Reversible via `ALTER TABLE <t> DROP CONSTRAINT <name>`.
+
+**Two consequences:**
+
+1. **The `setup_log` re-run freeze is lifted.** §29.3's hazard — a second backfill silently doubling every row — is closed. `backfill_setup_log.py:424`'s bare `ON CONFLICT DO NOTHING` now has a constraint to conflict *against*, so it is genuinely idempotent in production, which is what its own docstring (`:152-154`) already assumed. Re-running the daily backfill or `setup_log_repair.yml` is now safe.
+2. **`leaders_scan`'s `ON CONFLICT` error is fixed.** §29.2(C)'s `there is no unique or exclusion constraint matching the ON CONFLICT specification` was caused solely by the missing constraint. The next run should write to `leaders_scan`/`leaders_top_picks` for the first time since 2026-06-30. Unverified until a real run happens — worth confirming in the next Actions log.
+
+### 29.9 `leaders_scan` backfills its backlog; `leaders_top_picks` does **not** (2026-08-17)
+
+Checked because a latest-date-only hook would permanently skip the 06-30 → present backlog once it starts succeeding — the §24 defect class.
+
+**`leaders_scan` is fine.** `run_all()` (`leaders_scan.py:1091`) loops `_pending_scan_dates()`, which imports `_pending_setup_log_dates` rather than re-implementing the policy — the §25 fix. Asked production directly: it returns **30 pending dates, 2026-07-01 → 2026-08-12**, and `append_leaders_scan(scan_date=...)` is a self-contained DELETE+rebuild per date. So once the `ON CONFLICT` blocker is gone (§29.8), a normal run backfills the whole backlog. **No scoped workflow needed.**
+
+Two notes on that list: it is bounded by production `stock_signals` (currently 08-12, so it becomes 31 dates once 08-13 lands), and **2026-07-07 is absent** — production `stock_signals` has no row for that date, a pre-existing gap from the 2026-07 Postgres-dispatch outage that `leaders_scan` cannot self-heal.
+
+**`leaders_top_picks` carries the defect.** `save_top_picks()` → `_save_top_picks_pg()` (`:765`) does `SELECT MAX(scan_date) FROM leaders_scan`, deletes that one date, and writes top picks for it — **single date, no loop**. `run_all():1104`'s comment says "Top picks and forward returns are whole-table operations, not per-date"; that is **half wrong**. `fill_leaders_forward_returns()` genuinely is whole-table (it scans every `OPEN`/`NOT_TRIGGERED` pick). `save_top_picks()` is not — it is strictly latest-date.
+
+Consequence: the next run backfills 30 dates into `leaders_scan` but writes `leaders_top_picks` for **only the newest**. Top picks for 07-01 → 08-11 would never be generated, and because each run deletes and rewrites only `MAX(scan_date)`, they never would be on any later run either — silently, with no error. Same shape as §24, in the sibling table.
+
+**Fix shape** (not yet applied): give `save_top_picks()` a `scan_date` parameter mirroring `append_leaders_scan()`, and call it inside `run_all()`'s existing per-date loop instead of once after it. The `UNIQUE(scan_date, setup_type, rank)` constraint added in §29.8 makes that per-date write idempotent.
+
+### 29.10 ✅ Fix #3 root cause ISOLATED (2026-08-17) — `get_prices_adjusted_dates_between_pg()`
+
+The `sector_signals` swallow is **not** in `sector_signals.py` and **not** at the two candidates §29.2(B) named. It is `database_pg.py:1653`, `get_prices_adjusted_dates_between_pg()` — **both branches**, lines **1665** and **1672**:
+
+```sql
+SELECT DISTINCT date::text AS d FROM prices_adjusted
+WHERE date > %s AND date <= %s ORDER BY date
+```
+
+`DISTINCT` applies to the *projected* expression `date::text`. `ORDER BY date` names the raw `date` column, which is **not** in the select list — only its cast is. Postgres rejects this with exactly the observed message. SQLite accepts the analogous form, which is why it never appeared locally.
+
+Verified read-only against production, both directions:
+
+| Statement | Result |
+|---|---|
+| `:1665` (since_date branch) | **FAILS** — `InvalidColumnReference: for SELECT DISTINCT, ORDER BY expressions must appear in select list` |
+| `:1672` (no-since branch) | **FAILS** — same error |
+| `:1694` (audit candidate A) | OK — 60 rows |
+| `:1722` (audit candidate B) | OK — 60 rows |
+
+This confirms §29.2(B)'s warning not to "fix" 1694/1722: they select bare `date` and order by `date`, both in the select list, so they are legal and always were.
+
+**Why it froze the table:** this function is the sector_signals *backfill loop's* date-finder — the very thing added so the hook stops only ever recomputing the latest date (its own docstring says so). It throws before returning any dates, `main.py`'s Tier-1 handler swallows it, and `sector_signals` stays stuck at 2026-08-11.
+
+**Fix — ✅ APPLIED 2026-08-17, `ORDER BY date` → `ORDER BY d` in both branches.** Order by the select-list entry instead of the raw column. All three candidate forms were verified against production first, each returning the correct 30 dates in chronological order:
+
+| Form | Result |
+|---|---|
+| `ORDER BY d` (output alias) — **recommended** | 30 rows, chronological |
+| `ORDER BY 1` (ordinal) | 30 rows, chronological |
+| `ORDER BY date::text` | 30 rows, chronological |
+
+`date::text` is ISO `YYYY-MM-DD`, so lexical and chronological order agree — the loop's ordering guarantee is preserved. This is a source-code fix only; no production write.
+
+**Post-apply verification** (the patched function called directly against production, not a hand-copied query):
+
+| Call | Result |
+|---|---|
+| `get_prices_adjusted_dates_between_pg('2026-06-30', '2026-08-12')` | 30 dates, chronological, 07-01 → 08-12, 07-07 correctly absent |
+| `get_prices_adjusted_dates_between_pg(None, '2026-08-12')` | 495 dates, chronological, 2024-08-15 → 2026-08-12 |
+| Real hook path (`last_written` = 2026-08-11) | 1 pending date → `['2026-08-12']` |
+
+`pytest` gate: 58 passed. A docstring note was added at the same time recording why `ORDER BY d` is required, so the form is not "simplified" back.
+
+**Explicitly not touched in this change:** the `leaders_top_picks` defect in §29.9. No fix, no PR, nothing staged — it stays as documented until it gets the mutation-test treatment on normal cadence.
+
+### 29.6 How to re-verify any of this
+
+Every check above is read-only and repeatable. Connection string comes from `.env`'s `SUPABASE_DB_URL`, used in a scoped subprocess (never exported to the shell). Pattern used throughout: `conn.set_session(readonly=True)` for reads; for anything resembling a write, a real transaction that is **always rolled back**, with a before/after row count printed to prove nothing persisted.
+
+---
+
+## 30. `recovery_signals` has no producer — silent failure, not sparse cadence (2026-08-17)
+
+Found while auditing table freshness for the sidebar data-health banner. `recovery_signals` (Recovery Bases screener) is **~30 trading sessions stale in both databases** — local `MAX(as_of_date)` = 2026-07-01, production = 2026-07-15 — and nothing ever reported it.
+
+**This is not the screener's event-driven cadence.** The table is a *daily snapshot of which bases currently qualify*, not a log of the ~1 tradeable recovery per year. Three confirmations:
+
+1. **Consecutive daily coverage, then a hard stop.** Local holds 11 unbroken trading dates (2026-06-15 → 07-01) at 3–5 rows each, then nothing. A once-a-year event does not produce an unbroken daily run.
+2. **No automated caller exists.** `run_recovery_signals()` is reached only via `signal_engine.py`'s `main()`, and `signal_engine.py` is invoked by nothing — not `main.py`'s `cmd_update()`, none of the 8 GitHub Actions workflows, no `.bat`. `dashboard.py:5379` states it outright: *"run signal_engine.py to refresh."* It is a manual script that stopped being run.
+3. **The two databases disagree.** Production (07-15) is *newer* than local (07-01) — consistent only with separate ad-hoc manual runs against each backend, then abandonment.
+
+`signal_engine.main()` also drives `run_portfolio_signals()`, so **`portfolio_signals` is orphaned by the same root cause** — worth checking on the same pass.
+
+**Classification for the banner:** every-session table, not heartbeat. It will therefore read red from the moment the banner ships and stay red until it has a producer — correct behaviour, but not something the banner work can itself resolve.
+
+**To close:** either wire `signal_engine.main()` into `cmd_update()` (and give it a `pipeline_runs` heartbeat like every other hook), or retire the Recovery Bases screener. Not actioned — user decision, deliberately deferred 2026-08-17.
+
+---
+
+## 31. Sidebar data-health banner + `pipeline_runs` heartbeat ledger (2026-08-17)
+
+Always-visible whole-system freshness indicator in the sidebar, replacing the "remember to visit the Data Health page" model. Built to spec after design sign-off.
+
+### 31.1 Why the old "Last Checked" metric could never have worked
+
+`dashboard.py`'s Data Health summary read:
+
+```sql
+SELECT MAX(suspect_date) FROM corporate_action_suspects
+```
+
+That is **the date of the most recent detected suspect, not the date anything was last checked**. Local `MAX(suspect_date)` = 2026-06-22, exactly the stale figure reported. `dashboard_pg.py:605` had the identical bug.
+
+The label lies in two independent ways: a scan that runs daily and correctly finds nothing leaves the value frozen, and a scan that died months ago leaves it equally frozen. **A perfectly healthy system and a dead one render identically.** It measured when we last *found* something, never when we last *looked*.
+
+Both sites now read the `corporate_action` heartbeat, so a zero-findings run registers as a run. `test_zero_row_run_still_counts_as_a_run` pins that behaviour.
+
+### 31.2 Two classes of checked thing
+
+The "green means everything is current, no partial credit" rule is correct — but only directly applicable to tables that receive a row every session.
+
+| Class | Members | Test applied |
+|---|---|---|
+| **Every-session** | `prices`, `index_prices`, `prices_adjusted`, `stock_signals`, `sector_signals`, `market_regime`, `recovery_signals` | own `MAX(date)` vs expected session |
+| **Heartbeat** | `setup_log`, `leaders_scan`, `boring_signals`, `corporate_action` | `pipeline_runs.run_date` — when the producer last ran |
+
+Heartbeats exist because for the second group **empty is a legitimate daily outcome** — `save_top_picks()`'s own docstring: *"If none qualify, nothing is written — this is intentional."* For those, an empty table and a dead producer are indistinguishable from the table alone, which is precisely the §31.1 bug generalised. Checking the producer instead of the product is the only honest test.
+
+Deliberately not checked, so the omissions are explicit rather than forgotten: `market_flows` (feeds only the descriptive-only Flow column; Big Fish found the data null), `leaders_top_picks` (covered by the `leaders_scan` heartbeat; its own table is legitimately empty whenever nothing clears `MIN_PICK_SCORE`), and `sec_global_rank` (**not a table** — it is `sector_signals.rs_rank` aliased at `dashboard_pg.py:561`).
+
+### 31.3 Expected-session logic — the exchange is the authority
+
+There is **no PSX holiday calendar anywhere in this codebase** (searched; `run_update.bat` only skips weekends by day-of-week). Hand-maintaining one for a lunar-calendar market would rot silently.
+
+Instead the check is two-part:
+
+1. **Absolute** — does `prices` match what ksestocks publishes (`scraper.get_source_date()`, already used by the sidebar)? The exchange knows its own holidays by construction. Catches a wholly-frozen pipeline, which a relative-only check would pass as internally consistent.
+2. **Relative** — does every every-session table match `prices`? Catches partial hook failure.
+
+"Sessions behind" is counted as distinct `prices` dates in the interval, never calendar arithmetic — **`prices` is the trading calendar**. Without this, 2026-08-14 (Independence Day) plus the weekend would have reported as three missed sessions. `test_sessions_behind_ignores_non_trading_days` pins it.
+
+### 31.4 No silent-failure state
+
+Green is reachable only when every item explicitly passes. Every other route is visible:
+
+| Condition | Result |
+|---|---|
+| Any table behind | **red**, names the tables and session counts |
+| Source unreachable (the 08-13 Cloudflare 522s) | **amber** "cannot verify" — never green |
+| A check query throws | **red**, item marked unknown |
+| DB unreachable | **red** |
+| Unhandled exception in the widget | **red** with the exception text, never a blank gap |
+
+Red outranks amber: a known-stale table is a stronger statement than an unverifiable one. Five tests cover the never-green routes.
+
+### 31.5 The `boring_signals` Cloud problem
+
+`boring_signals` is SQLite-only, has **no Supabase table at all**, and is updated by `run_update.bat` — which Task Scheduler fires **at Windows logon on one specific machine**. The Streamlit Cloud app has no route to that data whatsoever.
+
+Nothing in this project calls `load_dotenv()`, so a local pipeline run has `SUPABASE_DB_URL` only in `.env`, never in `os.environ` — which is why the local run uses SQLite in the first place. `record_run(..., mirror_to_postgres=True)` therefore resolves the URL from `.env` explicitly and writes that one heartbeat to Supabase as well. It is the only way Cloud can see whether the local job is still alive.
+
+### 31.6 Verified
+
+- 20 new unit tests (`tests/test_data_health.py`); full suite **78 passed** (was 58).
+- Rendered live: banner sits above the page selector, persists across pages, zero console errors. First real output was `🔴 DATA STALE — boring_signals: no run ever recorded; recovery_signals: 2026-07-01, 31 sessions behind` **while the pre-existing widget directly beneath it still read "✅ DB up to date"** — the gap this feature closes, visible in one screenshot.
+- Postgres ledger DDL + `ON CONFLICT` upsert executed against live Supabase inside a transaction and **rolled back** — confirmed they succeed before relying on `record_run`'s deliberate exception-swallowing. Nothing persisted; `pipeline_runs` is created automatically by the first real heartbeat.
+- CI fixture regenerated (it copies DDL from `sqlite_master`, so it picked up `pipeline_runs`).
+
+### 31.7 Known: the banner ships red
+
+`recovery_signals` has no producer at all (§30) and will read red until `signal_engine.py` is scheduled or the screener is retired. `boring_signals` reads "no run recorded yet" until the local job next runs. Both are correct reports of real conditions, not banner defects.
+
+---
+
+## 32. Unadjusted corporate actions — DLL fixed, but it is one of at least 16 (2026-08-17)
+
+### 32.1 Verification that started this
+
+`corporate_action_suspects` was checked for whether it still detects, or merely reports honestly now. **Verdict: the detector is healthy — it is the scan window that fails.**
+
+- **Not orphaned.** Unlike `signal_engine.py` (§30, zero callers), `auto_detect_suspects` is invoked from `main.py:224`/`:235` via `daily_scraper.yml`, `eod-scraper.yml` and `run_update.bat`.
+- **Executes today.** Run against live data through a no-commit proxy connection: clean, returned `0 new suspect(s)`, nothing persisted.
+- **Correctly quiet.** Independent scan confirms zero qualifying drops after 2026-06-22.
+- **What actually qualifies:** a single-day close-to-close drop worse than −12% on a symbol in `stock_metadata` (`apply_price_adjustments.py:357`). This is a **price-discontinuity detector, not an events feed**. Routine dividends (PSX yields ~5–8%/yr, semi-annual → ~2–5% ex-div drops) cannot and should not trigger it. A quarter full of dividend declarations with zero suspects is correct behaviour.
+- **No announcements source exists** anywhere in this project to cross-check against. `announcements.db` has **zero tables**; `portfolio_transactions.type` is manual user entry; `page_valuation`'s dividend fields are retired financial-statement items. True split ratios are therefore not knowable from within this system.
+
+### 32.2 The real defect: a one-way scan ratchet
+
+`auto_detect_suspects` sets `scan_from = MAX(suspect_date)` and scans `date > scan_from`. On a cold start it scans only the **last 5 trading days**. The window therefore only ever moves forward — **any event before the table was first seeded is permanently unreachable**, silently.
+
+### 32.3 Full historical sweep — DLL was not isolated
+
+Read-only sweep across all of `prices_adjusted` (2005-01-03 → 2026-08-13): **24,481** qualifying discontinuities, **13,694** detector-eligible after the `stock_metadata` join, against **4 rows ever captured**.
+
+The raw total is dominated by genuine small-cap volatility (FCEL 15 hits in 2 years, PASM 10 — a stock cannot split 15 times). The meaningful subset is the DROP_50 band. **Last 2 years, DROP_50: 16 events. Exactly one (MTL) was ever caught** — and only because it occurred after the table was seeded.
+
+| Symbol | Date | Move | Observed ratio | Caught? |
+|---|---|---|---|---|
+| MARI | 2024-09-16 | −88.2% | 8.50 | no |
+| AHCL | 2025-03-27 | −89.4% | 9.47 | no |
+| LUCK | 2025-04-28 | −79.5% | 4.88 | no |
+| SYS | 2025-06-02 | −81.0% | 5.26 | no |
+| THCCL | 2025-07-14 | −79.5% | 4.89 | no |
+| LCI | 2025-07-21 | −79.5% | 4.88 | no |
+| KOHC | 2025-08-25 | −80.3% | 5.08 | no |
+| KTML | 2025-09-15 | −80.6% | 5.17 | no |
+| KML | 2025-10-06 | −90.1% | 10.09 | no |
+| BECO | 2025-11-17 | −88.6% | 8.77 | no |
+| BNL | 2025-12-08 | −89.0% | 9.09 | no |
+| TSBL | 2025-12-29 | −91.5% | 11.78 | no |
+| FNEL | 2026-02-02 | −90.7% | 10.73 | no |
+| CLOV | 2026-04-20 | −90.2% | 10.16 | no |
+| DLL | 2026-06-08 | −90.3% | 10.34 | no → **fixed §32.4** |
+| MTL | 2026-06-22 | −48.6% | 1.94 | **yes, CONFIRMED + adjusted** |
+
+In every case the price *stayed* at the new level, and these are major liquid names — LUCK, SYS, LCI, KOHC, MARI. Lucky Cement did not lose 80% of its value in a day.
+
+**MTL is the proof the remediation path works end-to-end**: detected → confirmed on the Data Health page → `rebuild_symbol_adjusted` applied → its 200-bar ratio is now a healthy 1.08. The machinery is sound; only detection failed.
+
+### 32.4 ✅ DLL corrected (production write)
+
+Factor **0.096714** (= 60.43 / 624.83) applied to all 3,576 `prices_adjusted` rows before 2026-06-08. Full DLL history backed up first to `backups/DLL_prices_adjusted_prefix_20260817_125803.csv`. Dry-run inside a rolled-back transaction first, then committed, then re-verified on a fresh read-only connection.
+
+| Check | Result |
+|---|---|
+| Rows updated | 3,576 (2005-01-03 → 2026-06-05) |
+| Continuity | 06-05 close 60.43 → 06-08 close 60.43 — gap eliminated |
+| 200-bar high | 767.97 → **74.27** |
+| Total DLL rows | 3,623, unchanged |
+| Remaining >12% breaks | 2, both ordinary volatility (2009-01-02 ratio 1.16, 2011-04-19 ratio 1.19) |
+
+**Ratio methodology:** the observed ratio was used rather than a "clean" 5:1/10:1. The observed ratios scatter too widely to infer clean integers reliably (8.50, 8.77, 9.09, 9.47, 10.09, 10.34, 11.78), and with no announcements feed the true ratios are unknowable. The observed ratio is the only uniformly applicable rule and guarantees series continuity — at the cost of absorbing that day's genuine return (−3.29% for DLL) into the adjustment.
+
+DLL's overhead gate still reads BLOCKED at ratio 1.36 — but that is now **correct**: DLL really did trade to 74.27 within 200 bars and sits at 54.75. Real overhead supply, not a data artifact.
+
+### 32.5 Impact — 11 tradeable names still corrupted
+
+Measured over 200 *trading bars* (matching `breakout_signal.py`'s `high_200d`), still failing the overhead gate `high_200d <= pivot_high * 1.15` **and** inside the tradeable universe:
+
+**LUCK, SYS, LCI, KOHC, KTML, THCCL, AHCL, KML, BECO, BNL, CLOV.**
+
+Older splits (MARI 2024-09, MTL) have already rolled clear as the break exits the 200-bar window — the corruption self-heals after ~200 sessions, but silently suppresses the symbol until then. `TSBL`, `FNEL` and `DLL` are in `EXCLUDED_SECTORS`, so they carry no screening impact — **DLL, the one fixed here, was the least commercially urgent of the set.**
+
+Failure direction is suppression, not false signals: affected names are silently locked out of BREAKOUT rather than wrongly flagged.
+
+### 32.6 Open — scan-window redesign deliberately not started
+
+Held pending review of §32.3's scope, per user instruction. Any redesign must address: the one-way ratchet, the 5-day cold-start window, whether a one-time historical remediation covers the 11 live names, and how ratios are chosen without an announcements feed.
+
+### 32.7 OPEN — downstream contamination of `setup_log` forward returns
+
+Raised as a concern at the end of the §32 session and then measured, so it is recorded here as fact rather than suspicion. **Not fixed.**
+
+**`backtest_setups` is effectively unaffected** — only **5 rows of 4,344** fall within ±20 days of any of the 15 unadjusted splits (MARI 1, THCCL 4). An earlier verbal flag that backtests spanning 2024–2026 would be materially distorted was an overstatement; the ML training set barely touches these events.
+
+**`setup_log` is the real exposure.** Forward returns are computed from `prices`/`prices_adjusted`, so any 5/10/20-day window spanning an unadjusted repricing records the mechanical drop as a genuine return:
+
+| Measure | Value |
+|---|---|
+| Rows with a forward return < −50% | **475** of 208,044 (**0.23%**) |
+| Distinct symbols affected | 25 |
+| On the 15 identified 2024–26 splits | 203 |
+| On other/older unadjusted actions | 272 |
+
+Top affected: `GCIL` 68, `BECO` 52, `AHCL` 36, `KOHP` 33, `PRL` 31, `LUCK` 29, `PAKRI` 27, `MUGHAL` 24. By year: 2025 (180), 2017 (66), 2021 (59), 2026 (47).
+
+Two things this establishes:
+
+1. **The problem is older and wider than the 2-year DROP_50 list in §32.3.** `GCIL`, `KOHP`, `PRL`, `PAKRI`, `MUGHAL` are unadjusted corporate actions outside that window, reaching back to at least 2015. §32.3's 16-event table is the recent slice, not the full population.
+2. **These rows are systematically mislabelled, not merely noisy.** `outcome_label` is set from `fwd_return_10d`'s sign (`> 0` WINNER, `< 0` LOSER), so a mechanical 80–90% repricing is recorded as a real trading loss. Any per-setup-type EV or win-rate computed from `setup_log` carries that bias. At 0.23% of rows the aggregate effect is probably small, but it is concentrated — `BECO`, `AHCL`, `LUCK`, `GCIL` carry dozens each — so per-symbol or per-year cuts will be affected far more than the headline percentage suggests.
+
+**Why this is not fixable by re-running `compute_forward_returns.py` alone:** it recomputes from the same uncorrected `prices_adjusted`, so it would reproduce the identical wrong values. The price history has to be adjusted first (§32.5's 11 live names plus whatever the full-history sweep turns up), and only then are the forward returns and `outcome_label`s worth recomputing.
+
+**Suggested order when this is picked up:** (1) settle the ratio methodology, (2) remediate `prices_adjusted` across all detected events, (3) recompute `setup_log` forward returns and labels, (4) only then fix the detection window so new events cannot accumulate. Sequencing matters — fixing detection first leaves the existing 475 rows wrong and adds no protection to what is already broken.

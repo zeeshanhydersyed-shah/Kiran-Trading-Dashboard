@@ -1657,20 +1657,30 @@ def get_prices_adjusted_dates_between_pg(since_date: str | None, until_date: str
     Used by the sector_signals backfill loop to find exactly which trading
     dates are missing after a hook failure, rather than only ever recomputing
     the single latest date (see docs/KIRAN_CLEANUP_AUDIT.md, 2026-08-07 gap).
+
+    Both queries must ORDER BY the output column `d`, not by the raw `date`
+    column. SELECT DISTINCT applies to the projected expression (`date::text`),
+    so Postgres rejects `ORDER BY date` -- the raw column is not in the select
+    list -- with "for SELECT DISTINCT, ORDER BY expressions must appear in
+    select list". SQLite accepts that form, which is why this only ever failed
+    in production: the error was swallowed by main.py's Tier-1 hook handler and
+    froze sector_signals at 2026-08-11. `d` is ISO YYYY-MM-DD, so lexical order
+    matches chronological order and the loop's oldest-first contract holds.
+    See docs/KIRAN_CLEANUP_AUDIT.md 29.10.
     """
     with get_conn() as conn:
         if since_date:
             rows = _fetchall(
                 conn,
                 "SELECT DISTINCT date::text AS d FROM prices_adjusted "
-                "WHERE date > %s AND date <= %s ORDER BY date",
+                "WHERE date > %s AND date <= %s ORDER BY d",
                 (since_date, until_date),
             )
         else:
             rows = _fetchall(
                 conn,
                 "SELECT DISTINCT date::text AS d FROM prices_adjusted "
-                "WHERE date <= %s ORDER BY date",
+                "WHERE date <= %s ORDER BY d",
                 (until_date,),
             )
     return [r["d"] for r in rows]
