@@ -19,11 +19,16 @@ The DB-backed tests build a throwaway SQLite file, so they never touch
 psx_data.db.
 """
 
+import os
 import sqlite3
+import sys
 
 import pytest
 
-import data_health as dh
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
+
+import data_health as dh  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
