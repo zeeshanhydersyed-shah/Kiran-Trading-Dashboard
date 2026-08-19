@@ -290,6 +290,23 @@ def cmd_update():
     except Exception as exc:
         logger.warning("Stock signals hook failed: %s", exc)
 
+    # Recovery Bases + Portfolio signals (signal_engine.py). Previously had no
+    # automated caller at all -- see docs/KIRAN_CLEANUP_AUDIT.md 30 -- so
+    # recovery_signals/portfolio_signals only updated when someone ran
+    # `python signal_engine.py` by hand (last done 2026-07-01).
+    try:
+        import signal_engine
+        _se_results = signal_engine.main()
+        _rec = _se_results.get("recovery_signals", {})
+        _port = _se_results.get("portfolio_signals", {})
+        logger.info(
+            "Signal engine: recovery=%s (rows=%s)  portfolio=%s (rows=%s)",
+            _rec.get("status"), _rec.get("rows_written"),
+            _port.get("status"), _port.get("rows_written"),
+        )
+    except Exception as exc:
+        logger.warning("Signal engine hook failed: %s", exc)
+
     # Append today's setups to setup_log and label outcomes
     try:
         from backfill_setup_log import append_setup_log_today
