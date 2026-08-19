@@ -557,18 +557,19 @@ append_setup_log_today()
 
 **Do not re-derive the "best filter" from average forward return alone.** The `base_tightness < 10` subset has *lower* average forward return than the unfiltered pool (+1.07% vs +1.43% @10d) because it excludes extended-run days that continue trending. The correct metric for the validated edge is the binary WIN/LOSS model, not average forward return. Filtering by `base_tightness < 10` removes stocks where a stop-loss–based entry is incoherent — it does not improve the average forward return and was never intended to.
 
-**cmd_update() hook order (as of 2026-06-23):**
+**cmd_update() hook order (as of 2026-08-19):**
 1. Scrape + upsert prices
 2. `cleanup_ghost_dates()`
 3. `ensure_suspects_table` → `append_new_prices_adjusted` → `auto_detect_suspects`
 4. `append_latest_regime()`
 5. `sector_signals.append_latest_sector_signals()`
 6. `stock_signals.append_latest_stock_signals()`
-7. `append_setup_log_today()` — BREAKOUT inserts transition day only (prev bos_flag=0 check). **Backfills every trading date since its last write** (fixed 2026-08-12 — it previously wrote only `MAX(stock_signals.date)`, silently losing any day it missed; see docs/KIRAN_CLEANUP_AUDIT.md §24). An empty `setup_log` deliberately gets the newest date only, not replayed history
-8. `TradingDeskAgent("daily").run()` — reads from setup_log / stock_signals / recovery_signals
-9. Leaders deep scan
-10. `auto_save_setups()` + `auto_save_setups_with_source()`
-11. Market breadth oscillator subprocess
+7. `signal_engine.main()` — `run_recovery_signals()` + `run_portfolio_signals()`, writing `recovery_signals`/`portfolio_signals`. **Newly wired in 2026-08-19** — previously had no automated caller at all (dashboard.py told users to "run signal_engine.py to refresh" manually), so `recovery_signals` sat stale for 33+ sessions since its last manual run on 2026-07-01. See `data_health.py`'s `EVERY_SESSION` comment (referenced there as Audit §30).
+8. `append_setup_log_today()` — BREAKOUT inserts transition day only (prev bos_flag=0 check). **Backfills every trading date since its last write** (fixed 2026-08-12 — it previously wrote only `MAX(stock_signals.date)`, silently losing any day it missed; see docs/KIRAN_CLEANUP_AUDIT.md §24). An empty `setup_log` deliberately gets the newest date only, not replayed history
+9. `TradingDeskAgent("daily").run()` — reads from setup_log / stock_signals / recovery_signals
+10. Leaders deep scan
+11. `auto_save_setups()` + `auto_save_setups_with_source()`
+12. Market breadth oscillator subprocess
 
 ---
 
