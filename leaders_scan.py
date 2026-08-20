@@ -187,7 +187,13 @@ def _vol_rejection_flag_pg(cur, symbol, scan_date, pivot_high):
     rows = cur.fetchall()
     if len(rows) < 21:
         return 0
-    near_pivot = pivot_high * 0.98
+    # pivot_high is NUMERIC in Postgres -> psycopg2 hands back a
+    # decimal.Decimal, and Decimal * float raises TypeError (this is the
+    # "unsupported operand type(s) for *: 'decimal.Decimal' and 'float'"
+    # that froze every leaders_scan date from 2026-07-01 onward). SQLite's
+    # twin (_vol_rejection_flag) never hit this since sqlite3 returns plain
+    # floats. Cast once, same pattern as sl_pct's float(...) cast above.
+    near_pivot = float(pivot_high) * 0.98
     for i in range(min(10, len(rows) - 20)):
         r = rows[i]
         high, open_, close = r["high"], r["open"], r["close"]
@@ -888,12 +894,20 @@ def _fill_leaders_forward_returns_pg() -> None:
     with get_conn() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+        # leaders_top_picks.scan_date is TEXT (ISO 'YYYY-MM-DD'), but
+        # CURRENT_DATE - INTERVAL yields a timestamp -- raises "operator
+        # does not exist: text < timestamp without time zone" without the
+        # cast. Same bug/fix shape already applied in dashboard_pg.py's
+        # E10.5 batch C (see its comment at line ~824): the extra ::date
+        # strips the time component so the cutoff round-trips to a plain
+        # 'YYYY-MM-DD' string matching what scan_date already holds,
+        # rather than relying on fragile lexicographic prefix comparison.
         cur.execute("""
             SELECT id, scan_date, setup_type, symbol, entry_trigger,
                    triggered, trigger_date, fwd_return_20d, outcome_label
             FROM leaders_top_picks
             WHERE outcome_label IN ('OPEN', 'NOT_TRIGGERED')
-              AND scan_date < (CURRENT_DATE - INTERVAL '4 days')
+              AND scan_date < (CURRENT_DATE - INTERVAL '4 days')::date::text
         """)
         picks = cur.fetchall()
 
