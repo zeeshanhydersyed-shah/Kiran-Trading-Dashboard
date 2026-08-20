@@ -23,6 +23,7 @@ import os
 import shutil
 import sqlite3
 import sys
+from decimal import Decimal
 
 import pytest
 
@@ -119,3 +120,53 @@ def test_explicit_scan_date_is_honoured(tmp_path):
         "SELECT DISTINCT scan_date FROM leaders_scan")]
     conn.close()
     assert written == [target], f"expected only {target}, got {written}"
+
+
+class _FakeCursor:
+    """Stands in for a psycopg2 RealDictCursor -- .execute() is a no-op,
+    .fetchall() replays canned rows shaped like what Postgres NUMERIC
+    columns actually decode to (decimal.Decimal, not float)."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def execute(self, *_args, **_kwargs):
+        pass
+
+    def fetchall(self):
+        return self._rows
+
+
+def test_vol_rejection_flag_pg_handles_decimal_pivot_high():
+    """Regression test: production leaders_scan was frozen on every pending
+    date from 2026-07-01 onward with `unsupported operand type(s) for *:
+    'decimal.Decimal' and 'float'`. Root cause: `pivot_high * 0.98` where
+    pivot_high is a NUMERIC column -- psycopg2 hands back decimal.Decimal,
+    and Decimal * float raises TypeError (Decimal * Decimal or Decimal *
+    int does not). SQLite's twin (_vol_rejection_flag) never hit this
+    because sqlite3 returns plain floats. See docs/KIRAN_CLEANUP_AUDIT.md
+    and the GitHub Actions log for the 2026-08-18/19 runs, which show this
+    exact message for all 34 pending dates.
+
+    Confirmed against live production data (2026-08-20, read-only) that
+    real stock_signals.pivot_high values are decimal.Decimal before this
+    fix reproduced the identical TypeError, and that the fixed function
+    runs clean against the same real row.
+    """
+    pivot_high = Decimal("13.650000")
+    rows = [
+        {
+            "high": Decimal("13.00") + Decimal(i) / 100,
+            "low": Decimal("12.50"),
+            "open": Decimal("12.80"),
+            "close": Decimal("12.90"),
+            "volume": 100_000 + i * 1000,
+        }
+        for i in range(21)
+    ]
+    cur = _FakeCursor(rows)
+
+    # Before the fix this raised TypeError inside the function; now it must
+    # just return an int flag.
+    result = leaders_scan._vol_rejection_flag_pg(cur, "AAA", "2026-08-19", pivot_high)
+    assert result in (0, 1)
