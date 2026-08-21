@@ -114,7 +114,20 @@ def _record_hook(hook_name, run_date, status="ok", rows_written=None,
 
 def cmd_update():
     """Scrape only dates that are newer than the last record in the database."""
-    init_db()
+    # init_db()'s statements are all CREATE TABLE/INDEX IF NOT EXISTS --
+    # idempotent no-ops once the schema exists, which it always does for a
+    # running deployment. But it's the one call in this function that was
+    # never wrapped, so a transient DB hiccup here (observed live 2026-08-20:
+    # Supabase's nano-tier compute briefly rejecting writes with
+    # "cannot execute CREATE TABLE in a read-only transaction") aborted the
+    # entire pipeline before any hook -- including ones that don't touch
+    # schema at all -- got a chance to run. Nothing downstream depends on
+    # this succeeding on any given run, so treat it like every other hook.
+    try:
+        init_db()
+    except Exception as exc:
+        logger.warning("init_db() failed (schema already exists on a working "
+                        "deployment, so continuing): %s", exc)
 
     latest_str = get_latest_scraped_date()
     if not latest_str:
