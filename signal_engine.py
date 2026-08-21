@@ -8,14 +8,23 @@ import pandas as pd
 import numpy as np
 from config import DB_PATH, DFC_SYMBOLS, EXCLUDED_SECTORS
 
-# Load .env for standalone runs (dashboard already bridges secrets → os.environ).
-try:
-    from dotenv import load_dotenv
-    load_dotenv(override=False)
-except ImportError:
-    pass
-
-# Detect PG mode once at import time — same logic as database.py override block.
+# No load_dotenv() here, deliberately -- every other module in this
+# codebase (leaders_scan.py, regime.py, stock_signals.py, database.py, ...)
+# reads DATABASE_URL/SUPABASE_DB_URL straight from the real process
+# environment and never touches .env, precisely so a local run with
+# DATABASE_URL unset falls through to SQLite even though .env has
+# SUPABASE_DB_URL for scripts that explicitly want Postgres. This module
+# used to call load_dotenv() "for standalone runs", which populates
+# os.environ for the rest of the *process*, not just this module -- so any
+# other module lazily imported afterward (e.g. database.py, imported
+# inside run_recovery_signals() itself) would see SUPABASE_DB_URL too and
+# also switch to Postgres, regardless of what actually launched this run.
+# Confirmed live 2026-08-21: a plain local `python main.py --update` ended
+# up reading prices from Supabase while writing results to local SQLite --
+# an inconsistent mix, worse than just being on the wrong backend outright.
+# The only thing this module reads from the environment is DATABASE_URL/
+# SUPABASE_DB_URL itself (grepped -- nothing else), so there is no other
+# secret here that load_dotenv() needs to provide.
 _PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 logging.basicConfig(
