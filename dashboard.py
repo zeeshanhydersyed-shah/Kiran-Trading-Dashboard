@@ -2109,14 +2109,27 @@ def _boring_kse_return(start_date: str, end_date: str):
     omit the line instead of rendering a misleading 0.
     """
     try:
-        conn = sqlite3.connect(DB_PATH)
-        rows = conn.execute(
-            """SELECT close FROM index_prices
-               WHERE symbol = 'KSE-100' AND date BETWEEN ? AND ?
-               ORDER BY date""",
-            (start_date, end_date),
-        ).fetchall()
-        conn.close()
+        if _PG_URL:
+            import psycopg2.extras
+            from database_pg import get_conn
+            with get_conn() as conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute(
+                    """SELECT CAST(close AS DOUBLE PRECISION) AS close FROM index_prices
+                       WHERE symbol = 'KSE-100' AND date BETWEEN %s AND %s
+                       ORDER BY date""",
+                    (start_date, end_date),
+                )
+                rows = [(r["close"],) for r in cur.fetchall()]
+        else:
+            conn = sqlite3.connect(DB_PATH)
+            rows = conn.execute(
+                """SELECT close FROM index_prices
+                   WHERE symbol = 'KSE-100' AND date BETWEEN ? AND ?
+                   ORDER BY date""",
+                (start_date, end_date),
+            ).fetchall()
+            conn.close()
     except Exception:
         return None
     if len(rows) < 2 or not rows[0][0]:
@@ -2247,26 +2260,10 @@ def _render_boring_breakouts_section():
     here (Addendum C: a star rating was investigated and explicitly rejected
     — granular RS depth and sector-clustering both failed to survive scrutiny).
     """
-    if _PG_URL:
-        # Hard-blocked on purpose, same reasoning and same pattern as the
-        # Data Health Confirm button (see CLAUDE.md "Known Gaps"):
-        # boring_signals.py is 100% SQLite (sqlite3.connect(DB_PATH)
-        # hardcoded, no _PG_URL branch anywhere in it), and it depends on
-        # stock_metadata/sectors/prices_adjusted being fully populated,
-        # which on Streamlit Cloud they aren't (no local SQLite file exists
-        # there at all -- see CLAUDE.md "Streamlit Cloud constraints").
-        # Letting this through would throw a raw connection error the
-        # moment a user reaches this section. Nothing is written or read
-        # below -- boring_signals is never imported on this path.
-        st.error(
-            "🎯 Boring Breakouts is not available on Streamlit Cloud yet. "
-            "`boring_signals.py` is SQLite-only (no Postgres port) and depends on local "
-            "tables (`stock_metadata`, `sectors`, `prices_adjusted`) that don't exist on "
-            "Cloud's ephemeral filesystem. This section only works when run locally against "
-            "`psx_data.db`. See CLAUDE.md 'Known Gaps' for the Postgres port needed to close this."
-        )
-        return
-
+    # boring_signals.py now branches on _PG_URL internally (ported 2026-08-21),
+    # same pattern every other Cloud-visible feature in this file uses --
+    # no more hard block here. get_boring_signals()/mark_executed() below
+    # transparently hit Supabase on Cloud and psx_data.db locally.
     from boring_signals import get_boring_signals, mark_executed
 
     st.caption(

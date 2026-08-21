@@ -64,7 +64,7 @@ jobs:
               "regime", "sector_signals", "stock_signals", "weinstein",
               "backtest", "scraper", "kelly", "stealth_rs", "leaders_scan",
               "backfill_setup_log", "compute_forward_returns", "main",
-              "kse100_filter", "breakout_signal",
+              "kse100_filter", "breakout_signal", "boring_signals",
           ]
           failed = []
           for m in mods:

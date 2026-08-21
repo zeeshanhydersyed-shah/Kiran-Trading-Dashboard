@@ -3,11 +3,16 @@ boring_signals.py -- "Boring Breakouts" manual-execution infrastructure.
 
 Single source of truth for the RS_60-conditioned Donchian breakout system
 locked in boring_study_trading_rulebook_v1_2026-07-11.md (Addenda A-C
-applied). SQLite only for now -- no Postgres path yet, same "code first,
-sign-off before a live Supabase write" discipline this project applies to
-every new table (see CLAUDE.md's E8.7 precedent). Do not wire this into
-leaders_scan.py / kiran_voice.py / agent.py -- this is a standalone,
-watch-and-manually-execute tool, not an automated trader.
+applied). Both SQLite (local) and Postgres/Supabase (Cloud) are supported --
+every public function below branches on _PG_URL, mirroring the
+leaders_scan.py / sector_signals.py convention (ported 2026-08-21; see
+CLAUDE.md's now-closed boring_signals "Known Gap" entry). The Postgres
+table's DDL (ensure_boring_signals_table_pg()) is a separate, explicitly-
+invoked step, not called implicitly -- same "code first, sign-off before a
+live Supabase write" discipline this project applies to every new table
+(see CLAUDE.md's E8.7 precedent). Do not wire this into leaders_scan.py /
+kiran_voice.py / agent.py -- this is a standalone, watch-and-manually-execute
+tool, not an automated trader.
 
 Locked parameters (do not change without re-running the validation this
 project's own discipline requires):
@@ -27,6 +32,7 @@ are ALWAYS computed from data through t-1 inclusive, frozen before day t's
 breakout condition is evaluated. See _rs60_and_liquidity_asof().
 """
 
+import os
 import sqlite3
 import logging
 from datetime import datetime, timedelta
@@ -37,6 +43,17 @@ import pandas as pd
 from config import DB_PATH, EXCLUDED_SECTORS
 
 logger = logging.getLogger(__name__)
+
+# Postgres branch -- mirrors leaders_scan.py / sector_signals.py's established
+# _PG_URL pattern. Unlike leaders_scan/leaders_top_picks, `boring_signals` does
+# NOT already exist in Supabase -- ensure_boring_signals_table_pg() below is
+# the one-time DDL for it, and per this project's production-write discipline
+# it is a separate, explicitly-invoked step (dry-run in a rolled-back
+# transaction, then real, with sign-off) -- never called implicitly from the
+# scan/status functions here. See CLAUDE.md's boring_signals "Known Gap" entry
+# for the history of why this was deferred, and the pre-registered port plan
+# (memory: boring-signals-postgres-port-plan) for the scope this follows.
+_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
 STOP_PCT = -0.06
 TARGET_PCT = 0.10
@@ -99,6 +116,71 @@ def ensure_boring_signals_table(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE boring_signals ADD COLUMN current_stop REAL")
         logger.info("boring_signals: added current_stop column (NULL until update_open_signal_statuses() runs; "
                      "holds the live HYBRID trailing-stop level -- not the legacy fixed stop_price column).")
+
+
+def ensure_boring_signals_table_pg() -> None:
+    """
+    One-time DDL for `boring_signals` on Postgres/Supabase. NOT called
+    implicitly by any scan/status function below (same "assumes the table
+    already exists" contract leaders_scan.py's _pg functions use for
+    leaders_scan/leaders_top_picks) -- run this once, explicitly, with the
+    project's standing sign-off-before-first-write discipline, before the
+    daily hook's Postgres path is exercised for real.
+
+    Two deliberate departures from the SQLite schema, both gotchas already
+    hit and fixed elsewhere in this codebase (see the port's pre-registered
+    plan for the incident references):
+      * signal_date / executed_at / resolution_date are native DATE /
+        TIMESTAMP, not TEXT -- a brand-new table has no migration baggage
+        forcing TEXT, and TEXT-vs-DATE mismatches caused roughly half of
+        this project's production incidents.
+      * Every float column is DOUBLE PRECISION, not NUMERIC -- NUMERIC
+        round-trips as decimal.Decimal via psycopg2, which raises TypeError
+        the moment it hits float arithmetic (leaders_scan._vol_rejection_flag_pg's
+        fix, PR #12). Using DOUBLE PRECISION here avoids the trap at the
+        source instead of casting on every read.
+    liquidity_pass / strategy_confirmed / executed are BOOLEAN, not
+    INTEGER 0/1 -- Postgres convention throughout this codebase (see
+    stock_metadata.is_active, stock_signals.bos_flag); query them with
+    `IS TRUE` / `IS FALSE`, never `= 1` / `= 0`.
+
+    No historical backfill -- starts clean from go-live date (explicit scope
+    decision, see the port plan; SQLite's existing rows are not migrated).
+    """
+    from database_pg import get_conn
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS boring_signals (
+                id                 SERIAL PRIMARY KEY,
+                symbol             TEXT NOT NULL,
+                signal_date        DATE NOT NULL,
+                lookback_n         INTEGER NOT NULL,
+                breakout_level     DOUBLE PRECISION,
+                trigger_price      DOUBLE PRECISION NOT NULL,
+                target_price       DOUBLE PRECISION NOT NULL,
+                stop_price         DOUBLE PRECISION NOT NULL,
+                rs_60              DOUBLE PRECISION NOT NULL,
+                rs_60_decile       INTEGER NOT NULL,
+                avg_vol_10d        DOUBLE PRECISION,
+                liquidity_pass     BOOLEAN NOT NULL,
+                strategy_confirmed BOOLEAN NOT NULL,
+                status             TEXT NOT NULL DEFAULT 'Pending',
+                executed           BOOLEAN NOT NULL DEFAULT FALSE,
+                executed_at        TIMESTAMP,
+                executed_price     DOUBLE PRECISION,
+                resolution_date    DATE,
+                resolution_type    TEXT,
+                days_open          INTEGER,
+                current_stop       DOUBLE PRECISION,
+                created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+                UNIQUE(symbol, signal_date, lookback_n)
+            );
+            CREATE INDEX IF NOT EXISTS idx_boring_signals_status_pg ON boring_signals(status);
+            CREATE INDEX IF NOT EXISTS idx_boring_signals_date_pg   ON boring_signals(signal_date);
+            CREATE INDEX IF NOT EXISTS idx_boring_signals_symbol_pg ON boring_signals(symbol);
+        """)
+        logger.info("boring_signals (pg): table ensured.")
 
 
 def _backfill_breakout_levels(conn: sqlite3.Connection) -> int:
@@ -190,6 +272,66 @@ def _load_kse100(conn: sqlite3.Connection) -> dict:
     return {"dates": df["date"].to_numpy(), "close": df["close"].to_numpy(dtype=float)}
 
 
+# ── Postgres read helpers ────────────────────────────────────────────────────
+# Same shape as the SQLite versions above, %s placeholders, psycopg2
+# RealDictCursor. high/low/close are cast to DOUBLE PRECISION -- prices_adjusted
+# stores them as NUMERIC, which psycopg2 hands back as decimal.Decimal, and
+# this module's numpy math (_rs60_and_liquidity_asof, _breakout_fires) needs
+# plain floats, not Decimal (see leaders_scan._vol_rejection_flag_pg's fix,
+# PR #12, for the exact failure shape this avoids).
+
+def _eligible_universe_pg(cur) -> set[str]:
+    cur.execute("""
+        SELECT sm.symbol FROM stock_metadata sm
+        JOIN sectors s ON s.symbol = sm.symbol
+        WHERE sm.is_active IS TRUE
+    """)
+    universe = {r["symbol"] for r in cur.fetchall()}
+    if not EXCLUDED_SECTORS:
+        return universe
+    cur.execute("SELECT symbol FROM sectors WHERE sector = ANY(%s)", (list(EXCLUDED_SECTORS),))
+    excluded = {r["symbol"] for r in cur.fetchall()}
+    return universe - excluded
+
+
+def _load_price_history_pg(cur, symbols: set[str]) -> dict:
+    if not symbols:
+        return {}
+    cur.execute("""
+        SELECT symbol, date::text AS date,
+               CAST(high AS DOUBLE PRECISION) AS high,
+               CAST(low AS DOUBLE PRECISION) AS low,
+               CAST(close AS DOUBLE PRECISION) AS close,
+               volume
+        FROM prices_adjusted
+        WHERE symbol = ANY(%s)
+        ORDER BY symbol, date
+    """, (list(symbols),))
+    grouped: dict = {}
+    for r in cur.fetchall():
+        grouped.setdefault(r["symbol"], []).append(r)
+    by_symbol = {}
+    for sym, rows in grouped.items():
+        by_symbol[sym] = {
+            "dates": np.array([r["date"] for r in rows]),
+            "high": np.array([r["high"] for r in rows], dtype=float),
+            "low": np.array([r["low"] for r in rows], dtype=float),
+            "close": np.array([r["close"] for r in rows], dtype=float),
+            "volume": np.array([r["volume"] for r in rows], dtype=float),
+        }
+    return by_symbol
+
+
+def _load_kse100_pg(cur) -> dict:
+    cur.execute("""
+        SELECT date::text AS date, CAST(close AS DOUBLE PRECISION) AS close
+        FROM index_prices WHERE symbol = 'KSE-100' ORDER BY date
+    """)
+    rows = cur.fetchall()
+    return {"dates": np.array([r["date"] for r in rows]),
+            "close": np.array([r["close"] for r in rows], dtype=float)}
+
+
 def _rs60_and_liquidity_asof(by_symbol: dict, kse: dict, symbol: str, asof_date: str):
     """
     RS_60(symbol, asof_date) and avg_vol_10d(symbol, asof_date), computed
@@ -258,9 +400,16 @@ def scan_boring_breakouts(date: str | None = None) -> int:
     Evaluate the RS_60-conditioned Donchian breakout for a single trading
     date across the full eligible universe, for both locked lookbacks
     (20d, 60d), and insert any new signals. Idempotent -- UNIQUE(symbol,
-    signal_date, lookback_n) plus INSERT OR IGNORE means re-running for an
-    already-scanned date is a no-op. Returns the number of new rows inserted.
+    signal_date, lookback_n) plus INSERT OR IGNORE (SQLite) / ON CONFLICT DO
+    NOTHING (Postgres) means re-running for an already-scanned date is a
+    no-op. Returns the number of new rows inserted.
     """
+    if _PG_URL:
+        return _scan_boring_breakouts_pg(date)
+    return _scan_boring_breakouts_sqlite(date)
+
+
+def _scan_boring_breakouts_sqlite(date: str | None = None) -> int:
     with sqlite3.connect(DB_PATH) as conn:
         ensure_boring_signals_table(conn)
         _backfill_breakout_levels(conn)
@@ -355,6 +504,132 @@ def scan_boring_breakouts(date: str | None = None) -> int:
         return inserted
 
 
+def _backfill_breakout_levels_pg(cur) -> int:
+    """PG twin of _backfill_breakout_levels() -- same recompute-from-real-
+    history logic, %s placeholders. Safe to call every scan; a no-op once
+    every row has a value (same contract as the SQLite version)."""
+    cur.execute("SELECT id, symbol, signal_date::text AS signal_date, lookback_n "
+                "FROM boring_signals WHERE breakout_level IS NULL")
+    missing = cur.fetchall()
+    if not missing:
+        return 0
+    symbols = {r["symbol"] for r in missing}
+    by_symbol = _load_price_history_pg(cur, symbols)
+    updated = 0
+    for row in missing:
+        pf = by_symbol.get(row["symbol"])
+        if pf is None:
+            continue
+        t = np.searchsorted(pf["dates"], row["signal_date"])
+        n = int(row["lookback_n"])
+        if t >= len(pf["dates"]) or pf["dates"][t] != row["signal_date"] or t < n:
+            continue
+        prior_high = np.nanmax(pf["high"][t - n:t])
+        if np.isnan(prior_high):
+            continue
+        cur.execute("UPDATE boring_signals SET breakout_level = %s WHERE id = %s",
+                    (float(prior_high * 1.01), row["id"]))
+        updated += 1
+    if updated:
+        logger.info("boring_signals (pg): backfilled breakout_level for %d pre-existing row(s).", updated)
+    return updated
+
+
+def _scan_boring_breakouts_pg(date: str | None = None) -> int:
+    """PG-backed equivalent of _scan_boring_breakouts_sqlite(). Same
+    zero-lookahead RS_60/liquidity freeze, same dedup-gate logic. Assumes
+    `boring_signals` already exists in Supabase (ensure_boring_signals_table_pg()
+    run once, separately, with sign-off) -- no DDL run here, same "assumes
+    the table exists" contract leaders_scan.py's _pg functions use.
+    Individual INSERTs rather than a bulk execute_values -- a scan fires at
+    most a handful of rows per date (both lookbacks, whole universe), unlike
+    leaders_scan's full-candidate-list rebuild."""
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _backfill_breakout_levels_pg(cur)
+        universe = _eligible_universe_pg(cur)
+        by_symbol = _load_price_history_pg(cur, universe)
+        kse = _load_kse100_pg(cur)
+
+        if date is None:
+            all_dates = sorted({d for pf in by_symbol.values() for d in pf["dates"]})
+            if not all_dates:
+                logger.warning("boring_signals (pg): no price history found for eligible universe")
+                return 0
+            date = all_dates[-1]
+
+        prior_dates_by_symbol = {}
+        for sym, pf in by_symbol.items():
+            idx = np.searchsorted(pf["dates"], date) - 1
+            if idx >= 0:
+                prior_dates_by_symbol[sym] = pf["dates"][idx]
+
+        rs_rows = []
+        for sym in universe:
+            t1 = prior_dates_by_symbol.get(sym)
+            if t1 is None:
+                continue
+            rs_60, avg_vol_10d = _rs60_and_liquidity_asof(by_symbol, kse, sym, t1)
+            if rs_60 is None:
+                continue
+            rs_rows.append((sym, rs_60, avg_vol_10d))
+
+        if not rs_rows:
+            logger.info("boring_signals (pg): no symbols with computable RS_60 as of %s", date)
+            return 0
+
+        rs_df = pd.DataFrame(rs_rows, columns=["symbol", "rs_60", "avg_vol_10d"])
+        rs_df["liquidity_pass"] = (rs_df["avg_vol_10d"].fillna(0) > LIQUIDITY_THRESHOLD).astype(int)
+        gated_df = rs_df[rs_df["liquidity_pass"] == 1].copy()
+        if len(gated_df) >= 10:
+            gated_df["rs_60_decile"] = pd.qcut(gated_df["rs_60"], 10, labels=False, duplicates="drop")
+        else:
+            gated_df["rs_60_decile"] = np.nan
+        rs_df = rs_df.merge(gated_df[["symbol", "rs_60_decile"]], on="symbol", how="left")
+        rs_df["rs_60_decile"] = rs_df["rs_60_decile"].fillna(-1).astype(int)
+        rs_lookup = rs_df.set_index("symbol")[
+            ["rs_60", "avg_vol_10d", "liquidity_pass", "rs_60_decile"]].to_dict("index")
+
+        cur.execute("SELECT DISTINCT symbol FROM boring_signals WHERE status IN ('Pending', 'Executed')")
+        open_symbols = {r["symbol"] for r in cur.fetchall()}
+
+        inserted = 0
+        for sym in universe:
+            if sym in open_symbols:
+                continue
+            info = rs_lookup.get(sym)
+            if info is None:
+                continue
+            for n in LOOKBACK_NS:
+                fire = _breakout_fires(by_symbol, sym, date, n)
+                if fire is None:
+                    continue
+                trigger_price, breakout_level = fire
+                rs_60, avg_vol_10d, decile = info["rs_60"], info["avg_vol_10d"], int(info["rs_60_decile"])
+                liquidity_pass = bool(info["liquidity_pass"])
+                strategy_confirmed = bool(decile == TOP_DECILE and liquidity_pass)
+                avg_vol_val = (float(avg_vol_10d)
+                               if avg_vol_10d is not None and not np.isnan(avg_vol_10d) else None)
+                cur.execute(
+                    """INSERT INTO boring_signals
+                       (symbol, signal_date, lookback_n, breakout_level, trigger_price,
+                        target_price, stop_price, rs_60, rs_60_decile, avg_vol_10d,
+                        liquidity_pass, strategy_confirmed)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (symbol, signal_date, lookback_n) DO NOTHING""",
+                    (sym, date, n, float(breakout_level), float(trigger_price),
+                     float(trigger_price * (1 + TARGET_PCT)), float(trigger_price * (1 + STOP_PCT)),
+                     float(rs_60), decile, avg_vol_val,
+                     liquidity_pass, strategy_confirmed),
+                )
+                inserted += cur.rowcount
+        logger.info("boring_signals (pg): scanned %s, inserted %d new signal(s)", date, inserted)
+        return inserted
+
+
 def scan_boring_breakouts_pending(max_lookback: int = 15) -> int:
     """Scan every trading date that may not have been scanned yet, not just
     the newest one.
@@ -386,6 +661,12 @@ def scan_boring_breakouts_pending(max_lookback: int = 15) -> int:
 
     Returns total new rows inserted across all dates scanned.
     """
+    if _PG_URL:
+        return _scan_boring_breakouts_pending_pg(max_lookback)
+    return _scan_boring_breakouts_pending_sqlite(max_lookback)
+
+
+def _scan_boring_breakouts_pending_sqlite(max_lookback: int = 15) -> int:
     with sqlite3.connect(DB_PATH) as conn:
         ensure_boring_signals_table(conn)
         universe = _eligible_universe(conn)
@@ -411,6 +692,40 @@ def scan_boring_breakouts_pending(max_lookback: int = 15) -> int:
             total += scan_boring_breakouts(scan_date)
         except Exception as exc:
             logger.warning("boring_signals: scan failed for %s: %s", scan_date, exc)
+    return total
+
+
+def _scan_boring_breakouts_pending_pg(max_lookback: int = 15) -> int:
+    """PG twin of _scan_boring_breakouts_pending_sqlite() -- identical
+    bounded-window resume policy (see that function's docstring for the
+    full rationale; unchanged by the port)."""
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        universe = _eligible_universe_pg(cur)
+        by_symbol = _load_price_history_pg(cur, universe)
+        all_dates = sorted({d for pf in by_symbol.values() for d in pf["dates"]})
+        if not all_dates:
+            logger.warning("boring_signals (pg): no price history found for eligible universe")
+            return 0
+        cur.execute("SELECT MAX(signal_date)::text AS d FROM boring_signals")
+        last_signal = cur.fetchone()["d"]
+
+    window_start = all_dates[-max_lookback] if len(all_dates) > max_lookback else all_dates[0]
+    resume_from = max(window_start, last_signal) if last_signal else window_start
+    pending = [d for d in all_dates if d >= resume_from]
+
+    if len(pending) > 1:
+        logger.warning("boring_signals (pg): scanning %d date(s), %s -> %s.",
+                       len(pending), pending[0], pending[-1])
+    total = 0
+    for scan_date in pending:
+        try:
+            total += _scan_boring_breakouts_pg(scan_date)
+        except Exception as exc:
+            logger.warning("boring_signals (pg): scan failed for %s: %s", scan_date, exc)
     return total
 
 
@@ -447,6 +762,12 @@ def update_open_signal_statuses() -> int:
     days_open bumped while still open with no exit yet (existing asymmetry,
     preserved as-is, not introduced by this change).
     """
+    if _PG_URL:
+        return _update_open_signal_statuses_pg()
+    return _update_open_signal_statuses_sqlite()
+
+
+def _update_open_signal_statuses_sqlite() -> int:
     with sqlite3.connect(DB_PATH) as conn:
         ensure_boring_signals_table(conn)
         open_rows = pd.read_sql_query(
@@ -497,7 +818,69 @@ def update_open_signal_statuses() -> int:
         return updated
 
 
+def _update_open_signal_statuses_pg() -> int:
+    """PG twin of _update_open_signal_statuses_sqlite() -- identical HYBRID
+    trailing-stop walk (see update_open_signal_statuses()'s docstring for
+    the full exit-logic rationale; unchanged by the port)."""
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT id, symbol, signal_date::text AS signal_date, trigger_price, status "
+            "FROM boring_signals WHERE status IN ('Pending','Executed')"
+        )
+        open_rows = cur.fetchall()
+        if not open_rows:
+            return 0
+
+        symbols = {r["symbol"] for r in open_rows}
+        by_symbol = _load_price_history_pg(cur, symbols)
+        updated = 0
+        for row in open_rows:
+            pf = by_symbol.get(row["symbol"])
+            if pf is None:
+                continue
+            dates, low = pf["dates"], pf["low"]
+            sig_date = row["signal_date"]
+            t = int(np.searchsorted(dates, sig_date))
+            if t >= len(dates) or dates[t] != sig_date:
+                continue
+            n = len(dates)
+            entry = float(row["trigger_price"])
+            floor_level = entry * (1 + HYBRID_FLOOR_PCT)
+
+            stop = max(low[t], floor_level)
+            exit_d = None
+            for d in range(t + 1, n):
+                stop = max(stop, low[d - 1])
+                if low[d] <= stop:
+                    exit_d = d
+                    break
+
+            if exit_d is not None:
+                cur.execute(
+                    """UPDATE boring_signals SET status=%s, resolution_type=%s, resolution_date=%s,
+                       days_open=%s, current_stop=%s WHERE id=%s""",
+                    ("Stopped", "STOP", str(dates[exit_d]), exit_d - t, float(stop), row["id"]),
+                )
+                updated += 1
+            elif row["status"] == "Pending":
+                cur.execute("UPDATE boring_signals SET days_open=%s, current_stop=%s WHERE id=%s",
+                            ((n - 1) - t, float(stop), row["id"]))
+            else:
+                cur.execute("UPDATE boring_signals SET current_stop=%s WHERE id=%s",
+                            (float(stop), row["id"]))
+
+        logger.info("boring_signals (pg): updated %d signal statuses", updated)
+        return updated
+
+
 def mark_executed(signal_id: int, executed_price: float | None = None) -> None:
+    if _PG_URL:
+        _mark_executed_pg(signal_id, executed_price)
+        return
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             """UPDATE boring_signals SET executed = 1, status = 'Executed',
@@ -508,7 +891,21 @@ def mark_executed(signal_id: int, executed_price: float | None = None) -> None:
         conn.commit()
 
 
+def _mark_executed_pg(signal_id: int, executed_price: float | None = None) -> None:
+    from database_pg import get_conn
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE boring_signals SET executed = TRUE, status = 'Executed',
+               executed_at = NOW(), executed_price = COALESCE(%s, trigger_price)
+               WHERE id = %s""",
+            (executed_price, signal_id),
+        )
+
+
 def get_boring_signals(status: str | None = None) -> pd.DataFrame:
+    if _PG_URL:
+        return _get_boring_signals_pg(status)
     with sqlite3.connect(DB_PATH) as conn:
         ensure_boring_signals_table(conn)
         if status:
@@ -516,3 +913,54 @@ def get_boring_signals(status: str | None = None) -> pd.DataFrame:
                 "SELECT * FROM boring_signals WHERE status = ? ORDER BY signal_date DESC", conn, params=(status,)
             )
         return pd.read_sql_query("SELECT * FROM boring_signals ORDER BY signal_date DESC", conn)
+
+
+def _get_boring_signals_pg(status: str | None = None) -> pd.DataFrame:
+    """PG twin of get_boring_signals(). Normalizes the frame back to the same
+    dtypes the SQLite path returns (plain float for NUMERIC-derived columns,
+    plain str for DATE/TIMESTAMP columns, plain int 0/1 for what SQLite
+    stores as INTEGER but Postgres stores as BOOLEAN) so dashboard.py's
+    rendering code -- written against the SQLite shape -- doesn't need a
+    backend-specific branch of its own."""
+    import psycopg2.extras
+    from database_pg import get_conn
+
+    with get_conn() as conn:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if status:
+            cur.execute("SELECT * FROM boring_signals WHERE status = %s ORDER BY signal_date DESC", (status,))
+        else:
+            cur.execute("SELECT * FROM boring_signals ORDER BY signal_date DESC")
+        rows = cur.fetchall()
+
+    return _normalize_boring_signals_rows(rows)
+
+
+def _normalize_boring_signals_rows(rows) -> pd.DataFrame:
+    """Pure, DB-independent half of _get_boring_signals_pg() -- separated out
+    so the Decimal/bool/date normalization can be unit-tested without a live
+    Supabase connection. Takes an iterable of dict-like rows (as returned by
+    psycopg2's RealDictCursor) and returns the same dtypes the SQLite path's
+    sqlite3-backed pd.read_sql_query() produces: plain float for
+    NUMERIC-derived columns, plain str (or None) for DATE/TIMESTAMP columns,
+    plain int 0/1 for what SQLite stores as INTEGER but Postgres stores as
+    BOOLEAN. Keeps dashboard.py's rendering code -- written against the
+    SQLite shape -- free of any backend-specific branch of its own."""
+    df = pd.DataFrame([dict(r) for r in rows])
+    if df.empty:
+        return df
+    for col in ("breakout_level", "trigger_price", "target_price", "stop_price",
+                "rs_60", "avg_vol_10d", "executed_price", "current_stop"):
+        if col in df.columns:
+            df[col] = df[col].astype(float)
+    for col in ("signal_date", "executed_at", "resolution_date", "created_at"):
+        if col in df.columns:
+            # Not .astype(str).replace("None", None): pandas' Series.replace
+            # treats value=None as "replace with NaN", not "replace with
+            # Python None" -- silently swaps a real None for float('nan')
+            # instead of preserving it. .apply() sidesteps that gotcha.
+            df[col] = df[col].apply(lambda v: None if v is None else str(v))
+    for col in ("liquidity_pass", "strategy_confirmed", "executed"):
+        if col in df.columns:
+            df[col] = df[col].astype(int)
+    return df

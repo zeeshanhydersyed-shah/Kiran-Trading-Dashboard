@@ -198,29 +198,40 @@ because they affect live trading-signal correctness on Cloud.
   page) consumes the 07-08/07-09 `sector_signals` rows before assuming it's
   safe to ignore.
 
-### `boring_signals.py` (Explorer "Boring Breakouts" toggle) has no Postgres port
+### `boring_signals.py` (Explorer "Boring Breakouts" toggle) -- ✅ CODE DONE (2026-08-21), production write PENDING user sign-off
 
-- **What's missing:** `boring_signals.py` is 100% SQLite (`sqlite3.connect(DB_PATH)`
-  hardcoded throughout, no `_PG_URL` branch anywhere), and its `_eligible_universe()`
-  depends on `stock_metadata`/`sectors` being fully populated -- tables built by
-  local-only, one-time scripts (`build_stock_metadata.py`, `load_bi_history.py`)
-  that GitHub Actions never runs. Same shape of gap as the pre-E8.7
-  `backfill_setup_log.py`/`leaders_scan.py` deferral above.
-- **Current handling:** `_render_boring_breakouts_section()` in `dashboard.py`
-  hard-blocks with `st.error(...)` when `_PG_URL` is set, before ever importing
-  `boring_signals` -- same pattern as the Data Health Confirm button. The SQLite
-  path (local use) is unaffected. `main.py`'s daily hook (`scan_boring_breakouts()`
-  / `update_open_signal_statuses()`) is still called unconditionally in
-  `cmd_update()`, wrapped in the standard per-hook try/except -- it won't break
-  the pipeline in GitHub Actions, but it also won't do anything useful there
-  (empty eligible universe on a fresh Actions checkout), so it's effectively a
-  no-op outside local runs for now.
-- **To close this gap:** port `boring_signals.py`'s core functions to Postgres
-  (`_pg`-suffixed siblings, following the `database_pg.py` convention), create
-  the `boring_signals` table in Supabase, and remove the hard block in
-  `dashboard.py`. Per this project's standing production-write discipline, the
-  actual migration/first write against live Supabase needs explicit sign-off
-  before it runs, same as E8.7.
+**Was:** 100% SQLite, no `_PG_URL` branch anywhere, hard-blocked on Cloud
+(`dashboard.py`'s `_render_boring_breakouts_section()` refused with
+`st.error(...)` before ever importing the module). This gap sat on the
+critical path for real trading capital -- PRL's real breakout fired
+2026-08-13, the local-only scan didn't run that day, and the signal wasn't
+caught until the user was already filled ~9% worse (docs/KIRAN_CLEANUP_AUDIT.md
+§33). Live sizing confirmed the CLAUDE.md claim below was stale: `stock_metadata`
+(305 active rows) / `sectors` (2,504 rows) / `prices_adjusted` / `index_prices`
+already existed in Supabase, fully populated -- only `boring_signals` itself
+was missing, a single new table, not a dependency chain.
+
+**Now:** every public function (`scan_boring_breakouts[_pending]`,
+`update_open_signal_statuses`, `mark_executed`, `get_boring_signals`) branches
+on `_PG_URL`, `_pg`-suffixed siblings following the `leaders_scan.py`
+convention. `ensure_boring_signals_table_pg()` is the one-time DDL (native
+`DATE`/`TIMESTAMP` columns, `DOUBLE PRECISION` not `NUMERIC` to avoid the
+`decimal.Decimal` arithmetic trap at the source, `BOOLEAN` not `INTEGER`
+0/1) -- **not** called implicitly by any scan/status function, same
+"assumes the table exists, DDL is a separate signed-off step" contract
+`leaders_scan.py`'s `_pg` functions use for `leaders_scan`/`leaders_top_picks`.
+`dashboard.py`'s hard block is removed; `_boring_kse_return()` (the live
+KSE-100 benchmark line in the performance panel) got a Postgres branch too,
+so the whole "Boring Breakouts" section now works identically on Cloud and
+local. No historical backfill -- starts clean from go-live date (explicit
+scope decision, not an oversight).
+
+**Not yet run for real against Supabase** -- `ensure_boring_signals_table_pg()`
+needs an explicit user sign-off before its first execution against live
+Supabase, per this project's production-write discipline, same as E8.7.
+Once that DDL has run once, the next scheduled `daily_scraper.yml` run keeps
+`boring_signals` fresh automatically -- no further code change needed.
+
 - **Research artifacts note:** all the "boring study" research docs/scripts/
   outputs that produced this feature were moved into `boring_study/` (project
   root, `psx_pipeline/boring_study/`) on 2026-07-11 for organization.
