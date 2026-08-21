@@ -331,7 +331,11 @@ def cmd_update():
 
     # Boring Breakouts (RS_60-conditioned Donchian) -- scan for new signals,
     # then advance status on anything already open (Target Hit/Stopped/Expired).
-    # SQLite only, watch-and-manually-execute, not wired into leaders_scan/agent.
+    # Watch-and-manually-execute, not wired into leaders_scan/agent. Ported to
+    # Postgres 2026-08-21 -- scan_boring_breakouts_pending()/
+    # update_open_signal_statuses() now branch on _PG_URL internally, so this
+    # runs for real against Supabase when GitHub Actions calls it, not just
+    # local Task Scheduler runs.
     try:
         # scan_boring_breakouts_pending(), not scan_boring_breakouts(): the
         # latter scans the newest date only, so any day this hook missed was
@@ -340,9 +344,9 @@ def cmd_update():
         n_new = scan_boring_breakouts_pending()
         n_updated = update_open_signal_statuses()
         logger.info("Boring Breakouts: %d new signal(s), %d status update(s).", n_new, n_updated)
-        # mirror_to_postgres: boring_signals is SQLite-only and has no Supabase
-        # table at all, so this heartbeat is the ONLY way the Streamlit Cloud
-        # banner can see whether the local Task Scheduler job is still running.
+        # mirror_to_postgres: kept as a heartbeat even now that boring_signals
+        # itself writes to Supabase directly -- lets the Cloud banner
+        # distinguish "hook ran, zero signals fired" from "hook didn't run".
         _record_hook("boring_signals", _session_date, rows_written=n_new,
                      mirror_to_postgres=True)
     except Exception as exc:
