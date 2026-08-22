@@ -28,13 +28,17 @@ itself is never cached and stays unit-testable.
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 import config
+
+logger = logging.getLogger(__name__)
 
 _PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
@@ -61,10 +65,17 @@ EVERY_SESSION: list[tuple[str, str, str]] = [
 
 # (hook_name as recorded in pipeline_runs, human label)
 HEARTBEAT: list[tuple[str, str]] = [
-    ("setup_log",        "setup_log"),
-    ("leaders_scan",     "leaders_scan"),
-    ("boring_signals",   "boring_signals"),
-    ("corporate_action", "corporate_action scan"),
+    ("setup_log",         "setup_log"),
+    ("leaders_scan",      "leaders_scan"),
+    ("boring_signals",    "boring_signals"),
+    ("corporate_action",  "corporate_action scan"),
+    # Previously in neither list -- confirmed zero monitoring on either
+    # backend anywhere (docs/KIRAN_CLEANUP_AUDIT.md §37-39, §44). Heartbeat,
+    # not EVERY_SESSION: run_portfolio_signals() snapshots the latest
+    # sector_signals date rather than guaranteeing one row per trading
+    # session, so a MAX(date)-vs-expected-session check could false-positive
+    # the same way leaders_top_picks would if checked that way.
+    ("portfolio_signals", "portfolio_signals"),
 ]
 
 # Tables deliberately NOT checked, so the omissions are explicit rather than
@@ -251,13 +262,45 @@ def record_run(
 
 
 def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, detail) -> None:
-    """Ledger write against Postgres. Swallows everything by design."""
+    """Ledger write against Postgres. Swallows everything by design -- a
+    telemetry write must never break the pipeline it measures -- but now
+    logs one safe line per attempt so a real run's outcome, and which stage
+    it reached (connect / insert / commit), is observable. Never logs the
+    connection string, credentials, or raw exception text -- psycopg2 error
+    messages can embed the DSN -- only the exception class name is logged.
+
+    Diagnostic added to investigate docs/KIRAN_CLEANUP_AUDIT.md 56's Hidden
+    Risk 1: three already-deployed heartbeats (corporate_action/setup_log/
+    leaders_scan) produce no rows in live Postgres pipeline_runs, and this
+    function's prior total silence made it impossible to tell why.
+
+    Uses database_pg._parse_pg_url() (this project's own hardened
+    keyword-arg connection pattern, added after a prior Supabase-password
+    special-character parsing bug, commit c361482) instead of the bare
+    psycopg2.connect(url) this function used before -- named in 56.4 as one
+    of two plausible failure mechanisms.
+    """
+    start = time.monotonic()
+
+    def _fail(stage: str, exc: Exception) -> None:
+        logger.warning(
+            "pipeline_runs heartbeat failed: hook=%s date=%s stage=%s error=%s elapsed=%.2fs",
+            hook_name, run_date, stage, type(exc).__name__, time.monotonic() - start,
+        )
+
     try:
         import psycopg2
 
-        conn = psycopg2.connect(url)
+        from database_pg import _parse_pg_url
+
         try:
-            with conn:
+            conn = psycopg2.connect(**_parse_pg_url(url))
+        except Exception as exc:
+            _fail("connect", exc)
+            return
+
+        try:
+            try:
                 cur = conn.cursor()
                 ensure_ledger_pg(cur)
                 cur.execute(
@@ -273,6 +316,21 @@ def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, deta
                     """,
                     (hook_name, run_date, finished_at, status, rows_written, detail),
                 )
+            except Exception as exc:
+                conn.rollback()
+                _fail("insert", exc)
+                return
+
+            try:
+                conn.commit()
+            except Exception as exc:
+                _fail("commit", exc)
+                return
+
+            logger.info(
+                "pipeline_runs heartbeat written: hook=%s date=%s elapsed=%.2fs",
+                hook_name, run_date, time.monotonic() - start,
+            )
         finally:
             conn.close()
     except Exception:
