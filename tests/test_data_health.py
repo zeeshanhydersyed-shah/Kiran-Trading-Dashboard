@@ -234,3 +234,136 @@ def test_record_run_never_raises(monkeypatch):
     monkeypatch.setattr(dh.config, "DB_PATH", "/nonexistent/dir/nope.db")
     monkeypatch.setattr(dh, "_PG_URL", None)
     dh.record_run("setup_log", "2026-08-13")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# _record_pg diagnostic instrumentation (docs/KIRAN_CLEANUP_AUDIT.md 57,
+# Hidden Risk 1 diagnostic) -- no real Postgres connection is made in any of
+# these; psycopg2.connect and database_pg._parse_pg_url are both faked.
+# ---------------------------------------------------------------------------
+
+class _FakeCursor:
+    def __init__(self, fail_on_execute=None):
+        self._fail_on_execute = fail_on_execute
+        self.executed = []
+
+    def execute(self, sql, params=None):
+        self.executed.append(sql)
+        if self._fail_on_execute and "INSERT INTO pipeline_runs" in sql:
+            raise self._fail_on_execute
+
+
+class _FakeConn:
+    def __init__(self, fail_on_execute=None, fail_on_commit=None):
+        self.cursor_obj = _FakeCursor(fail_on_execute)
+        self._fail_on_commit = fail_on_commit
+        self.committed = False
+        self.rolled_back = False
+        self.closed = False
+
+    def cursor(self):
+        return self.cursor_obj
+
+    def commit(self):
+        if self._fail_on_commit:
+            raise self._fail_on_commit
+        self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
+        self.closed = True
+
+
+def _patch_parse_pg_url(monkeypatch):
+    import database_pg
+    monkeypatch.setattr(database_pg, "_parse_pg_url", lambda url: {})
+
+
+def test_record_pg_logs_connect_failure_without_leaking_url(monkeypatch, caplog):
+    import psycopg2
+
+    _patch_parse_pg_url(monkeypatch)
+
+    def fake_connect(**kwargs):
+        raise psycopg2.OperationalError("could not translate host name")
+
+    monkeypatch.setattr(psycopg2, "connect", fake_connect)
+
+    with caplog.at_level("WARNING", logger="data_health"):
+        dh._record_pg(
+            "postgresql://user:s3cr3t@example.invalid:5432/postgres",
+            "corporate_action", "2026-08-21",
+            dh.datetime.now(dh.timezone.utc), "ok", 0, None,
+        )
+
+    assert len(caplog.records) == 1
+    msg = caplog.records[0].message
+    assert "stage=connect" in msg
+    assert "error=OperationalError" in msg
+    assert "hook=corporate_action" in msg
+    assert "s3cr3t" not in msg
+    assert "example.invalid" not in msg
+
+
+def test_record_pg_logs_insert_failure_and_rolls_back(monkeypatch, caplog):
+    _patch_parse_pg_url(monkeypatch)
+    fake_conn = _FakeConn(fail_on_execute=Exception("relation does not exist"))
+
+    import psycopg2
+    monkeypatch.setattr(psycopg2, "connect", lambda **kw: fake_conn)
+    monkeypatch.setattr(dh, "ensure_ledger_pg", lambda cur: None)
+
+    with caplog.at_level("WARNING", logger="data_health"):
+        dh._record_pg(
+            "postgresql://user:pw@host/db",
+            "setup_log", "2026-08-21",
+            dh.datetime.now(dh.timezone.utc), "ok", 5, None,
+        )
+
+    assert fake_conn.rolled_back is True
+    assert fake_conn.committed is False
+    assert fake_conn.closed is True
+    assert len(caplog.records) == 1
+    assert "stage=insert" in caplog.records[0].message
+    assert "hook=setup_log" in caplog.records[0].message
+
+
+def test_record_pg_logs_success(monkeypatch, caplog):
+    _patch_parse_pg_url(monkeypatch)
+    fake_conn = _FakeConn()
+
+    import psycopg2
+    monkeypatch.setattr(psycopg2, "connect", lambda **kw: fake_conn)
+    monkeypatch.setattr(dh, "ensure_ledger_pg", lambda cur: None)
+
+    with caplog.at_level("INFO", logger="data_health"):
+        dh._record_pg(
+            "postgresql://user:pw@host/db",
+            "leaders_scan", "2026-08-21",
+            dh.datetime.now(dh.timezone.utc), "ok", 12, None,
+        )
+
+    assert fake_conn.committed is True
+    assert fake_conn.closed is True
+    records = [r for r in caplog.records if r.levelname == "INFO"]
+    assert len(records) == 1
+    assert "heartbeat written" in records[0].message
+    assert "hook=leaders_scan" in records[0].message
+
+
+def test_record_pg_never_raises_on_unexpected_error(monkeypatch):
+    # Same "never raises" guarantee as record_run itself -- an error even
+    # database_pg._parse_pg_url() itself must not escape this function.
+    import database_pg
+
+    def boom(url):
+        raise ValueError("unexpected")
+
+    monkeypatch.setattr(database_pg, "_parse_pg_url", boom)
+    dh._record_pg(
+        "postgresql://user:pw@host/db",
+        "setup_log", "2026-08-21",
+        dh.datetime.now(dh.timezone.utc), "ok", 0, None,
+    )  # must not raise
