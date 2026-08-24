@@ -51,6 +51,37 @@ test may reuse the real database opportunistically; a test with ANY write
 path must never be handed anything but an isolated, disposable database,
 regardless of what convention a sibling read-only test uses.
 
+SECOND GAP FOUND AND FIXED (CI, same day): the fix above only patched
+config.DB_PATH. database.py does `from config import DB_PATH` at its own
+module level (an import-time binding, cached in sys.modules the first time
+anything in the process imports database.py -- typically well before this
+fixture ever runs), so database.py's OWN `DB_PATH` name -- and therefore
+every function that goes through its central `get_conn()` helper, which
+all of database.py's functions do -- kept using whatever `config.DB_PATH`
+was at that first import, never the monkeypatched value. dashboard.py's
+sidebar renders unconditionally on every page (get_latest_stock_date(),
+called before any page-specific code, including this test's own Data
+Health block) and goes through exactly that path. This was invisible
+locally (a real psx_data.db happens to sit at the frozen default path on
+a developer machine, so the read silently succeeded against real,
+unmodified, read-only production data instead of the isolated copy) and
+only surfaced on a clean CI runner with no such file (`no such table:
+prices`). The claim below that the isolated database was "the ONLY
+database any code this test triggers can reach, by construction" was
+therefore not fully true -- it was true for config.DB_PATH-driven reads
+(data_health.record_run(), dashboard.py's own top-level DB_PATH, both of
+which re-read their value fresh) but not for database.py's separately-
+frozen binding. Fixed two ways below: `database.DB_PATH` is now
+monkeypatched alongside `config.DB_PATH` (so database.py's functions
+actually read the isolated copy, not just silently avoid crashing), and
+`sqlite3.connect` itself is wrapped for the duration of this test to
+raise immediately if anything -- however it got there -- ever tries to
+open the real production path, so a future gap of this same shape fails
+loudly instead of silently reading (or, worse, writing) real data. No
+production file was changed to fix this; database.py's import-time
+resolution is appropriate for the long-lived process it's actually
+designed for and is left exactly as-is.
+
 Postgres: `get_dh_summary_pg()` has no comparable AppTest path (Postgres
 requires DATABASE_URL/SUPABASE_DB_URL, which this project's test session
 forces empty everywhere -- tests must never reach production Postgres, see
@@ -76,6 +107,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 
 import data_health  # noqa: E402
+import database  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -90,14 +122,12 @@ FIXTURE_DB = os.path.join(_ROOT, "tests", "fixtures", "psx_fixture.db")
 @pytest.fixture
 def isolated_dashboard_db(tmp_path, monkeypatch):
     """Builds a throwaway copy of the fixture DB under pytest's own tmp_path
-    (never under the repo tree) and points config.DB_PATH at it -- this is
-    the ONLY database any code this test triggers can reach, by construction:
-    config.DB_PATH is a plain module attribute (not env-var-driven, see
-    config.py), read fresh by both record_run() and dashboard.py's own
-    `from config import DB_PATH as _dh_db` on every script execution, so
-    monkeypatching it here redirects both the write and the read path.
-    Confirmed empirically (not assumed) that Streamlit's AppTest executes
-    dashboard.py in-process, so this redirection reaches it.
+    (never under the repo tree) and redirects every DB_PATH binding this
+    test's AppTest render can reach to it, plus an active runtime guard --
+    see the module docstring's "SECOND GAP FOUND AND FIXED" note for why
+    both config.DB_PATH and database.DB_PATH must be patched (they are two
+    separately-bound names, not one) and why a value-level assertion alone
+    isn't the full guarantee.
 
     monkeypatch.setattr guarantees restoration even if the test fails --
     unlike the incident version of this fixture, which mutated
@@ -122,7 +152,45 @@ def isolated_dashboard_db(tmp_path, monkeypatch):
 
     import config
     monkeypatch.setattr(config, "DB_PATH", temp_db)
+    # database.py does `from config import DB_PATH` at its own module level --
+    # a separate, import-time-frozen name in database's own namespace, not an
+    # alias that tracks config.DB_PATH. Every function in database.py routes
+    # through its get_conn() helper, which reads that frozen name, so it must
+    # be patched independently for database.py's functions (e.g.
+    # get_latest_stock_date(), called unconditionally by dashboard.py's
+    # sidebar on every page render, including this test's) to actually read
+    # the isolated copy instead of whatever database.py resolved at its own
+    # first import in this process.
+    monkeypatch.setattr(database, "DB_PATH", temp_db)
     monkeypatch.setattr(data_health, "_PG_URL", None)
+
+    # Active guard, not just a value-level assertion: wrap the real
+    # sqlite3.connect so that ANY attempt -- from this fixture's two patches
+    # above, or from some other frozen DB_PATH binding neither of us has
+    # found yet -- to open the real production path fails the test loudly
+    # and immediately, rather than silently reading (or writing) real data.
+    # sqlite3.connect is looked up fresh as a module attribute by every
+    # caller (database.py, dashboard.py, data_health.py all do
+    # `sqlite3.connect(...)`, never `from sqlite3 import connect`), so
+    # patching it on the sqlite3 module itself reaches all of them
+    # regardless of import order.
+    _real_connect = sqlite3.connect
+
+    def _guarded_connect(db_arg, *args, **kwargs):
+        try:
+            resolved = os.path.abspath(str(db_arg))
+        except Exception:
+            resolved = None
+        if resolved == REAL_DB_PATH:
+            raise RuntimeError(
+                f"BLOCKED: attempted to open the real production database "
+                f"({REAL_DB_PATH!r}) during an isolated test -- isolation "
+                f"guard tripped, refusing the connection rather than risk "
+                f"repeating the 2026-08-24 incident."
+            )
+        return _real_connect(db_arg, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", _guarded_connect)
 
     yield temp_db
 
