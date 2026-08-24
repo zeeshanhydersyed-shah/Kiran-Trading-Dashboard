@@ -55,6 +55,20 @@ logger = logging.getLogger(__name__)
 # (memory: boring-signals-postgres-port-plan) for the scope this follows.
 _PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
 
+# Transient-vs-bug classification for the pending-date scan loops below (see
+# docs/KIRAN_CLEANUP_AUDIT.md §44). Deliberately keyed off _PG_URL (which
+# branch is actually running), not off whether psycopg2 happens to be
+# importable -- psycopg2 is a hard dependency of this project and is
+# importable in every environment, including ones where the SQLite branch is
+# the one executing, so an import-based check would misclassify a real
+# sqlite3.OperationalError as "not transient" on this project's own machines.
+_SQLITE_TRANSIENT_ERRORS = (sqlite3.OperationalError,)
+
+
+def _pg_transient_errors():
+    import psycopg2
+    return (psycopg2.OperationalError, psycopg2.InterfaceError)
+
 STOP_PCT = -0.06
 TARGET_PCT = 0.10
 MAX_HORIZON = 90   # no longer used by update_open_signal_statuses() -- see HYBRID_FLOOR_PCT below
@@ -630,7 +644,7 @@ def _scan_boring_breakouts_pg(date: str | None = None) -> int:
         return inserted
 
 
-def scan_boring_breakouts_pending(max_lookback: int = 15) -> int:
+def scan_boring_breakouts_pending(max_lookback: int = 15, return_coverage: bool = False):
     """Scan every trading date that may not have been scanned yet, not just
     the newest one.
 
@@ -660,13 +674,26 @@ def scan_boring_breakouts_pending(max_lookback: int = 15) -> int:
     repeat scan a no-op.
 
     Returns total new rows inserted across all dates scanned.
+
+    return_coverage: TR-06 Tier 2 (2026-08-24) -- when True, returns
+    (total, dates_eligible, dates_processed) instead of the bare int.
+    dates_eligible is len(pending) (the dates this run needed to scan);
+    dates_processed is how many were actually completed before any early
+    `break` (a transient-failure break, see the per-date handling above,
+    returns normally without raising -- exactly the "ran without exception
+    but did less than expected" shape a coverage assertion exists to catch).
+    Defaults to False so every pre-existing caller (main.py before this
+    change, the existing regression tests) keeps its exact prior contract
+    unchanged.
     """
     if _PG_URL:
-        return _scan_boring_breakouts_pending_pg(max_lookback)
-    return _scan_boring_breakouts_pending_sqlite(max_lookback)
+        total, elig, proc = _scan_boring_breakouts_pending_pg(max_lookback)
+    else:
+        total, elig, proc = _scan_boring_breakouts_pending_sqlite(max_lookback)
+    return (total, elig, proc) if return_coverage else total
 
 
-def _scan_boring_breakouts_pending_sqlite(max_lookback: int = 15) -> int:
+def _scan_boring_breakouts_pending_sqlite(max_lookback: int = 15) -> tuple[int, int, int]:
     with sqlite3.connect(DB_PATH) as conn:
         ensure_boring_signals_table(conn)
         universe = _eligible_universe(conn)
@@ -674,7 +701,7 @@ def _scan_boring_breakouts_pending_sqlite(max_lookback: int = 15) -> int:
         all_dates = sorted({d for pf in by_symbol.values() for d in pf["dates"]})
         if not all_dates:
             logger.warning("boring_signals: no price history found for eligible universe")
-            return 0
+            return (0, 0, 0)
         last_signal = conn.execute(
             "SELECT MAX(signal_date) FROM boring_signals"
         ).fetchone()[0]
@@ -687,15 +714,36 @@ def _scan_boring_breakouts_pending_sqlite(max_lookback: int = 15) -> int:
         logger.warning("boring_signals: scanning %d date(s), %s -> %s.",
                        len(pending), pending[0], pending[-1])
     total = 0
+    dates_processed = 0
     for scan_date in pending:
+        # Two-tier handling (docs/KIRAN_CLEANUP_AUDIT.md §44, mirroring the
+        # already-fixed setup_log pattern, §28/§44): a transient blip is
+        # tolerated for this date -- the bounded max_lookback window means a
+        # later run's resume_from can still reach it. A real bug must raise,
+        # not be logged as a WARNING and reported as a clean scan that
+        # simply found nothing -- boring_signals feeds real trading capital
+        # (the PRL incident, §33), and "0 new signals" must mean that, not
+        # "the scanner silently failed on every pending date."
         try:
             total += scan_boring_breakouts(scan_date)
-        except Exception as exc:
-            logger.warning("boring_signals: scan failed for %s: %s", scan_date, exc)
-    return total
+            dates_processed += 1
+        except _SQLITE_TRANSIENT_ERRORS as exc:
+            logger.warning(
+                "boring_signals: transient failure scanning %s -- stopping "
+                "here, a later run's bounded lookback window can still "
+                "reach it: %s", scan_date, exc,
+            )
+            break
+        except Exception:
+            logger.exception(
+                "boring_signals: scan FAILED for %s -- unexpected error, "
+                "failing the run", scan_date,
+            )
+            raise
+    return (total, len(pending), dates_processed)
 
 
-def _scan_boring_breakouts_pending_pg(max_lookback: int = 15) -> int:
+def _scan_boring_breakouts_pending_pg(max_lookback: int = 15) -> tuple[int, int, int]:
     """PG twin of _scan_boring_breakouts_pending_sqlite() -- identical
     bounded-window resume policy (see that function's docstring for the
     full rationale; unchanged by the port)."""
@@ -709,7 +757,7 @@ def _scan_boring_breakouts_pending_pg(max_lookback: int = 15) -> int:
         all_dates = sorted({d for pf in by_symbol.values() for d in pf["dates"]})
         if not all_dates:
             logger.warning("boring_signals (pg): no price history found for eligible universe")
-            return 0
+            return (0, 0, 0)
         cur.execute("SELECT MAX(signal_date)::text AS d FROM boring_signals")
         last_signal = cur.fetchone()["d"]
 
@@ -720,13 +768,29 @@ def _scan_boring_breakouts_pending_pg(max_lookback: int = 15) -> int:
     if len(pending) > 1:
         logger.warning("boring_signals (pg): scanning %d date(s), %s -> %s.",
                        len(pending), pending[0], pending[-1])
+    _pg_transient = _pg_transient_errors()
     total = 0
+    dates_processed = 0
     for scan_date in pending:
+        # Same two-tier handling as the SQLite path above -- see its comment
+        # and docs/KIRAN_CLEANUP_AUDIT.md §44.
         try:
             total += _scan_boring_breakouts_pg(scan_date)
-        except Exception as exc:
-            logger.warning("boring_signals (pg): scan failed for %s: %s", scan_date, exc)
-    return total
+            dates_processed += 1
+        except _pg_transient as exc:
+            logger.warning(
+                "boring_signals (pg): transient failure scanning %s -- "
+                "stopping here, a later run's bounded lookback window can "
+                "still reach it: %s", scan_date, exc,
+            )
+            break
+        except Exception:
+            logger.exception(
+                "boring_signals (pg): scan FAILED for %s -- unexpected "
+                "error, failing the run", scan_date,
+            )
+            raise
+    return (total, len(pending), dates_processed)
 
 
 def update_open_signal_statuses() -> int:

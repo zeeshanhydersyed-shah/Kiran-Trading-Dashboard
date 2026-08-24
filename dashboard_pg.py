@@ -604,10 +604,15 @@ def get_dh_summary_pg() -> tuple[int, int, str]:
 
         # Heartbeat, not MAX(suspect_date) -- see the SQLite sibling in
         # dashboard.py for why that query could not detect a dead checker.
+        #
+        # TR-06 Tier 2 (2026-08-24): see dashboard.py's identical comment --
+        # corporate_action_suspects_scan is the correct successor for this
+        # specifically scan-focused "Last Checked" metric, not
+        # corporate_action_append.
         try:
             cur.execute(
                 "SELECT run_date, status FROM pipeline_runs "
-                "WHERE hook_name = 'corporate_action' "
+                "WHERE hook_name = 'corporate_action_suspects_scan' "
                 "ORDER BY run_date DESC LIMIT 1"
             )
             row = cur.fetchone()
