@@ -1102,11 +1102,27 @@ def _pending_scan_dates(db_path=None):
     return _pending_setup_log_dates(dates, last)
 
 
-def run_all(db_path=None):
+def run_all(db_path=None) -> dict:
+    """Run the leaders-scan chain for every pending date.
+
+    TR-06 Tier 2 (2026-08-24) fix: per-date failures were previously caught
+    and reduced to a bare `print()`, with nothing propagated to the caller --
+    a date that failed here was indistinguishable, from main.py's heartbeat
+    onward, from one that succeeded, because run_all() always returned
+    normally regardless of how many dates actually failed. The fix preserves
+    the existing intended behaviour exactly (each date is still a
+    self-contained DELETE+rebuild, one bad date still cannot corrupt the
+    others, processing of the remaining dates still continues rather than
+    aborting) -- it only makes the outcome observable, by tracking which
+    dates failed and returning that instead of silently discarding it.
+
+    Returns {"dates_eligible": int, "dates_processed": int, "failed_dates": list[str]}.
+    """
     pending = _pending_scan_dates(db_path)
     if len(pending) > 1:
         print(f"Leaders scan: backfilling {len(pending)} missing date(s), "
               f"{pending[0]} -> {pending[-1]}.")
+    failed_dates = []
     for scan_date in pending:
         # Each date is a self-contained DELETE+rebuild for that scan_date, so
         # one bad date cannot corrupt the others -- and a failure part-way
@@ -1115,6 +1131,12 @@ def run_all(db_path=None):
             append_leaders_scan(db_path, scan_date=scan_date)
         except Exception as exc:
             print(f"Leaders scan failed for {scan_date}: {exc}")
+            failed_dates.append(scan_date)
     # Top picks and forward returns are whole-table operations, not per-date.
     save_top_picks(db_path)
     fill_leaders_forward_returns(db_path)
+    return {
+        "dates_eligible": len(pending),
+        "dates_processed": len(pending) - len(failed_dates),
+        "failed_dates": failed_dates,
+    }

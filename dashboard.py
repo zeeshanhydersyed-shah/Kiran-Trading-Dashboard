@@ -7717,10 +7717,26 @@ elif cur == PAGES[14]:  # Data Health
             # nothing left it unchanged — identical to a scan that never ran at
             # all. It displayed 2026-06-22 for two months while the label said
             # "Last Checked". See docs/KIRAN_CLEANUP_AUDIT.md 31.
+            #
+            # TR-06 Tier 2 (2026-08-24): main.py's single "corporate_action"
+            # heartbeat was split into corporate_action_append (prices_adjusted
+            # append) and corporate_action_suspects_scan (this page's actual
+            # subject -- scanning for corporate-action suspects). This "Last
+            # Checked" metric is specifically about the SCAN, per the comment
+            # above ("a scan that ran cleanly and found nothing") -- it was
+            # never about the unrelated prices_adjusted append, which this
+            # page has never displayed. corporate_action_suspects_scan is the
+            # correct, and only correct, successor name for this query; using
+            # corporate_action_append here would misrepresent what "Last
+            # Checked" has always meant. Second independent-review blocker:
+            # this hardcoded query was missed by the first blocker fix
+            # (which only updated data_health.py's HEARTBEAT list) because it
+            # is a separate, direct consumer of pipeline_runs, not routed
+            # through check_all() at all.
             try:
                 _row = _con.execute(
                     "SELECT run_date, status FROM pipeline_runs "
-                    "WHERE hook_name = 'corporate_action' "
+                    "WHERE hook_name = 'corporate_action_suspects_scan' "
                     "ORDER BY run_date DESC LIMIT 1"
                 ).fetchone()
                 if _row:

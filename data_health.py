@@ -68,7 +68,22 @@ HEARTBEAT: list[tuple[str, str]] = [
     ("setup_log",         "setup_log"),
     ("leaders_scan",      "leaders_scan"),
     ("boring_signals",    "boring_signals"),
-    ("corporate_action",  "corporate_action scan"),
+    # TR-06 Tier 2 (2026-08-24): split from a single "corporate_action" entry
+    # into its two independently-failable operations, matching main.py's
+    # heartbeat split (docs/KIRAN_BORING_STATE_TRUST_REGISTER.md, TR-06).
+    # Neither retires the other -- both legitimately produce zero rows most
+    # days (an append with nothing new to append; a scan that finds no
+    # suspects), the exact shape this HEARTBEAT list (vs. EVERY_SESSION)
+    # exists for. corporate_action_append's own output table
+    # (prices_adjusted) is also separately watched via EVERY_SESSION above --
+    # this entry is complementary execution/coverage evidence, not the only
+    # safety net for that table. Fixes a real regression found in
+    # independent review: main.py no longer writes hook_name='corporate_action'
+    # at all after the split, so the single old entry would have permanently
+    # read "no run ever recorded" post-deployment despite both new heartbeats
+    # succeeding.
+    ("corporate_action_append",        "prices_adjusted append"),
+    ("corporate_action_suspects_scan", "corporate_action scan"),
     # Previously in neither list -- confirmed zero monitoring on either
     # backend anywhere (docs/KIRAN_CLEANUP_AUDIT.md §37-39, §44). Heartbeat,
     # not EVERY_SESSION: run_portfolio_signals() snapshots the latest
@@ -77,6 +92,31 @@ HEARTBEAT: list[tuple[str, str]] = [
     # the same way leaders_top_picks would if checked that way.
     ("portfolio_signals", "portfolio_signals"),
 ]
+
+# ---------------------------------------------------------------------------
+# TR-06 Tier 2 coverage vocabulary (docs/KIRAN_BORING_STATE_TRUST_REGISTER.md,
+# TR-06). Two separate dimensions, not one combined enum -- an execution that
+# failed has no meaningful coverage verdict, and a hook that never reports a
+# coverage pair is not the same as one that reported and fell short.
+#
+# EXECUTION_* mirrors the pre-existing status='ok'/'error' values used by
+# every existing caller -- COMPLETED/FAILED are the only two values a hook
+# call site ever writes; NOT_STARTED/HEARTBEAT_WRITE_FAILED/UNKNOWN describe
+# the ABSENCE of a row (or a query failure reading pipeline_runs) and are
+# never persisted here, only inferred by a reader. Not wired into check_all()
+# by this change -- see the design-lock record this implements.
+EXECUTION_COMPLETED = "COMPLETED"
+EXECUTION_FAILED = "FAILED"
+
+# COVERAGE_* is meaningful only when execution completed. NOT_APPLICABLE
+# covers both "this hook's shape has no eligible/processed pair" (e.g.
+# regime's single-row-per-session presence) and "a real denominator isn't
+# yet computed for this hook" -- both are honest non-answers, never a
+# manufactured EXPECTED/INSUFFICIENT verdict.
+COVERAGE_EXPECTED = "EXPECTED"
+COVERAGE_INSUFFICIENT = "INSUFFICIENT"
+COVERAGE_NOT_APPLICABLE = "NOT_APPLICABLE"
+
 
 # Tables deliberately NOT checked, so the omissions are explicit rather than
 # forgotten:
@@ -201,13 +241,36 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
 )
 """
 
+# TR-06 Tier 2 (2026-08-24) -- additive columns only. The existing
+# UNIQUE(hook_name, run_date) natural key is deliberately left unchanged: the
+# design-lock explicitly scoped this to "additive, not a natural-key
+# migration" -- run_id identifies which cmd_update() invocation a row came
+# from, it does not replace how rows are addressed. Every new column is
+# nullable so every pre-existing row (and every caller that doesn't pass the
+# new kwargs, e.g. the still-HELD main.py hooks) stays valid with no
+# backfill required.
+_NEW_COLUMNS: list[tuple[str, str, str]] = [
+    # (column name, SQLite type, Postgres type)
+    ("run_id",           "TEXT",    "TEXT"),
+    ("execution_status",  "TEXT",    "TEXT"),
+    ("coverage_status",   "TEXT",    "TEXT"),
+    ("eligible_count",    "INTEGER", "INTEGER"),
+    ("processed_count",   "INTEGER", "INTEGER"),
+]
+
 
 def ensure_ledger_sqlite(con) -> None:
     con.execute(_SQLITE_DDL)
+    existing = {row[1] for row in con.execute("PRAGMA table_info(pipeline_runs)").fetchall()}
+    for name, sqlite_type, _pg_type in _NEW_COLUMNS:
+        if name not in existing:
+            con.execute(f"ALTER TABLE pipeline_runs ADD COLUMN {name} {sqlite_type}")
 
 
 def ensure_ledger_pg(cur) -> None:
     cur.execute(_PG_DDL)
+    for name, _sqlite_type, pg_type in _NEW_COLUMNS:
+        cur.execute(f"ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS {name} {pg_type}")
 
 
 def record_run(
@@ -217,6 +280,11 @@ def record_run(
     rows_written: int | None = None,
     detail: str | None = None,
     mirror_to_postgres: bool = False,
+    run_id: str | None = None,
+    execution_status: str | None = None,
+    coverage_status: str | None = None,
+    eligible_count: int | None = None,
+    processed_count: int | None = None,
 ) -> None:
     """Record one hook execution. Never raises -- a telemetry write must not be
     able to break the pipeline it is measuring.
@@ -224,12 +292,23 @@ def record_run(
     mirror_to_postgres: also write to Supabase even when the active backend is
     SQLite. Used by boring_signals, whose data lives only in local SQLite but
     whose liveness the Cloud dashboard still needs to see.
+
+    TR-06 Tier 2 (2026-08-24) -- five additive, optional fields layered on top
+    of the pre-existing status/rows_written contract, per the design-lock
+    record. execution_status is NOT derived from rows_written or any coverage
+    field -- deriving it from status keeps every existing, unmodified caller
+    (including main.py's still-HELD hooks, which never pass these new kwargs
+    at all) producing a correct value automatically, with zero call-site
+    changes required of them.
     """
     finished_at = datetime.now(timezone.utc)
     run_date = _iso(run_date) or str(run_date)
+    if execution_status is None:
+        execution_status = EXECUTION_COMPLETED if status == "ok" else EXECUTION_FAILED
 
     if _PG_URL:
-        _record_pg(_PG_URL, hook_name, run_date, finished_at, status, rows_written, detail)
+        _record_pg(_PG_URL, hook_name, run_date, finished_at, status, rows_written, detail,
+                   run_id, execution_status, coverage_status, eligible_count, processed_count)
         return
 
     try:
@@ -239,15 +318,22 @@ def record_run(
             con.execute(
                 """
                 INSERT INTO pipeline_runs
-                    (hook_name, run_date, finished_at, status, rows_written, detail)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (hook_name, run_date, finished_at, status, rows_written, detail,
+                     run_id, execution_status, coverage_status, eligible_count, processed_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(hook_name, run_date) DO UPDATE SET
-                    finished_at  = excluded.finished_at,
-                    status       = excluded.status,
-                    rows_written = excluded.rows_written,
-                    detail       = excluded.detail
+                    finished_at      = excluded.finished_at,
+                    status           = excluded.status,
+                    rows_written     = excluded.rows_written,
+                    detail           = excluded.detail,
+                    run_id           = excluded.run_id,
+                    execution_status = excluded.execution_status,
+                    coverage_status  = excluded.coverage_status,
+                    eligible_count   = excluded.eligible_count,
+                    processed_count  = excluded.processed_count
                 """,
-                (hook_name, run_date, finished_at.isoformat(), status, rows_written, detail),
+                (hook_name, run_date, finished_at.isoformat(), status, rows_written, detail,
+                 run_id, execution_status, coverage_status, eligible_count, processed_count),
             )
             con.commit()
         finally:
@@ -258,10 +344,13 @@ def record_run(
     if mirror_to_postgres:
         url = _env_pg_url()
         if url:
-            _record_pg(url, hook_name, run_date, finished_at, status, rows_written, detail)
+            _record_pg(url, hook_name, run_date, finished_at, status, rows_written, detail,
+                       run_id, execution_status, coverage_status, eligible_count, processed_count)
 
 
-def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, detail) -> None:
+def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, detail,
+                run_id=None, execution_status=None, coverage_status=None,
+                eligible_count=None, processed_count=None) -> None:
     """Ledger write against Postgres. Swallows everything by design -- a
     telemetry write must never break the pipeline it measures -- but now
     logs one safe line per attempt so a real run's outcome, and which stage
@@ -306,15 +395,22 @@ def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, deta
                 cur.execute(
                     """
                     INSERT INTO pipeline_runs
-                        (hook_name, run_date, finished_at, status, rows_written, detail)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                        (hook_name, run_date, finished_at, status, rows_written, detail,
+                         run_id, execution_status, coverage_status, eligible_count, processed_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (hook_name, run_date) DO UPDATE SET
-                        finished_at  = EXCLUDED.finished_at,
-                        status       = EXCLUDED.status,
-                        rows_written = EXCLUDED.rows_written,
-                        detail       = EXCLUDED.detail
+                        finished_at      = EXCLUDED.finished_at,
+                        status           = EXCLUDED.status,
+                        rows_written     = EXCLUDED.rows_written,
+                        detail           = EXCLUDED.detail,
+                        run_id           = EXCLUDED.run_id,
+                        execution_status = EXCLUDED.execution_status,
+                        coverage_status  = EXCLUDED.coverage_status,
+                        eligible_count   = EXCLUDED.eligible_count,
+                        processed_count  = EXCLUDED.processed_count
                     """,
-                    (hook_name, run_date, finished_at, status, rows_written, detail),
+                    (hook_name, run_date, finished_at, status, rows_written, detail,
+                     run_id, execution_status, coverage_status, eligible_count, processed_count),
                 )
             except Exception as exc:
                 conn.rollback()

@@ -13,6 +13,7 @@ import argparse
 import logging
 import os
 import sys
+import uuid
 from datetime import date, datetime
 
 from config import CALENDAR_DAYS_BACK, DB_PATH, SCHEDULER_HOUR, SCHEDULER_MINUTE, SCHEDULER_TIMEZONE
@@ -95,7 +96,9 @@ def cmd_init(force: bool = False):
 
 
 def _record_hook(hook_name, run_date, status="ok", rows_written=None,
-                 detail=None, mirror_to_postgres=False):
+                 detail=None, mirror_to_postgres=False, run_id=None,
+                 execution_status=None, coverage_status=None,
+                 eligible_count=None, processed_count=None):
     """Write one pipeline_runs heartbeat. Never raises.
 
     Heartbeats answer "did this producer run?", which is the only honest
@@ -103,17 +106,38 @@ def _record_hook(hook_name, run_date, status="ok", rows_written=None,
     (leaders_top_picks writes nothing when nothing clears MIN_PICK_SCORE;
     corporate_action finds nothing most days). For those, an empty table and a
     dead job look identical -- see docs/KIRAN_CLEANUP_AUDIT.md 31.
+
+    TR-06 Tier 2 (2026-08-24): five additive optional kwargs, all defaulting
+    to None so every existing call site -- including main.py's still-HELD
+    hooks (regime/sector_signals/stock_signals/recovery_signals/
+    portfolio_signals), deliberately not touched by this change -- keeps
+    working unchanged. run_id: the shared identity for this cmd_update()
+    invocation (see its generation at the top of cmd_update()). See
+    data_health.py's record_run() for what each field means and why
+    execution_status is derived from `status` rather than required here.
     """
     try:
         from data_health import record_run
         record_run(hook_name, run_date, status=status, rows_written=rows_written,
-                   detail=detail, mirror_to_postgres=mirror_to_postgres)
+                   detail=detail, mirror_to_postgres=mirror_to_postgres,
+                   run_id=run_id, execution_status=execution_status,
+                   coverage_status=coverage_status, eligible_count=eligible_count,
+                   processed_count=processed_count)
     except Exception as exc:  # telemetry must never break the pipeline
         logger.debug("Heartbeat write failed for %s: %s", hook_name, exc)
 
 
 def cmd_update():
     """Scrape only dates that are newer than the last record in the database."""
+    # TR-06 Tier 2 (2026-08-24): one execution identity per cmd_update()
+    # invocation, propagated to every heartbeat this run writes (both
+    # branches below). Additive alongside pipeline_runs' existing
+    # (hook_name, run_date) natural key -- see the design-lock record this
+    # implements. Not used for anything else in this function; a shared
+    # value threaded through only so future TR-08/TR-17 work has it without
+    # another schema change.
+    run_id = str(uuid.uuid4())
+
     # init_db()'s statements are all CREATE TABLE/INDEX IF NOT EXISTS --
     # idempotent no-ops once the schema exists, which it always does for a
     # running deployment. But it's the one call in this function that was
@@ -169,21 +193,52 @@ def cmd_update():
                 logger.warning("Same-day re-check failed: %s", exc)
 
         # Still run analysis to auto-save today's support reversal setups if not yet saved
-        result = run_analysis()
-        if result:
-            auto_save_setups_with_source(
-                result.get("support_reversal_setups", []),
-                source="Support Reversal"
-            )
+        try:
+            result = run_analysis()
+            if result:
+                _sr_saved = auto_save_setups_with_source(
+                    result.get("support_reversal_setups", []),
+                    source="Support Reversal"
+                )
+            else:
+                _sr_saved = 0
+            # TR-06 Tier 2 (2026-08-24): this producer is currently DISABLED
+            # at the source (processor.py's run_analysis() hardcodes
+            # support_reversal_setups=[] -- pattern killed 2026-07-23,
+            # -1.88% net full-history retest, RESEARCH_LOG.md line 36).
+            # There is no live per-symbol scan to report an eligible
+            # population for, so coverage_status is honestly
+            # NOT_APPLICABLE, not a manufactured EXPECTED/INSUFFICIENT
+            # verdict -- see the design-lock record this implements. The
+            # heartbeat itself is still meaningful: it is new instrumentation
+            # for a call site that previously had none at all, and still
+            # answers "did this step run" if the screener is ever re-enabled.
+            _record_hook("support_reversal", latest_str, rows_written=_sr_saved,
+                         run_id=run_id, execution_status="COMPLETED",
+                         coverage_status="NOT_APPLICABLE",
+                         detail="screener disabled at source since 2026-07-23")
+        except Exception as exc:
+            logger.warning("Support Reversal auto-save hook failed: %s", exc)
+            _record_hook("support_reversal", latest_str, status="error", detail=str(exc),
+                         run_id=run_id, execution_status="FAILED")
         # Still refresh leaders scan (idempotent — safe to re-run)
         try:
             from leaders_scan import run_all as leaders_run_all
-            leaders_run_all()
+            _ls_result = leaders_run_all()
             logger.info("Leaders deep scan updated.")
-            _record_hook("leaders_scan", latest_str)
+            _ls_eligible = _ls_result.get("dates_eligible", 0)
+            _ls_processed = _ls_result.get("dates_processed", 0)
+            _ls_coverage = "EXPECTED" if _ls_processed == _ls_eligible else "INSUFFICIENT"
+            _record_hook("leaders_scan", latest_str,
+                         run_id=run_id, execution_status="COMPLETED",
+                         coverage_status=_ls_coverage,
+                         eligible_count=_ls_eligible, processed_count=_ls_processed,
+                         detail=(f"failed_dates={_ls_result.get('failed_dates')}"
+                                 if _ls_result.get("failed_dates") else None))
         except Exception as exc:
             logger.warning("Leaders deep scan hook failed: %s", exc)
-            _record_hook("leaders_scan", latest_str, status="error", detail=str(exc))
+            _record_hook("leaders_scan", latest_str, status="error", detail=str(exc),
+                         run_id=run_id, execution_status="FAILED")
         # Rolling trim runs on every night, including no-new-data nights
         try:
             _trim_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
@@ -223,28 +278,54 @@ def cmd_update():
     # processes nothing would otherwise still look healthy.
     _session_date = mx
 
-    # Append new prices to prices_adjusted and flag corporate action suspects
+    # Append new prices to prices_adjusted, then scan for corporate action
+    # suspects. TR-06 Tier 2 (2026-08-24): split into two independent
+    # heartbeats -- previously one heartbeat covered both structurally
+    # different operations (append_new_prices_adjusted's own return value was
+    # discarded entirely, and a failure in EITHER step produced the same
+    # undifferentiated status=error), so an operator could not tell which
+    # step actually failed, and the append step -- the one with the stronger
+    # coverage guarantee -- had no captured evidence at all. See the
+    # design-lock record this implements.
+    _pa_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
     try:
-        _pa_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
         if _pa_pg_url:
-            from database_pg import (
-                ensure_suspects_table_pg,
-                append_new_prices_adjusted_pg,
-                auto_detect_suspects_pg,
-            )
+            from database_pg import ensure_suspects_table_pg, append_new_prices_adjusted_pg
             ensure_suspects_table_pg()
-            append_new_prices_adjusted_pg()
+            _n_appended = append_new_prices_adjusted_pg()
+        else:
+            import sqlite3
+            from apply_price_adjustments import ensure_suspects_table, append_new_prices_adjusted
+            con = sqlite3.connect(DB_PATH)
+            ensure_suspects_table(con)
+            _n_appended = append_new_prices_adjusted(con)
+            con.close()
+        logger.info("prices_adjusted append: %d row(s).", _n_appended)
+        # Coverage: append_new_prices_adjusted[_pg] runs a single
+        # INSERT...SELECT keyed off "rows in prices newer than
+        # prices_adjusted's own MAX(date)" -- eligible and processed are the
+        # same computed count by construction: one atomic statement over the
+        # identical predicate used to compute the count, no per-row loop
+        # that could partially write, so a failure here raises out to this
+        # hook's own except block below instead of silently under-writing.
+        # Exact-match EXPECTED is a direct consequence of that shape, not a
+        # manufactured tolerance.
+        _record_hook("corporate_action_append", _session_date, rows_written=_n_appended,
+                     run_id=run_id, execution_status="COMPLETED", coverage_status="EXPECTED",
+                     eligible_count=_n_appended, processed_count=_n_appended)
+    except Exception as exc:
+        logger.warning("prices_adjusted append hook failed: %s", exc)
+        _record_hook("corporate_action_append", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
+
+    try:
+        if _pa_pg_url:
+            from database_pg import auto_detect_suspects_pg
             n_suspects = auto_detect_suspects_pg()
         else:
             import sqlite3
-            from apply_price_adjustments import (
-                ensure_suspects_table,
-                append_new_prices_adjusted,
-                auto_detect_suspects,
-            )
+            from apply_price_adjustments import auto_detect_suspects
             con = sqlite3.connect(DB_PATH)
-            ensure_suspects_table(con)
-            append_new_prices_adjusted(con)
             n_suspects = auto_detect_suspects(con)
             con.close()
         if n_suspects > 0:
@@ -255,17 +336,28 @@ def cmd_update():
         # MAX(suspect_date), so a scan that found nothing was indistinguishable
         # from a scan that never ran -- it sat at 2026-06-22 for two months.
         # n_suspects == 0 is a successful run and must record as one.
-        _record_hook("corporate_action", _session_date, rows_written=n_suspects)
+        # Coverage: neither backend's auto_detect_suspects[_pg] currently
+        # returns or computes a scanned-symbol/date denominator, only the
+        # FOUND count (n_suspects), which is legitimately volatile and is
+        # not read as a coverage numerator here -- see the design-lock
+        # record's explicit instruction not to manufacture one. Recorded as
+        # heartbeat evidence only, honestly NOT_APPLICABLE.
+        _record_hook("corporate_action_suspects_scan", _session_date, rows_written=n_suspects,
+                     run_id=run_id, execution_status="COMPLETED",
+                     coverage_status="NOT_APPLICABLE")
     except Exception as exc:
-        logger.warning("prices_adjusted hook failed: %s", exc)
-        _record_hook("corporate_action", _session_date, status="error", detail=str(exc))
+        logger.warning("corporate_action suspects scan hook failed: %s", exc)
+        _record_hook("corporate_action_suspects_scan", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
 
     # Append today's regime row to market_regime
     try:
         from regime import append_latest_regime
         append_latest_regime()
+        _record_hook("regime", _session_date)
     except Exception as exc:
         logger.warning("Regime hook failed: %s", exc)
+        _record_hook("regime", _session_date, status="error", detail=str(exc))
 
     # Backfill days_to_nearest_transition for trade_setups rows where it is still
     # NULL. This column is retrospective-only (requires future transition data) so
@@ -294,14 +386,18 @@ def cmd_update():
     # Append today's sector signals
     try:
         sector_signals.append_latest_sector_signals()
+        _record_hook("sector_signals", _session_date)
     except Exception as exc:
         logger.warning("Sector signals hook failed: %s", exc)
+        _record_hook("sector_signals", _session_date, status="error", detail=str(exc))
 
     # Append today's stock signals
     try:
         stock_signals.append_latest_stock_signals()
+        _record_hook("stock_signals", _session_date)
     except Exception as exc:
         logger.warning("Stock signals hook failed: %s", exc)
+        _record_hook("stock_signals", _session_date, status="error", detail=str(exc))
 
     # Recovery Bases + Portfolio signals (signal_engine.py). Previously had no
     # automated caller at all -- see docs/KIRAN_CLEANUP_AUDIT.md 30 -- so
@@ -317,17 +413,50 @@ def cmd_update():
             _rec.get("status"), _rec.get("rows_written"),
             _port.get("status"), _port.get("rows_written"),
         )
+        # Previously zero monitoring on either backend for either table (see
+        # docs/KIRAN_CLEANUP_AUDIT.md §37-39, §44) -- a dead signal_engine.main()
+        # call and a successful one that wrote nothing were indistinguishable
+        # from the outside. Record each sub-signal's own reported status, not
+        # just "the wrapping try block didn't raise" -- signal_engine.main()
+        # catches each sub-signal's exception internally and reports status in
+        # the dict, so this except block below only fires for something
+        # signal_engine.py itself didn't anticipate.
+        _record_hook("recovery_signals", _session_date,
+                     status="ok" if _rec.get("status") == "ok" else "error",
+                     rows_written=_rec.get("rows_written"),
+                     detail=_rec.get("message"))
+        _record_hook("portfolio_signals", _session_date,
+                     status="ok" if _port.get("status") == "ok" else "error",
+                     rows_written=_port.get("rows_written"),
+                     detail=_port.get("message"))
     except Exception as exc:
         logger.warning("Signal engine hook failed: %s", exc)
+        _record_hook("recovery_signals", _session_date, status="error", detail=str(exc))
+        _record_hook("portfolio_signals", _session_date, status="error", detail=str(exc))
 
     # Append today's setups to setup_log and label outcomes
     try:
         from backfill_setup_log import append_setup_log_today
-        _n_setup = append_setup_log_today()
-        _record_hook("setup_log", _session_date, rows_written=_n_setup)
+        _sl_result = append_setup_log_today()
+        # TR-06 Tier 2 (2026-08-24): append_setup_log_today() now returns a
+        # dict (was a bare inserted-row int). Coverage: all 4 setup-detection
+        # queries are single SQL statements over the whole stock_signals
+        # population for a date, not a per-row loop, so the only genuine
+        # partial-processing signal this hook's shape can produce is whether
+        # every pending date was reached before an early transient-error
+        # break -- eligible_count is recorded as denominator evidence
+        # alongside it, not because a different processed value is
+        # independently possible for a single date that did run.
+        _sl_coverage = "EXPECTED" if _sl_result.get("completed_all_pending_dates") else "INSUFFICIENT"
+        _record_hook("setup_log", _session_date, rows_written=_sl_result.get("inserted"),
+                     run_id=run_id, execution_status="COMPLETED", coverage_status=_sl_coverage,
+                     eligible_count=_sl_result.get("eligible_count"),
+                     processed_count=(_sl_result.get("eligible_count")
+                                      if _sl_result.get("completed_all_pending_dates") else None))
     except Exception as exc:
         logger.warning("setup_log hook failed: %s", exc)
-        _record_hook("setup_log", _session_date, status="error", detail=str(exc))
+        _record_hook("setup_log", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
 
     # Boring Breakouts (RS_60-conditioned Donchian) -- scan for new signals,
     # then advance status on anything already open (Target Hit/Stopped/Expired).
@@ -341,18 +470,28 @@ def cmd_update():
         # latter scans the newest date only, so any day this hook missed was
         # never scanned again (audit §25).
         from boring_signals import scan_boring_breakouts_pending, update_open_signal_statuses
-        n_new = scan_boring_breakouts_pending()
+        n_new, _bs_eligible, _bs_processed = scan_boring_breakouts_pending(return_coverage=True)
         n_updated = update_open_signal_statuses()
         logger.info("Boring Breakouts: %d new signal(s), %d status update(s).", n_new, n_updated)
         # mirror_to_postgres: kept as a heartbeat even now that boring_signals
         # itself writes to Supabase directly -- lets the Cloud banner
         # distinguish "hook ran, zero signals fired" from "hook didn't run".
+        # Coverage: dates_eligible/dates_processed (from the bounded
+        # max_lookback resume window) distinguish "scanned every pending
+        # date" from "stopped early on a transient failure" -- a real,
+        # currently-invisible partial-completion state this hook's own
+        # per-date break can reach without raising. n_new (signals found) is
+        # NOT used as the coverage numerator -- it is legitimately volatile
+        # business output, per this hook's own docstring.
+        _bs_coverage = "EXPECTED" if _bs_processed == _bs_eligible else "INSUFFICIENT"
         _record_hook("boring_signals", _session_date, rows_written=n_new,
-                     mirror_to_postgres=True)
+                     mirror_to_postgres=True, run_id=run_id, execution_status="COMPLETED",
+                     coverage_status=_bs_coverage,
+                     eligible_count=_bs_eligible, processed_count=_bs_processed)
     except Exception as exc:
         logger.warning("Boring Breakouts hook failed: %s", exc)
         _record_hook("boring_signals", _session_date, status="error", detail=str(exc),
-                     mirror_to_postgres=True)
+                     mirror_to_postgres=True, run_id=run_id, execution_status="FAILED")
 
     # Run daily agent analysis in a subprocess so it cannot block the pipeline.
     # Agent is bonus — a timeout or API failure must never stop stock_signals / setup_log
@@ -380,12 +519,25 @@ def cmd_update():
     # Pre-compute Leaders deep scan (filtered picks + audit trail)
     try:
         from leaders_scan import run_all as leaders_run_all
-        leaders_run_all()
+        _ls_result = leaders_run_all()
         logger.info("Leaders deep scan updated.")
-        _record_hook("leaders_scan", _session_date)
+        # TR-06 Tier 2 (2026-08-24): run_all() now returns eligible/processed
+        # date counts and never silently swallows a per-date failure (was a
+        # bare print() with nothing propagated -- see leaders_scan.py's
+        # run_all() docstring for the full fix rationale).
+        _ls_eligible = _ls_result.get("dates_eligible", 0)
+        _ls_processed = _ls_result.get("dates_processed", 0)
+        _ls_coverage = "EXPECTED" if _ls_processed == _ls_eligible else "INSUFFICIENT"
+        _record_hook("leaders_scan", _session_date,
+                     run_id=run_id, execution_status="COMPLETED",
+                     coverage_status=_ls_coverage,
+                     eligible_count=_ls_eligible, processed_count=_ls_processed,
+                     detail=(f"failed_dates={_ls_result.get('failed_dates')}"
+                             if _ls_result.get("failed_dates") else None))
     except Exception as exc:
         logger.warning("Leaders deep scan hook failed: %s", exc)
-        _record_hook("leaders_scan", _session_date, status="error", detail=str(exc))
+        _record_hook("leaders_scan", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
 
     # Auto-save today's support reversal setups
     try:
@@ -393,11 +545,26 @@ def cmd_update():
     except Exception as exc:
         logger.warning("run_analysis hook failed: %s", exc)
         result = None
-    if result:
-        auto_save_setups_with_source(
-            result.get("support_reversal_setups", []),
-            source="Support Reversal"
-        )
+    try:
+        if result:
+            _sr_saved = auto_save_setups_with_source(
+                result.get("support_reversal_setups", []),
+                source="Support Reversal"
+            )
+        else:
+            _sr_saved = 0
+        # TR-06 Tier 2 (2026-08-24): see the early-return branch's identical
+        # comment above -- this producer is currently DISABLED at the source
+        # (processor.py's run_analysis() hardcodes support_reversal_setups=[]
+        # since 2026-07-23), so coverage_status is honestly NOT_APPLICABLE.
+        _record_hook("support_reversal", _session_date, rows_written=_sr_saved,
+                     run_id=run_id, execution_status="COMPLETED",
+                     coverage_status="NOT_APPLICABLE",
+                     detail="screener disabled at source since 2026-07-23")
+    except Exception as exc:
+        logger.warning("Support Reversal auto-save hook failed: %s", exc)
+        _record_hook("support_reversal", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
 
     # Regenerate market breadth oscillator data for Regime page
     try:

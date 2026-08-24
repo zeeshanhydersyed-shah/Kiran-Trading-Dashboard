@@ -145,7 +145,7 @@ def run(dry_run=False):
         for r in rows:
             print(r)
 
-def _append_setup_log_today_pg() -> int:
+def _append_setup_log_today_pg() -> dict:
     """PG-backed equivalent of append_setup_log_today(). Same 3-step logic
     (insert setups, fill forward returns via compute_forward_returns, label
     outcomes), %s placeholders, ON CONFLICT DO NOTHING instead of INSERT OR
@@ -158,6 +158,11 @@ def _append_setup_log_today_pg() -> int:
 
     log = logging.getLogger(__name__)
     total_inserted = 0
+    # Defaults for the outer transient-failure path below, which can fire
+    # before `pending`/`eligible_count`/`target_date` are ever computed.
+    eligible_count = None
+    target_date = None
+    pending_completed = False
 
     try:
         with get_conn() as conn:
@@ -185,12 +190,14 @@ def _append_setup_log_today_pg() -> int:
 
             if not signal_dates:
                 log.warning("setup_log hook (PG): no data in stock_signals.")
-                return 0
+                return {"inserted": 0, "eligible_count": None, "target_date": None,
+                        "completed_all_pending_dates": True}
 
             pending = _pending_setup_log_dates(signal_dates, already)
             if not pending:
                 log.info("setup_log already up to date for %s (PG).", already)
-                return 0
+                return {"inserted": 0, "eligible_count": None, "target_date": None,
+                        "completed_all_pending_dates": True}
             if len(pending) > 1:
                 log.warning(
                     "setup_log (PG): backfilling %d missing date(s), %s -> %s.",
@@ -202,6 +209,9 @@ def _append_setup_log_today_pg() -> int:
             setup_insert_pg = _DAILY_SETUP_INSERT_PG
             queries_pg = _DAILY_QUERIES_PG
 
+            # TR-06 Tier 2 (2026-08-24): see the SQLite twin's identical
+            # comment above append_setup_log_today()'s for-loop.
+            pending_completed = True
             for target_date in pending:
                 # Commit per date for the same reason as the SQLite path: a
                 # mid-backfill failure keeps the days already written.
@@ -248,6 +258,7 @@ def _append_setup_log_today_pg() -> int:
                     log.warning("setup_log step 1 (insert, PG) transient failure "
                                 "for %s -- stopping here so the next run resumes "
                                 "from this date: %s", target_date, exc)
+                    pending_completed = False
                     break
                 except Exception:
                     # Everything else is a BUG, not a blip. This handler used
@@ -261,6 +272,19 @@ def _append_setup_log_today_pg() -> int:
                     log.exception("setup_log step 1 (insert, PG) FAILED for %s "
                                   "-- unexpected error, failing the run", target_date)
                     raise
+
+            # Coverage denominator -- same reasoning as the SQLite twin: all 4
+            # setup-detection queries are single SQL statements over the
+            # stock_signals population for this date, not a per-row loop.
+            target_date = pending[-1]
+            try:
+                tup_cur.execute(
+                    "SELECT COUNT(DISTINCT symbol) FROM stock_signals WHERE date = %s",
+                    (target_date,),
+                )
+                eligible_count = tup_cur.fetchone()[0]
+            except Exception:
+                eligible_count = None
 
         # Step 2 — forward returns (own connection, branches on _PG_URL internally)
         try:
@@ -301,8 +325,10 @@ def _append_setup_log_today_pg() -> int:
     except _TRANSIENT_DB_ERRORS as exc:
         log.warning("setup_log hook (PG) transient failure, will retry next "
                     "run: %s", exc)
+        pending_completed = False
 
-    return total_inserted
+    return {"inserted": total_inserted, "eligible_count": eligible_count,
+            "target_date": target_date, "completed_all_pending_dates": pending_completed}
 
 
 # Exceptions worth tolerating for a single date: a dropped connection or a
@@ -319,6 +345,17 @@ def _transient_db_errors():
 
 
 _TRANSIENT_DB_ERRORS = _transient_db_errors()
+
+# Deliberately NOT reusing _TRANSIENT_DB_ERRORS for the SQLite path below
+# (see docs/KIRAN_CLEANUP_AUDIT.md §44): _transient_db_errors() picks
+# psycopg2's exception classes whenever psycopg2 is importable at all, not
+# based on which backend is actually in use for a given call. Since psycopg2
+# is a hard dependency of this project (needed for the Postgres path to
+# exist), it is importable in every environment this code runs in --
+# including ones where THIS SQLite path is the one executing. Reusing that
+# constant here would mean a real sqlite3.OperationalError (a lock/busy
+# blip) never matches the "transient" branch at all.
+_SQLITE_TRANSIENT_ERRORS = (sqlite3.OperationalError,)
 
 
 # ── Daily setup-detection rules, SQLite ───────────────────────────────────────
@@ -536,9 +573,16 @@ def _pending_setup_log_dates(signal_dates, last_logged):
     return [d for d in dates if d > last_logged]
 
 
-def append_setup_log_today() -> int:
+def append_setup_log_today() -> dict:
     """Insert setups for every pending trading date, fill forward returns,
-    label outcomes."""
+    label outcomes.
+
+    TR-06 Tier 2 (2026-08-24): return type widened from a bare inserted-row
+    int to a dict carrying coverage evidence (eligible_count, target_date,
+    completed_all_pending_dates) alongside it -- no existing caller (main.py,
+    the test suite) ever consumed the old return value, confirmed by
+    repo-wide grep before making this change, so nothing else needed updating.
+    """
     import logging
     log = logging.getLogger(__name__)
 
@@ -569,12 +613,14 @@ def append_setup_log_today() -> int:
 
         if not signal_dates:
             log.warning("setup_log hook: no data in stock_signals.")
-            return 0
+            return {"inserted": 0, "eligible_count": None, "target_date": None,
+                    "completed_all_pending_dates": True}
 
         pending = _pending_setup_log_dates(signal_dates, already)
         if not pending:
             log.info("setup_log already up to date for %s.", already)
-            return 0
+            return {"inserted": 0, "eligible_count": None, "target_date": None,
+                    "completed_all_pending_dates": True}
         if len(pending) > 1:
             log.warning(
                 "setup_log: backfilling %d missing date(s), %s -> %s.",
@@ -582,17 +628,72 @@ def append_setup_log_today() -> int:
             )
 
 
+        # TR-06 Tier 2 (2026-08-24): tracks whether every pending date was
+        # reached, not just how many rows were inserted overall -- a
+        # transient-error `break` below returns normally (no exception), so
+        # `total_inserted` alone cannot distinguish "scanned every pending
+        # date" from "stopped partway through."
+        pending_completed = True
         for target_date in pending:
             # Each date commits on its own, so a failure part-way through a
             # multi-day backfill keeps the days already written rather than
             # rolling the whole catch-up back.
+            #
+            # Two-tier handling, mirroring the already-fixed Postgres path
+            # (_append_setup_log_today_pg, see docs/KIRAN_CLEANUP_AUDIT.md §28)
+            # -- this SQLite path had not received the same fix until §44.
+            # A transient error (lock/busy blip) is tolerated for THIS date,
+            # but the loop STOPS rather than continuing to the next one:
+            # `pending` is ascending and the next run resumes from
+            # MAX(setup_date), so committed dates must stay a contiguous
+            # prefix. Continuing on failure would let a LATER date commit,
+            # push MAX(setup_date) past the failed one, and leave a hole
+            # BELOW the high-water mark that _pending_setup_log_dates()'s
+            # `d > last_logged` policy can never reach again -- silent,
+            # permanent loss, the same shape as §21/§24 and the exact defect
+            # class this loop's own docstring above describes.
+            # ANYTHING ELSE is a bug, not a blip, and must fail the run
+            # loudly (not be logged as a WARNING nobody reads and reported
+            # as pipeline success) -- this is what hid both Postgres-only
+            # bugs in §25/§27 for six weeks on the other path.
             try:
                 day_inserted = _insert_setup_log_for_date(cur, target_date)
                 conn.commit()
                 total_inserted += day_inserted
                 log.info("setup_log: %d rows inserted for %s.", day_inserted, target_date)
-            except Exception as exc:
-                log.warning("setup_log step 1 (insert) failed for %s: %s", target_date, exc)
+            except _SQLITE_TRANSIENT_ERRORS as exc:
+                conn.rollback()
+                log.warning(
+                    "setup_log step 1 (insert) transient failure for %s -- "
+                    "stopping here so the next run resumes from this date: %s",
+                    target_date, exc,
+                )
+                pending_completed = False
+                break
+            except Exception:
+                conn.rollback()
+                log.exception(
+                    "setup_log step 1 (insert) FAILED for %s -- unexpected "
+                    "error, failing the run", target_date,
+                )
+                raise
+
+        # Coverage denominator: the stock_signals population setup_log's own
+        # queries operate against for the day this heartbeat is for (the
+        # session convention main.py's other hooks already use). All 4
+        # setup-detection queries are single SQL statements over this same
+        # population (WHERE date = target_date), not a per-row Python loop --
+        # so there is no partial-scan state to detect beyond
+        # pending_completed above; this count is recorded as denominator
+        # evidence, not because a different value is independently possible.
+        target_date = pending[-1]
+        try:
+            eligible_count = cur.execute(
+                "SELECT COUNT(DISTINCT symbol) FROM stock_signals WHERE date = ?",
+                (target_date,),
+            ).fetchone()[0]
+        except Exception:
+            eligible_count = None
 
         # ── STEP 2: Fill forward returns ───────────────────────────────────
         try:
@@ -623,7 +724,8 @@ def append_setup_log_today() -> int:
     finally:
         conn.close()
 
-    return total_inserted
+    return {"inserted": total_inserted, "eligible_count": eligible_count,
+            "target_date": target_date, "completed_all_pending_dates": pending_completed}
 
 
 def _append_setup_log_for_dates_pg(dates, dry_run, log) -> int:
