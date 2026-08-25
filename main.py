@@ -35,6 +35,7 @@ from scraper import (
     scrape_date_range,
     trading_dates_to_scrape,
     dates_since,
+    get_source_date,
 )
 from processor import run_analysis, print_sector_report
 import sector_signals
@@ -155,6 +156,13 @@ def cmd_update():
 
     latest_str = get_latest_scraped_date()
     if not latest_str:
+        # TR-05 Blocker 1 exit-path audit: deliberately NOT routed through
+        # run_freshness_gate(). This is a structurally different operation
+        # (one-time historical backfill via cmd_init(), not a completed
+        # daily update) -- none of the 12 daily hooks below run in this
+        # branch, so there is no completed daily-chain state for the gate to
+        # verify yet. main()'s dispatch already treats this return's `None`
+        # as "not applicable", not as success -- unchanged, not a new gap.
         logger.info("No existing data — running full init instead.")
         cmd_init()
         return
@@ -253,7 +261,16 @@ def cmd_update():
                     logger.info("Rolling trim: nothing to delete (all tables within 2-year window).")
         except Exception as exc:
             logger.warning("Rolling trim hook failed: %s", exc)
-        return
+
+        # TR-05 Blocker 1 correction: this branch runs the same daily hooks
+        # (same-day recheck, support_reversal, leaders_scan, rolling trim --
+        # "runs on every night, including no-new-data nights", per the
+        # comment above) as the normal tail below, so it must complete the
+        # same way: through the freshness gate, not a bare early return.
+        # Mutually exclusive with the tail's own `return run_freshness_gate()`
+        # at the end of this function -- exactly one of the two ever executes
+        # per call, so this is not a duplicate gate invocation.
+        return run_freshness_gate()
 
     logger.info("Update: scraping %d new date(s) since %s…", len(new_dates), latest_str)
     session = build_session()
@@ -596,6 +613,76 @@ def cmd_update():
     except Exception as exc:
         logger.warning("Rolling trim hook failed: %s", exc)
 
+    # TR-05 Blocker 1: cmd_update()'s own end-of-run self-check. Runs last,
+    # after every hook above -- their existing per-hook try/except-and-warn
+    # behavior is untouched, and this step does not affect whether any of
+    # them ran. Extracted to its own function (rather than inlined here) so
+    # it is independently unit-testable with injected fetch/check functions,
+    # without exercising the rest of this ~470-line function.
+    return run_freshness_gate()
+
+
+def run_freshness_gate(
+    fetch_expected_session=None,
+    check_all_fn=None,
+) -> bool:
+    """TR-05 Blocker 1 -- fail-closed local execution-time freshness gate.
+
+    Reuses data_health.check_all() (the same verdict logic the dashboard's
+    serving-time banner already uses) and scraper.get_source_date() (the
+    same live-source fetch refresh_manager.py already uses) -- no new
+    freshness policy, no duplicated thresholds. Mirrors health_check.py's
+    existing role for the Postgres/GitHub-Actions side, closing TR-05's
+    "SQLite/local path has zero equivalent" gap.
+
+    fetch_expected_session / check_all_fn: injectable for deterministic
+    testing (no live network, no live DB) -- default to the real
+    implementations when not supplied.
+
+    Returns True only when the verdict is PUBLICATION_VERIFIED. Any failure
+    to even compute a verdict is treated as a failed gate, never as success
+    -- CANNOT_VERIFY must never become VERIFIED (TR-05 fail-closed
+    semantics).
+    """
+    from data_health import check_all, publication_status, PUBLICATION_VERIFIED
+
+    if check_all_fn is None:
+        check_all_fn = check_all
+
+    def _default_fetch_expected_session():
+        session = build_session()
+        source_date = get_source_date(session)
+        return source_date.strftime("%Y-%m-%d") if source_date else None
+
+    if fetch_expected_session is None:
+        fetch_expected_session = _default_fetch_expected_session
+
+    try:
+        _fresh_expected = fetch_expected_session()
+        _fresh_src_err = None if _fresh_expected else "ksestocks unreachable from local chain"
+        _fresh_verdict = check_all_fn(expected_session=_fresh_expected, source_error=_fresh_src_err)
+        _fresh_status = publication_status(_fresh_verdict)
+    except Exception as exc:
+        logger.error("FRESHNESS GATE COULD NOT RUN -- treating as failure: %s", exc)
+        return False
+
+    if _fresh_status != PUBLICATION_VERIFIED:
+        _fresh_detail = "; ".join(
+            f"{i.label}: {i.status} ({i.detail})" for i in _fresh_verdict.failures
+        ) or "no detail available"
+        logger.error(
+            "FRESHNESS GATE FAILED (%s) -- local production update did not reach a "
+            "verified-fresh state. expected=%s | %s",
+            _fresh_status, _fresh_verdict.expected, _fresh_detail,
+        )
+        return False
+
+    logger.info(
+        "Freshness gate passed -- state verified fresh as of %s.",
+        _fresh_verdict.expected,
+    )
+    return True
+
 
 def cmd_report():
     """Print sector performance ranking to terminal."""
@@ -699,14 +786,21 @@ def main():
     if args.init:
         cmd_init(force=args.force)
     elif args.update:
-        cmd_update()
+        # TR-05 Blocker 1: cmd_update() now returns False when its terminal
+        # freshness gate fails (or True on a normal completed run; None on
+        # the early cmd_init()-redirect bootstrap path, which is not a
+        # freshness-gate outcome and must not be treated as a failure).
+        if cmd_update() is False:
+            sys.exit(1)
     elif args.report:
         cmd_report()
     elif args.schedule:
         cmd_schedule()
     elif args.all:
-        cmd_update()
+        ok = cmd_update()
         cmd_report()
+        if ok is False:
+            sys.exit(1)
     elif args.agent:
         cmd_agent("daily")
     elif args.agent_weekly:
