@@ -159,6 +159,40 @@ class Verdict:
 
 
 # ---------------------------------------------------------------------------
+# TR-05 publication-validity vocabulary (docs/KIRAN_BORING_STATE_TRUST_REGISTER.md,
+# TR-05). Smallest possible abstraction shared by both TR-05 blockers -- the
+# execution-time gate in main.py's cmd_update() and the serving-time gate in
+# dashboard.py -- so "what does this Verdict mean for publication" is answered
+# in exactly one place, not reimplemented at each call site.
+#
+# publication_status(None) is deliberately CANNOT_VERIFY, not STALE and not
+# VERIFIED: a verdict that could not even be computed (e.g. check_all() itself
+# raised) must never be treated as equivalent to a confirmed-fresh state --
+# see TR-05's fail-closed semantics ("CANNOT VERIFY" must never become
+# "CURRENT").
+PUBLICATION_VERIFIED       = "VERIFIED"
+PUBLICATION_STALE          = "STALE"
+PUBLICATION_CANNOT_VERIFY  = "CANNOT_VERIFY"
+
+
+def publication_status(verdict: "Verdict | None") -> str:
+    """Map a check_all() Verdict (or its absence) to the TR-05 publication vocabulary.
+
+    green  -> VERIFIED       (fresh/valid -- normal actionable rendering may continue)
+    red    -> STALE          (actionable state must not be presented)
+    amber  -> CANNOT_VERIFY  (actionable state must not be presented)
+    None   -> CANNOT_VERIFY  (the verdict itself could not be produced)
+    """
+    if verdict is None:
+        return PUBLICATION_CANNOT_VERIFY
+    return {
+        "green": PUBLICATION_VERIFIED,
+        "red":   PUBLICATION_STALE,
+        "amber": PUBLICATION_CANNOT_VERIFY,
+    }.get(verdict.level, PUBLICATION_CANNOT_VERIFY)
+
+
+# ---------------------------------------------------------------------------
 # Backend helpers
 # ---------------------------------------------------------------------------
 

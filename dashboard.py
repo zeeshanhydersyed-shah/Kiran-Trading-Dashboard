@@ -931,6 +931,13 @@ with st.sidebar:
     # Every path renders something. The outer except is the last line of defence:
     # an unhandled error shows red with the message, never a blank gap, because
     # a silent banner is indistinguishable from a healthy one.
+    #
+    # TR-05 Blocker 2: _dh_v is read again below (after the page selector) to
+    # decide whether actionable content may render at all -- defined here,
+    # unconditionally, so that path never hits a NameError if the try block
+    # below fails before assigning it. A verdict that could not be computed
+    # must be treated as CANNOT_VERIFY, never as verified-fresh.
+    _dh_v = None
     try:
         import data_health as _dh_mod
 
@@ -1011,56 +1018,110 @@ with st.sidebar:
         st.session_state.page = selected_page
         st.rerun()
 
+    # ── TR-05 Blocker 2: publication-validity decision ─────────────────────────
+    # Single point deriving whether actionable state may be presented at all,
+    # from the same _dh_v verdict the banner above already computed -- no
+    # second query, no separate policy. Reused below to (a) gate Kiran's
+    # Voice (which renders on every page, not inside the PAGES[...] dispatch,
+    # so it must be checked here rather than in that dispatch) and (b) gate
+    # the PAGES[...] dispatch itself for every page except Data Health, the
+    # one diagnostic surface a user needs precisely when this is False.
+    import data_health as _pub_mod
+    _pub_status = _pub_mod.publication_status(_dh_v)
+    _pub_ok = _pub_status == _pub_mod.PUBLICATION_VERIFIED
+
+    def _render_not_verified_block(context: str, compact: bool = False) -> None:
+        """The one place the TR-05 fail-closed message is rendered from.
+
+        compact=True is for the small, always-on widgets (regime status,
+        Kelly sizing) -- the full red box repeated on every one of them
+        alongside the page-level block would be redundant noise, but the
+        actionable content itself must still be withheld, not merely
+        captioned as stale next to itself.
+        """
+        if compact:
+            st.caption(f"⛔ {context} withheld — not verified. See 🏥 Data Health.")
+            return
+        _reason = (
+            "Freshness could not be verified." if _dh_v is None
+            else "; ".join(f"{_i.label}: {_i.status} ({_i.detail})" for _i in _dh_v.failures[:6])
+            or "Freshness verification returned a non-green state."
+        )
+        st.markdown(
+            "<div style='background:#7f1d1d; border:2px solid #ef4444; "
+            "border-radius:6px; padding:14px 16px; margin:10px 0;'>"
+            "<div style='font-size:1.0rem; font-weight:800; color:#fca5a5;'>"
+            f"🔴 NOT VERIFIED — DO NOT TRADE</div>"
+            "<div style='font-size:0.8rem; color:#fecaca; margin-top:6px;'>"
+            f"{context} is withheld until freshness is verified. "
+            "Open <b>🏥 Data Health</b> from the page selector above for detail."
+            f"<br><br><span style='font-size:0.74rem;'>{_reason}</span>"
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+
     st.divider()
 
     # ── Live regime widget (global — visible on every page) ───────────────────
     # E10.2: shared, cached data-fetch (_get_regime_status) — was a standalone
     # uncached query here, now merged with the header's identical query below.
-    try:
-        _regime_status = _get_regime_status()
-    except Exception:
-        _regime_status = None
+    # TR-05 Blocker 2 (narrow correction pass): this is the same actionable
+    # regime signal the main-area header below also shows (and that this
+    # program's own trading logic uses to drive LONG/SHORT/SIT-OUT decisions)
+    # -- gated, not left as an assumed-diagnostic exception.
+    if _pub_ok:
+        try:
+            _regime_status = _get_regime_status()
+        except Exception:
+            _regime_status = None
 
-    if _regime_status:
-        _r_current, _r_latest_d, _r_days_since, _r_has_gap = _regime_status
-        _r_regime_color = {
-            "TRENDING_UP":   "#22c55e",
-            "VOLATILE":      "#f59e0b",
-            "RANGING":       "#94a3b8",
-            "TRENDING_DOWN": "#ef4444",
-        }.get(_r_current, "#94a3b8")
-        # Amber warning if within 0-2 days of last transition (risk zone)
-        _r_days_style = (
-            "background:#fef3c7; color:#92400e; padding:1px 5px; border-radius:3px; font-weight:bold"
-            if _r_days_since <= 2
-            else "font-weight:bold"
-        )
-        # has_gap: market_regime is missing one or more trading dates in the
-        # current streak's window -- days_since isn't trustworthy as exact
-        # (see _get_regime_status()'s docstring). Surfaced rather than
-        # silently trusted, since a hidden gap has already once turned out
-        # to hide a real regime change (2026-08-07).
-        _r_gap_html = (
-            "<span title='market_regime has a data gap in this window — "
-            "days-since-change may be inaccurate' "
-            "style=\"color:#b45309; font-size:0.72rem; margin-left:4px;\">"
-            "⚠ incomplete history</span>"
-            if _r_has_gap else ""
-        )
-        st.markdown(
-            f"<div style='font-size:0.78rem; margin-bottom:2px; color:#94a3b8;'>Market Regime</div>"
-            f"<div style='font-size:0.88rem; font-weight:700; color:{_r_regime_color}; "
-            f"margin-bottom:1px;'>{_r_current.replace('_', ' ')}</div>"
-            f"<div style='font-size:0.78rem;'>"
-            f"<span style='{_r_days_style}'>{_r_days_since}d</span>"
-            f" since last change &nbsp;·&nbsp; as of {fmt_date(_r_latest_d)}{_r_gap_html}</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        if _regime_status:
+            _r_current, _r_latest_d, _r_days_since, _r_has_gap = _regime_status
+            _r_regime_color = {
+                "TRENDING_UP":   "#22c55e",
+                "VOLATILE":      "#f59e0b",
+                "RANGING":       "#94a3b8",
+                "TRENDING_DOWN": "#ef4444",
+            }.get(_r_current, "#94a3b8")
+            # Amber warning if within 0-2 days of last transition (risk zone)
+            _r_days_style = (
+                "background:#fef3c7; color:#92400e; padding:1px 5px; border-radius:3px; font-weight:bold"
+                if _r_days_since <= 2
+                else "font-weight:bold"
+            )
+            # has_gap: market_regime is missing one or more trading dates in the
+            # current streak's window -- days_since isn't trustworthy as exact
+            # (see _get_regime_status()'s docstring). Surfaced rather than
+            # silently trusted, since a hidden gap has already once turned out
+            # to hide a real regime change (2026-08-07).
+            _r_gap_html = (
+                "<span title='market_regime has a data gap in this window — "
+                "days-since-change may be inaccurate' "
+                "style=\"color:#b45309; font-size:0.72rem; margin-left:4px;\">"
+                "⚠ incomplete history</span>"
+                if _r_has_gap else ""
+            )
+            st.markdown(
+                f"<div style='font-size:0.78rem; margin-bottom:2px; color:#94a3b8;'>Market Regime</div>"
+                f"<div style='font-size:0.88rem; font-weight:700; color:{_r_regime_color}; "
+                f"margin-bottom:1px;'>{_r_current.replace('_', ' ')}</div>"
+                f"<div style='font-size:0.78rem;'>"
+                f"<span style='{_r_days_style}'>{_r_days_since}d</span>"
+                f" since last change &nbsp;·&nbsp; as of {fmt_date(_r_latest_d)}{_r_gap_html}</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    else:
+        _render_not_verified_block("Market Regime", compact=True)
 
     # ── Source-date status (cached, 30-min TTL) ────────────────────────────────
     # Shows what trading date ksestocks.com is currently publishing so the user
     # knows whether new data is available before clicking Refresh.
+    # TR-05 Blocker 2 (narrow correction pass): deliberately left ungated,
+    # same principle as the Data Health page exemption -- this widget's own
+    # content IS freshness/data-status reporting plus a remediation control
+    # (Refresh/Clear Cache), not a trading signal. Gating it would hide the
+    # one thing a user needs precisely when publication is blocked elsewhere.
     # _src_fetched_at is None  → never attempted this session (show neutral)
     # _src_fetched_at is set, _src_date_str is None  → tried and FAILED (show red)
     # _src_fetched_at is set, _src_date_str is set   → success (show status)
@@ -1220,200 +1281,219 @@ except Exception:
 # ── Regime conditions header (global — every page, no exceptions) ─────────────
 # E10.2: shared, cached data-fetch (_get_regime_status) — was a standalone
 # uncached query here, now merged with the sidebar widget's identical query above.
-try:
-    _rh_status = _get_regime_status()
+# TR-05 Blocker 2 (narrow correction pass, independent audit finding): this
+# block renders explicit regime risk-framing copy AND a Kelly-criterion
+# position-sizing pill (Full/Half %) -- unambiguously actionable, not
+# diagnostic. It was missed by the original implementation pass because it
+# is not inside the PAGES[...] dispatch and is not the Kiran's Voice panel;
+# gated here directly on _pub_ok, same pattern as both of those.
+if _pub_ok:
+    try:
+        _rh_status = _get_regime_status()
 
-    if _rh_status:
-        _rh_regime, _rh_latest_date, _rh_days_since, _rh_has_gap = _rh_status
+        if _rh_status:
+            _rh_regime, _rh_latest_date, _rh_days_since, _rh_has_gap = _rh_status
 
-        if _rh_regime == "TRENDING_UP":
-            if _rh_days_since >= 6:
-                _rh_label    = "Stable uptrend — favorable conditions"
-                _rh_bg       = "#f0fdf4"
-                _rh_border   = "#22c55e"
-                _rh_color    = "#166534"
-                _rh_extra    = ""
-            elif _rh_days_since >= 3:
-                _rh_label    = "Uptrend settling — moderate caution"
-                _rh_bg       = "#f8fafc"
-                _rh_border   = "#64748b"
-                _rh_color    = "#334155"
-                _rh_extra    = ""
+            if _rh_regime == "TRENDING_UP":
+                if _rh_days_since >= 6:
+                    _rh_label    = "Stable uptrend — favorable conditions"
+                    _rh_bg       = "#f0fdf4"
+                    _rh_border   = "#22c55e"
+                    _rh_color    = "#166534"
+                    _rh_extra    = ""
+                elif _rh_days_since >= 3:
+                    _rh_label    = "Uptrend settling — moderate caution"
+                    _rh_bg       = "#f8fafc"
+                    _rh_border   = "#64748b"
+                    _rh_color    = "#334155"
+                    _rh_extra    = ""
+                else:
+                    _rh_label    = "Uptrend just started — proceed carefully"
+                    _rh_bg       = "#fef3c7"
+                    _rh_border   = "#f59e0b"
+                    _rh_color    = "#92400e"
+                    _rh_extra    = " ⚠️"
+            elif _rh_regime == "VOLATILE":
+                _rh_label  = "Choppy conditions — selective only"
+                _rh_bg     = "#fffbeb"
+                _rh_border = "#fbbf24"
+                _rh_color  = "#78350f"
+                _rh_extra  = ""
+            elif _rh_regime == "RANGING":
+                _rh_label  = "Narrow range — low activity expected"
+                _rh_bg     = "#f8fafc"
+                _rh_border = "#94a3b8"
+                _rh_color  = "#475569"
+                _rh_extra  = ""
+            elif _rh_regime == "TRENDING_DOWN":
+                # Distinct blue-grey — total unknown, not a quantified warning
+                _rh_label  = "Downtrend — untested in your history"
+                _rh_bg     = "#e8edf2"
+                _rh_border = "#64748b"
+                _rh_color  = "#334155"
+                _rh_extra  = " ℹ️"
             else:
-                _rh_label    = "Uptrend just started — proceed carefully"
-                _rh_bg       = "#fef3c7"
-                _rh_border   = "#f59e0b"
-                _rh_color    = "#92400e"
-                _rh_extra    = " ⚠️"
-        elif _rh_regime == "VOLATILE":
-            _rh_label  = "Choppy conditions — selective only"
-            _rh_bg     = "#fffbeb"
-            _rh_border = "#fbbf24"
-            _rh_color  = "#78350f"
-            _rh_extra  = ""
-        elif _rh_regime == "RANGING":
-            _rh_label  = "Narrow range — low activity expected"
-            _rh_bg     = "#f8fafc"
-            _rh_border = "#94a3b8"
-            _rh_color  = "#475569"
-            _rh_extra  = ""
-        elif _rh_regime == "TRENDING_DOWN":
-            # Distinct blue-grey — total unknown, not a quantified warning
-            _rh_label  = "Downtrend — untested in your history"
-            _rh_bg     = "#e8edf2"
-            _rh_border = "#64748b"
-            _rh_color  = "#334155"
-            _rh_extra  = " ℹ️"
-        else:
-            _rh_label = _rh_regime
-            _rh_bg = "#f8fafc"; _rh_border = "#94a3b8"; _rh_color = "#475569"; _rh_extra = ""
+                _rh_label = _rh_regime
+                _rh_bg = "#f8fafc"; _rh_border = "#94a3b8"; _rh_color = "#475569"; _rh_extra = ""
 
-        # has_gap: market_regime has a hole in this streak's window, so
-        # _rh_days_since isn't trustworthy as exact -- a real regime change
-        # could be sitting invisibly inside the gap (confirmed to happen for
-        # real on 2026-08-07, see docs/KIRAN_CLEANUP_AUDIT.md). This block
-        # drives actual risk-framing copy ("Stable uptrend" vs "just
-        # started, proceed carefully"), so a gap forces the cautious framing
-        # regardless of what the day count claims, rather than silently
-        # trusting a number that might be wrong in either direction.
-        if _rh_has_gap:
-            _rh_label  = f"{_rh_label} — data gap, unverified duration"
-            _rh_bg     = "#fef3c7"
-            _rh_border = "#f59e0b"
-            _rh_color  = "#92400e"
-            _rh_extra  = " ⚠️"
+            # has_gap: market_regime has a hole in this streak's window, so
+            # _rh_days_since isn't trustworthy as exact -- a real regime change
+            # could be sitting invisibly inside the gap (confirmed to happen for
+            # real on 2026-08-07, see docs/KIRAN_CLEANUP_AUDIT.md). This block
+            # drives actual risk-framing copy ("Stable uptrend" vs "just
+            # started, proceed carefully"), so a gap forces the cautious framing
+            # regardless of what the day count claims, rather than silently
+            # trusting a number that might be wrong in either direction.
+            if _rh_has_gap:
+                _rh_label  = f"{_rh_label} — data gap, unverified duration"
+                _rh_bg     = "#fef3c7"
+                _rh_border = "#f59e0b"
+                _rh_color  = "#92400e"
+                _rh_extra  = " ⚠️"
 
-        # ── Kelly pill (computed once, appended to header) ────────────────────
-        try:
-            from kelly import build_kelly_snapshot
-            @st.cache_data(ttl=600, show_spinner=False)
-            def _cached_kelly():
-                return build_kelly_snapshot()
-            _kl = _cached_kelly()
-            _kl_full = f"{_kl.full_kelly_pct:+.2f}%"
-            _kl_half = f"{_kl.half_kelly_pct:+.2f}%"
-            if _kl.negative_edge:
-                _kl_pill_bg    = "#fef2f2"
-                _kl_pill_color = "#991b1b"
-                _kl_label      = "No Edge"
-            else:
-                _kl_pill_bg    = "#f0fdf4"
-                _kl_pill_color = "#166534"
-                _kl_label      = "Kelly"
-            _kelly_html = (
-                f"<span style='margin-left:4px; border-left:1px solid #e2e8f0; "
-                f"padding-left:12px; display:inline-flex; align-items:center; gap:8px; white-space:nowrap;'>"
-                f"<span style='font-size:0.68rem; color:#94a3b8; letter-spacing:0.04em; text-transform:uppercase;'>"
-                f"Kelly (30T)</span>"
-                f"<span style='font-size:0.75rem; font-weight:600; "
-                f"background:{_kl_pill_bg}; color:{_kl_pill_color}; "
-                f"padding:1px 7px; border-radius:4px;'>"
-                f"Full {_kl_full}</span>"
-                f"<span style='font-size:0.75rem; font-weight:600; "
-                f"background:{_kl_pill_bg}; color:{_kl_pill_color}; "
-                f"padding:1px 7px; border-radius:4px;'>"
-                f"Half {_kl_half}</span>"
+            # ── Kelly pill (computed once, appended to header) ────────────────────
+            try:
+                from kelly import build_kelly_snapshot
+                @st.cache_data(ttl=600, show_spinner=False)
+                def _cached_kelly():
+                    return build_kelly_snapshot()
+                _kl = _cached_kelly()
+                _kl_full = f"{_kl.full_kelly_pct:+.2f}%"
+                _kl_half = f"{_kl.half_kelly_pct:+.2f}%"
+                if _kl.negative_edge:
+                    _kl_pill_bg    = "#fef2f2"
+                    _kl_pill_color = "#991b1b"
+                    _kl_label      = "No Edge"
+                else:
+                    _kl_pill_bg    = "#f0fdf4"
+                    _kl_pill_color = "#166534"
+                    _kl_label      = "Kelly"
+                _kelly_html = (
+                    f"<span style='margin-left:4px; border-left:1px solid #e2e8f0; "
+                    f"padding-left:12px; display:inline-flex; align-items:center; gap:8px; white-space:nowrap;'>"
+                    f"<span style='font-size:0.68rem; color:#94a3b8; letter-spacing:0.04em; text-transform:uppercase;'>"
+                    f"Kelly (30T)</span>"
+                    f"<span style='font-size:0.75rem; font-weight:600; "
+                    f"background:{_kl_pill_bg}; color:{_kl_pill_color}; "
+                    f"padding:1px 7px; border-radius:4px;'>"
+                    f"Full {_kl_full}</span>"
+                    f"<span style='font-size:0.75rem; font-weight:600; "
+                    f"background:{_kl_pill_bg}; color:{_kl_pill_color}; "
+                    f"padding:1px 7px; border-radius:4px;'>"
+                    f"Half {_kl_half}</span>"
+                    f"</span>"
+                )
+            except Exception:
+                _kelly_html = ""
+
+            st.markdown(
+                f"<div style='background:{_rh_bg}; border-left:4px solid {_rh_border}; "
+                f"padding:6px 14px; border-radius:6px; margin-bottom:6px; "
+                f"display:flex; align-items:center; gap:12px; flex-wrap:wrap;'>"
+                f"<span style='font-size:0.85rem; font-weight:700; color:{_rh_color}; white-space:nowrap;'>"
+                f"{_rh_label}{_rh_extra}</span>"
+                f"<span style='font-size:0.72rem; color:#94a3b8; white-space:nowrap;'>"
+                f"{_rh_days_since}d since last regime change &nbsp;·&nbsp; as of {fmt_date(_rh_latest_date)}"
                 f"</span>"
+                f"{_kelly_html}"
+                f"</div>",
+                unsafe_allow_html=True,
             )
-        except Exception:
-            _kelly_html = ""
-
-        st.markdown(
-            f"<div style='background:{_rh_bg}; border-left:4px solid {_rh_border}; "
-            f"padding:6px 14px; border-radius:6px; margin-bottom:6px; "
-            f"display:flex; align-items:center; gap:12px; flex-wrap:wrap;'>"
-            f"<span style='font-size:0.85rem; font-weight:700; color:{_rh_color}; white-space:nowrap;'>"
-            f"{_rh_label}{_rh_extra}</span>"
-            f"<span style='font-size:0.72rem; color:#94a3b8; white-space:nowrap;'>"
-            f"{_rh_days_since}d since last regime change &nbsp;·&nbsp; as of {fmt_date(_rh_latest_date)}"
-            f"</span>"
-            f"{_kelly_html}"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-except Exception:
-    pass  # never crashes the dashboard
+    except Exception:
+        pass  # never crashes the dashboard
+else:
+    _render_not_verified_block("Regime status and Kelly sizing", compact=True)
 
 # ── Kiran's Voice panel ───────────────────────────────────────────────────────
-try:
-    _kv_row = _kv_latest()
+# TR-05 Blocker 2: this panel renders on every page (it is not inside the
+# PAGES[...] dispatch below), so it is gated here directly rather than by the
+# common page-dispatch gate further down -- that gate cannot see it. Its
+# entire interactive body (including the Ask/Morning Brief LLM calls, which
+# read live setup_log/stock_signals/sector_signals/market_regime state) is
+# skipped, not merely hidden, when publication is not verified.
+if _pub_ok:
+    try:
+        _kv_row = _kv_latest()
 
-    with st.expander(
-        "\U0001f9e0 Kiran's Voice"
-        + (f"  ·  {_kv_row['stance'][:80] if _kv_row and _kv_row['stance'] else 'No entry yet'}" if _kv_row else "  ·  No entry yet"),
-        expanded=False,
-    ):
-        if _kv_row:
-            _kv_ts   = _kv_row["ts"][:16] if _kv_row["ts"] else ""
-            _kv_date = _kv_row["market_date"] or ""
-            _kv_trig = _kv_row["trigger_type"] or ""
-            st.markdown(
-                f"<div style='font-size:0.7rem; color:#94a3b8; margin-bottom:6px;'>"
-                f"{_kv_ts} &nbsp;·&nbsp; {_kv_date} &nbsp;·&nbsp; {_kv_trig}"
-                f"</div>",
-                unsafe_allow_html=True,
+        with st.expander(
+            "\U0001f9e0 Kiran's Voice"
+            + (f"  ·  {_kv_row['stance'][:80] if _kv_row and _kv_row['stance'] else 'No entry yet'}" if _kv_row else "  ·  No entry yet"),
+            expanded=False,
+        ):
+            if _kv_row:
+                _kv_ts   = _kv_row["ts"][:16] if _kv_row["ts"] else ""
+                _kv_date = _kv_row["market_date"] or ""
+                _kv_trig = _kv_row["trigger_type"] or ""
+                st.markdown(
+                    f"<div style='font-size:0.7rem; color:#94a3b8; margin-bottom:6px;'>"
+                    f"{_kv_ts} &nbsp;·&nbsp; {_kv_date} &nbsp;·&nbsp; {_kv_trig}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
+                    f" background:#1e293b; border-left:3px solid #6366f1;"
+                    f" padding:10px 14px; border-radius:4px;'>"
+                    f"{_kv_row['response']}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.caption("Kiran hasn't spoken yet. Run: `python kiran_voice.py scheduled`")
+
+            st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+
+            _kv_input = st.text_input(
+                "Ask Kiran",
+                placeholder="What do you see in ASTL? Is this market worth trading?",
+                key="kiran_voice_input",
+                label_visibility="collapsed",
             )
-            st.markdown(
-                f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
-                f" background:#1e293b; border-left:3px solid #6366f1;"
-                f" padding:10px 14px; border-radius:4px;'>"
-                f"{_kv_row['response']}"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.caption("Kiran hasn't spoken yet. Run: `python kiran_voice.py scheduled`")
+            _kv_col1, _kv_col2 = st.columns([1, 4])
+            with _kv_col1:
+                _kv_send = st.button("Ask", key="kiran_voice_send", type="primary")
+            with _kv_col2:
+                _kv_brief = st.button("Morning Brief", key="kiran_voice_brief")
 
-        st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+            if _kv_send and _kv_input and _kv_input.strip():
+                with st.spinner("Kiran is thinking..."):
+                    try:
+                        from kiran_voice import run_kiran as _kv_run
+                        _kv_reply = _kv_run("conversational", _kv_input.strip())
+                        st.markdown(
+                            f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
+                            f" background:#1e293b; border-left:3px solid #22c55e;"
+                            f" padding:10px 14px; border-radius:4px; margin-top:8px;'>"
+                            f"{_kv_reply}"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.rerun()
+                    except Exception as _kv_err:
+                        st.error(f"Kiran error: {_kv_err}")
 
-        _kv_input = st.text_input(
-            "Ask Kiran",
-            placeholder="What do you see in ASTL? Is this market worth trading?",
-            key="kiran_voice_input",
-            label_visibility="collapsed",
-        )
-        _kv_col1, _kv_col2 = st.columns([1, 4])
-        with _kv_col1:
-            _kv_send = st.button("Ask", key="kiran_voice_send", type="primary")
-        with _kv_col2:
-            _kv_brief = st.button("Morning Brief", key="kiran_voice_brief")
+            if _kv_brief:
+                with st.spinner("Building morning brief..."):
+                    try:
+                        from kiran_voice import run_kiran as _kv_run
+                        _kv_reply = _kv_run("morning_open")
+                        st.markdown(
+                            f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
+                            f" background:#1e293b; border-left:3px solid #fbbf24;"
+                            f" padding:10px 14px; border-radius:4px; margin-top:8px;'>"
+                            f"{_kv_reply}"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.rerun()
+                    except Exception as _kv_err:
+                        st.error(f"Kiran error: {_kv_err}")
 
-        if _kv_send and _kv_input and _kv_input.strip():
-            with st.spinner("Kiran is thinking..."):
-                try:
-                    from kiran_voice import run_kiran as _kv_run
-                    _kv_reply = _kv_run("conversational", _kv_input.strip())
-                    st.markdown(
-                        f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
-                        f" background:#1e293b; border-left:3px solid #22c55e;"
-                        f" padding:10px 14px; border-radius:4px; margin-top:8px;'>"
-                        f"{_kv_reply}"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.rerun()
-                except Exception as _kv_err:
-                    st.error(f"Kiran error: {_kv_err}")
-
-        if _kv_brief:
-            with st.spinner("Building morning brief..."):
-                try:
-                    from kiran_voice import run_kiran as _kv_run
-                    _kv_reply = _kv_run("morning_open")
-                    st.markdown(
-                        f"<div style='font-size:0.88rem; line-height:1.6; color:#e2e8f0;"
-                        f" background:#1e293b; border-left:3px solid #fbbf24;"
-                        f" padding:10px 14px; border-radius:4px; margin-top:8px;'>"
-                        f"{_kv_reply}"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.rerun()
-                except Exception as _kv_err:
-                    st.error(f"Kiran error: {_kv_err}")
-
-except Exception as _kv_panel_err:
-    pass  # panel never crashes the dashboard
+    except Exception as _kv_panel_err:
+        pass  # panel never crashes the dashboard
+else:
+    with st.expander("\U0001f9e0 Kiran's Voice  ·  unavailable — not verified", expanded=False):
+        _render_not_verified_block("Kiran's Voice")
 
 cur = st.session_state.page
 
@@ -2439,6 +2519,19 @@ def _render_boring_breakouts_section():
                 },
             )
 
+
+# ── TR-05 Blocker 2: common serving-time publication gate ──────────────────────
+# One gate protecting every page below (Market Gates Dashboard, Regime, Market,
+# Explorer, History, Trade Log, Analytics, Recovery Bases, Setup Perf, Backtest,
+# Portfolio, Agent, Leaders, Setup History) rather than a repeated check inside
+# each PAGES[...] block. Data Health (PAGES[14]) is exempt -- it is the
+# diagnostic surface a user needs precisely when this gate is active, and it
+# presents no actionable trading state of its own (corporate-action review
+# only). _pub_ok was computed once, right after the page selector, from the
+# same _dh_v verdict the banner above already shows.
+if not _pub_ok and cur != PAGES[14]:
+    _render_not_verified_block("This page's content")
+    st.stop()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE 0 — MARKET GATES DASHBOARD (4-GATES OVERVIEW)
