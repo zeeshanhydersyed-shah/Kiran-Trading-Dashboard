@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from serving_revision import get_serving_revision  # TR-05 Blocker 2 observability
+
 # ── Page config — must be the first Streamlit command in the script ───────────
 # Even a no-op st.secrets read (below) enqueues a script-context element on
 # some Streamlit versions (confirmed: 1.39.1, the pinned upper bound, raises
@@ -7790,6 +7792,10 @@ elif cur == PAGES[14]:  # Data Health
     from datetime import datetime as _dh_dt
 
     st.markdown("### 🏥 Data Health — Corporate Action Review")
+
+    st.markdown("**Serving Revision**")
+    _dh_serving_sha = get_serving_revision()
+    st.code(_dh_serving_sha if _dh_serving_sha else "UNKNOWN — could not determine serving revision", language=None)
 
     def _dh_load_summary():
         if _PG_URL:
