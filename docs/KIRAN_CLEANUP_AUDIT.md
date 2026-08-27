@@ -5350,7 +5350,7 @@ Executed entirely in an **isolated `git worktree`** cut from `origin/main` (`5c4
 
 ---
 
-## 76. <span style="color:#16a34a;">● TR-11 arc classification — groups 1 & 2 committed (PR #22 safety fix, PR #23 hygiene); groups 3–5 pending (2026-08-27)</span>
+## 76. <span style="color:#16a34a;">● TR-11 arc classification — ALL 5 groups committed (PRs #21–#26) + tracking infra (PR #27); branch reconciliation is the last step (2026-08-27)</span>
 
 **WRITE ENTRY (git only — no DB writes).** Continues §75. Full read-only classification of the entire uncommitted working tree (28 items: 14 modified + 14 untracked) into risk/readiness groups, then the two lowest-risk groups committed via the §75 worktree method. Baseline: full suite on the working tree = **241 passed, 0 failed** before starting.
 
@@ -5360,9 +5360,9 @@ Executed entirely in an **isolated `git worktree`** cut from `origin/main` (`5c4
 |---|---|---|
 | **1 — Production-DB safety fix** | `data_health.py` (`_env_pg_url()` presence-not-truthiness) + `tests/test_data_health.py` (+3) + `tests/test_tr05_freshness_gate.py` (+psycopg2 guard, +1 test) | ✅ **PR #22, merged** |
 | **2 — Repo hygiene** | `.gitignore` += `scratch_*/`, `backups/`, `market_breadth_oscillator.png`, `twitter_output/`, `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`; `git rm --cached` the PNG + `twitter_output/*` | ✅ **PR #23, merged** |
-| **3 — Circuit-flag / quarantine repair (§41–49)** | `apply_price_adjustments.py` (~280 lines) + `tests/test_apply_price_adjustments_quarantine.py` + `tests/test_circuit_flags_backfill_repair.py` | ⏳ pending — **cross-backend safety review required first** (this code runs in BOTH pipelines once on `main`; Postgres `prices_adjusted` has none of the circuit columns — must confirm it no-ops safely there, per §50) |
-| **4 — TR-13 dashboard display (§63–74)** | `boring_signals.py` (`dedup_conflict` DDL) + `dashboard.py` (perf-panel exclusion, "Recorded" freshness col, "Data Flag" tag) + `tests/test_boring_signals_catchup_ordering_regression.py` | ⏳ pending — **CI fixture (`tests/fixtures/psx_fixture.db`) lacks the `dedup_conflict` column**; regenerate it or make `dashboard.py` column-tolerant before this passes app-boot |
-| **5 — Documentation** | `docs/KIRAN_CLEANUP_AUDIT.md` (§33–76) + `docs/KIRAN_CLOUD_RELIABILITY_AUDIT.md` + `docs/KIRAN_SQLITE_ONLY_SCOPING.md` + `CLAUDE.md` (+69) | ⏳ pending — **user disclosure decision** (see §76.3) |
+| **3 — Circuit-flag / quarantine repair (§41–49)** | `apply_price_adjustments.py` (~280 lines) + `tests/test_apply_price_adjustments_quarantine.py` + `tests/test_circuit_flags_backfill_repair.py` | ✅ **PR #26, merged** — cross-backend safety review (§76.5) cleared it: SQLite-only by wiring + construction, cloud path is a separate untouched function. One local path (`C:\Users\…\ml_feature_study\…`) in a source comment softened to a relative reference before commit. Full suite 238 passed. |
+| **4 — TR-13 dashboard display (§63–74)** | `boring_signals.py` (`dedup_conflict` DDL) + `dashboard.py` (perf-panel exclusion, "Recorded" freshness col, "Data Flag" tag) + `tests/test_boring_signals_catchup_ordering_regression.py` + `tests/fixtures/psx_fixture.db` (surgical `ALTER TABLE … ADD COLUMN dedup_conflict`, schema-only) | ✅ **PR #25, merged** (a *full* fixture regen was tried first, broke a date-sensitive TR-06 test by pulling in newer `pipeline_runs` rows — reverted to a schema-only ALTER; live Postgres `boring_signals` confirmed to already carry `dedup_conflict` + `created_at`, so the Cloud render path is safe) |
+| **5 — Documentation** | `docs/KIRAN_CLEANUP_AUDIT.md` (§33–76, PRL figures genericized) + `CLAUDE.md` (softened) + `.gitignore` (2 scoping docs kept local) | ✅ **PR #24, merged** (`docs/KIRAN_CLOUD_RELIABILITY_AUDIT.md` + `docs/KIRAN_SQLITE_ONLY_SCOPING.md` NOT committed — gitignored, local only) |
 | **Exclude entirely** | `local_cloud_price_reconciliation.py` (read-only diagnostic — confirmed only SELECTs; user's call whether to commit as a tool), `breadth_data.csv` (tracked, `dashboard.py:472` reads it at runtime — its large pending diff is a separate data-correctness question, NOT hygiene), the 5 `scratch_*/` dirs + `backups/*.sha256` (now gitignored via PR #23) | n/a |
 
 ### 76.2 PR #22 + #23 mechanics
@@ -5388,11 +5388,47 @@ Both via `git worktree add … origin/main` → build in isolation → PR → 3 
 
 ### 76.4 State
 
-- **`origin/main` = `a917fc9`.** Groups 1 & 2 in. App code byte-identical (Group 1 is a test-isolation fix + one env-var check; Group 2 is `.gitignore` + untracking).
-- Arc: **28 items, byte-for-byte the pre-session set.** Real repo on `feat/tr05-freshness-gates` @ `758f866`.
-- TR-11 still 🔴 RED. Groups 3, 4, 5 pending — each blocked on a specific named prerequisite (cross-backend review / fixture regen / disclosure decision), not on more investigation.
+- **`origin/main` = `c4b6e3a`.** Groups 1, 2, 5, 4 in — progression `24c774b` → `9ca208f` (#22) → `a917fc9` (#23) → `2b949a5` (#24) → `c4b6e3a` (#25). Group 1 = test-isolation fix + one env-var presence check; Group 2 = `.gitignore` + untracking; Group 5 = docs only; Group 4 = `dedup_conflict` DDL + dashboard display + a schema-only fixture ALTER.
+- Arc: **28 items, byte-for-byte the pre-session set.** Real repo on `feat/tr05-freshness-gates` @ `758f866`. (Groups 4 & 5's canonical working-tree copies — `boring_signals.py`, `dashboard.py`, ledger, `CLAUDE.md` — were the source of those PRs' patches, so the arc and `origin/main` now carry the same text; they'll drop out cleanly at final reconciliation. `feat/tr05`'s `psx_fixture.db` is still origin/main's *pre-Group-4* copy — the arc never modified it, so a rebase takes `origin/main`'s newer one with no conflict.)
+- Verified on `origin/main` post-merge: §33–76 present; zero exact PRL figures; zero owner name in `CLAUDE.md`; `boring_signals.py` carries `dedup_conflict`; the committed fixture has the column (50 tables, no data churn).
+- **`b4n3p70nb` (a dead PR-#22 CI monitor) noted:** used `jq`, not installed here, so it spun on "command not found" and was killed at a process restart. Watched an already-merged PR, lost nothing. Later monitors use a `jq`-free `grep` approach.
+- **Only Group 3 remains.** `apply_price_adjustments.py` (~280 lines) + `tests/test_apply_price_adjustments_quarantine.py` + `tests/test_circuit_flags_backfill_repair.py` — the §41–49 circuit-flag/quarantine repair. **Cross-backend safety review DONE this session (§76.5 below): SAFE.** Awaiting user go-ahead to merge as PR #26.
 - **Kiran remains NOT VERIFIED — DO NOT TRADE.**
 
-**Committed / pushed:** `origin/main` = `a917fc9` (PRs #22, #23). This entry + RESEARCH_LOG update remain uncommitted in the arc, per program practice.
+**Committed / pushed:** `origin/main` = `c4b6e3a` (PRs #22, #23, #24, #25). This entry + RESEARCH_LOG update remain uncommitted in the arc, per program practice.
 
-**Date of this entry: 2026-08-27. Status: TR-11 arc groups 1–2 committed; 3–5 pending named prerequisites. Arc verified untouched. TR-11 still RED.**
+### 76.5 Group 3 cross-backend safety review — VERDICT: SAFE to merge
+
+The concern (§50): Group 3's code runs in *both* pipelines once on `main`, and Postgres `prices_adjusted` has none of the circuit columns. Reviewed end-to-end:
+
+1. **`main.py` branches by backend at the prices_adjusted hook (line 307).** `if os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")` → `database_pg.append_new_prices_adjusted_pg()` (a **separate function, different file, NOT in this PR** — still the plain `INSERT INTO prices_adjusted SELECT * FROM prices`, the §50 "currently safe" path). `else` → the modified `apply_price_adjustments.append_new_prices_adjusted(con)`. So the modified code only runs when **no** PG URL is set = the local SQLite pipeline.
+2. **The modified code is SQLite-only by construction** — `?` placeholders, `PRAGMA table_info`, `sqlite_master`, `DROP TABLE`/`CREATE TABLE AS SELECT *`. It also opens its own hard-coded local `DB_PATH` (`os.path.join(BASE, "psx_data.db")`), never reads `DATABASE_URL` — it structurally cannot reach Postgres even if that env var were set in a shell.
+3. **`apply_price_adjustments.py` is referenced by zero GitHub Actions workflows** (grepped `.github/workflows/`).
+4. **Other callers:** `dashboard.py:8028` imports a *different*, unchanged function (`rebuild_symbol_adjusted`) inside the Data Health Confirm button, which is already hard-blocked on Cloud. `apply_price_adjustments_backup_e85.py` is a stale backup copy (TR-12), not wired anywhere.
+5. **New top-level `import numpy`/`import pandas`** — both pinned in `requirements.txt` (`numpy==1.26.4`, `pandas==2.3.3`); CI's `clean-install`/`pip check` and Cloud's build are unaffected. `apply_price_adjustments` is not in CI's module-import list and is not transitively imported by any module that is (all `main.py` imports of it are function-level).
+6. **Both new test files pass** (14/14). The code is fail-closed — a circuit-flag calc error rolls back the whole transaction (no rows written, retried next run), never a silent zero-fill.
+
+**Net:** merging Group 3 changes local-pipeline behavior only (circuit flags computed from the §43/§45-audited producer formula instead of left at 0), and cannot affect the cloud/Postgres pipeline. Recommended: proceed as PR #26.
+
+### 76.6 All 5 groups merged — remaining: the branch reconciliation
+
+**`origin/main` = `3b7c2ab`.** Full session progression: `24c774b` (#21) → `9ca208f` (#22) → `a917fc9` (#23) → `2b949a5` (#24) → `c4b6e3a` (#25) → `6f32fe3`/`3b7c2ab` (#26). Every one of the 28 arc items is now either **on `origin/main`** (all tracked code/doc/test changes, via the 6 PRs, patch-ids will match) or **gitignored/local by deliberate decision** (the 5 `scratch_*/` dirs, `backups/*.sha256`, `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`, `docs/KIRAN_CLOUD_RELIABILITY_AUDIT.md`, `docs/KIRAN_SQLITE_ONLY_SCOPING.md`) or **deliberately deferred** (`breadth_data.csv` — tracked, runtime dependency, its large data diff is a separate correctness question; `local_cloud_price_reconciliation.py` — untracked diagnostic tool, commit-as-tool is the user's call).
+
+**Still shows 28 items in `git status` on `feat/tr05-freshness-gates`** only because that branch's HEAD (`758f866`) predates all 6 PRs — it compares the working tree against a 2-week-old baseline. **The one remaining git task is the branch reconciliation:** rebase `feat/tr05` onto `origin/main` (its 2 commits `eeba202`/`758f866` are patch-redundant and will drop out), after which `git status` collapses to just the genuinely-uncommitted set (the gitignored items + `breadth_data.csv` + `local_cloud_price_reconciliation.py`). To be done as a separate, explicitly-authorized step — the local nightly `run_update.bat` runs `main.py --all` from this working tree, so the reconciliation must preserve the arc's runtime-relevant edits (`boring_signals.py`/`apply_price_adjustments.py`/`data_health.py`/`dashboard.py` — all now also on `main`, so a rebase keeps them identical) byte-for-byte.
+
+### 76.7 Tracking infrastructure (PR #27) + the branch-reconciliation plan
+
+**PR #27 (`3b7c2ab` → `1987bce`, docs only):** `docs/MAINTENANCE_LOG.md` (new, committed — append-only record of routine operational maintenance that does NOT go through a PR) + a `CLAUDE.md` standing rule ("log routine maintenance as it happens": code/pipeline changes → one PR each; everything else → `MAINTENANCE_LOG.md`; read recent entries at session start; review-on-request cross-checks against `git log`). Companion, kept **local** in the Trust Register: **§0a Open Items Ledger** (OI-1…OI-7) — the catch-all for concrete discrete outstanding actions smaller than a full TR-xx row, and the standing home for any designed-but-unexecuted DB write.
+
+**Pre-reconciliation divergence analysis (read-only, 2026-08-27), working tree vs `origin/main`:**
+- Tracked, working tree BEHIND (clean forward-update on reconcile, not modified in the arc): `.gitignore`, `tests/fixtures/psx_fixture.db`.
+- Tracked, working tree AHEAD (bookkeeping): `docs/KIRAN_CLEANUP_AUDIT.md` (~40 lines of post-#24 §76 edits) — **committed via PR #28 first** so reconcile has no ledger conflict.
+- Tracked here, `git rm --cached` on `main` (PR #23): `market_breadth_oscillator.png`, `twitter_output/{breadth,kse,sector}_chart.png`, `twitter_output/drafts.json` — reconcile flips them to untracked + gitignored (intended).
+- Tracked, genuinely modified, DEFERRED: `breadth_data.csv` (OI-3) — stays an uncommitted modification.
+- Untracked, ALREADY on `main` (CRLF vs LF only, content byte-identical — verified): `tests/test_apply_price_adjustments_quarantine.py`, `tests/test_boring_signals_catchup_ordering_regression.py`, `tests/test_circuit_flags_backfill_repair.py` — become tracked, matching `main`, on reconcile.
+- Untracked, NOT on `main`, but tests already-live code (TR-05 serving gate, PR #18): `tests/test_tr05_serving_boundary_integration.py` (2/2 pass) — **committed via PR #28**.
+- Untracked, stay local by decision: the 3 `docs/KIRAN_*` scoping/register docs, `backups/*.sha256`, 5 `scratch_*/` dirs, `local_cloud_price_reconciliation.py` (OI-2).
+
+**Reconciliation steps (pending explicit user OK):** (1) PR #28 = `test_tr05_serving_boundary_integration.py` + current-state `KIRAN_CLEANUP_AUDIT.md`. (2) Safety marker `git branch backup/feat-tr05-758f866`. (3) `git stash push -- breadth_data.csv market_breadth_oscillator.png twitter_output/`. (4) `git checkout main` (already = `origin/main`), delete `feat/tr05-freshness-gates` (local + push the deletion is optional — it's `feat/tr05` local-only + `origin/feat/tr05-freshness-gates` which can stay as history). (5) `git stash pop` → `breadth_data.csv` returns as a modification vs `main` (OI-3), the png/twitter files return untracked+gitignored. (6) Verify: `boring_signals.py`/`apply_price_adjustments.py`/`data_health.py`/`dashboard.py`/`main.py` byte-identical to `origin/main` (they are — all merged); nightly `run_update.bat` still runs the same code; `git status` now shows only the deliberately-uncommitted set.
+
+**Date of this entry: 2026-08-27. Status: TR-11 arc — ALL 5 groups merged (PRs #21–#26) + tracking infra (PR #27). Branch reconciliation planned, awaiting user OK. `origin/main` = `1987bce`. TR-11 still RED (the 8+4 legacy diff is resolved; the deployed-SHA-verification-as-a-standing-check clause is not).**
