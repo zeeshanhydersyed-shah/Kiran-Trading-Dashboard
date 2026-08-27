@@ -5431,4 +5431,29 @@ The concern (§50): Group 3's code runs in *both* pipelines once on `main`, and 
 
 **Reconciliation steps (pending explicit user OK):** (1) PR #28 = `test_tr05_serving_boundary_integration.py` + current-state `KIRAN_CLEANUP_AUDIT.md`. (2) Safety marker `git branch backup/feat-tr05-758f866`. (3) `git stash push -- breadth_data.csv market_breadth_oscillator.png twitter_output/`. (4) `git checkout main` (already = `origin/main`), delete `feat/tr05-freshness-gates` (local + push the deletion is optional — it's `feat/tr05` local-only + `origin/feat/tr05-freshness-gates` which can stay as history). (5) `git stash pop` → `breadth_data.csv` returns as a modification vs `main` (OI-3), the png/twitter files return untracked+gitignored. (6) Verify: `boring_signals.py`/`apply_price_adjustments.py`/`data_health.py`/`dashboard.py`/`main.py` byte-identical to `origin/main` (they are — all merged); nightly `run_update.bat` still runs the same code; `git status` now shows only the deliberately-uncommitted set.
 
-**Date of this entry: 2026-08-27. Status: TR-11 arc — ALL 5 groups merged (PRs #21–#26) + tracking infra (PR #27). Branch reconciliation planned, awaiting user OK. `origin/main` = `1987bce`. TR-11 still RED (the 8+4 legacy diff is resolved; the deployed-SHA-verification-as-a-standing-check clause is not).**
+### 76.8 Branch reconciliation — EXECUTED (2026-08-27)
+
+Ran under explicit user authorization, with the §76.7 plan (adjusted to a full `--include-untracked` stash). Sequence, verified at each step:
+
+1. **Pre-flight snapshot:** on `feat/tr05-freshness-gates` @ `758f866`; recorded SHA-256 of the 5 runtime-critical files; confirmed all 5 already **byte-identical** (CR-insensitive) to `origin/main` — the reconciliation could not change running code. `git status` = the known 14 modified + 14 untracked.
+2. `git branch backup/feat-tr05-758f866` — safety marker at `758f866`.
+3. Removed the 4 untracked test files already on `main` (content-identical, CR aside — would otherwise block checkout): `test_apply_price_adjustments_quarantine.py`, `test_boring_signals_catchup_ordering_regression.py`, `test_circuit_flags_backfill_repair.py`, `test_tr05_serving_boundary_integration.py`.
+4. `git stash push --include-untracked -m "arc-pre-reconcile-20260827"` — working tree clean at `758f866`.
+5. `git checkout main` — local `main` was already `d800a4d` = `origin/main`.
+6. `git stash pop` — **3 conflicts, all trivial:**
+   - `CLAUDE.md` (content) — the stash side was the pre-PR-#27 file; main has the PR #27 "log routine maintenance" section. Resolved `--ours` (main's full version; the stash added nothing main didn't already have). Verified CR-insensitive-identical to `origin/main:CLAUDE.md`.
+   - `market_breadth_oscillator.png` + `twitter_output/{breadth,kse,sector}_chart.png` + `twitter_output/drafts.json` (modify/delete — `git rm --cached`'d on `main` by PR #23). Resolved `git rm --cached` → they stay on disk, untracked, ignored by `main`'s `.gitignore`.
+   - `breadth_data.csv` — restored, then `git restore --staged` → left as a working-tree modification (OI-3, deferred).
+   - Every other stashed file (`boring_signals.py`, `dashboard.py`, `data_health.py`, `apply_price_adjustments.py`, ledger, the 2 PR-#22 test files) merged **clean** — their arc content already equals `main`'s, so the 3-way merge was a no-op; none appear in `git status`.
+7. `git branch -D feat/tr05-freshness-gates` — deleted (content fully on `main`; `origin/feat/tr05-freshness-gates` remote branch left as history).
+
+**Post-reconciliation state, verified:**
+- On `main` @ `d800a4d` = `origin/main`. `main.py`/`boring_signals.py`/`apply_price_adjustments.py`/`data_health.py`/`dashboard.py` all CR-insensitive byte-identical to `origin/main`. Runtime modules import clean. 37-test subset green (full suite running).
+- **`git status` = exactly `M breadth_data.csv` + `?? local_cloud_price_reconciliation.py`** — down from 28. OI-1 closed.
+- Gitignored arc items (5 `scratch_*/`, the 3 local `KIRAN_*` docs, `backups/*.sha256`) present on disk, correctly invisible to git.
+- **Retained as safety nets** (drop after the next successful nightly `run_update.bat`): branch `backup/feat-tr05-758f866`, `stash@{0}` "arc-pre-reconcile-20260827".
+- Cosmetic: the stash restored CRLF copies of many tracked files; git treats them as clean (autocrlf) and normalizes on next commit.
+
+**The "8+4 unclassified working-tree diff" that has blocked TR-11 since §55 is CLOSED.** TR-11 stays 🔴 RED pending a colour re-assessment — the remaining open pieces are the *standing/repeatable* deployed-SHA verification (vs. §62's one-time proof) and deployed-*behavior* confirmation for the #21–#28 commits. Trust Register TR-11 + Open Items Ledger OI-1 updated (local, uncommitted).
+
+**Date of this entry: 2026-08-27. Status: TR-11 arc fully classified + committed (8 PRs, #21–#28) and the working branch reconciled to `main`. `origin/main` = `d800a4d`. Local repo on `main`, `git status` clean but for 2 named deferred items. TR-11 still RED (colour re-assessment pending — the diff-classification blocker is now closed). Kiran remains NOT VERIFIED — DO NOT TRADE.**
