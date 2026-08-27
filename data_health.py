@@ -205,10 +205,19 @@ def _env_pg_url() -> str | None:
     reach Supabase from exactly that context -- it is the one signal the
     Streamlit Cloud app cannot otherwise see, because boring_signals is
     SQLite-only and has no Postgres table at all.
+
+    The .env fallback is consulted only when BOTH variables are genuinely
+    absent from os.environ -- checked by presence (`in os.environ`), not by
+    truthiness. An explicitly-set empty string (e.g. a test's
+    `monkeypatch.setenv(key, "")`) is a deliberate "no database configured
+    here" signal and must be honored as such, never silently overridden by
+    reading the real .env file. 2026-08-26 incident: the prior truthiness
+    check let exactly this happen -- a test that cleared both env vars this
+    way still reached real production Supabase through this fallback,
+    because `"" or ""` is falsy and fell through to the file read below.
     """
-    url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
-    if url:
-        return url
+    if "DATABASE_URL" in os.environ or "SUPABASE_DB_URL" in os.environ:
+        return os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL") or None
     env_path = _PROJECT_DIR / ".env"
     try:
         for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
