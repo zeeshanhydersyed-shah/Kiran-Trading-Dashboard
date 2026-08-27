@@ -19,7 +19,18 @@
 13. <span style="color:#dc2626;">**UPDATED, STILL NOT RESOLVED (2026-08-03) — the `z_histogram` crossover has a real, replicated STOCK-LEVEL entry-timing edge (2013+, 7+ sectors) when paired with a -6%/10-day-trailing-low risk rule, but the raw INDEX-LEVEL visual (Regime page / Market Gates Dashboard's "Fast Z minus Signal" read) that the dashboard actually shows is still NULL.**</span> A separate, standalone project (`C:\Users\Lenovo\breadth_momentum_study`, the "BMX study" — deliberately kept out of this repo so it can't be confused with the already-validated Weinstein Stage-2 screener) went through three rounds on this. First, the raw index-level crossover (166 bull + 166 bear, full 2005-2026 KSE-100, no stop-loss): no significant forward-return edge (all p>0.19); bear crossovers were followed by KSE-100 RISING more often (71.8% win rate at 60d) than after bull crossovers (67.7%) — the dashboard's implied "sit on the bench" read is still directly contradicted by this. Second, stock-level with a tight 1-day trailing stop (Cement/Banks/Auto Assembler): also null. Third, loosened to a 10-day trailing low (same -6% initial stop): a real, statistically significant win-rate edge over random entries, replicated across all 23 non-excluded PSX sectors (18/23 individually significant, p<0.05), most reliable 2013 onward — 2005-2012 doesn't clear transaction costs even though it's still directionally better than baseline. Full writeup: `C:\Users\Lenovo\RESEARCH_LOG.md`, "Breadth Momentum Crossover (BMX) study" row, status **Concluded — positive**. **This positive verdict does NOT bless the dashboard's crossover visual as shown** — the dashboard displays the raw index-level read (still null, see above), not the risk-managed stock-level entry system that actually showed an edge; the two are different constructs. Also still a different mechanism from the Weinstein Stage-2 sector-rank gate (`sec_global_rank<=8`, EV@90d +10.50%) that §2's KEEP verdicts below cite as basis for `Market Gates Dashboard`'s 4-Gate display and the `Regime` page — that basis still doesn't cover the histogram-crossover visual either way. **Not auto-resolved: the user has said they will decide separately whether/how to reflect any of this on the dashboard** — no dashboard/verdict change made as part of this entry. → §2 (`Market Gates Dashboard`, `Regime`)
 14. <span style="color:#16a34a;">**RESOLVED (2026-08-05) — `Backtest` page's "Kiran Setup Simulation" section retired; `weekly_sim.yml` schedule disabled.**</span> Same active-trading, buy-on-strength/1%-risk mechanism as the "Active-trading simulation (kiran_sim)" study already **Concluded — negative** on 2026-05-12 (`RESEARCH_LOG.md`: best case 7.45% CAGR vs ~22% CAGR for KSE-100 buy-and-hold; that result is what drove this program's pivot to the Stage 2 portfolio approach it runs today). The section had been re-showing that already-answered question live, every week, with no caveat. User-directed retirement, page and data kept in place. → §19
 15. <span style="color:#dc2626;">**NOT RESOLVED (2026-08-05) — two more findings surfaced from the same `Backtest` page review, neither acted on yet.**</span> (a) **"KIRAN Screener Performance"** (the page's top KPI section, `backtest_setups` table) validates a support/resistance consolidation-base screener that is its own self-contained logic in `backtest.py` — not Weinstein Stage-2, Boring Donchian, or Recovery Bases — and confirmed to generate **zero live setups today** (`auto_save_setups()`, the `source='System'` writer, is called only from old `dashboard_backup_*.py` files, never from current `dashboard.py`/`main.py`; the live pipeline's only setup-saving call is `auto_save_setups_with_source(..., source="Support Reversal")`, and that generator has returned `[]` unconditionally since Support Reversal was killed 2026-07-23). (b) **"BOS Breakout Backtest — Research Findings"** presents `rs_score_20` as a durable, kept, positive-EV filter from the 2026-06-19 BOS batch — but three weeks later a higher-rigor study (S-002) retested it and found "no significant relationship with forward returns," and it was explicitly removed from `leaders_scan.py`'s live conviction-score formula (comment: *"removing the rs_score_20 and sector_rs_rank blocks (confirmed dead, S-002)"*). `rs_score_20` still does drive live setup selection elsewhere (`backfill_setup_log.py`'s `ORDER BY rs_score_20 DESC` for `RS_LEADER_MARKET`/`RS_LEADER_SECTOR`), so the contradiction is live, not academic. Same unresolved question as §3 backlog item 10 (`Leaders → Deep Scan` factor check), now confirmed to also apply to the Backtest page's own findings writeup. **No dashboard/verdict change made** — user has not yet decided keep/demote/relabel for either. → §20
-17. <span style="color:#dc2626;">**START HERE (2026-08-17) — see §29 for the current state and the four diagnosed causes. `setup_log` IS now fixed and caught up (2,029 rows backfilled); what remains is production missing all of 2026-08-13 (upstream 522s, only local has that session), `sector_signals` one date behind on a Postgres-only SQL bug, and `leaders_scan` still frozen at 06-30 on a MISSING UNIQUE CONSTRAINT, not the boolean bug. Nothing written to production. STILL NOT REPAIRED — see also §27, where a SECOND Postgres-only bug was found after the first fix proved insufficient (a dict cursor silently dropping a column, so every insert raised `IndexError` and wrote zero rows). The 2026-08-12 17:55 UTC run succeeded on every step and still wrote nothing. (2026-08-12) — production `setup_log` and `leaders_scan` have been FROZEN SINCE 2026-06-30 (six weeks, 29 trading dates) because `bos_flag` is `BOOLEAN` in Supabase and `INTEGER` in SQLite.**</span> `bos_flag = 1` is valid SQLite and invalid Postgres (`operator does not exist: boolean = integer`); the error aborts the transaction, so all four setup queries fail and **nothing is written** — which is why the tables are frozen rather than partially filled. Third instance of this SQLite/Postgres type-mismatch class after the `TEXT` vs `DATE` gotcha (CLAUDE.md) and the Decimal-vs-float bug (§16). Four live comparisons fixed across `backfill_setup_log.py` and `leaders_scan.py`, and all queries verified executing read-only against real production rows. **The production data itself is NOT repaired** — no write was made; the 29 dates sit above the high-water mark, so the next successful daily run backfills them automatically (~1,950 rows) once this is pushed. Invisible for six weeks because the hook only logs a `WARNING`, the dashboard shows an empty `Setup Perf` rather than an error, and the CI gate deliberately does not exercise the Postgres path. → §25
+19. <span style="color:#dc2626;">**START HERE (2026-08-21) — Production Integrity Program Phase 1 baseline. This document itself had a governance gap: 5 real production commits (08-19 to 08-21) shipped with zero audit entries, including one commit citing a `§33` that didn't exist until today.**</span> Independently re-traced the PRL incident CLAUDE.md summarizes — confirmed real but more specific than stated (upstream 522 outage + a Task-Scheduler-at-logon gap on 08-17, recovered only by an apparent manual run, not automation), and its "~9% worse fill" figure does not match any recorded reference price (the real fill was materially worse than that at every reference level checked, and the position closed at a substantial realized loss; exact fill/exit/P&L figures are personal trade data, held in local notes). `leaders_top_picks` is still frozen at 2026-06-30 despite `leaders_scan` being fixed. `boring_signals` now has a live Postgres table (90 rows) contradicting CLAUDE.md's "pending sign-off" claim, but its overlap with local SQLite (84 common / 99 SQLite-only / 6 Postgres-only) is unverified. A read-only-transaction error class hit Supabase 3x on 08-20 and is only patched for `init_db()` — the same class still fails `Leaders deep scan` today. Broad-except handlers in `cmd_update()` grew from 15 to 18. No code changed — read-only investigation only. → §33
+24. <span style="color:#dc2626;">**NEW START HERE (2026-08-21, later same day as item 23) — Migration Readiness + Cutover Plan: turned §§37-39's architecture and reliability contract into a concrete, ordered, dependency-aware implementation sequence, with a new concrete risk found along the way.**</span> Inventoried every directly-runnable script in the repository (~60 `if __name__ == "__main__"` entry points) to answer "what must be disabled" with evidence, not assumption. **New finding:** four full, still-runnable backup copies of `main.py` itself (`main_backup_e8.py`/`e84b.py`/`e85.py`/`e86a.py`) sit in the repo, each capable of writing straight to production tables past every control this plan builds — a concrete, previously-uncatalogued instance of exactly the "undocumented trigger" risk §35/§36 already found evidence of three times. Also confirmed the core signal modules (`boring_signals.py`, `sector_signals.py`, etc.) have no CLI entry at all — they can only be reached by importing and calling functions directly, explaining why the confirmed out-of-band writes left no script trace. Produced the full table-by-table migration map, an 8-phase sequence (repairs → contract → watchdog/alerting → local archive → shadow mode → cutover → burn-in → retire old write surface), exact go/no-go cutover criteria (a hard AND across 10 conditions, fails closed), and an exact rollback plan — including one genuine new risk named explicitly: a careless rollback could reactivate both pipelines at once unless it's built as a single atomic step. Design/planning only — no repairs applied, no code changed, no cutover performed. → §40
+
+23. <span style="color:#dc2626;">**NEW START HERE (2026-08-21, later same day as item 22) — Production State Contract: the precise reliability contract the target architecture must satisfy, plus a new correctness defect found in `recovery_signals`/`portfolio_signals`.**</span> Defined the exact conditions under which Kiran is allowed to say `SIGNAL` vs. must say `STALE / NOT VERIFIED — DO NOT TRADE` — a MANDATORY-vs-degraded table classification, a minimal trust-state machine, a publication-boundary/marker design, a zero-tolerance freshness contract (a state one session behind is stale, full stop), a run-lease mechanism for hung/duplicate-run protection, and a 20-scenario failure matrix, all confirmed to close capital-safety-clean under the proposed design (none currently would, under today's architecture). **New correctness finding**, closing a question §37/§38 left open: `signal_engine.py`'s `run_recovery_signals()`/`run_portfolio_signals()` are confirmed **latest-date-only** (no backfill loop at all, direct code read) — the same single-date defect class as the already-known `leaders_top_picks` bug — meaning `recovery_signals`/`portfolio_signals` cannot currently be trusted as MANDATORY-for-publication until fixed. **Independently re-verified §38's ~2-year Postgres retention figure via a repository-level lookback dependency analysis** (not merely accepted): confirmed the binding requirement is `market_breadth_oscillator.py`'s ~700-calendar-day Weinstein-convergence need, with the existing 2-year trim sitting comfortably above it — also confirmed `prices_adjusted` corporate-action corrections are structurally *unbounded* backward in time (already correctly hard-blocked to SQLite-only on Postgres today, per CLAUDE.md), a genuinely different kind of dependency than any computation lookback. Explicitly flagged, not solved: the local SQLite archive is a durable copy, not a backup — losing the local machine without a separate independent backup would be a real, currently-unrecovered historical-data loss. Design only, nothing implemented. → §39
+
+22. <span style="color:#dc2626;">**NEW START HERE (2026-08-21, later same day as item 21) — Architecture Review Part 2: local historical data durability + the free Supabase tier, incorporated into the target design.**</span> Confirmed live (read-only Postgres session): current Supabase usage is 199 MB, and a rolling 2-year trim already exists (`database_pg.py`'s `trim_old_rows_pg()`, introduced 2026-07-08) whose own docstring already states the exact intent this review formalizes — "Local SQLite is the permanent full-history archive, Postgres is the rolling operational copy" — but it only covers 5 of the ~13 production tables (`sector_signals`, the 4th-largest table at 15 MB, is the clearest untrimmed gap). Corrected §37's "durable data: Weak" rating — the trim isn't a bug to remove, it's an existing, deliberate design to complete and extend. Resolved the concrete network-direction question §37 left implicit: since a GitHub Actions runner cannot push directly to the owner's Windows laptop, local SQLite must be updated by a **pull**, not a push — recommended local Task Scheduler job changes from "compute" (`run_update.bat`) to "pull whatever Postgres just published and archive it," never independently computing a signal again. Direction of authority answered without hedging: Postgres always wins; if Postgres is unreachable, both dashboards show an explicit stale/degraded state, never a silently-generated local alternative. Recommendation unchanged in spirit from §37, now concrete: Option A (Postgres authoritative, bounded ~2-year window — already comfortably covers the single longest real lookback requirement found in this codebase, ~700 days, per `database.py`'s own convergence-testing docstring), conditional on the same pre-existing data-integrity repairs landing first. Design only, nothing implemented. → §38
+
+21. <span style="color:#dc2626;">**NEW START HERE (2026-08-21, later same day as item 20) — Production Architecture Review: the real root problem across §33-36 is that Kiran runs as TWO independent, separately-triggered production pipelines (local Task Scheduler → SQLite; GitHub Actions cron → Postgres), computing nearly every table twice with no reconciliation step.**</span> Traced every stage from ksestocks.com to the dashboard via direct code reads (`database.py`, full `cmd_update()`, `data_health.py`, both Task Scheduler XMLs, `daily_scraper.yml`). Confirmed the local machine's dashboard AND pipeline both default to 100% SQLite always (no `DATABASE_URL` anywhere in either `.bat` launcher), while GitHub Actions' cron is 100% Postgres always — two fully independent brains, each hand-duplicated per hook (`_PG_URL` re-derived identically in 6+ files rather than centralized). Only 4 of ~13 production hooks have any `pipeline_runs` heartbeat at all; `portfolio_signals` has zero monitoring on either backend anywhere. Recommended target: **Option A — Postgres authoritative, single pipeline** (the existing GitHub Actions cron, which is already more reliable than the logon-only local trigger), conditional on the already-known `boring_signals`/`prices_adjusted` data-integrity repairs (§34.9/§35.8/§36.9) landing first — cutting over before that would promote a currently *less* trustworthy copy to sole authority. Design review only, nothing implemented. → §37
+
+20. <span style="color:#dc2626;">**NEW START HERE (2026-08-21, later same day as item 19) — Phase 2B: the 15-trading-day `boring_signals` silent-loss question is answered A (no historical loss found), but a second, previously-undocumented ~1-week production data freeze was found along the way.**</span> `append_new_prices_adjusted()`'s bare `INSERT...SELECT *` broke the moment `hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag` were added to `prices_adjusted` only (2026-08-03) — every run for 8 straight days (08-03 through 08-11, 4 confirmed real executions) threw `table prices_adjusted has 10 columns but 7 values were supplied`, caught and only `WARNING`-logged, silently freezing `prices_adjusted`/`stock_signals`/`sector_signals`/`boring_signals` at 2026-07-31 the whole time. Fixed by commit `d23f9b2` (2026-08-12 13:53 PKT); recovered by yet another unexplained out-of-band script invocation the same day — the **third** confirmed instance of this pattern (alongside two already found on 08-17 in §35), not the second. The 15-day boundary itself was never actually reached by this or any other gap in `boring_signals`' ~6-week history (worst real gap: 7 trading days, under half the cap) — Postgres stays C, SQLite stays B, neither verdict changes, but the "self-healing" framing is now qualified: every gap wide enough to matter in this system's real history was closed by an unexplained human action, not by the unattended schedule alone. → §36
+
+18. <span style="color:#dc2626;">**START HERE (2026-08-17) — see §29 for the current state and the four diagnosed causes. `setup_log` IS now fixed and caught up (2,029 rows backfilled); what remains is production missing all of 2026-08-13 (upstream 522s, only local has that session), `sector_signals` one date behind on a Postgres-only SQL bug, and `leaders_scan` still frozen at 06-30 on a MISSING UNIQUE CONSTRAINT, not the boolean bug. Nothing written to production. STILL NOT REPAIRED — see also §27, where a SECOND Postgres-only bug was found after the first fix proved insufficient (a dict cursor silently dropping a column, so every insert raised `IndexError` and wrote zero rows). The 2026-08-12 17:55 UTC run succeeded on every step and still wrote nothing. (2026-08-12) — production `setup_log` and `leaders_scan` have been FROZEN SINCE 2026-06-30 (six weeks, 29 trading dates) because `bos_flag` is `BOOLEAN` in Supabase and `INTEGER` in SQLite.**</span> `bos_flag = 1` is valid SQLite and invalid Postgres (`operator does not exist: boolean = integer`); the error aborts the transaction, so all four setup queries fail and **nothing is written** — which is why the tables are frozen rather than partially filled. Third instance of this SQLite/Postgres type-mismatch class after the `TEXT` vs `DATE` gotcha (CLAUDE.md) and the Decimal-vs-float bug (§16). Four live comparisons fixed across `backfill_setup_log.py` and `leaders_scan.py`, and all queries verified executing read-only against real production rows. **The production data itself is NOT repaired** — no write was made; the 29 dates sit above the high-water mark, so the next successful daily run backfills them automatically (~1,950 rows) once this is pushed. Invisible for six weeks because the hook only logs a `WARNING`, the dashboard shows an empty `Setup Perf` rather than an error, and the CI gate deliberately does not exercise the Postgres path. → §25
 18. <span style="color:#16a34a;">**RESOLVED (2026-08-12) — all three remaining single-date hook defects closed (§22 B5).**</span> `setup_log` (11 dates already lost locally, 4 repaired deliberately with backup/dry-run/verify), `leaders_scan`, and `boring_signals` now all backfill instead of writing only the newest date; the pending-date policy is shared by import so the hooks cannot drift apart again. 50 tests. → §24, §25
 16. <span style="color:#16a34a;">**RESOLVED (2026-08-12) — `market_regime`/`sector_signals` silent-gap bug root-caused and fixed; same failure class as item 10 above, this time originating in `regime.py`/`sector_signals.py` themselves rather than a Postgres-dispatch outage.**</span> The sidebar's "Market Regime" widget showed a stale date/duration; traced to `regime.py` and `sector_signals.py` only ever computing the single latest trading date (unlike `stock_signals.py`, which already backfills a date range) — a transient hook failure on 2026-08-07 permanently lost that date once the next successful run moved on to a newer one. Both now backfill every missing date since the last successful write. Production repaired (backup → dry-run → execute → independently reverified): recomputing the gap revealed a genuine one-day `VOLATILE` dip on 08-07 hiding inside what looked like an unbroken uptrend. The days-since-transition display was separately hardened to detect and flag this class of gap instead of silently trusting a possibly-wrong number. Also fixed a real, independently-discovered `StreamlitSetPageConfigMustBeFirstCommandError` crash and moved `requirements.txt` to exact, verified pins, dropping confirmed-dead packages. 19 new tests added — this project's first automated test coverage. → §21 (fix chronology), §22 (findings feeding into the §7.2/§10 CI+staging gap this whole incident is direct evidence for)
 
@@ -1453,3 +1464,3935 @@ Two things this establishes:
 **Why this is not fixable by re-running `compute_forward_returns.py` alone:** it recomputes from the same uncorrected `prices_adjusted`, so it would reproduce the identical wrong values. The price history has to be adjusted first (§32.5's 11 live names plus whatever the full-history sweep turns up), and only then are the forward returns and `outcome_label`s worth recomputing.
 
 **Suggested order when this is picked up:** (1) settle the ratio methodology, (2) remediate `prices_adjusted` across all detected events, (3) recompute `setup_log` forward returns and labels, (4) only then fix the detection window so new events cannot accumulate. Sequencing matters — fixing detection first leaves the existing 475 rows wrong and adds no protection to what is already broken.
+
+---
+
+## 33. <span style="color:#dc2626;">🔴 Production-Integrity Program Phase 1 — current reliability baseline, and a governance gap this document itself had (2026-08-21)</span>
+
+**This section closes the citation gap.** `CLAUDE.md`'s `boring_signals.py` entry (added in commit `08dbced`, 2026-08-21) cites "`docs/KIRAN_CLEANUP_AUDIT.md §33`" for the PRL incident and the Postgres-port fix — that section did not exist until this entry. Read-only investigation only; no code, schema, or data was changed as part of writing this section (one scratch helper script was created outside the repo path by mistake during investigation, then deleted; `git status`/`git diff --stat` confirm a clean tree).
+
+### 33.1 What was observed
+
+Between the last audit entry (§32, 2026-08-17) and today (2026-08-21), **five real, production-relevant commits shipped with zero corresponding audit entries**, breaking this document's own non-negotiable rule for the first time since it was adopted:
+
+| Commit | Date | What it did |
+|---|---|---|
+| `fa937da` | 08-17 18:18 PKT | §32 itself — last entry actually logged |
+| `ce26462` | 08-19 | Wired `signal_engine.py` into `cmd_update()` — closes §30's "no automated caller" finding for `recovery_signals`/`portfolio_signals` |
+| `22b962f` | 08-20 | Fixed two Postgres-only bugs that had frozen `leaders_scan` since 2026-07-01 — but only `leaders_scan` healed; `leaders_top_picks` did not (§29.9's defect, still open, see §33.4) |
+| `2a0edf0` | 08-21 (today) | Stopped a transient `init_db()` read-only-transaction error from crashing the whole daily pipeline (3 real failed Actions runs on 08-20, see §33.5) |
+| `08dbced` | 08-21 (today) | Ported `boring_signals.py` to Postgres — cites this §33, which didn't exist when the commit was written |
+
+None of these were speculative — each was a response to a real, evidenced production failure — but none were logged here, which is exactly the drift this document exists to prevent. §22/§24's "Discrepancies and problems found" pattern (fixes happening faster than the ledger) has recurred.
+
+### 33.2 Why it matters
+
+The entire premise of this program is that a fix is not "done" until it is (a) evidenced, (b) recorded, and (c) independently reverified against production — not merely "the code was changed." A 4-day, 5-commit gap means anyone reading this document on 08-17 through this morning would have believed `leaders_top_picks` was still frozen (true), `recovery_signals` was still orphaned (false, fixed 08-19), and `boring_signals` was Cloud-blocked (false, fixed and live in production since 08-21 13:38 PKT). Acting on a stale document is exactly the failure mode Principle 6 ("database state must be explainable") is meant to prevent, and it happened inside the program meant to fix it.
+
+### 33.3 The PRL incident — independently re-traced, not accepted as given
+
+CLAUDE.md's account ("PRL's real breakout fired 2026-08-13, the local-only scan didn't run that day, signal wasn't caught until the user was already filled ~9% worse") was checked against `boring_signals`, `prices`, `trade_setups`, and the literal `psx_scheduler.log` output of every `run_update.bat` run. **CONFIRMED, but the mechanism is more specific than the CLAUDE.md summary, and one figure in it does not check out:**
+
+- **CONFIRMED — the signal was real.** `boring_signals` rows 210/211: PRL, `signal_date=2026-08-13`, `trigger_price=76.73`, `breakout_level=74.1845`, `strategy_confirmed=1`, `liquidity_pass=1` — a fully-confirmed signal by the project's own definition.
+- **CONFIRMED — not caught same-day, and not for the simple reason stated.** `psx_scheduler.log`'s `13/08/2026 20:02:04` run shows the scheduled scrape *itself* failing to get 08-13 data that evening (`WARNING Attempt 1-3/3 failed for 2026-08-13: 522 Server Error ... ksestocks.com/MarketSummary`, `ERROR All retries exhausted`) — the identical upstream Cloudflare-origin outage §29.2.A already documented hitting *production* on the same calendar date, now confirmed hitting *local* too. This was a data-freshness failure on 08-13, not a scan-scheduling failure.
+- **CONFIRMED — then a second, independent failure compounded it.** No `run_update.bat` banner appears in the log for 08-15, 08-16 (weekend, expected) **or 08-17 (a normal trading Monday)**. `run_update.bat` fires "at Windows logon" per its own header — the log is consistent with the machine simply not being logged into on 08-17. This is a structural single-point-of-failure: the *only* trigger for the local pipeline — the one this user relies on ~99% — is tied to an incidental event (logon), not a scheduled time, with no independent monitor for "did today's run happen at all."
+- **CONFIRMED — recovery was not self-healing.** `boring_signals.created_at` for the PRL rows is `2026-08-17 19:52:13 PKT` — but no `run_update.bat` banner exists for 08-17, meaning this was very likely a manual/ad-hoc `python main.py` invocation (coinciding with that day's extensive §29–§32 audit session), not the automated pipeline recovering on its own. The next genuinely *scheduled* run (08-18) found the backlog already cleared. **The catch depended on a human happening to run the pipeline by hand that evening — not on any actual recovery mechanism.**
+- **NOT CONFIRMED, likely wrong — the "~9% worse" figure.** The real fill (from `trade_setups`, Excel-synced, `source='Actual'`, on 2026-08-18) came in **materially above** the system's own signal trigger price (76.73) — well beyond ~9% at every reference level checked (trigger and breakout level 74.1845) — and no reference price found anywhere in the data produces ~9%. The position ultimately closed at a **substantial realized loss**, materially worse than "worse fill" alone conveys. The ~9% is a wrong or unsourced number sitting in the project's live reference doc. *(Exact fill, exit, and P&L figures are personal trade data — held in local notes, not this committed record.)*
+
+**Classification:** a confluence of an upstream scraper outage (matches an already-documented failure class, §29.2.A) plus a structural scheduling gap (new finding — Task-Scheduler-at-logon has no independent "did it run" monitor), not a single clean root cause, and not proven isolated — the 522-class failure is already known to recur, and the logon-dependency is by design, not a one-off.
+
+### 33.4 Current state verified read-only against production and local, 2026-08-21
+
+| Table | Production (Postgres) | Local (SQLite) | Status |
+|---|---|---|---|
+| `prices` / `index_prices` / `stock_signals` / `sector_signals` / `market_regime` | 2026-08-20 | consistent | current as of last successful run |
+| `leaders_scan` | 2026-08-20 | — | **CONFIRMED fixed** by `22b962f` — was frozen at 2026-06-30 |
+| `leaders_top_picks` | **still 2026-06-30**, 11 rows | — | **CONFIRMED still frozen.** `22b962f`'s own commit message predicted this table would self-heal alongside `leaders_scan`; it did not — matches the pre-existing, still-open §29.9 defect (`save_top_picks()` is latest-date-only, not a backfill loop like `append_leaders_scan()`) |
+| `boring_signals` | **EXISTS**, 90 rows, `signal_date` 07-30→08-20, all `created_at = 2026-08-21 08:38:26 UTC` (11 min after commit `08dbced`) | 183 rows, `signal_date` 07-10→08-20 | table now live in production, contradicting CLAUDE.md's same-day claim that the write was "PENDING sign-off" — the sign-off evidently happened, just after the commit text was written, and CLAUDE.md was never revisited |
+| `boring_signals` overlap | 84 rows common to both DBs; 99 SQLite rows absent from Postgres; 6 Postgres rows absent from current SQLite | — | **UNRESOLVED** — this is neither "no backfill" (CLAUDE.md's stated design) nor a clean full copy. The filter/dedup logic that produced this split was not read. Not yet verified safe to trust for a table that feeds a live, capital-relevant screener |
+| `setup_log`, `recovery_signals`, `portfolio_signals` | not confirmed this session (query used wrong column name, not re-run to stay strictly read-only) | not confirmed | **UNRESOLVED** — freshness of these three could not be established today; needs a follow-up read-only check before any of Principle 2's freshness claims can be made about them |
+| `pipeline_runs` (Postgres) | only `hook_name='boring_signals'` ever appears (3 rows, 08-17/18/20) | has rows for `boring_signals`, `corporate_action`, `leaders_scan`, `setup_log` | **INFERRED** — production's heartbeat ledger is much thinner than local's; most hooks currently have no cross-backend heartbeat visible from Cloud at all, undermining Principle 2 specifically for the Cloud side |
+
+### 33.5 GitHub Actions — confirmed failures and their fix
+
+`gh run list --workflow=daily_scraper.yml` showed **3 failed runs on 2026-08-20** (`32406937663`, `32406136746`, `32405882945`), each with `psycopg2.errors.ReadOnlySqlTransaction: cannot execute CREATE TABLE in a read-only transaction` inside `init_db()`. Commit `2a0edf0` (today) patches this specific call site to tolerate the error and continue. **Confirmed the underlying condition is broader than the one patched site:** today's post-fix successful run (`32457525225`) still logs `WARNING Leaders deep scan hook failed: cannot execute DELETE in a read-only transaction` — the same transient-read-only condition (most likely Supabase routing a write to a read replica or pooler hiccup) hitting a different, unpatched hook. `init_db()` was hardened; the underlying condition was not, and nothing currently inventories which other hooks are exposed to the same failure mode.
+
+Also confirmed from the same run: `Agent daily hook` still fails (`anthropic` package not installed) — matches §28.2 item 15, unchanged. Confirmed from the last real *scheduled* (not manual `workflow_dispatch`) run (`32397749345`, 08-20 17:27 UTC, pre-boring_signals-port): `Boring Breakouts hook failed: ... no such table: stock_metadata` — the exact Cloud-ephemeral-SQLite failure the Known Gaps section already documented, now directly confirmed in a real log rather than inferred from code shape.
+
+### 33.6 Test suite, branch protection, staging
+
+- **`pytest -q`: 88 passed, 0 failed** (up from §31's 78 — 10 new tests since 08-17, consistent with the boring_signals Postgres port).
+- **Branch protection on `main`: CONFIRMED enabled** (`gh api repos/.../branches/main/protection` → 200, three required checks, `enforce_admins: true`). This closes the one piece of urgent item 7 (top of file) that was still open — done in a prior, already-merged commit, not part of the 08-17→now gap.
+- **`staging` branch: still does not exist**, locally or on the remote. The rest of urgent item 7 (push `staging`, create the second Cloud app) remains open.
+
+### 33.7 Silent-failure sweep — pattern confirmed still present, and still growing
+
+- `main.py`'s `cmd_update()` broad `except Exception` count: **18 today, up from §28's 15** (2026-08-13). Growth tracks new hooks added under the same unnarrowed pattern (`signal_engine` wiring, the new `init_db()` wrapper, the boring_signals PG branch) — confirming §28's shape is still the default for new code, not just old code.
+- `backfill_setup_log.py`'s SQLite-path `continue`-after-broad-except hazard (§28.3): **CONFIRMED still present, unchanged**, at the same call site. The Postgres sibling of this exact hazard was already fixed by `44d6977` (2026-08-13, predates and is correctly scoped-out by §28.3's own text) — no drift there, just still open on the SQLite side as documented.
+- `signal_engine.py` orphan status (§30): **CONFIRMED fixed** by `ce26462` (08-19) — `main.py:311-312` now calls `signal_engine.main()` inside `cmd_update()`. §30 is resolved but was never marked as such until now.
+
+### 33.8 CONFIRMED / INFERRED / UNRESOLVED — explicit index for this section
+
+**CONFIRMED:** the git-history gap and the fabricated §33 citation (33.1); PRL signal was real and correctly detected by the code's own definition (33.3); the 08-13 upstream 522 outage hit local too (33.3); no scheduled local run occurred on 08-17 (33.3); the 08-17 catch-up was not the automated path (33.3); the "~9%" figure does not match any reference price in the data (33.3); `leaders_scan` fixed / `leaders_top_picks` still frozen (33.4); `boring_signals` table exists live in production with 90 rows, contradicting CLAUDE.md's "pending sign-off" (33.4); the three 08-20 Actions failures and their root cause (33.5); today's Leaders-deep-scan read-only-transaction failure (33.5); Boring Breakouts' Cloud-ephemeral-SQLite failure on the last real scheduled pre-port run (33.5); 88/88 tests passing (33.6); branch protection enabled, staging branch absent (33.6); broad-except count grew 15→18 (33.7); §28.3's SQLite hazard unchanged (33.7); §30 resolved by `ce26462` (33.7).
+
+**INFERRED:** production `pipeline_runs`' thin coverage is because it's a lightweight cross-backend heartbeat separate from the underlying data write, not verified by reading `data_health.py` directly (33.4).
+
+**UNRESOLVED:** the exact cause of `boring_signals`' 84/99/6 row-overlap split between Postgres and SQLite, and whether it's safe to trust for live screening (33.4); current freshness of `setup_log`, `recovery_signals`, `portfolio_signals` (33.4) — needs a follow-up read-only check with correct column names before Principle 2 can be honestly claimed for these three.
+
+### 33.9 Action taken
+
+None — this is the Phase 1 read-only baseline. No code, schema, or production data was modified. This entry itself is the corrective action for 33.1's governance gap (the missing ledger entries for `ce26462`, `22b962f`, `2a0edf0`, `08dbced` are now captured here, retroactively, rather than left permanently missing).
+
+### 33.10 Remaining risk / what happens if this is not picked up
+
+`leaders_top_picks` stays silently stale indefinitely (same shape as the six-week `leaders_scan` freeze that produced §25's original incident). The `boring_signals` production/local discrepancy is currently unverified and that table is the direct descendant of the PRL incident — trusting it without resolving 33.4's UNRESOLVED row would repeat the exact failure class this section documents. The Task-Scheduler-at-logon single point of failure has no monitor and will recur on any day the machine isn't logged in early. The unpatched read-only-transaction condition can silently disable any hook that hits it next, the same way it did to `init_db()` before `2a0edf0`.
+
+**Date of this entry: 2026-08-21. Status: OPEN — baseline only, no fixes applied, awaiting user direction on repair order (see chat response for ranked findings).**
+
+---
+
+## 34. <span style="color:#dc2626;">🔴 Phase 2 — `boring_signals` forensic reconciliation: production copy is NOT currently safe to trust for live trading (2026-08-21)</span>
+
+Read-only forensic follow-up to §33.4's UNRESOLVED row. No code, schema, or data was modified — independently re-derived from primary evidence (live schemas, row dumps, `boring_signals.py` source, `psx_scheduler.log`/`psx_pipeline.log`, `pipeline_runs`), not accepted from §33's prior summary. Where this section confirms §33, it cites its own evidence. Where it goes further or corrects §33, that is stated explicitly.
+
+### 34.1 Schema and design intent (Part 1)
+
+**CONFIRMED**, direct schema read both sides: SQLite and Postgres `boring_signals` carry the same column set (`symbol, signal_date, lookback_n, trigger_price, target_price, stop_price, rs_60, rs_60_decile, avg_vol_10d, liquidity_pass, strategy_confirmed, status, executed, executed_at, executed_price, resolution_date, resolution_type, days_open, created_at, breakout_level, current_stop`), with the expected type mapping (SQLite `TEXT`/`REAL`/`INTEGER` ↔ Postgres native `DATE`/`TIMESTAMP`/`DOUBLE PRECISION`/`BOOLEAN`). Both carry the identical `UNIQUE(symbol, signal_date, lookback_n)` constraint. Row counts: SQLite 183, Postgres 90.
+
+**CONFIRMED — full row-parity between the two DBs was never the documented design.** `ensure_boring_signals_table_pg()`'s own docstring (`boring_signals.py:147-148`): *"No historical backfill — starts clean from go-live date."* So the 84/99/6 split is not, by itself, evidence of a bug — the design explicitly permits Postgres to hold a strict subset. §33.4 flagged the split as UNRESOLVED without reading this docstring; this section closes that specific question (parity isn't expected) but opens a sharper one in 34.2 (the *specific* rows that diverge are not explained by "clean start" alone).
+
+### 34.2 The 99/6 reconciliation (Part 2)
+
+**CONFIRMED**, natural key `(symbol, signal_date, lookback_n)` verified duplicate-free in both DBs, matching the live unique constraint. Independently recomputed: 84 common / 99 SQLite-only / 6 Postgres-only — matches §33.4's counts exactly, now with full row-level detail instead of counts alone.
+
+**Postgres-only (all 6, full dump):**
+
+| symbol | signal_date | lookback_n | status | trigger | resolution_date | created_at (UTC) | strategy_confirmed |
+|---|---|---|---|---|---|---|---|
+| BWHL | 2026-07-30 | 20 | Stopped | 239.91 | 2026-08-03 | 2026-08-21 08:38:03 | False |
+| PKGI | 2026-08-05 | 20 | Stopped | 22.92 | 2026-08-11 | 2026-08-21 08:38:54 | False |
+| KOHE | 2026-08-06 | 20 | Stopped | 16.43 | 2026-08-11 | 2026-08-21 08:39:10 | False |
+| GAL | 2026-08-11 | 60 | Stopped | 632.21 | 2026-08-17 | 2026-08-21 08:39:50 | False |
+| CPPL | 2026-08-19 | 60 | Pending | 112.50 | — | 2026-08-21 08:40:55 | False |
+| PCAL | 2026-08-19 | 60 | Pending | 185.93 | — | 2026-08-21 08:40:55 | False |
+
+**Root cause, CONFIRMED via direct comparison, not inferred:** all 90 Postgres rows share 14 tightly-clustered `created_at` timestamps in a 3-minute window (08:38:03–08:41:08 UTC, 2026-08-21) — a one-time bulk operation, not organic writes. `boring_signals.py:471-476` implements a stateful dedup gate (`open_symbols` = any symbol with an unresolved `Pending`/`Executed` row is blocked from firing a new signal on either lookback until it resolves). SQLite's gate state reflects continuous real history back to 2026-07-10; the Postgres bulk load's gate state depends on what order/window it replayed, which was not the same history. Direct evidence this actually flips outcomes, not just timing: **KOHE** fired in SQLite on 08-07/N=20 only vs Postgres on 08-06/N=20 only — different date, zero overlap, same symbol. **PKGI**: SQLite 08-10 (both N); Postgres 08-05 (N=20 only). **GAL**: same date (08-11) in both, but SQLite fired N=20 and Postgres fired N=60 — opposite lookback for the identical symbol+date. **Classification: historical migration artifact from a non-deterministic clean-slate replay, not corruption** — but "non-deterministic" is itself the problem: re-running the same bulk-load approach again would very likely produce a *different* 6-row (or N-row) discrepancy set, not the same one. **UNRESOLVED:** whether the N=20-vs-N=60 split on matching symbol+date pairs (e.g. GAL) reflects only gate-state timing, or also a `prices_adjusted` value difference between the two DBs feeding `_breakout_fires()` for that specific pair — a full parity check of `prices_adjusted` for the affected symbol/date pairs was not performed, out of scope for this pass.
+
+**SQLite-only (99 total):** ~76 rows are dated before Postgres's floor (`signal_date < 2026-07-30`) — expected under the documented "no backfill" design. **23 of the 99 fall inside Postgres's own 07-30→08-20 window and are still absent** — these are dedup-gate-divergence rows, not window truncation: `CLVL 08-13/N20`, `EPCLPS 08-13/N20`, `EWIC 08-05/N20`, `EWIC 08-06/N20+60`, `GHNI 08-17/N20+60`, `HBL 08-05/N20`, `KOHE 08-07/N20`, `MSOT 08-12/N20+60`, `NRL 08-17/N20+60`, `PKGI 08-10/N20+60`, `PREMA 08-17/N20+60`, `PRL 08-10/N20+60`, **`PRL 08-13/N20+60` — the incident signal**, `TPL 08-10/N20+60`, `TPL 08-12/N20+60`, `TPLP 08-04/N20+60`, `TPLP 08-10/N20+60`, `UNITY 08-06/N20`.
+
+**Beyond the 99/6 split — a defect inside the 84 "common" rows, not previously found.** 18 field-level diffs on the common set: most are harmless SQLite-`REAL`-vs-Postgres-`DOUBLE PRECISION` rounding artifacts, and one is a genuine stale-normalization bug (`OBOY`: `executed` = SQLite `1` vs Postgres `False` — should map `1→True`; low impact, the row is already resolved history). **More consequential: 9 rows have different `rs_60_decile` for the identical (symbol, signal_date, lookback_n) key** — e.g. `HBL 2026-08-11`: SQLite decile 5 vs Postgres decile 4; `NRL 2026-08-10`: SQLite 7 vs Postgres 6. `rs_60_decile` is a cross-sectional rank (`pd.qcut` over the full eligible universe that day, `boring_signals.py:455`/`588`) — a different gated-universe size (itself downstream of the same dedup-gate divergence) shifts every symbol's decile. **This means `strategy_confirmed` (`decile==9 AND liquidity_pass`) can legitimately disagree between the two DBs for the identical real-world signal** — a live correctness risk, not a cosmetic one: the same signal could show as strategy-confirmed on one backend and not on the other.
+
+### 34.3 PRL — full reconciliation (Part 3)
+
+**CONFIRMED — the incident signal does not exist in production at all.** SQLite holds 8 PRL rows across 4 signal dates (07-17, 08-03, 08-10, 08-13 — each ×2 lookbacks). Postgres holds only 2 (08-03 ×2). **The 08-13 signal (`trigger_price=76.73`, `breakout_level=74.1845`, `strategy_confirmed=1`) — the one this entire port was built in response to — is absent from production**, along with the 07-17 and 08-10 PRL signals. Had a user viewed the Cloud dashboard today, this specific incident signal would still be invisible.
+
+**Market data — CONFIRMED never actually missing once written.** `prices_adjusted` has a continuous, gap-free PRL row for every trading date 08-10 through 08-20 including 08-13 itself (`close=76.73`, exactly matching the signal's trigger price); 08-14 is correctly absent (holiday).
+
+**Scheduler trace, re-derived independently — corrects and sharpens §33.3, doesn't contradict it:**
+- `13/08/2026 20:02:04` run: 3/3 scrape attempts for 08-13 failed with ksestocks.com `522 Server Error`; that run's boring_signals scan correctly ran only through 08-12.
+- `14/08/2026 19:36` run: **new finding, not in §33** — the retry for 08-13/08-14 was met with `"Skipping ... PSX returned identical data to previous session (market closed / public holiday). No rows stored"` — i.e. as of Friday evening 08-14, the pipeline's own stale-data guard misclassified the still-missing 08-13 session as an ordinary holiday echo, not as a real trading day still owed data. This is a second, independent failure mode layered on top of the 522 outage, not previously documented.
+- No `run_update.bat` banner exists for 08-15/08-16 (weekend, expected) or **08-17** (a real trading Monday) — confirms §33.3.
+- **New, harder evidence than §33.3 had:** grepped both `psx_scheduler.log` and `psx_pipeline.log` (the latter is `main.py`'s own `FileHandler`, written regardless of shell redirection) for any `2026-08-17` timestamp — **zero lines in either log for that date.** Whatever wrote the PRL row that evening did not go through `main.py` at all — not via `run_update.bat`, not even a bare terminal `python main.py --update`. It was a direct, out-of-band call into `boring_signals.py`'s functions.
+- **`pipeline_runs` (local) confirms the same conclusion from a third, independent angle:** only 3 `hook_name='boring_signals'` rows exist, for `run_date` 08-17 (finished 08-18), 08-18, 08-20 — but `_record_hook()` is only ever called from inside `main.py`'s `cmd_update()`. There is no heartbeat row at all corresponding to the actual 08-17 14:52:13 UTC write. **Three independent sources (banner absence, zero log lines, zero heartbeat row) now confirm the same fact: the PRL catch-up was a manual, unlogged, unheralded script invocation — not the pipeline "self-healing."**
+
+**"~9% worse" — re-checked independently, still does not check out.** The real fill (`trade_setups`, Excel-synced, `source='Actual'`, 2026-08-18) sits materially above both the signal's own `trigger_price` (76.73) and `breakout_level` (74.1845) — well beyond ~9% at either reference — and the position closed at a substantial realized loss. No recorded reference price produces ~9%. **CONFIRMED wrong, independently, a second time.** *(Exact fill/exit/P&L: personal trade data, local notes only.)*
+
+**Pipeline-stage delay attribution:**
+
+| Stage | Finding |
+|---|---|
+| Market data availability | CONFIRMED delayed by the 08-13 522 outage; data was fully present once any scrape succeeded — **UNRESOLVED** exactly which run first captured it, since no per-row write-timestamp exists on `prices`/`prices_adjusted` |
+| Scanner eligibility/computation | Not blocked once data existed — `_breakout_fires()` is a pure function, correct once invoked |
+| Scan execution | CONFIRMED delayed to 08-17 ~19:52 PKT via an out-of-band call, bypassing `main.py`/`run_update.bat`/`pipeline_runs` entirely (three independent evidence sources, above) |
+| DB write timestamp | CONFIRMED `created_at = 2026-08-17 14:52:13 UTC` |
+| Dashboard query | No filtering delays visibility further (see 34.5) |
+| Dashboard visibility to user | By the time the row existed, the real trade (08-18) had already happened |
+
+### 34.4 Signal freshness distribution (Part 4)
+
+**CONFIRMED**, computed in trading days using `index_prices`' `KSE-100` distinct dates as the trading calendar (correctly excludes 08-14 and weekends).
+
+**SQLite (183 rows, organic day-by-day writes):**
+
+| delay (trading days) | rows |
+|---|---|
+| 0 | 65 |
+| 1 | 72 |
+| 2 | 17 |
+| 3 | 7 |
+| 4 | 3 |
+| 5 | 6 |
+| 6 | 6 |
+| 7 | 7 |
+
+Median 1 trading day, max 7. Not uniform — a visible 57-row catch-up batch on 08-12 (delays 1–7) recovers a pre-08-12 backlog. **New finding not in §33:** the raw delay metric can materially understate real risk — PRL's 08-13→08-17 catch-up is only "1 trading day" by this count (08-14 is a holiday, so it doesn't add to the delay), but PRL moved from a 76.73 close on 08-13 to an 84.40 close on 08-17, a >10% move inside that nominally "1-day" gap.
+
+**Postgres (90 rows):** median 6, max 14 — **explicitly not comparable to SQLite's distribution.** Every row shares the same bulk-load `created_at`, so this number reflects how old each `signal_date` was at load time, not any operational lag. Flagging this so the number is never later mistaken for a real freshness measurement.
+
+**Is delay by-design?** Partially, and the code says so: `scan_boring_breakouts_pending()`'s docstring (`boring_signals.py:646-660`) explicitly frames the bounded catch-up as intentional ("converts permanent silent loss into self-healing within `max_lookback` days... A gap longer than the window would still be missed"). So the 1–7 day organic delays are an accepted, documented mechanism. **But the specific PRL recovery did not go through that mechanism** (34.3) — the actual fix was a human, not the self-healing the docstring describes, because the automated path (`run_update.bat`) never ran that week until 08-18.
+
+### 34.5 Can a stale signal appear actionable? (Part 5)
+
+**CONFIRMED, direct code read**, `dashboard.py:2254-2392` (`_render_boring_breakouts_section`) and `boring_signals.py:906-936` (`get_boring_signals`).
+
+- `get_boring_signals()` sorts **only** by `signal_date DESC` (`boring_signals.py:915`) — no `created_at` filter or sort anywhere in the query path.
+- **No freshness threshold or staleness check exists in this code path at all** — grepped `dashboard.py` for "stale"/"freshness" scoped to this section: zero hits (a staleness feature exists elsewhere in the file for a different table, unrelated to Boring Breakouts).
+- Default status filter is `["Pending", "Executed"]` (`dashboard.py:2287`) — any unresolved signal displays identically regardless of age or `created_at`. **`created_at` is not even a rendered column** — a user cannot visually distinguish "fired today" from "fired via a multi-day catch-up."
+- **No "stale — do not trade" UI state exists for this feature.** This is the literal mechanism that let the PRL 08-13 signal sit invisible with zero on-screen warning between 08-13 and 08-17 — not a missing nice-to-have, but the direct proximate cause of the incident's visibility gap.
+- The only real guardrail on the page is the `strategy_confirmed`/`liquidity_pass` gate and its checkbox filter — correctly computed at write time, but not a freshness control, and (per 34.2) not even guaranteed to agree between backends for the same signal.
+
+**Verdict: CONFIRMED — stale signals can and do appear fully actionable, on either backend, with no UI signal of their age.**
+
+### 34.6 Writer/scanner internals (Part 6)
+
+**CONFIRMED, full read of `boring_signals.py` (967 lines), both SQLite and PG paths.**
+
+- Daily entry point is `scan_boring_breakouts_pending(max_lookback=15)` — a genuinely separate, hand-written implementation (not shared code) of the pending-dates-loop pattern used elsewhere, with an explicit reason given in its own docstring: because a row only exists when a signal fires, "an empty stretch is indistinguishable from an unscanned one — the table cannot tell you what has been scanned" (`boring_signals.py:645-648`). Resolves via `resume_from = max(window_start, last_signal)`.
+- **Catch-up is bounded, not unbounded — a hard 15-trading-day cap, unique among this codebase's backfill mechanisms (see 34.7).** The docstring is explicit that a longer gap "would still be missed" — an acknowledged, by-design silent-skip risk beyond 15 sessions.
+- Per-date scan failures inside the backfill loop are caught and logged (`logger.warning`), not raised — a single bad date doesn't abort the batch, but only produces a log line. The whole hook is wrapped again at `main.py:343-354`, recording success/failure to `pipeline_runs` — **but only when invoked through `cmd_update()`.** The actual 08-17 recovery (34.3) bypassed this, so it left zero heartbeat trace despite succeeding.
+- **No retry logic** inside the scan function itself (contrast the scraper's own `MAX_RETRIES=3`).
+- **Partial-universe risk, confirmed real, not theoretical:** `_eligible_universe()`/price-history loaders pull whatever currently exists in `stock_metadata`/`sectors`/`prices_adjusted`; a symbol with no data for the target date is silently skipped (`info is None: continue`), with no completeness check against an expected universe size. A day where the upstream scrape partially failed for some symbols (exactly what happened market-wide on 08-13) would look like an ordinary successful scan with a smaller result set — no warning raised.
+- **Idempotency: CONFIRMED live and correct on both sides** — SQLite `UNIQUE(...)` + `INSERT OR IGNORE`; Postgres identical constraint + `ON CONFLICT (...) DO NOTHING`.
+- **`open_symbols` dedup gate: CONFIRMED to actively suppress signals**, and is the direct mechanism behind 34.2's cross-DB divergence — a symbol with any unresolved `Pending`/`Executed` row is excluded from firing on either lookback until resolution.
+- **SQLite and Postgres are two independently hand-maintained implementations of the same algorithm, not one function branching on `_PG_URL`** — following this project's established `_pg`-suffix convention, but that means a future edit to one path and not the other silently diverges, which (per 34.2's `rs_60_decile` finding) has already partly happened in effect, if not by direct code drift.
+- No docstring/code mismatches found — the module is candidly self-documenting about its own limits (e.g. `_eligible_universe()`'s docstring flags its own unverified exclusion filter).
+
+### 34.7 Is this pattern isolated or systemic? (Part 7)
+
+| File / mechanism | Pattern | Bound |
+|---|---|---|
+| `boring_signals.py` | Backfill loop | **Bounded — 15-trading-day hard cap, the only one in this codebase** |
+| `leaders_scan.py` (`_pending_scan_dates`) | Backfill loop | Unbounded |
+| `sector_signals.py` | Backfill loop | Unbounded |
+| `regime.py` | Backfill loop | Unbounded |
+| `backfill_setup_log.py` | Backfill loop | Unbounded (special-cased: empty table gets newest date only) |
+| `signal_engine.py` (`recovery_signals`/`portfolio_signals`) | **Latest-date-only** | N/A — same single-date defect class already known elsewhere |
+| `leaders_scan.py`'s `save_top_picks()` | **Latest-date-only** | N/A — confirmed cause of `leaders_top_picks` still frozen at 06-30 (§29.9/§33.4) |
+
+**boring_signals is an outlier in the conservative direction, not the risky one.** Every other backfill mechanism in this codebase is unbounded (eventually catches up no matter how long the gap). `boring_signals` alone caps its window at 15 trading days, explicitly because its own table structure can't tell "nothing fired" from "never scanned." That makes it the one place in this codebase where a sufficiently long gap (>15 trading dates — an extended outage, or the machine sitting unused for three weeks) causes **permanent, silent, unrecoverable loss**, with no self-healing at all — a real and distinct risk from the unbounded mechanisms elsewhere, but not evidence of a shared defect; it's a different, deliberate design choice with its own downside. `signal_engine.py` and `save_top_picks()` sit at the opposite extreme (no catch-up at all) and represent the already-known single-date-defect pattern, not something new found here.
+
+### 34.8 Live-trading trust verdict
+
+**Production (Postgres) `boring_signals`: <span style="color:#dc2626;">C — NOT SAFE TO TRUST FOR LIVE TRADING</span>, as currently constituted.** Reasons, each independently sufficient:
+1. It is missing the exact incident-defining signal (PRL 08-13) that motivated building the port in the first place.
+2. Among the rows that *do* exist on both sides, 9 have disagreeing `rs_60_decile`, meaning `strategy_confirmed` — the page's own qualification flag — can be true on one backend and false on the other for the identical real-world signal. A user cannot tell which backend's answer is right without cross-checking against the other database by hand.
+3. The dashboard has zero staleness or provenance signal (34.5) — nothing distinguishes a fresh organic write from an artifact of the one-time bulk load, on either backend.
+4. The mechanism that produced the current Postgres content (a stateful-dedup-gate replay against a clean slate) is now understood to be non-deterministic — re-running the same approach would very likely produce a *different* discrepancy set, not the same one, meaning the current row set can't even be treated as a stable, reproducible snapshot.
+
+"Most rows match" is explicitly not used as grounds for a B verdict here, per instruction — a single class of discrepancy that can alter an actionable flag (finding 2) is sufficient on its own for C, before even counting findings 1, 3, and 4.
+
+**Local (SQLite) `boring_signals`: B — safe only with explicit limitations**, not C: it has continuous organic history back to 07-10, internally consistent decile computation (no dedup-gate replay artifact — it was never bulk-loaded), and is current through 08-20. Its limitations: (a) the 15-trading-day bounded catch-up means an outage or unattended stretch beyond that window causes permanent silent loss; (b) no independent monitor confirms the daily local run actually happened — demonstrated to fail in exactly this way on 08-17; (c) the same zero-staleness-signal UI gap applies regardless of backend, so even on local, a human must know to check `created_at` manually (which isn't even rendered) rather than relying on the page.
+
+### 34.9 Proposed repair plan (not authorized to execute — awaiting sign-off)
+
+1. **Immediate capital-safety fix:** surface signal age/`created_at` in the Boring Breakouts UI and add an explicit staleness banner sourced from the `pipeline_runs` heartbeat (matching the pattern already built for other tables in §31) — this alone closes the exact visibility gap that let PRL sit unseen for 4 days with the page reading normally. Until then, treat the Cloud Boring Breakouts view as unverified — do not rely on it as the sole source for this screener.
+2. **Data-integrity fix:** do not repeat the clean-slate bulk-load approach as-is — it is demonstrably non-deterministic (34.2). Reconciling Postgres against SQLite as ground truth requires either a true historical replay that reconstructs the *actual* chronological dedup-gate state (not a fresh gate against an empty table), or accepting Postgres as intentionally-partial and gating any Cloud-side use of `strategy_confirmed`/`rs_60_decile` until parity is established.
+3. **Scanner/recovery fix:** make the 15-trading-day cap self-aware — alert as the window approaches expiry rather than silently dropping data past it; add a completeness check that flags a scan run against a smaller-than-expected eligible universe (catches the exact partial-scrape condition that contributed to the 08-13 gap); ensure any manual/out-of-band invocation of the scan functions still writes a `pipeline_runs` heartbeat, or restrict production writes to the orchestrated `main.py` path only.
+4. **Dashboard/freshness fix:** extend the same "DATA STALE / NOT VERIFIED" mechanism already built for other tables (§31) to cover Boring Breakouts specifically, since it currently sits outside that coverage entirely.
+5. **Testing requirement:** an integration test that runs both the SQLite and Postgres scan paths over an identical historical window and asserts `rs_60_decile`/`strategy_confirmed` agreement — this would have caught 34.2's finding before it reached production.
+6. **Monitoring requirement:** a "did today's local run actually happen" check independent of Windows-logon-only scheduling (e.g. a fixed-time Task Scheduler trigger as a fallback, plus an alert if no heartbeat lands by a known cutoff) — directly addresses the structural cause of the 08-17 gap, not just its symptom.
+7. **Architectural/generalization opportunity (lower priority, not urgent):** the SQLite/Postgres logic in `boring_signals.py` is hand-duplicated, not branched from one shared implementation — a future edit to one path and not the other is a standing drift risk; worth consolidating when the module is next touched, not as an isolated task.
+
+### 34.10 Remaining uncertainty
+
+UNRESOLVED: whether the GAL-type same-date-opposite-lookback divergence (34.2) also involves a `prices_adjusted` value difference between the two DBs, not just dedup-gate timing — not checked, would need a full parity sweep on the affected symbol/date pairs. UNRESOLVED: the exact scrape run that first captured PRL's 08-13 price data, since no per-row write-timestamp exists on `prices`/`prices_adjusted`. UNRESOLVED: §33.4's still-open freshness gap for `setup_log`/`recovery_signals`/`portfolio_signals` — not part of this pass's scope, still needs its own read-only check.
+
+**Date of this entry: 2026-08-21. Status: OPEN — forensic findings only, no repairs applied, awaiting explicit sign-off on §34.9's repair order.**
+
+---
+
+## 35. <span style="color:#dc2626;">🔴 Phase 2A — deep forensic follow-up: §34.2's root cause was wrong on one axis, and a more dangerous mechanism was found (2026-08-21)</span>
+
+Read-only. No repo file, schema, or database was modified. One authorized exception: Question C ran `boring_signals.py`'s real functions against two **disposable copies** of `psx_data.db` in the scratchpad (never the original — MD5-verified unchanged before and after: `c1772b575e6f83b4dbb7aabe9fd5e44c`). Both copies and all scratch scripts/outputs were deleted; confirmed empty at completion. `git status --short` in the repo shows only this document's own diff.
+
+**This section corrects §34.2 in part — the original finding is preserved below, not deleted, per the standing rule.** §34.2 attributed the 9-row `rs_60_decile` disagreement to the same dedup-gate/clean-slate-replay mechanism that explains the 84/99/6 existence split. That mechanism is real and is now **computationally confirmed** (35.3), but it is **not** what caused the decile disagreement — that has a separate, previously-undetected cause (35.1). §34.2 conflated two distinct defects into one explanation; this section separates them with direct evidence for each.
+
+### 35.1 Question A — the decile disagreement: recount and true root cause
+
+**Recount, CONFIRMED: 14 rows across 10 distinct (symbol, signal_date) pairs, not 9** as §34.2 stated (`HBL 08-11, KAPCO 08-04, MACFL 08-17, MEBL 08-05, NRL 08-10, NRSL 08-17, PAKRI 08-18, POL 08-12, PPL 08-17, PREMA 08-11`).
+
+**True root cause, CONFIRMED via direct price-data comparison (closes §34's explicit UNRESOLVED item):** `_rs60_and_liquidity_asof()` (`boring_signals.py:335-372`) computes `close_then` by a **positional** lookback index into each symbol's own date-sorted price array (`np.searchsorted`-derived), not a calendar-date lookback. **Production Postgres `prices_adjusted` has zero rows for 2026-07-07 — a complete, table-wide gap on that single date** (SQLite holds 506 rows that day; adjacent dates hold 500–611 in both DBs). Because the RS_60 window is 60 *positions* back, not 60 *calendar days*, this one missing day shifts `close_then` onto a different calendar date for every symbol whose 60-position lookback window straddles it — confirmed for **60 of the 61 distinct symbol+date pairs in the full 84-row common set (98%)**, with SQLite's `close_then` always landing one trading day later than Postgres's. Only 10 of those 60 shifts happened to cross a cross-sectional decile boundary that day; the other 50 have a smaller, non-bucket-crossing discrepancy. **Classification: (A) different underlying data — a genuine, previously-undetected production completeness gap, not a replay/state artifact.**
+
+**Likely link to an already-known incident, INFERRED, not confirmed identical:** CLAUDE.md's "Known Gaps" section already documents that `sector_signals` was missing exactly `2026-07-07` (among `07-01/02/03/06`) due to the 2026-07 Postgres-dispatch outage. `sector_signals` is computed from `prices_adjusted`, so a `prices_adjusted` gap on the same date is consistent with, and plausibly the same root incident as, that already-known outage — but this specific downstream consequence (RS_60 positional-window misalignment silently distorting `boring_signals`' decile ranking for essentially the entire current signal population) was not previously identified anywhere in this document. **This is a broader-than-`boring_signals` finding**: any other computation in this codebase using a positional (not calendar-date) rolling window against Postgres `prices_adjusted` is potentially exposed to the same silent misalignment from this one gap — not audited here, flagged as a generalization risk (see §35.9).
+
+**Critical question, CONFIRMED: 0 of 14 disagreements flip `strategy_confirmed`.** Verified condition from code (`boring_signals.py:487`): `strategy_confirmed = int(decile == 9 and liquidity_pass == 1)`. None of the 14 rows have a 9 on either side (observed pairs: 2↔3, 4↔3, 5↔4, 6↔7, 6↔8, 7↔6) and `liquidity_pass` agrees on all 14. So while the underlying mechanism is real, broader, and wrongly attributed by §34.2, its observed live-trading consequence in the actual current overlap is **zero flips**, not the open-ended risk §34.8's verdict implied from this specific finding. This does **not** rescue the overall trust verdict (§35.7) — it narrows one specific alarm while a more serious one (§35.5) was found in the same pass.
+
+### 35.2 Question B — PRL timeline, re-derived, with a genuinely new open question
+
+**Re-confirms, with independent evidence, all of §33.3/§34.3's core findings**: the 08-13 522 outage (`psx_scheduler.log:46356-46366`), continuous `prices_adjusted` PRL data once written (76.73 exact match), the 08-14 stale-guard misclassification (`"Skipping 2026-08-13 -- PSX returned identical data to previous session (market closed / public holiday). No rows stored."`, traced to `scraper.py:446-454`'s `_is_stale()`: ≥90% of common symbols byte-identical to the prior session triggers a holiday classification — correct by its own logic, wrong for what was actually a still-missing trading day), no `run_update.bat` banner or `psx_pipeline.log` line for 08-17, and the wrong "~9%" figure (re-confirmed independently a third time: the real fill was materially worse than ~9% at every recorded signal price, and the position closed at a substantial loss; exact figures in local notes).
+
+**New finding, not in §33 or §34: the "nothing happened locally until the 19:52 PKT manual write" picture is incomplete.** Local `pipeline_runs` has **three heartbeat rows for `run_date='2026-08-13'`** (`corporate_action`, `leaders_scan`, `setup_log` — not `boring_signals`), all `finished_at = 2026-08-17 07:05:23 UTC` (12:05:23 PKT), **7.75 hours before** the PRL write, and landing 19 minutes before commit `38ddadb` ("Add always-visible sidebar data-health banner + `pipeline_runs` heartbeat ledger") — the exact commit that introduces `_record_hook()` for all four hooks including `boring_signals`. **INFERRED, not confirmed:** this batch most plausibly originates from developing/testing that feature the same morning, not a production run — the three timestamps land within 52ms of each other, not consistent with `leaders_scan`'s real deep-scan work (which takes 1-2 minutes elsewhere in the logs) executing live. Separately, and **UNRESOLVED**: the 08-18 scheduled run's own log shows `prices`/`sector_signals`/`stock_signals`/`setup_log` already advanced to 2026-08-17 *before* that run started scraping, and no log anywhere documents what advanced them. This was demonstrably **not** the same action as the 19:52 PKT `boring_signals` write (that write's own view of the data was still capped at 08-13, since the 08-18 run still had to freshly scan `signal_date=2026-08-17` for `boring_signals`). **Conclusion: there were at least two distinct out-of-band events on 08-17, not one** — the exact mechanism of the second is unidentified and could not be closed within this session (no shell/process history was accessible; `ConsoleHost_history.txt` exists on the machine but was not examined — a specific, nameable next step, not a dead end).
+
+**Push-back on the standing narrative, as instructed:** "522 outage → missed scheduled run → failed recovery → delayed signal" remains directionally correct but **is not a single, fully-provable clean chain**. The 522 outage and 08-14 misclassification are solidly re-confirmed. The "recovery" step should be downgraded from "a manual/ad-hoc `python main.py` invocation" (§34.3's phrasing) to **UNRESOLVED mechanism, CONFIRMED non-standard path** — at least two separate unexplained actions touched production-adjacent state that day, not the single identifiable event previously described.
+
+### 35.3 Question C — replay divergence, computationally tested (not merely inferred)
+
+Two tests run against disposable `psx_data.db` copies, `DB_PATH` monkey-patched to the copy, real `boring_signals.py` functions called directly.
+
+**Test 1 (same code, same data, consistent/already-resolved state):** independent recomputation of `rs_60`/`rs_60_decile` for the last 10 populated dates matched stored values with **0 mismatches** — the underlying math is deterministic given fixed inputs and fixed state. But re-running only the scan step (without day-by-day status resolution kept in lockstep) against a DB whose `status` column already reflects *today's* fully-resolved outcomes produced 16 rows that never fired in real organic history (e.g. `TPL 2026-08-13` newly qualifying, because the replay's snapshot showed TPL's blocking prior signal already `Stopped`, when in real time it was still `Pending` on 08-13 and didn't resolve until 08-18). **CONFIRMED: pure replay-order dependence (Classification C).**
+
+**Test 2 (same code, same price data, true clean-slate start — mirrors the actual production design intent):** wiped `boring_signals`, replayed chronologically day-by-day for 2026-07-27 → 2026-08-20 (18 trading dates). Clean-slate replay produced **200 rows**; real organic history for the identical window produced **128**. **72 rows fired only under the clean-slate replay** (including PRL on 07-27, 07-28, 08-11, 08-17, **and 08-18** — all correctly `decile=9`, `strategy_confirmed=1` — because clean-slate has no earlier blocking position). **Zero rows fired organically but not under the clean-slate replay** — organic history is a strict subset of what a correctly-run clean-slate replay produces for this window, never a disjoint or contradictory set. **Of the 128 rows present in both, zero `rs_60_decile` disagreements.**
+
+**Direct answer to Question C's classification: (B) deterministic-but-state-dependent, computationally confirmed, not asserted.** Test 1 rules out true randomness. Both tests show the sole source of the *existence* divergence (which signals fire at all — the 84/99/6 split) is dedup-gate state, itself a function of replay order (Test 1) and starting-point completeness (Test 2). **This is a separate, independently-confirmed mechanism from 35.1's finding** (which explains *value* disagreements among rows that fire on both sides) — §34.2 attributed both symptoms to one cause; they have two different causes, now each individually evidenced.
+
+**Notable, and UNRESOLVED:** a clean-slate replay from a 07-27 floor *would* have caught PRL's 08-13 signal (it appears in both the clean-slate and organic sets for that window). The actual Postgres bulk load that built the live 90-row production table did not catch it. **Why the real bulk load differs from this test's replay was not established** — its exact original procedure is undocumented anywhere in the codebase or commit history found. This is itself a governance gap: a real, one-time production data operation with no recorded procedure.
+
+### 35.4 Question D — production completeness invariant (as the code defines it today; a specification, not a proposal)
+
+Derived from `boring_signals.py`, `main.py:cmd_update()`, `data_health.py`, and `dashboard.py` as they exist today — no new mechanism designed.
+
+- **Trading calendar authority**: `prices`' own distinct dates (`_sessions_between()`, `data_health.py:286-299`) — deliberately not a hand-maintained holiday calendar, since none exists in this codebase.
+- **"Run complete" today** = a `pipeline_runs` row with `status='ok'`. This is a **liveness** guarantee ("the hook ran and returned"), not a **completeness** guarantee ("it processed the full expected universe") — the code only provides the first. No universe-size completeness check exists anywhere in `boring_signals.py`; a symbol silently missing data for a target date is simply skipped (`info is None: continue`, `boring_signals.py:477-479`), and a partially-scraped day (exactly what 08-13 was) looks identical to a normal smaller-universe day.
+- **"Stale" today**: only defined at the whole-hook level by `data_health.py`'s `check_all()` (§31's sidebar banner), comparing table `MAX(date)` or `pipeline_runs` heartbeats against the expected session. **It does not cover `boring_signals` per-signal freshness at all** — Boring Breakouts' own render path (`dashboard.py`) has zero staleness logic, confirmed by direct read (35.2/34.5).
+- **"NOT ACTIONABLE" as a concept**: does not exist anywhere in this codebase today. Nothing gates a signal's tradeability on its age or provenance.
+- **Gap summary (what's missing, not a design)**: no per-signal `created_at` surfaced to the user; no universe-completeness check; no distinction between "hook ran, found nothing" vs. "hook ran against a truncated universe"; no cross-check that an out-of-band scan invocation still produces a heartbeat; the 15-day catch-up window (35.5) has no expiry alert of any kind.
+
+### 35.5 Question E — the 15-day boundary is a silent, permanent, unalarmed data-loss mechanism, more serious than previously characterized
+
+**Location, CONFIRMED: `boring_signals.py:633`, `scan_boring_breakouts_pending(max_lookback: int = 15)`.** The docstring justifies the number as a pure design trade-off, not an empirical constraint (lines 634-663): *"A gap longer than the window would still be missed; closing that properly needs an explicit scan-progress marker... not worth it for a watch-only, SQLite-only feature."* **CONFIRMED: an accepted, documented, arbitrary bound.**
+
+**Exact mechanism on the 16th+ missed trading day, traced from the real code (`boring_signals.py:682-684`):**
+```python
+window_start = all_dates[-max_lookback] if len(all_dates) > max_lookback else all_dates[0]
+resume_from = max(window_start, last_signal) if last_signal else window_start
+pending = [d for d in all_dates if d >= resume_from]
+```
+`window_start` is always exactly the 15th-most-recent trading date. If the table's own `MAX(signal_date)` is older than that, any pending date before `window_start` is **excluded from `pending` and never scanned again — permanently.** **CONFIRMED: this does not fail visibly.** The function returns a normal row count for whatever it *did* scan; nothing logs, warns, or errors about the dates it silently dropped. `main.py`'s hook wrapper only distinguishes "raised an exception" from "returned a count" — a call that silently scanned fewer dates than it should have still returns success and is recorded `pipeline_runs.status='ok'`.
+
+**CONFIRMED: the dashboard and heartbeat ledger can look fully healthy after silent, permanent, irrecoverable data loss.** `pipeline_runs` only ever records "the hook ran and returned a number" — it carries no signal for "and part of what it should have covered is now permanently unreachable." A user has no way to currently distinguish complete / partial / stale / failed from anything the system presents.
+
+**This is assessed as the single most consequential finding across both Phase 2 and Phase 2A** — more consequential in principle than the PRL incident itself, because PRL was caught by an unexplained-but-real human/process intervention at day 3-4 of a gap (35.2); **past day 15, the code provides no recovery path at all, human-triggered or automated, without someone independently realizing the gap exists and manually re-invoking the scan for the specific missed dates.** The exact same failure class (an outage or an unattended machine stretch exceeding 15 trading days) recurring today would be **worse**, not merely repeated. **UNRESOLVED, flagged for explicit follow-up:** whether local SQLite's own `boring_signals` history has *already* silently lost data to this exact mechanism at some point since 2026-07-10 — not checked in this pass; a scan for any two consecutive `MAX(signal_date)` observations more than 15 trading days apart in the recorded history would answer this and should be done before this table is otherwise trusted for its full historical claim.
+
+### 35.6 Question F — `boring_signals`' bound vs. `auto_detect_suspects`' cold-start ratchet: related, not identical
+
+**CONFIRMED, direct code read.** `leaders_scan.py`'s `_pending_scan_dates()` and `signal_engine.py`/`save_top_picks()`'s latest-date-only behavior are unchanged from §34.7's characterization. `auto_detect_suspects()` (`apply_price_adjustments.py:308-337`) resumes from `MAX(suspect_date)`, or a **5-trading-day cold-start window** if nothing has ever been flagged. **This is mechanically distinct from `boring_signals`' bound, not the same pattern**: `auto_detect_suspects` is a **one-time cold-start blind spot** — once any suspect is ever flagged, the ratchet moves forward and every future call rescans everything newer, unbounded and safely, growing rather than dropping. Its documented historical harm (§32.3-32.5) came from that single first-run blind spot never being retroactively swept, not from an ongoing per-run drop. `boring_signals`, by contrast, **drops silently on every occurrence of a >15-day gap, indefinitely, by design** — a recurring risk, not a one-time historical scar. Related in spirit (both are bounded/bootstrap assumptions that already caused or can cause real silent loss); not the same mechanism, and `boring_signals`' version is the more dangerous of the two going forward since it never stops being a live risk.
+
+### 35.7 Revised risk assessment
+
+**§34.8's letter verdicts are retained, not weakened — Postgres remains C, SQLite remains B — but the reasoning underneath both must be updated, and one new fact makes the overall picture worse, not better:**
+
+- **Postgres — still C, NOT SAFE.** The specific alarm that most directly drove §34.8's verdict (9, now confirmed 14, decile disagreements implying `strategy_confirmed` could flip) is narrowed — 0 actual flips observed in the current overlap. But this does not rescue the verdict: the PRL incident signal is still entirely absent from production; the table's build mechanism is now confirmed non-deterministic and its exact real-world procedure undocumented (35.3); and a new, previously-undetected production data completeness gap (`prices_adjusted` missing all of 2026-07-07) was found, likely linked to an already-known incident but with a specific, newly-identified consequence for `boring_signals`' RS ranking that had not been caught by any existing test or check.
+- **SQLite — still B, safe only with explicit limitations — but the limitations list must be re-weighted.** The 15-day catch-up boundary (35.5) is not a minor caveat among several; it is a designed-in, silent, permanent, unalarmed data-loss mechanism with zero recovery path past its own window, and it is currently unknown whether it has already fired unnoticed against local's own history. This should be treated as the headline limitation, not one item in a list.
+- **New, not previously stated: this program's own change-control has a live gap, independent of code correctness.** 35.2 found two distinct unexplained interventions in production-adjacent local state on 08-17, neither traceable to any log, heartbeat, or commit. This is a process/governance finding, not a code defect — but it means "what actually touched this system and when" cannot currently be fully answered even with every available log, which is itself a reliability property this program is meant to establish (Principle 6).
+
+### 35.8 Repair requirements (not authorized, not implemented — for review only)
+
+1. **Immediate capital-safety controls:** treat the 15-day catch-up boundary as a live risk requiring a check now, not just a future alert — determine (per 35.5's open item) whether local history has already silently lost data to it. Do not rely on the Postgres `boring_signals` table for any live decision until 35.1's data-completeness gap and 35.3's non-deterministic build are addressed.
+2. **Data-integrity repairs:** identify the actual scope of the 2026-07-07 `prices_adjusted` gap in Postgres beyond `boring_signals` (35.1's flagged generalization risk); rebuild the Postgres `boring_signals` table via a true chronological day-by-day replay from a sufficiently early floor (35.3's Test 2 demonstrates this approach is viable and would have caught PRL), not another clean-slate-from-arbitrary-point bulk load.
+3. **Monitoring/recovery controls:** an explicit alert when the 15-day window is about to expire without a successful intervening scan; a way to detect and flag a partially-scraped day (universe-size completeness check, 35.4) rather than silently accepting a smaller result set as normal; ensure every write path (including any manual/out-of-band invocation) produces a `pipeline_runs` heartbeat, or restrict writes to the orchestrated path only.
+4. **Production-parity controls:** an integration test asserting SQLite/Postgres `rs_60`/`rs_60_decile` agreement over a shared, gap-free date range — would have caught 35.1 before it reached production; a documented, repeatable procedure for any future one-time production data operation (35.3's open question — the actual bulk-load procedure that built the current table is undocumented).
+5. **Lower-priority engineering improvements:** consolidate the hand-duplicated SQLite/Postgres implementations in `boring_signals.py` (standing drift risk, §34.9 item 7, unchanged); surface `created_at`/signal age and a staleness indicator in the dashboard (34.9 item 1, unchanged — still not implemented, still the direct fix for the visibility gap that let PRL sit unseen).
+
+### 35.9 What remains unknown
+
+The exact command/process that wrote the PRL row at 08-17 19:52 PKT (35.2). The exact mechanism that advanced `prices`/`sector_signals`/`stock_signals`/`setup_log` to 08-17 before the 08-18 scheduled run (35.2, newly identified, not previously known to be unresolved). Whether the 12:05 PKT heartbeat batch was genuinely development/test activity or something else (35.2, INFERRED only). The actual scope of the 2026-07-07 `prices_adjusted` gap beyond `boring_signals` — whether other positional-window computations elsewhere in this codebase are similarly, silently affected (35.1, flagged not audited). The real procedure used to build the current 90-row Postgres `boring_signals` table (35.3). Whether local SQLite's own `boring_signals` history has already silently lost data to the 15-day boundary at some point since 2026-07-10 (35.5). §33/§34's still-open freshness gap for `setup_log`/`recovery_signals`/`portfolio_signals`, unchanged, not in this pass's scope.
+
+**Date of this entry: 2026-08-21. Status: OPEN — forensic findings only, no repairs applied. §34.2 is corrected in part (34.2's text is preserved above, unmodified, per the standing rule) — see 35.1/35.3 for the split explanation. Awaiting explicit sign-off before any repair from §35.8 begins.**
+
+---
+
+## 36. <span style="color:#dc2626;">🔴 Phase 2B — historical 15-trading-day silent-loss test: verdict A, but a second, previously-undocumented out-of-band incident found along the way (2026-08-21)</span>
+
+Read-only. No code, schema, database, or UI was modified. Primary evidence: direct SQLite queries against the live local `psx_data.db` (read-only), full-history grep of `psx_scheduler.log` (93 run banners, 11/05/2026 → 19/08/2026), `git log`/`git show` on `apply_price_adjustments.py` and `boring_signals.py`, and direct reads of `boring_signals.py`/`main.py` source. No disposable-DB replay was re-run in this pass — Phase 2A's Test 2 (§35.3, chronological clean-slate replay of the exact 2026-07-27→2026-08-20 window, already computationally confirming organic history is a strict subset of a correct replay with zero contradictions) already covers the window this phase's key finding falls inside, and re-running it would duplicate settled work per the scope instruction. Row-count reconciliation (below) was used instead as the completeness check specific to this phase's new finding.
+
+### 36.1 Scope and method
+
+**Canonical chronological result:** per instruction, no new signal definition was invented. `boring_signals.py`'s own `scan_boring_breakouts_pending()` (SQLite path, `boring_signals.py:669-695`) is confirmed by direct read to already implement a true sequential day-by-day replay when it runs: `pending = [d for d in all_dates if d >= resume_from]` is processed in a `for scan_date in pending: scan_boring_breakouts(scan_date)` loop, each date's insert committed before the next date is evaluated — so the dedup-gate state (§34.2/§34.6) seen by date *N* correctly reflects every date before it in the same pass, identical in effect to true organic history. This is confirmed structurally different from the Postgres table's build (§34.2/§35.3), which was a separate, undocumented, non-sequential bulk-load procedure, not this function. Because the real production code already is the correct chronological replay, this phase's method was: reconstruct **when** the code actually ran (or didn't) against the trading calendar, not re-derive a parallel signal set.
+
+**Historical-gap search inputs**, cross-referenced:
+1. `psx_scheduler.log` — every `run_update.bat` execution banner since 11/05/2026 (93 total), the ground-truth record of the orchestrated path (`cd psx_pipeline && python main.py --all`).
+2. `pipeline_runs` (local) — only 18 rows total, `hook_name='boring_signals'` only 3 (run_date 08-17, 08-18, 08-20). **This table cannot answer the historical question by itself** — the heartbeat feature (§31, commit `38ddadb`) didn't exist before 2026-08-17, so it has no visibility into the ~5 weeks of `boring_signals`' real operating history before that date. Used only for the most recent week.
+3. `boring_signals` table's own `signal_date`/`created_at` columns — 183 rows, `created_at` clusters into exactly 15 distinct write-days, each cross-referenced against its `signal_date` range to detect multi-date catch-up batches.
+4. Trading calendar — `index_prices` `KSE-100` distinct dates, the same authority `data_health.py`'s `_sessions_between()` uses (§35.4).
+5. `git log`/`git show` on the files the freeze in 36.2 touches, to establish exactly when a relevant bug was introduced and fixed.
+
+**Note on `psx_pipeline.log`, found dead in this pass, not previously flagged:** `main.py`'s own `FileHandler("psx_pipeline.log")` (relative path, `main.py:48`) has not written a line since **2026-06-14 19:41:11** — confirmed by direct `tail`, despite dozens of real, banner-confirmed `main.py --all` executions since then (including the exact 08-13/08-17/08-18 runs §34.3 examined). `run_update.bat` does `cd /d C:\Users\Lenovo\psx_pipeline` before invoking Python, so working directory is not the cause; the exact reason the handler stopped writing was not pursued further here (out of scope — a code-quality item, not a data-loss one) but is flagged because **§34.3 used "zero `psx_pipeline.log` lines for 2026-08-17" as one of three independent evidence sources for "out-of-band, bypassed `main.py`" (§34.3, §35.2).** That specific line of evidence is weaker than stated: the file is empty for *every* date after 06-14, including dozens of runs independently confirmed genuine via `psx_scheduler.log` banners and `pipeline_runs`. **This does not overturn §34.3/§35.2's conclusion** — the banner-absence and heartbeat-absence evidence for 08-17 stand independently and are unaffected — but the log-line-count argument specifically should be read as corroborating, not load-bearing, going forward. Not reopening §34/§35's verdict; flagging for future citation accuracy only.
+
+### 36.2 Historical processing gaps found (not limited to PRL)
+
+| # | Window (trading days owed) | Trading-day distance | What actually happened | Recovered via |
+|---|---|---|---|---|
+| 1 | **2026-08-03 → 2026-08-11 (7 trading days: 08-03,04,05,06,07,10,11)** | 7 | `append_new_prices_adjusted()`'s bare `INSERT...SELECT *` broke the instant `hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag` were added to `prices_adjusted` only (2026-08-03, for the ML feature study) — every run threw `table prices_adjusted has 10 columns but 7 values were supplied`. Caught by `cmd_update()`'s per-hook `try/except`, logged only as a `WARNING`. `prices_adjusted`, `stock_signals`, `sector_signals`, `boring_signals` all silently froze at 2026-07-31 for 4 consecutive real runs (08-03 23:56, 08-05, 08-07, 08-11 — all banner-confirmed, all logging `Sector signals already up to date for 2026-07-31` / `stock_signals already up to date at 2026-07-31`). **`prices` itself was never affected** — it kept advancing normally each run (526-542 symbols/day); only the adjusted-copy step broke. | Code fix `git d23f9b2` ("Fix schema-drift bug breaking prices_adjusted incremental append"), committed 2026-08-12 13:53 PKT. An out-of-band invocation (no `psx_scheduler.log` banner, no log line at all) ran the real catch-up code the same day — `boring_signals` rows `created_at='2026-08-12'`: 57 rows, `signal_date` MIN/MAX = 08-03/08-11, exactly the pending window, nothing more, nothing less. By the next scheduled run (08-13 20:02), `sector_signals`/`stock_signals`/`setup_log` all already read "up to date at 2026-08-12." |
+| 2 | 2026-08-13 → 2026-08-17 (PRL, already documented §33-35, not re-litigated) | 1 (raw trading-day count per §34.4's metric) / 3 calendar business days | 522 scraper outage (08-13) + stale-data misclassification (08-14) + no `run_update.bat` execution 08-15/16/17 | Unexplained out-of-band write, 08-17 14:52-14:52:25 UTC (19 rows) + 2 more (`GHNI`) caught by the 08-18 scheduled run. Mechanism still UNRESOLVED per §35.2 — see §36.5, not reopened here. |
+| 3 | 2026-08-19 (single day, no banner, no `pipeline_runs` row for **any** hook that date) | 1 | No `run_update.bat` execution at all — consistent with the Task Scheduler's `LogonTrigger`-only trigger (no logon that day) | Fully recovered, in-band, by the very next scheduled run: `pipeline_runs` row 19 (`boring_signals`, run_date 08-20, `rows_written=14`) exactly equals 11 (08-19) + 3 (08-20) rows actually written. **This is the one case in this entire history where `scan_boring_breakouts_pending()`'s own multi-date `WARNING` log line fired through the normal orchestrated path** (`grep` for `"scanning %d date(s)"` across all 93 banner-runs since May returns exactly one hit — 2026-08-19's log line for the *next* run: `"scanning 2 date(s), 2026-08-17 -> 2026-08-18"`, a different, smaller catch-up). Clean positive-control example of the mechanism working exactly as designed, unassisted. |
+
+**No other trading day since `boring_signals`' effective go-live (2026-07-10, first `signal_date`) has more than 1 consecutive missed `run_update.bat` banner** — confirmed by cross-referencing all 93 banner dates against the full `KSE-100` trading calendar 07-10→08-20. Row 1 above (7 trading days) is the single largest real gap found in this system's entire operating history to date.
+
+### 36.3 The 15-trading-day boundary, tested against every gap found
+
+| Gap | Distance | ≥15? | Pipeline reported success? | Signal set complete? |
+|---|---|---|---|---|
+| #1 (08-03→08-11) | 7 | No | No `pipeline_runs` row exists for this period (heartbeat table didn't exist yet) — but `psx_scheduler.log` shows the *other* affected hooks (`corporate_action`, effectively) logging only a `WARNING`, never an `ERROR`, and the overall `run_update.bat` batch completed and moved on to the next line (Twitter drafts, Excel sync) every time, i.e. exactly the "reports success" pattern, evidenced live, four times in a row | **CONFIRMED complete** — `prices` vs `prices_adjusted` row counts for every date 08-03→08-13 now match exactly (526/526, 528/528, 525/525, 525/525, 524/524, 532/532, 531/531, 531/531, 534/534 — zero residual gap), and Phase 2A's Test 2 (already-run, not repeated) computationally confirms zero organic-vs-clean-replay disagreement across this exact window |
+| #2 (08-13→08-17, PRL) | 1 (raw metric) | No | Yes — `pipeline_runs` row 7, `status='ok'`, `rows_written=2` (undercounting the 19 rows the untracked write actually added — see §34.3) | Complete once recovered (§34.3); the incident was a *latency* problem, not a completeness one |
+| #3 (08-19) | 1 | No | Yes — `pipeline_runs` row 19, `status='ok'`, `rows_written=14`, exact match to actual rows written | Confirmed complete |
+
+**No historical gap in `boring_signals`' local SQLite operating history has ever come within half of the 15-trading-day cap.** The largest (7 trading days) used under half the window.
+
+### 36.4 Silent-loss result
+
+**Verdict: A — no historical silent loss found**, within the observable operating history since `boring_signals`' effective go-live (2026-07-10, ~30 trading days of real operation as of this entry). Because no real gap ever reached `window_start` truncation, the specific line of code that would drop data (`boring_signals.py:682-684`, `pending = [d for d in all_dates if d >= resume_from]`) was never actually exercised in its lossy branch — it has only ever been exercised in its self-healing branch, and every time it was, the result checks out complete (36.3).
+
+**This verdict is narrower than "the mechanism is safe" — it answers only "has it fired yet," and the answer is no.** §35.5's assessment that the boundary is "a silent, permanent, unalarmed data-loss mechanism" stands unchanged as a description of the code as written; this phase found no evidence it has materialized, and no reason it could not on a longer, real future gap. The short operating history (~6 weeks total, ~30 trading days) is itself a limit on how strong this verdict can be — it is not possible to test a 15-day boundary against a system that has never gone more than 7 days without a working run.
+
+**One qualitative pattern worth carrying into the risk assessment (§36.6):** in both real gaps wide enough to matter (7 days and the PRL gap), recovery came from an **unexplained out-of-band manual intervention**, not from the automated `run_update.bat` schedule passively catching up on its own. The schedule-driven path has, in this system's entire recorded history, only ever had to self-heal a 1-2 day gap (§36.2 row 3) without help. Whether the automated path alone would have closed either of the two larger gaps before day 15, absent human intervention, was never actually tested by this history — it remains an open, untested assumption, not a confirmed capability.
+
+### 36.5 "Reports success" claim — CONFIRMED (from code), INFERRED (real occurrence not observed)
+
+**CONFIRMED, direct code read (`main.py:339-355`):** `scan_boring_breakouts_pending()` is called inside a `try` block; on any return (including one where dates before `window_start` were silently dropped from `pending`), `_record_hook("boring_signals", _session_date, rows_written=n_new, mirror_to_postgres=True)` fires with its default `status="ok"` (`_record_hook`'s signature default, `main.py:97`). Only an actual raised exception routes to the `status="error"` branch. A 16th-day-or-later silent truncation would **not** raise — it would return a smaller-than-expected integer and be recorded identically to a fully successful, complete run.
+
+**INFERRED, not CONFIRMED from real execution:** no historical gap in this system's life has ever reached the truncation branch (§36.4), so there is no real past `pipeline_runs`/log entry demonstrating this exact failure mode in the wild. What **is** confirmed from real execution is the general pattern one level up: gap #1 (§36.2) shows a *different* hook (`corporate_action`'s `prices_adjusted` append) failing outright with an exception, four separate times across 8 real days, being caught, logged only as a `WARNING` nobody was monitoring (the sidebar staleness banner, §31, didn't exist until 08-17 — after this incident was already over), and the overall pipeline run completing and moving on to unrelated steps (Twitter drafts, Excel sync) each time without anything surfacing as a failure. That is real, historical, four-times-repeated evidence of this codebase's general "catch, warn, continue" pattern silently absorbing a week-long data freeze — just not, in this specific instance, via `boring_signals`' own 15-day mechanism (which had nothing new to scan during that week and correctly, truthfully reported "0 new signals" every time — it was not the hook that was wrong here).
+
+### 36.6 08-17 state advancement — limited follow-up (per instruction, not broadened)
+
+1. **Can the evidence identify what advanced `prices`/`stock_signals`/`sector_signals`/`setup_log` to 2026-08-17 before the scheduled 08-18 run?** Checked the two concrete next steps §35.9 flagged as unexamined: `ConsoleHost_history.txt` (PSReadLine) exists at the expected path but its **last recorded command dates to 2026-06-29** — nothing from August at all, confirming the interactive PowerShell console was not the source (or its history simply wasn't being persisted by whatever shell was actually used). No `.bash_history` exists on this account. Both flagged evidence sources are now exhausted (checked and found uninformative, not left unchecked) rather than open next steps. **UNRESOLVED — insufficient evidence**, unchanged from §35.2/§35.9, now with the two previously-named leads closed out rather than pending.
+2. **Production execution, dev/test, manual, other, or unknown?** Still **UNRESOLVED** for this specific second 08-17 event. New context from this same pass, not proof: §36.2's gap #1 independently confirms a *third*, separate out-of-band intervention (2026-08-12) with the same signature — no banner, no log line, a real code fix landing hours earlier the same day. That raises the prior plausibility that the unresolved 08-17 event was likewise a manual/development action taken by whoever was fixing things that week, rather than an exotic or adversarial cause — but this is contextual reasoning from a pattern, not new direct evidence identifying the 08-17 event itself, and is reported as INFERRED-context only.
+3. **Does this materially weaken the ability to audit production runs?** **Yes, and more than §35 alone established.** §35 found two unexplained out-of-band events on a single date (08-17). This phase independently found a **third**, separate, previously undocumented one seven days earlier (08-12, §36.2 gap #1's recovery). Three confirmed instances of unlogged, out-of-band production-adjacent writes across nine days is a recurring operating pattern, not a one-off — `psx_scheduler.log` + `pipeline_runs` together cannot be treated as a complete account of "what touched this system and when," for any date, past or future, unless every invocation is guaranteed to go through the orchestrated path (§34.9 item 3 / §35.8 item 3, both still unimplemented).
+
+### 36.7 Revised risk assessment
+
+**Postgres — unchanged, still C, NOT SAFE.** Out of scope for this phase (this phase is a local-SQLite question); §34/§35's verdict and reasoning stand untouched.
+
+**SQLite — still B, not downgraded to C.** Evidence-driven, per instruction: verdict A on the narrow 15-day-loss question (§36.4) does not support moving to C on that basis. But the limitations list is now grounded in two concrete, dated incidents instead of pure theory:
+- The 15-day boundary itself has never fired — genuinely reassuring, but only tested up to a 7-day real gap, less than half the window.
+- **Every real gap wide enough to matter in this system's history was closed by an unexplained human/out-of-band action, not by the unattended schedule.** The automated self-healing claim in `boring_signals.py`'s own docstring (§34.4, §35.5) has, in practice, never been the thing that actually closed a multi-day gap without help — it has only ever closed 1-2 day gaps unattended. This is a meaningfully more specific (and slightly more cautious) statement than §34.8/§35.7's prior "safe with limitations" framing, without changing the letter grade.
+- A **new, previously-undocumented** ~1-week silent data freeze (§36.2 gap #1) is now on the record — it did not cause `boring_signals` data loss (§36.4), but it is independent proof that this codebase's "catch an exception, log a `WARNING`, continue" pattern (already flagged systemically in §24/§25/§28) really did let a real production data pipeline sit broken for 8 days, unnoticed, before a human happened to find and fix it.
+
+### 36.8 Remaining unknowns
+
+The exact process/actor behind the 2026-08-12 out-of-band catch-up (plausibly, but not confirmed, the same session that authored fix commit `d23f9b2` at 13:53 PKT that day, manually verifying/backfilling immediately after). The exact mechanism of 08-17's second unexplained event (§36.6, both previously-flagged evidence sources now checked and exhausted, still open). Whether any symbol was silently dropped from `prices` itself (as opposed to the `prices_adjusted` copy step, which is fully reconciled, §36.3) during the 08-03→08-11 window — daily record counts are internally consistent (525-542/day) but this pass did not cross-check against an independent universe-size ground truth for that specific week. Why `main.py`'s `psx_pipeline.log` `FileHandler` has written nothing since 2026-06-14 despite dozens of confirmed real executions since (§36.1) — flagged, not investigated, a code-quality item independent of the data-loss question this phase targeted. §33/§34's still-open freshness gap for `setup_log`/`recovery_signals`/`portfolio_signals` — unchanged, still not in any pass's scope yet.
+
+### 36.9 Repair implications (NOT authorized, NOT implemented — listed only, per instruction)
+
+What this phase's evidence changes, relative to §34.9/§35.8's existing (still unactioned) list:
+1. **Nothing changes about the 15-day boundary's own repair priority** — §35.8 item 1 and item 3 (expiry alert before the window closes) stand exactly as written; this phase adds empirical grounding (a real 7-day gap did occur) rather than a new requirement.
+2. **The prices_adjusted-freeze incident (§36.2 gap #1) is itself a concrete, dated instance of the general "repeated hook failure has no escalation" gap** already named in §34.9/§35.8 — it failed identically 4 times in a row across 8 days before a human noticed. Worth explicitly adding "alert on N consecutive failures of the same hook," not just "alert on any single failure," to whatever monitoring repair is eventually built.
+3. **§34.9 item 3 / §35.8 item 3 ("ensure every write path produces a `pipeline_runs` heartbeat, or restrict writes to the orchestrated path only") is now reinforced by a third confirmed out-of-band incident, not two.** No new repair item; existing priority stands, now better evidenced.
+
+**Date of this entry: 2026-08-21. Status: OPEN — forensic findings only, no repairs applied, no code/schema/database/UI changes made. Awaiting independent review before any repair from §34.9/§35.8/§36.9 begins.**
+
+---
+
+## 37. <span style="color:#dc2626;">🔴 Kiran Production Architecture Review — read-only design review, no repairs (2026-08-21)</span>
+
+Architecture discovery and target design, not a bug hunt. Builds on §33-36 (already-established forensic facts, not re-derived) plus new direct code reads of `database.py`, `main.py`'s full `cmd_update()`, `data_health.py`, both Task Scheduler XMLs, `daily_scraper.yml`, `requirements.txt`, and `git log` for the original Postgres-introduction commit. No code, schema, database, or UI was touched.
+
+### 37.A Current architecture — actual, traced from code
+
+```
+MARKET DATA SOURCE       ksestocks.com MarketSummary — confirmed (§35.2) a full
+                          date-addressable archive, not latest-session-only.
+        ↓
+DATA INGESTION            scraper.py (build_session/scrape_date_range), invoked
+                          from TWO independent, unrelated triggers:
+                            • LOCAL: Windows Task Scheduler "PSX Daily Update"
+                              (scheduler/PSX_TaskScheduler.xml) — LogonTrigger
+                              only, 1-minute delay, no fixed time. Runs
+                              run_update.bat → `python main.py --all`. No
+                              DATABASE_URL in this process's environment
+                              (nothing calls load_dotenv() anywhere in this
+                              codebase — confirmed, data_health.py:114-136's own
+                              docstring states this explicitly) → every _PG_URL
+                              check in every module evaluates False → 100% SQLite.
+                            • CLOUD: GitHub Actions `daily_scraper.yml` — cron
+                              `0 17 * * 1-5` (17:00 UTC / 22:00 PKT) + manual
+                              workflow_dispatch, on a fresh ubuntu-latest runner,
+                              DATABASE_URL injected from repo secrets → `python
+                              main.py --update` (not --all — no cmd_report()) →
+                              every _PG_URL check evaluates True → 100% Postgres.
+                          Same cmd_update() function body runs in both places;
+                          every internal call branches to a different
+                          implementation depending on which trigger fired it.
+        ↓
+RAW / ADJUSTED DATA        prices/index_prices (raw) → prices_adjusted via
+                          apply_price_adjustments.py (SQLite) / database_pg.py's
+                          _pg twins (Postgres) — independently scraped AND
+                          independently adjusted on each backend, confirmed
+                          diverged twice already (§35.1's Postgres-only 07-07 gap;
+                          §36.2's SQLite-only 08-03→08-11 freeze).
+        ↓
+PROCESSING                 sector_signals.py / stock_signals.py / regime.py —
+                          each carries its own `_PG_URL = os.environ.get(...)`
+                          line (confirmed identical in 6+ files: sector_signals.py:31,
+                          stock_signals.py:13, regime.py:33, leaders_scan.py:26,
+                          signal_engine.py:19, boring_signals.py, data_health.py:39,
+                          apply_price_adjustments.py) and its own `if _PG_URL: ...
+                          _pg() ... else: ...sqlite...` branch at its append
+                          function (sector_signals.py:913, stock_signals.py:514,
+                          regime.py:101) — six independent copies of the same
+                          detection logic, not one shared helper. NONE of these
+                          three hooks have a `_record_hook()` heartbeat call
+                          anywhere in `cmd_update()` (confirmed by direct read,
+                          main.py:263-304) — only logged via `logger.warning` on
+                          failure, invisible to `pipeline_runs` either way.
+        ↓
+SIGNAL CALCULATIONS        signal_engine.py (recovery_signals/portfolio_signals,
+                          wired into cmd_update() 2026-08-19, still no
+                          `_record_hook` call — logged via logger.info only,
+                          main.py:310-321), leaders_scan.py (leaders_scan/
+                          leaders_top_picks, `_record_hook` YES), backfill_setup_log.py
+                          (setup_log, `_record_hook` YES), boring_signals.py
+                          (boring_signals, `_record_hook` YES, and the ONLY hook
+                          anywhere in this codebase with `mirror_to_postgres=True`
+                          — writes its heartbeat to Postgres even from a 100%-SQLite
+                          local run, specifically because it's "the one signal the
+                          Streamlit Cloud app cannot otherwise see," per
+                          data_health.py:118-122's own comment).
+        ↓
+SIGNAL PERSISTENCE          No sync/replication step exists anywhere in this
+                          codebase between SQLite and Postgres for any of the
+                          above, except two one-time manual scripts
+                          (migrate_to_supabase.py, load_bi_history.py) and ad
+                          hoc backfill scripts run by hand whenever a divergence
+                          happens to be noticed (§34.2/§35.3: "the actual bulk-load
+                          procedure that built the current [Postgres boring_signals]
+                          table is undocumented anywhere in the codebase or
+                          commit history").
+        ↓
+DASHBOARD                  One file, dashboard.py, serves both. Auto-switches via
+                          database.py's module-level override (database.py:1225-1278
+                          — SQLite functions defined first, then unconditionally
+                          re-imported from database_pg.py at import time IF
+                          DATABASE_URL/SUPABASE_DB_URL is set). LOCAL dashboard
+                          (start_dashboard.bat, Task Scheduler "PSX Dashboard",
+                          also LogonTrigger-only) sets no DATABASE_URL either —
+                          confirmed by direct read of start_dashboard.bat — so the
+                          local dashboard is ALSO 100% SQLite, always. CLOUD
+                          dashboard (Streamlit Community Cloud) has no persistent
+                          filesystem at all (CLAUDE.md's own documented
+                          constraint: "No local DB — SQLite doesn't work; must use
+                          Supabase") — 100% Postgres, always, with no alternative.
+```
+
+**Confirmed, not inferred:** the owner's day-to-day local usage (dashboard + pipeline) never touches Postgres at all, in either direction, except the one special-cased `boring_signals` heartbeat mirror. Postgres exists solely to serve the Streamlit Cloud deployment and is fed by a wholly separate, independently-triggered, independently-computing pipeline that the local machine has zero interaction with.
+
+### 37.B SQLite vs. Postgres roles — every important table
+
+| Table | SQLite | Postgres | Authoritative? | Writer | Independently recomputed? |
+|---|---|---|---|---|---|
+| `prices` / `index_prices` | Yes, written by local scrape | Yes, written by Cloud scrape | **Neither** — two independently-scraped copies of the same external source, no reconciliation step exists | scraper.py, both paths | **Yes** — confirmed (Cloud missed PRL's 08-13 session for days; local independently missed nothing that day) |
+| `prices_adjusted` | Yes | Yes | **Neither** | apply_price_adjustments.py / `_pg` twins | **Yes**, confirmed twice over (§35.1 Postgres 07-07 gap; §36.2 SQLite 08-03→08-11 freeze — each backend has had its OWN, different multi-day production incident, invisible to the other) |
+| `stock_signals` | Yes | Yes | **Neither** | stock_signals.py / `_pg` twin | Yes, by construction (each computed from that backend's own `prices_adjusted`) — not independently re-verified for a specific divergence this session |
+| `sector_signals` | Yes | Yes | **Neither** | sector_signals.py / `_pg` twin | Yes, by construction — CLAUDE.md already documents a real divergence class (`rs_rank_prev`/`rs_inflection` stale across the 07-07/09 Postgres-dispatch-outage boundary) |
+| `market_regime` | Yes | Yes | **Neither** | regime.py / `_pg` twin | Yes, by construction — CLAUDE.md already documents `regime_days` non-idempotency confirmed independently wrong on both backends, differently |
+| `boring_signals` | Yes — organic day-by-day since 2026-07-10, verdict **B** (§34.8/35.7/36.7) | Yes — one-time undocumented bulk load, verdict **C** (§34.8/35.7/36.7) | **Neither, formally** — SQLite is the more-trustworthy copy today, on evidence, not by design | boring_signals.py / `_pg` twin | **Yes, confirmed the single worst case in this codebase** — the incident (PRL) signal that motivated the whole Postgres port is itself absent from Postgres (§34.3) |
+| `leaders_scan` | Yes | Yes | **Neither** | leaders_scan.py / `_pg` twin | Yes, by construction; both self-heal via an unbounded pending-date loop |
+| `leaders_top_picks` | Yes, current | Yes, **frozen at 2026-06-30** | SQLite, by default (Postgres simply hasn't updated) | `save_top_picks()` — latest-date-only, confirmed defect, still open (§29.9/§33.4) | N/A — Postgres isn't computing at all here, it's stalled |
+| `setup_log` | Yes | Yes | **Neither** | backfill_setup_log.py / `_pg` twin | Yes, by construction; both self-heal via a shared pending-date policy (import-shared, §24/§25 — the one place in this codebase where the two backends share logic rather than hand-duplicating it) |
+| `recovery_signals` | Yes | Yes | **Neither** | signal_engine.py / `_pg` twin | Yes, by construction — **no heartbeat at all** (confirmed: not in `data_health.py`'s `HEARTBEAT` list; is in `EVERY_SESSION`, so covered only by its own `MAX(as_of_date)` check, not a producer-ran check) |
+| `portfolio_signals` | Yes | Yes | **Neither** | signal_engine.py / `_pg` twin | Yes, by construction — **confirmed monitoring blind spot, not previously stated this plainly**: absent from BOTH `data_health.py` lists (`EVERY_SESSION` and `HEARTBEAT`) and absent from `_record_hook` calls in `cmd_update()`. Nothing anywhere checks whether this table is current on either backend. |
+| `pipeline_runs` | Yes — local ledger, own DDL | Yes — separate Cloud ledger, own DDL | **Neither — two wholly separate ledgers**, invisible to each other except the one `boring_signals` mirror-write | `data_health.py`'s `record_run()` | N/A (it's the monitoring layer itself, not a signal) |
+| `trade_setups` (dashboard actionable output) | Yes, includes Excel-synced `Actual` trades | Yes, synced separately (2026-07-31 fix, per CLAUDE.md) | SQLite for local trading records; Postgres receives a one-way sync | `import_actual_trades.py` (local) + its Postgres-sync path | Setups themselves (`System`/`Support Reversal`) are independently computed per backend like everything above; `Actual` trades are the one case with an explicit one-way push, closer to the target model than anything else in this table |
+
+**Answering the two framing questions directly:**
+- *Why does this data exist in two databases?* Not by architectural design — by historical accident. Postgres was added (commit `6aef53f`, 2026-05-06) to make Streamlit Cloud possible, and every subsequent hook was ported by hand-writing a `_pg`-suffixed sibling function rather than building one shared computation layer with a storage-only backend swap. The pattern repeated at every single hook because the first one set the convention, not because independent computation was ever a deliberate requirement.
+- *Are both databases independently computing production truth?* **Yes, confirmed, for every table in this list except `leaders_top_picks`** (which isn't computing at all on Postgres, it's just stalled) and `trade_setups`' `Actual` rows (the one genuine one-way sync in the codebase).
+
+### 37.C Current production execution path — one actionable signal, traced end to end
+
+Using `boring_signals` as the exemplar (highest stakes — the one edge the owner trades real capital against, per this program's own research log):
+
+```
+ksestocks.com publishes ~19:30-22:00 PKT
+        │
+        ├── LOCAL path (if the owner happens to log into Windows that day):
+        │     Task Scheduler logon trigger → run_update.bat → main.py --all
+        │     → scrape (SQLite) → prices_adjusted append (SQLite) →
+        │     stock_signals/sector_signals (SQLite) →
+        │     scan_boring_breakouts_pending(max_lookback=15) (SQLite,
+        │     bounded catch-up, confirmed by §36 to have never actually lost
+        │     data in this system's real history) → local dashboard (SQLite)
+        │
+        └── CLOUD path (runs regardless of the owner's logon state):
+              GitHub Actions cron 22:00 PKT → main.py --update
+              → scrape (Postgres, a SEPARATE scrape of the same source)
+              → prices_adjusted append (Postgres) →
+              stock_signals/sector_signals (Postgres) →
+              scan_boring_breakouts_pending() (Postgres, same bounded logic,
+              against Postgres's OWN independent state) → Cloud dashboard
+              (Postgres)
+```
+
+**Points where computation happens twice:** every stage after the raw scrape, confirmed.
+**Points where state can and does diverge:** every table in 37.B, confirmed for four of them with real dated incidents (PRL absence, 14-row decile disagreement, 07-07 gap, 08-03→08-11 freeze).
+**Points where processing can silently fail:** any of the ~13 try/except-wrapped hooks in `cmd_update()`, independently on each backend — a Cloud-side failure produces zero visibility on the local dashboard and vice versa, since each reads only its own `pipeline_runs` ledger.
+**Points where a different DB becomes authoritative:** none, formally — "authoritative" today is informally whichever backend the current viewer happens to be looking at, which is precisely the problem.
+**Points where stale results remain visible as actionable:** confirmed, `boring_signals`' own dashboard render path has zero staleness/`created_at` logic on either backend (§34.5) — this is the literal mechanism that let the PRL incident sit invisible for four days.
+
+### 37.D Current failure/recovery architecture
+
+**Failure handling, by hook** (from a direct, complete read of `cmd_update()`, `main.py:115-430`):
+
+| Hook | Wrapped in try/except? | Heartbeat (`_record_hook`)? | Recovery on missed day |
+|---|---|---|---|
+| Initial scrape (`prices`/`index_prices`) | Not explicitly, but `scraper.py`'s own internal retry/catch means a scrape failure returns 0 rows rather than raising (confirmed live, the 08-13 522 outage: "Attempt 1/3...2/3...3/3 failed...All retries exhausted...Scraped 1 dates -> 0...records" — logged, not raised) | No | N/A — always re-attempted the literal next run, no separate catch-up needed since it's date-driven |
+| `cleanup_ghost_dates()` | No explicit wrap (runs inline after upserts) | No | N/A |
+| `prices_adjusted`/corporate_action | Yes | **Yes** | Range-copy, self-healing (confirmed by §36.2's gap #1: broke 4 runs straight, self-healed completely once the code bug was fixed) |
+| `regime.py` | Yes | **No** | Unbounded backfill (per-date loop, no cap) |
+| `backfill_regime_columns` | Yes | No | N/A (retrospective fill-where-NULL) |
+| `page_flows.scrape_flows_today()` | Yes | No | N/A (write-only chain, feeds only a descriptive column) |
+| `sector_signals.py` | Yes | **No** | Unbounded backfill |
+| `stock_signals.py` | Yes | **No** | Unbounded backfill |
+| `signal_engine.py` (recovery/portfolio) | Yes | **No** — logged via `logger.info` only | Not independently re-verified this session whether its internal loop is bounded/unbounded/latest-only; flagged as an open item (37.L) |
+| `backfill_setup_log.py` | Yes | **Yes** | Unbounded backfill (shared pending-date policy with `leaders_scan.py`) |
+| `boring_signals.py` | Yes | **Yes** (+ mirrors to Postgres even locally) | **Bounded — 15 trading days**, the only capped mechanism in this codebase (§35.5/§36) |
+| `agent.py` (subprocess) | Yes, timeout+catch | No | N/A — bonus/non-critical by design; confirmed fails on the Cloud runner because `anthropic` is imported (agent.py:61) but listed in **neither** `requirements.txt` nor `requirements-optional.txt` — an undeclared dependency, not a secret/config gap |
+| `leaders_scan.py` (deep scan) | Yes | **Yes** | Unbounded backfill |
+| `run_analysis()` (Support Reversal) | Yes | No | N/A |
+| `market_breadth_oscillator.py` (subprocess) | Yes | No | N/A |
+| Rolling trim (`trim_old_rows_pg`) | Yes | No | N/A — Postgres-only, deletes rows older than 2 years |
+
+**Heartbeat coverage in one sentence: 4 of roughly 13 production hooks have any `pipeline_runs` visibility at all** (`setup_log`, `leaders_scan`, `boring_signals`, `corporate_action`). Everything else — including `market_regime`, `sector_signals`, `stock_signals`, and both `signal_engine.py` outputs — fails or succeeds with no ledger trace whatsoever, visible only as a `WARNING`/`INFO` line in whichever log file happened to capture that specific run (and per §36.1, `psx_pipeline.log` itself has been silently dead since 2026-06-14 despite dozens of confirmed real executions since).
+
+**"Pipeline succeeded" vs. "pipeline produced a complete, usable production state" — confirmed structurally conflated, not just for `boring_signals`:** `_record_hook`'s default is `status="ok"` (main.py:97); the only thing that flips it to `"error"` is a raised exception reaching the `except` block. A hook that runs against a partial universe, a stale upstream table, or a truncated catch-up window returns a plain integer and is recorded identically to a fully complete run — confirmed by direct code read for `boring_signals` (§35.5/§36.5) and structurally true for every other `_record_hook` call by the same mechanism.
+
+### 37.E Architectural contradictions — multiple sources of truth
+
+1. **`boring_signals` is the clearest case in the entire codebase**: two independently-computed answers to "what actionable signal exists right now," for the one screener real capital is traded against. SQLite is currently the more trustworthy of the two, by evidence, not by design.
+2. **`prices_adjusted` has independently broken on each backend, differently, invisibly to the other** — Postgres's 07-07 gap and SQLite's 08-03→08-11 freeze are two separate incidents that nothing in this architecture would ever cross-check against each other.
+3. **The same real-world signal's `rs_60_decile`/`strategy_confirmed` flag can be true on one backend and false on the other** (§34.2/35.1) — a cross-sectional rank computed independently over two different-sized universes.
+4. **Two separate `pipeline_runs` ledgers**, each invisible to the dashboard reading the other backend — a viewer on the Cloud dashboard has zero visibility into local pipeline health, and (this being the machine the owner actually relies on ~99% of the time) vice versa is the more consequential direction in practice.
+5. **CLAUDE.md itself has repeatedly drifted from the actual code** (already-documented pattern: stale PAGES list §0, stale workflow count, and this session's own `psx_pipeline.log` finding) — the same "no single source of truth" failure mode recurring one level up, in documentation rather than data.
+6. **The infrastructure-detection line itself is duplicated 6+ times** (`_PG_URL = os.environ.get(...)`) rather than centralized — a small instance of the same pattern that produced the large instances above: every new feature re-derives its own answer to "which backend am I on" instead of asking one shared authority.
+
+### 37.F Owner requirements → engineering needs
+
+| Owner requirement | Engineering need | Current state |
+|---|---|---|
+| 1. Background computation | Dashboard page load must never trigger production calculation | Mostly true today (cmd_update() runs out-of-request, via scheduler/Actions) — no violation found this session |
+| 2. Fast pages (3-5s) | Pages read pre-computed state only | Already addressed in §8 (caching, subprocess-on-load fix); orthogonal to this review |
+| 3. Remote access | A dashboard reachable without the local machine being the only gateway | Exists today (Streamlit Cloud) but reads an independently-computed, currently-less-trustworthy copy of the data |
+| 4. Durable data | Loss of the local machine must not destroy the production record | **Not currently true** — the full historical record (15+ years) lives authoritatively on local SQLite only; Postgres actively deletes rows older than 2 years (`trim_old_rows_pg()`) |
+| 5. Automatic/reliable recovery | Missed runs detected and caught up without a human | Partially true (unbounded backfills self-heal); undermined by (a) the local trigger being logon-only, confirmed the least reliable trigger in this architecture, and (b) only 4/13 hooks having any visibility into whether recovery was even needed |
+| 6. One trustworthy production signal | Single authoritative computation per signal | **Not true today** — confirmed independently computed on both backends for nearly every table (37.B) |
+| 7. Minimal operational burden | No manual script-running, log-reading, or DB reconciliation | **Not true today** — this review itself exists because reconciling two databases by hand has become recurring work (§34/35/36) |
+| 8. Clear failure visibility | A single, comprehensive "is Kiran healthy" view | Exists in nascent form (`data_health.py`'s sidebar banner, §31) but covers only 4/13 hooks and only the backend the current viewer is connected to |
+| 9. Auditability | A complete, trustworthy record of what ran and when | **Materially undermined** — three confirmed out-of-band, unlogged production writes in nine days (§35/§36), plus the dead `psx_pipeline.log` |
+| 10. Controlled deployment | Changes go live deliberately, not accidentally | Already well-addressed (§23 CI gate, §10/DEPLOYMENT.md staging plan) — orthogonal to this review |
+| 11. Capital-safe behaviour under stale/incomplete data | An explicit "DATA STALE — DO NOT TRADE" state | **Confirmed absent** for the one screener that matters most (`boring_signals`, §34.5) |
+
+### 37.G Target architecture options
+
+**Option A — Postgres authoritative, single pipeline**
+```
+Market Data → GitHub Actions (cron, existing) → Postgres → Local dashboard + Cloud dashboard
+```
+The existing GitHub Actions cron becomes the *only* production pipeline. `main.py`'s SQLite branch is retired from the production path. Local `dashboard.py` gets a `DATABASE_URL` pointed at the same Supabase instance the Cloud app uses — same data, same code path, both dashboards. Local Task Scheduler's `run_update.bat` is retired or repurposed as a manual dev/debug tool only.
+
+**Option B — SQLite authoritative + one-way replication**
+```
+Market Data → Local pipeline (existing, Task Scheduler) → SQLite → one-way sync → Postgres (replica) → Cloud dashboard
+```
+Keeps today's actual computation exactly where it currently earns its trust (local, per §34.8/36.7's own verdicts — SQLite B, Postgres C). Adds a genuinely new but simple component: a sync step that copies already-computed rows to Postgres after each local run — replication, not recomputation. Postgres becomes explicitly a read replica for remote viewing only.
+
+**Option C — Postgres authoritative, single pipeline, plus a local read-only cache**
+```
+Market Data → GitHub Actions (cron) → Postgres → [Local pull-cache (one-way, refresh-when-online)] + Cloud dashboard
+                                                 ↳ Local dashboard reads the cache
+```
+Same computation model as A, but preserves the one real capability A gives up: a local dashboard that still works with no internet connection (reading yesterday's cached pull), explicitly labeled non-authoritative.
+
+### 37.H Comparison
+
+| Requirement | A (PG authoritative) | B (SQLite authoritative + replica) | C (PG authoritative + local cache) |
+|---|---|---|---|
+| Background computation | Strong | Strong | Strong |
+| Page performance | Strong | Strong | Strong |
+| Remote access | Strong | Acceptable (remote view only as fresh as the last local run) | Strong |
+| Data durability | Weak *as configured today* (rolling 2-year trim must be removed/rescoped first) — Strong once fixed | Strong (today's full local history stays authoritative) | Weak-then-Strong, same caveat as A |
+| Disaster recovery | Strong (managed Postgres backups, once confirmed) | Weak (still one Windows laptop as the single copy of truth) | Strong |
+| One source of truth | Strong | Strong | Strong |
+| Failure visibility | Strong (one ledger to build out) | Acceptable (still one ledger, but the replication step is a new thing that can itself silently fail) | Strong |
+| Recovery | Strong (existing cron is more reliable than logon-trigger) | Weak (still gated on the same logon-trigger reliability problem this review found) | Strong |
+| Auditability | Strong (one pipeline, one ledger, one place to look) | Acceptable | Strong |
+| Operational simplicity | Strong (fewest moving parts of the three) | Weak (adds a new sync component to babysit) | Acceptable (one extra component vs. A) |
+| Development complexity | Acceptable (retire, don't build, SQLite paths) | Weak (build and maintain a new, correct, idempotent sync job) | Acceptable |
+| Migration risk | Acceptable (well-scoped: fix known data-integrity issues first, then cut over) | Acceptable (smaller data move, but a new failure class introduced) | Acceptable |
+| Capital safety | Strong, **conditional on** §34.9/§35.8/§36.9's boring_signals repairs landing first | Strong (keeps the currently-more-trustworthy backend as the brain) | Strong, same condition as A |
+
+### 37.I Recommended architecture
+
+**Option A, Postgres authoritative, single pipeline — conditional on the already-known data-integrity repairs landing first, not skipped.**
+
+Reasoning, directly against the owner's own stated principle ("simple to operate, hard to break, easy to verify"):
+- GitHub Actions' cron trigger is **already more reliable than the local Task Scheduler's logon trigger** — this review's own evidence (§36.2's 08-19 gap: zero execution because nobody logged into Windows that day) shows the local trigger is the actual weak link, not Postgres-as-infrastructure. Consolidating onto the cron-triggered path removes today's single biggest, already-observed point of failure rather than papering over it with a second synchronization layer (Option B).
+- It is the only option that literally satisfies "compute once, store authoritatively, serve everywhere" — Option B still computes once but replicates, which is genuinely simpler than two computations, but retains the logon-trigger reliability problem as the new bottleneck for both local *and* remote views.
+- It has the fewest new moving parts: no new sync/replication job to build, test, and maintain (Option B's biggest cost); no local cache/refresh logic to reason about (Option C's added piece, worth it only if true offline access is a hard requirement — see below).
+- The main real cost is the one this review must state plainly, not bury: **today's local dashboard works with no internet connection at all** (it's just reading a local file); Option A gives that up entirely, Option C partially preserves it at the cost of one more component. Given the owner is described as relying on the local machine ~99% of the time, this specific tradeoff — not the database technology — is the one point genuinely worth the owner's own input before authorizing a cutover, not something this review should decide unilaterally.
+- **Hard precondition, not optional:** cutting over before fixing what's already known to be wrong on the Postgres side (§34.9/§35.8/§36.9 — the non-deterministic `boring_signals` build, the 07-07 `prices_adjusted` gap, `leaders_top_picks` still frozen at 06-30) would promote a *less* trustworthy copy to sole authority. The repair order matters: fix, verify parity, then cut over — not cut over and hope the existing repair backlog covers it.
+
+### 37.J Authority model — explicit, not left ambiguous
+
+- **Production signal computation authority:** one pipeline — the existing GitHub Actions cron path (`daily_scraper.yml`), once its known data-integrity gaps are closed. The local Task Scheduler pipeline stops writing production signals.
+- **Production data authority:** Postgres (Supabase).
+- **Dashboard read authority:** both local and Cloud `dashboard.py` instances read Postgres directly — same code, same data, no divergence possible by construction.
+- **Backup authority:** Supabase's own managed backup (tier/retention not yet confirmed this session — flagged in 37.L) **plus** an independent periodic export (e.g. a scheduled `pg_dump` to local or cloud storage) so a single hosting-provider failure is not the sole line of defense — durability should not depend on trusting one vendor's backup alone.
+- **Local/offline authority:** SQLite becomes an explicitly non-authoritative, read-only artifact — either a periodically-refreshed local cache (Option C) or retired from the production path entirely (Option A as stated) — never a production write target again.
+
+### 37.K "Boring state," architecturally
+
+The infrastructure this needs **already exists** (`data_health.py`'s `EVERY_SESSION`/`HEARTBEAT` lists and sidebar banner, §31) — the target architecture's job is to make it *complete* and *singular*, not to invent something new:
+- Extend heartbeat coverage from 4 to all ~13 production hooks (37.D's table shows exactly which 9 are currently invisible).
+- Collapse two `pipeline_runs` ledgers into the one that will exist once there is only one pipeline (Option A resolves this as a side effect, not a separate task).
+- Add the one thing confirmed absent everywhere in this codebase today: a per-signal staleness/`created_at` surface and an explicit "DATA STALE / NOT VERIFIED — DO NOT TRADE" state on `boring_signals` specifically (§34.9 item 1/§35.8 item 5, both already proposed, neither yet built).
+
+### 37.L Migration considerations (not performed)
+
+- **Can remain:** `dashboard.py`'s single-file-serves-both-backends pattern; the existing `_pg`-suffixed function convention (no need to rewrite working per-hook logic, only to stop running it twice); the CI gate and staging plan (§23/DEPLOYMENT.md) as the vehicle for verifying the cutover itself.
+- **Should be deprecated:** the local Task Scheduler "PSX Daily Update" task as a *production writer* (may be kept as a manual/dev tool); the hand-duplicated `_PG_URL` detection line in 6+ files, replaceable by one shared helper once there's only one path left to detect.
+- **Should become read-only:** local SQLite, in its entirety, once cutover is verified.
+- **Should become authoritative:** Postgres, but only after the specific repairs below are verified, not as a precondition-free step.
+- **Should be rebuilt, not just migrated:** `boring_signals` on Postgres specifically — via a true chronological day-by-day replay (§35.3's Test 2 already demonstrates the correct method) from an early-enough floor to catch real incidents like PRL, not another clean-slate bulk load.
+- **Historical data that must be preserved:** the full local SQLite price/signal history (15+ years for `prices`, back to go-live for each signal table) — must be migrated in full before `rolling_trim`'s 2-year Postgres window is trusted as the new production record, or that trim behavior must be removed/rescoped first.
+- **Tests required before cutover:** an integration test asserting SQLite/Postgres agreement on `boring_signals`' `rs_60`/`rs_60_decile` over a shared, gap-free window (§34.9 item 5, already proposed) — this is the literal acceptance test for "Postgres is now at least as trustworthy as SQLite was," and should gate the cutover, not follow it.
+- **Rollback:** trivial in principle — local SQLite remains intact and current up to the cutover date throughout, since Option A doesn't require deleting it, only ceasing to treat it as authoritative. A rollback is "point both dashboards back at SQLite and re-enable the local write path," not a data-recovery operation, provided SQLite isn't decommissioned prematurely.
+
+### 37.M Remaining unknowns (material only)
+
+Whether Supabase's current tier includes automated backups and what their retention window is (not checked this session — a direct account/tier check, not a code question). Whether `signal_engine.py`'s internal pending-date loop is bounded, unbounded, or latest-only (37.D flagged, not verified this session — the one hook whose recovery semantics this review could not close out from the code already read). Whether Postgres's own `append_new_prices_adjusted_pg()` has ever had an incident analogous to SQLite's 08-03→08-11 freeze — not checked (would need the same forensic pass §36 ran, applied to the Postgres side specifically). What Supabase compute tier is actually provisioned today, given the nano-tier read-only-transaction failure already observed live (§33.4/`2a0edf0`) — relevant to whether Option A's "single pipeline" would need a tier upgrade to avoid that failure class recurring under sole-authority load.
+
+### 37.N Repair implications
+
+**Repairs that remain necessary regardless of which target architecture is chosen:** all of §34.9/§35.8/§36.9's list — none of it is made unnecessary by an architecture decision, since it addresses data correctness, not which database is authoritative. In particular, the `boring_signals` chronological rebuild and the staleness/`created_at` UI surface are prerequisites for Option A/C, not alternatives to them.
+
+**Repairs that become unnecessary, or change shape, under Option A:** the standing "SQLite/Postgres could drift because two independent implementations exist" risk (§34.6's "future edit to one path and not the other silently diverges") disappears by construction once only one path is live — this is Option A's single largest simplification, not a repair item that needs separate engineering. The `leaders_top_picks` latest-date-only freeze (§29.9) still needs its own code fix regardless of architecture, but a single-pipeline world makes it far harder for a fix like this to silently stay half-applied to only one backend, which is exactly how it went unnoticed as long as it did.
+
+**Date of this entry: 2026-08-21. Status: DESIGN REVIEW ONLY — no code, schema, database, or UI changes made; no repairs authorized; no migration performed. Awaiting independent review before any implementation begins.**
+
+---
+
+## 38. <span style="color:#dc2626;">🔴 Kiran Production Architecture Review, Part 2 — one authoritative computation + durable local historical archive (2026-08-21)</span>
+
+Refines §37 around one new, explicit requirement the owner added: the local historical dataset (currently 2005–2026 and growing daily) is valuable and must **not** be treated as disposable cache, and the owner is on Supabase's free tier with real storage limits. Read-only throughout. New evidence this pass: a live, read-only query against the actual Supabase database (session set `readonly`, no writes) to get real current storage numbers, plus a direct read of `database_pg.py`'s rolling-trim function and its introducing commit. No code, schema, database, deployment, or configuration was touched.
+
+### 38.1 New evidence gathered this pass
+
+**CONFIRMED, direct query, 2026-08-21, read-only session:** current Supabase database size is **199 MB**. Per-table breakdown (largest first): `prices` 55 MB, `prices_adjusted` 47 MB, `stock_signals` 31 MB, `sector_signals` 15 MB, `symbol_active_dates` 13 MB, `setup_log` 13 MB, `index_prices` 2.1 MB, `portfolio_signals` 1.7 MB, `backtest_setups` 1.5 MB, `market_flows` 1.2 MB, `market_regime` 0.94 MB, `sim_portfolio_trades*` (three variants) ~2.3 MB combined, `trade_setups` 0.43 MB, `stm_signals` 0.38 MB, `sectors` 0.35 MB, `leaders_scan` 0.31 MB, `agent_reports` 0.19 MB, `screened_dates` 0.16 MB. **UNRESOLVED, flagged not assumed:** the account's actual current Supabase plan/storage limit was not verified against the Supabase dashboard itself this session — 500 MB is the commonly-cited free-tier figure and is used as a working assumption below, but should be confirmed directly before this design is finalized.
+
+**CONFIRMED, direct code read, `database_pg.py:2117-2153`, `git show c9080d6`:** a rolling 2-year trim (`trim_old_rows_pg()`, feature `E8.6a`, introduced 2026-07-08) **already exists** and already implements almost exactly the design this task asks for — its own docstring and commit message state, verbatim: *"Local SQLite (psx_data.db) is the permanent full-history archive — these deletions only affect the rolling Supabase operational copy."* This is not a new idea being proposed from scratch; it is an existing, deliberate, already-partially-implemented architectural intent that this review is completing and formalizing, not inventing. **It currently covers only 5 tables**: `prices`, `prices_adjusted`, `stock_signals`, `setup_log` (`setup_date`), `symbol_active_dates`. **Not covered, and left to grow unbounded on Postgres**: `sector_signals` (already the 4th-largest table at 15 MB and growing ~250 rows/day, the clearest gap), `market_regime`, `boring_signals`, `leaders_scan`, `leaders_top_picks`, `recovery_signals`, `portfolio_signals`, `trade_setups`, `index_prices`, `market_flows`.
+
+**CONFIRMED, direct SQLite query, 2026-08-21:** local `psx_data.db`'s `prices`/`prices_adjusted` span **2005-01-03 → 2026-08-20, 1,763,055 rows each** (identical counts — currently gap-free in row-count terms, though §35.1/§36 already found each backend has independently had a *temporary* multi-day gap at different points; both are closed as of today). Row counts for the other tables this review covers: `stock_signals` 692,299, `setup_log` 208,351, `sector_signals` 64,253, `market_regime` 5,345, `portfolio_signals` 3,931, `leaders_scan` 818, `trade_setups` 867, `leaders_top_picks` 34, `recovery_signals` 63, `boring_signals` 183.
+
+**CONFIRMED, direct code read, `database.py:598-649` (`get_prices_for_breadth_recent`)'s own docstring:** the single longest rolling-lookback requirement found anywhere in this codebase is `market_breadth_oscillator.py`'s Weinstein breadth calculation, empirically swept in that docstring to need **~700 calendar days for full numerical convergence** (302 trading days minimum, materially more for EMA warm-in, verified by direct comparison against the unfiltered query: diffs of 0.034 at 480 days, ~1e-7 at 600 days, ~1e-12 — pure float roundoff — at 700 days). **This function is called via `database.py`'s auto-switching `get_prices_for_breadth()`** (unfiltered, no date limit in its own SQL) inside `market_breadth_oscillator.py`, which runs identically on both backends via the same `cmd_update()` subprocess call (`main.py:403-413`) — confirmed no `_PG_URL` branch exists in `market_breadth_oscillator.py` itself; it inherits whichever backend `database.py` is already pointed at. **Favorable consequence, not confirmed to be deliberate sizing:** on Postgres, this unfiltered query can only ever return whatever `prices` currently holds — which, thanks to the existing 2-year (~730-day) rolling trim, already exceeds the ~700-day convergence requirement. The current retention window happens to be wide enough for the codebase's single longest known lookback need. Worth preserving exactly, not shortening, when finalizing Postgres's retention policy — but not confirmed as an intentional design match, flagged as INFERRED/fortunate rather than CONFIRMED/deliberate.
+
+### 38.2 Correction to §37, stated explicitly (not silently replaced)
+
+§37.F rated "durable data" as **Weak as configured today**, citing the rolling trim as a problem needing removal before Option A could be trusted. On closer evidence this pass, that framing was **too harsh and slightly wrong about the mechanism**: the trim is not an accidental data-destruction bug — it is a deliberate, already-documented design decision (`c9080d6`'s own words) that correctly assumed local SQLite would remain the permanent archive. §37's error was treating the trim as something to *undo*; the correct framing, confirmed this pass, is that the trim is something to **complete** (extend to the untrimmed tables, §38.1) and **formalize** (stop treating SQLite as a second computation and make the archive relationship explicit and monitored), not remove. §37's underlying concern — that nothing today verifies the local archive actually stays complete, or alerts if it silently stops receiving data — remains valid and is addressed in 38.6 below.
+
+### 38.3 Distinguishing local durable storage from local production computation
+
+This is the central conceptual clarification the owner's brief asked for, and it resolves cleanly from the evidence already gathered in §37 plus this pass's new findings:
+
+- **Local durable storage** (keep, strengthen): SQLite continuing to receive and retain the full, ever-growing historical record for every table — this is a *storage* property and costs almost nothing (a modern disk holds decades of this data trivially; the entire current `psx_data.db` is under 1 GB for 21 years of `prices`/`prices_adjusted` history).
+- **Local production computation** (retire): SQLite independently re-running `boring_signals`, `stock_signals`, `sector_signals`, etc. against its own copy of the world and deciding, on its own, what today's actionable signal is — this is a *computation* property, and it is this, not the storage, that produces §37's confirmed divergences (PRL absence, the 14-row decile disagreement, the two independent multi-day freezes).
+- These are **orthogonal**, not opposed. A design can (and, per this review, should) have maximal local storage durability **and** zero local independent computation at the same time. §37's Option A description ("SQLite retired from the production path") under-specified this — it correctly identified the computation change but did not spell out that storage should not merely be *tolerated* locally, it should be *strengthened* there. This section corrects that gap.
+
+### 38.4 What SQLite should become, table by table
+
+| Table | Recommended role | Why |
+|---|---|---|
+| `prices` / `prices_adjusted` / `index_prices` | **C (durable archive) + E (recovery source)** | Full, untrimmed, growing forever. Already the intended design per `trim_old_rows_pg()`'s own docstring. Recovery capability already empirically demonstrated for the adjacent `boring_signals` case (§35.3's Test 2: a true chronological replay from archived price history correctly reconstructs real production signal history) — the same principle should hold for these raw/adjusted tables by construction, since nothing downstream is more fundamental than them |
+| `stock_signals` / `sector_signals` / `market_regime` | **C + E** | Derived, deterministic functions of price history — archiving them locally is cheap insurance and useful for research, but they are in principle re-derivable from the archived prices above if ever lost. No longer an independent computation once the single pipeline is Postgres-side |
+| `boring_signals` | **C + E, highest-priority case** | SQLite's current organic history is verdict **B** (more trustworthy than Postgres's verdict **C**, per §34-36) — but going forward this stops mattering, because there is only one computation left to trust. SQLite's job becomes purely: receive and keep the one true published history. This is the clearest illustration in the whole codebase of why "compute once" matters more than which backend happens to be more accurate today |
+| `leaders_scan` / `leaders_top_picks` / `setup_log` / `recovery_signals` / `portfolio_signals` | **C + E** | Same pattern as above |
+| `pipeline_runs` | **G — combination**, specifically the *archive half of a single, unified ledger* | Today there are two separate ledgers, invisible to each other. The target should be one production ledger (living with the one computation, i.e. Postgres) that is also mirrored/archived locally, so a durable local record of "did the pipeline run and did it publish" survives even a Postgres outage — directly serves auditability and recovery |
+| `trade_setups` | **Its own case — not the same box as the rest** | This table's true ground truth is not computed at all — it is the owner's own Excel trading journal (already established, CLAUDE.md: "Excel is always ground truth for P&L, status, and outcome"). Both SQLite and Postgres are downstream syncs of that external human record for the `Actual`-sourced rows, which already resembles the target one-way-sync model better than anything else in this table (§37.B). System-generated setups (`System`/`Support Reversal`) follow the same C+E pattern as everything else once the single-computation model is in place |
+
+**None of the 13 tables reviewed support "B — independent production computation" or "A — production authority" as SQLite's future role.** Every one resolves to some combination of C (archive), E (recovery source), or — for `pipeline_runs`/`trade_setups` specifically — a small, explicit variant of G tailored to what that table actually is.
+
+### 38.5 What Postgres should become
+
+**Yes — the authoritative, remotely-served production state, while SQLite remains the durable historical archive.** Answering each sub-question directly:
+
+- **Why:** it is the only piece of this architecture reachable by both the owner's laptop and the outside world without depending on the laptop being on — the precondition for "remote access" that doesn't collapse to "remote access to whatever my Windows machine last happened to publish."
+- **What data Postgres actually needs:** for the large, per-symbol-per-day tables (`prices`, `prices_adjusted`, `stock_signals`, `sector_signals`, `setup_log`, `symbol_active_dates`), a **bounded rolling window** — the existing ~2-year trim, which (38.1) already comfortably covers the single longest real lookback requirement found in this codebase (~700 days). For the small tables (`market_regime`, `boring_signals`, `leaders_scan`, `leaders_top_picks`, `recovery_signals`, `portfolio_signals`, `trade_setups`, `index_prices`) — full current state, untrimmed, since their storage cost is negligible (all under 2 MB today) and trimming them buys nothing.
+- **What does NOT need to remain indefinitely in Postgres:** anything older than the longest real lookback requirement, for the large tables only — i.e. exactly what the existing trim already does for 5 of them, extended to the 6th large-and-growing one (`sector_signals`, 38.1's flagged gap).
+- **How the free-tier constraint affects the design:** at 199 MB against a working ~500 MB assumption, there is real headroom today, but it is not infinite and not being monitored — `sector_signals` alone will keep closing that gap indefinitely if left untrimmed. This is a real, quantifiable, but not urgent constraint; per the owner's own instruction, the *general* problem of managing indefinite local database growth is explicitly out of scope for this review, but the *specific*, already-identified Postgres-side gap (untrimmed `sector_signals`) is directly in scope since it is the same mechanism as the trim already accepted as correct for five sibling tables.
+- **Full historical dataset or production-serving subset:** **production-serving subset only.** The entire 21-year history's one authoritative home is local SQLite; Postgres holds only what serving today's dashboard and computing tomorrow's signal actually require.
+
+### 38.6 Data flow — refined from §37's conceptual sketch, resolved against a real network constraint
+
+§37 sketched local storage and Postgres serving as symmetric children of one computation. That sketch under-specifies a real, concrete constraint this pass surfaces: **if the single computation runs on GitHub Actions (an ephemeral, remote runner), it has no network path to write directly to a file sitting on the owner's Windows laptop**, which is not always on and exposes no endpoint. This determines the actual data-flow direction, not a preference:
+
+```
+MARKET DATA (ksestocks.com)
+        │
+        ↓
+SINGLE PRODUCTION PIPELINE (GitHub Actions cron — §38.7)
+        │
+        ↓
+COMPUTE SIGNALS  →  VALIDATE STATE (§38.8/38.9)  →  PUBLISH (only if valid)
+        │
+        ↓
+   POSTGRES (authoritative, bounded rolling window, remote-served)
+        │
+        ↓  (PULL, not push — the local machine reaches out, whenever online)
+        │
+  LOCAL SYNC JOB  (repurposed Task Scheduler job — no longer "compute", now
+  "pull whatever Postgres has newly published and append to the local archive")
+        │
+        ↓
+   LOCAL SQLITE  (durable full-history archive; local dashboard's
+   last-known-good / offline read source; recovery source)
+```
+
+**Direct answers:**
+- **When is local data written?** Whenever the local machine is next online, by a pull-sync job that copies newly-published Postgres rows down — not on a push from the pipeline, and never by independent local computation.
+- **When is Postgres written?** Once per pipeline run, by the single GitHub Actions-triggered computation, and only at the very end, after validation (§38.8/38.9) — never incrementally mid-computation.
+- **Which system is authoritative for today's actionable signal?** Postgres, unambiguously, always.
+- **Can the local copy ever independently generate a different production signal?** **No, by construction** — the local job's only verb is "copy what Postgres already published," never "compute." This is the one change from today's actual architecture that matters most; everything else in this design is in service of making this true.
+
+This is a material refinement of §37's Option A, not just a restatement: §37 said local SQLite would be "retired or repurposed as a manual dev tool." This pass resolves that ambiguity concretely — **repurposed, not retired**, with a specific, small new job (pull-and-archive) replacing today's `run_update.bat` (compute-and-write), still triggered by the same Task Scheduler mechanism if convenient, but doing something structurally different and much simpler.
+
+### 38.7 Is GitHub Actions actually suitable as the sole production execution environment?
+
+Evaluated point by point, not asserted:
+
+| Dimension | Finding |
+|---|---|
+| Missed schedules | GitHub's cron can occasionally skip a run under platform load (a GitHub-side behavior, not project-specific) — **mitigated already**: `cmd_update()`'s date-driven catch-up means a skipped day is simply picked up by the next run |
+| Retry | `scraper.py` retries each date up to 3 times (confirmed live during the 08-13 522 outage) — but there is **no workflow-level retry** if the whole job fails outright. A real, missing piece, not a blocker (the next day's run still catches up) |
+| Duplicate/overlapping runs | **Already correctly prevented** — `daily_scraper.yml`'s `concurrency: group: daily-scraper, cancel-in-progress: false` serializes runs rather than letting two race |
+| Secrets | `DATABASE_URL` via repo secrets — standard, already correctly in place |
+| Database availability | Supabase's own uptime, plus an already-confirmed incident (§33.4: nano-tier compute transiently rejecting writes, since patched for `init_db()` specifically) — a soft dependency risk tied to the free/nano tier, not to GitHub Actions itself |
+| Execution duration | 60-minute workflow timeout, no evidence this session of any run approaching it — ample margin |
+| Logs | GitHub's default ~90-day retention is fine for operational debugging but is not, and should not be treated as, a substitute for the in-app `pipeline_runs` ledger |
+| Alerts | **Confirmed absent in practice** — the workflow's own "Notify on failure" step is only a `::error::` log annotation plus a comment for an optional `curl` call that was never actually written in. A real failure today produces no email/SMS/Slack alert to anyone |
+| Recovery / manual intervention | `workflow_dispatch` allows a manual re-trigger from the GitHub UI — usable, but requires whoever intervenes to know GitHub's interface; worth pairing with a simple one-click bookmark rather than assuming familiarity |
+| Persistence of run history | GitHub's own Actions run log supplements, but does not replace, `pipeline_runs` as the durable, queryable record |
+
+**Verdict: yes, suitable, with two concrete prerequisites to close, not open-ended concerns:** (1) real failure alerting (currently there is none), and (2) an explicit "N consecutive missed/failed sessions" escalation (today's self-healing catch-up logic quietly absorbs this exactly the way §36.2's `prices_adjusted` freeze went eight days before a human noticed — the same failure class this program has already found once, now more consequential if this becomes the *only* pipeline).
+
+### 38.8 Publication boundary — feasible with the current architecture, not yet built
+
+Today, `pipeline_runs` records "did this hook run and return," per hook, independently — there is no aggregate gate answering "did *today's session*, taken as a whole, produce a trustworthy state." Proposed (design only): a final step at the end of `cmd_update()` that checks every required hook's heartbeat for the session date plus the freshness/completeness contract (38.9), and only then writes one small marker — a `published_at`/`session_verified` record, either a new one-row-per-day table or a reserved `pipeline_runs` entry (`hook_name='_publish'`) — that the dashboard's actionability gate reads instead of individual hook rows. This is a genuinely small, additive change to the existing structure (one more step appended to an already-linear function), not a redesign, and is feasible without touching anything else in the pipeline.
+
+### 38.9 Freshness/completeness contract
+
+What should be proven before an actionable signal displays, and what already exists vs. is missing:
+
+| Requirement | Already checkable today? |
+|---|---|
+| Expected trading date arrived | Yes — `data_health.py`'s `expected_session` check against ksestocks |
+| Market data complete (raw) | Partially — `prices` `MAX(date)` check exists; no per-symbol universe-size completeness check (the exact gap §34.6 already flagged: a partially-scraped day looks identical to a normal smaller-universe day) |
+| Adjusted data complete | Same gap as above, one layer down |
+| Required calculations completed | Partially — 4 of ~13 hooks have heartbeats (§37.D); the rest have none |
+| Required tables updated | Partially — `EVERY_SESSION`'s 6 tables are checked; `portfolio_signals` (38.4) has zero coverage anywhere |
+| No critical stage failed | Only for the 4 heartbeat-covered hooks |
+| No known data gap | **Not checked anywhere today** — this is the single biggest missing piece, and exactly the mechanism that let the 08-03→08-11 freeze (§36.2) run for 8 days unnoticed |
+| Production state coherent | Not formally defined anywhere today — this review's 38.8 proposal is the mechanism that would define it |
+| Signal calculation used authoritative data | N/A once single-computation is in place — today, ambiguous (which backend's calc is "the" one?) |
+| Publication completed | Does not exist today — 38.8 proposes it |
+
+**Desired failure behavior, confirmed correct and matching the owner's own stated design:** when any requirement fails, the publish step (38.8) simply does not advance, and every dashboard — local and remote alike — falls back to showing its last successfully published state, explicitly labeled with that state's timestamp. No silent stale signal, ever.
+
+### 38.10 Direction of authority — answered directly, not hedged
+
+**"If SQLite says SIGNAL and Postgres says NO SIGNAL, which one wins?" → Postgres wins, unconditionally, always.** Under the target design this specific conflict becomes structurally impossible in steady state, because SQLite never computes a signal independently again — it only ever holds a copy of what Postgres has already published. The only way SQLite could show something different is if the local pull-sync simply hasn't caught up yet, which is a **staleness** condition, not a competing authority, and must be presented as such.
+
+**"If Postgres is temporarily unavailable, can the local system independently declare a new production signal?" → No.** This confirms the owner's own stated presumption is the correct design, for a reason grounded in this review's evidence, not merely by preference: every confirmed real divergence this program has found (§34/35/36) came from exactly this — a backend computing on its own, out of step with the other. Removing that capability from the local side is not a restriction being imposed on an otherwise-equal peer; it is the removal of the one mechanism that has produced every cross-backend inconsistency found so far. **The correct behavior on Postgres unavailability is a visible degraded state** (e.g. "DATA STALE / NOT VERIFIED — DO NOT TRADE"), on both dashboards, sourced from the publication-boundary marker (38.8) rather than either raw table's own `MAX(date)`.
+
+### 38.11 Local data durability — assessed directly
+
+- **Does the current local pipeline already give a complete historical archive?** For `prices`/`prices_adjusted`: yes, currently gap-free in row-count terms across the full 2005-2026 span (38.1), though both backends have independently had *temporary* gaps in the past (§35.1, §36.2) that were each eventually closed. For the other 11 tables reviewed: row counts confirmed present and large, but **not individually gap-swept this session** — only `boring_signals` and `prices`/`prices_adjusted` have been rigorously checked for completeness across this program's forensic history to date. Flagged as an open item (38.13), not assumed clean.
+- **Are all important raw/adjusted data locally retained?** Yes for `prices`/`prices_adjusted`, confirmed. Everything derived from them is, by construction, re-derivable if the raw layer is intact — but that re-derivation capability has been empirically *proven* only once (`boring_signals`, §35.3's Test 2), not for every table.
+- **Would production computation need data lost if Supabase history is trimmed?** No — this is precisely why the bounded-window design (38.5) is safe: nothing in this codebase's real production computation needs more than ~700 days of lookback (38.1), well inside even the existing 2-year window.
+- **Can the local archive reconstruct/recover production state?** Yes, demonstrated for `boring_signals`. Not yet demonstrated, but expected to hold by the same logic, for the other derived tables — an open verification item, not a blocker to the design.
+- **Are there gaps that make the local archive currently unsuitable as a recovery source?** None found for `prices`/`prices_adjusted` specifically. Not ruled out for the other tables, since they weren't individually swept this session.
+
+### 38.12 Architecture options
+
+**Option A — Postgres authoritative (bounded window) + local durable archive via pull-sync.** The refined design in 38.6-38.10: one computation (GitHub Actions), one authoritative state (Postgres, bounded to the real lookback need), one durable archive (local SQLite, full history, receives via pull not push, never computes).
+
+**Option B — SQLite authoritative + one-way push-replication to Postgres.** As in §37, re-evaluated with this pass's concrete network-direction finding: if SQLite (on an intermittently-online Windows laptop) is authoritative, then remote access is only ever as fresh as the last time that specific laptop was online and successfully pushed — structurally weaker for "reliable remote access" than Option A, whose authority (GitHub Actions) runs on a fixed schedule independent of the owner's laptop entirely.
+
+**Option C — Option A, plus a dormant local emergency-compute fallback**, engaging only if Postgres/GitHub Actions has been unreachable or unpublished beyond a defined threshold (e.g. 3+ days), clearly labeled provisional/unverified while active. Addresses the one scenario Option A doesn't cover as gracefully — an extended Cloud-side outage — at the cost of keeping a second, rarely-exercised compute path alive and correct. Not the default recommendation (adds real maintenance burden for a rare case that today's date-driven catch-up already handles for ordinary gaps), but available if the owner is more risk-averse to an extended Cloud outage than to the added complexity.
+
+### 38.13 Scoring
+
+| Requirement | A | B | C |
+|---|---|---|---|
+| 1. One authoritative computation | Strong | Strong | Strong (Acceptable during a rare fallback window) |
+| 2. One authoritative production signal | Strong | Strong | Strong (Acceptable during fallback) |
+| 3. Background computation | Strong | Strong | Strong |
+| 4. 3-5 second pages | Strong | Strong | Strong |
+| 5. Remote access | Strong | Acceptable (fresh only as of the laptop's last push) | Strong |
+| 6. Local historical durability | Strong (this pass's central fix — explicit pull-archive, not an afterthought) | Strong (already the authoritative copy) | Strong |
+| 7. Supabase storage constraints | Strong (bounded window sized to real need, 38.5) | Acceptable (Postgres only ever holds what's pushed, but no bounding logic proposed) | Strong |
+| 8. Disaster recovery | Strong (managed Postgres backup + local archive as a second copy) | Weak (one Windows laptop is still the single copy of truth) | Strong |
+| 9. Recovery after missed runs | Strong (date-driven catch-up, unchanged from today) | Weak (same logon-trigger reliability problem §36 already found) | Strong |
+| 10. Failure visibility | Strong, once 38.7's two prerequisites close | Acceptable | Strong |
+| 11. Freshness verification | Strong (38.8/38.9's publish boundary) | Acceptable | Strong |
+| 12. Auditability | Strong (one ledger) | Acceptable | Acceptable (two compute paths to account for) |
+| 13. Operational simplicity | Strong | Weak (a new sync job to build/maintain, on top of the reliability problem it doesn't fix) | Acceptable (one more component than A) |
+| 14. Development complexity | Acceptable (retire/repurpose existing paths, no new compute) | Weak | Acceptable |
+| 15. Migration risk | Acceptable (well-scoped, conditional on existing repairs) | Acceptable | Acceptable |
+| 16. Capital safety | Strong, conditional on §34.9/§35.8/§36.9's repairs landing first | Strong (same condition) | Strong, same condition |
+| 17. Offline usefulness | Acceptable (last-synced archive, refreshed whenever online — a real capability, not a frozen snapshot) | Strong (always current, since it's the source) | Acceptable-to-Strong depending on fallback activity |
+
+No "Unacceptable" ratings were assigned to any option on any dimension — none of the three is disqualifying; they differ in degree, not in kind.
+
+### 38.14 Critical question, answered directly
+
+**If Kiran were being built today from scratch, for one serious user with real capital exposed, continuously growing historical data, and a free/limited cloud database: Option A, exactly as refined in 38.6-38.10.** One computation (GitHub Actions, already the more reliable trigger by this program's own evidence), one authoritative state (Postgres, bounded to what production actually needs — comfortably inside the free tier), one durable, ever-growing local archive (SQLite, fed by pull, never computing), a publication boundary that distinguishes "ran" from "verified," and a local machine that can go dark for a week without taking the production signal down with it. This is not a preference for cloud technology over local — it is the direct consequence of one already-observed fact this program's own forensic work established: the local machine's trigger (Windows logon) is *already* the least reliable part of this system, and today's architecture makes that unreliable trigger co-equal with a far more reliable one instead of subordinate to it.
+
+### 38.15 Remaining unknowns and decisions requiring explicit user approval
+
+**Unknowns:** the account's actual current Supabase plan/storage limit (assumed ~500 MB, not verified against the dashboard). Whether the 11 non-`prices`/`prices_adjusted` tables are individually gap-free in the local archive (only spot-checked via row counts this session). Whether the ~700-day lookback/2-year-trim match (38.1) was ever a deliberate sizing decision or a coincidence. Whether `signal_engine.py`'s internal pending-date loop is bounded/unbounded/latest-only (carried over from §37.M, still unverified).
+
+**Decisions for the owner, not this review, to make:** whether to proceed with Option A, B, or C (or decline all three and keep today's architecture). Whether the offline-access tradeoff (Option A's local view is "as of last sync," not always-live) is acceptable, given how much the owner relies on the local machine day to day. The order and timing of the migration relative to the still-pending §34.9/§35.8/§36.9 data-integrity repairs — this review's position is repair-then-migrate, not migrate-and-hope, but the actual scheduling is the owner's call.
+
+**Date of this entry: 2026-08-21. Status: DESIGN REVIEW ONLY — no code, schema, database, deployment, GitHub Actions, Supabase, UI, or configuration was modified; nothing was implemented. §37's "durable data: Weak" finding is corrected in part per 38.2 (§37's text preserved above, unmodified, per the standing rule). Awaiting independent review before any implementation begins.**
+
+---
+
+## 39. <span style="color:#dc2626;">🔴 Kiran Production Architecture Review, Part 3 — the Production State Contract (2026-08-21)</span>
+
+Defines the precise reliability contract the §37/§38 target architecture must satisfy before any migration is approved. Read-only. New evidence this pass: direct reads of `stock_signals.py`, `sector_signals.py`, `regime.py`, `leaders_scan.py`, `signal_engine.py`, and `apply_price_adjustments.py` to close two items §37/§38 left explicitly unverified. No code, schema, database, GitHub Actions, Supabase, Task Scheduler, UI, or configuration was touched.
+
+### 39.1 New evidence, and two corrections to §37/§38 stated explicitly
+
+**CONFIRMED — closes §37.M/§38.15's open item:** `signal_engine.py`'s `run_recovery_signals()` and `run_portfolio_signals()` are **latest-date-only**, with no pending-date loop at all — `as_of_date = all_df["date"].max()` / `latest_sector_date` / `port_df["latest_date"].max()`, computed fresh each call, no backfill logic anywhere in either function (`signal_engine.py:467-, :788-`). **This is the same single-date defect class already known elsewhere in this codebase** (pre-fix `setup_log`/`leaders_scan`, and `leaders_top_picks`' still-open `save_top_picks()` defect, §29.9). **Correction to §38.4, stated explicitly, not silently changed:** §38.4 recommended `recovery_signals`/`portfolio_signals` for role "C + E" (archive + recovery source) on the same footing as every other derived table. That recommendation understated a real defect this pass found: because these two tables cannot backfill a missed date at all, they are **not currently fit to be treated as MANDATORY-for-publication** the way `setup_log`/`leaders_scan`/`boring_signals` already are — see 39.3. Combined with §38.4's already-confirmed finding that `portfolio_signals` has zero monitoring coverage anywhere, this table is currently the single least-observable, least-recoverable production table in the whole system: a missed day is both undetectable and unrecoverable, at once.
+
+**CONFIRMED — corporate-action price corrections are structurally unbounded backward in time**, direct read, `apply_price_adjustments.py:386-405` (`rebuild_symbol_adjusted`): `UPDATE prices_adjusted ... WHERE symbol = ? AND date < ?` — no floor on `date`, reaches back to that symbol's earliest recorded row (2005, for names that old). This is categorically different from every other lookback dependency found this session: it is not a *computation* window, it is a *retroactive correction* capability, and it can reach further back than any bounded Postgres retention window could ever hold. **The codebase already recognizes this distinction and has already drawn the boundary correctly**: CLAUDE.md's own "Known Gaps" section documents that the Data Health page's Confirm button (the human-facing trigger for this exact rebuild) **hard-blocks entirely on Postgres today** ("`recompute_symbol_signals(symbol)`... is 100% SQLite-only... the Data Health page's Confirm button hard-blocks entirely when `_PG_URL` is set"). This is direct, pre-existing evidence — not a new design being proposed here — that a full-history retroactive correction is already understood in this codebase to be a local-archive-only operation, never a bounded-Postgres one. §39.16 formalizes this as a permanent, not incidental, division of responsibility.
+
+**CONFIRMED, per-table lookback windows** (closes item 14's instruction not to accept §38's ~2-year figure without a repository-level check):
+
+| Table / calculation | Confirmed maximum lookback | Dependency type | Evidence |
+|---|---|---|---|
+| `boring_signals` (RS_60) | 60 trading days | Positional (confirmed exposed to the exact misalignment risk §35.1 already found from one missing day) | `boring_signals.py` `lookback_n` (20 or 60) |
+| `stock_signals` | ≤120 calendar days (the module's own working buffer, `lookback_start = start_date - timedelta(days=120)`, used consistently at every call site) | Calendar, with a positional EMA seed inside that window | `stock_signals.py:423-, :469-, :543-, :896-` |
+| `sector_signals` | 20 trading days (rolling sums/means) | Calendar/positional, small | `sector_signals.py:113,116,201,561,1099,1101` |
+| `market_regime` (`regime.py`) | 20 trading days (ATR) for the daily append; **effectively unbounded for a full rebuild** — `regime_days` is a **state-chained** value (each row only needs *yesterday's* stored `regime_days`, `"...ORDER BY date DESC LIMIT 1"`) that in principle traces back to the last actual regime transition, which could be arbitrarily long ago | Calendar (daily) + **state dependency** (rebuild-only) | `regime.py:52, 77-97, 185` |
+| `leaders_scan` | 50 trading days (`rs_score_50`, sourced from `sector_signals`/`stock_signals`, not independently computed) | Calendar, inherited | `leaders_scan.py` (`rs_score_20`/`rs_score_50` columns throughout) |
+| `recovery_signals`/`portfolio_signals` (`signal_engine.py`) | 420 calendar days raw pull (`cutoff = all_df["date"].max() - pd.Timedelta(days=420)`), internally using rolling(50)/rolling(21)/rolling(14) and a `tail(60)` base-detection window | Calendar | `signal_engine.py:494, 571, 358-368` |
+| `market_breadth_oscillator.py` (Regime page's Weinstein breadth) | **~700 calendar days for full numerical convergence** — the single longest requirement found anywhere in this codebase, empirically swept in `database.py`'s own docstring | Calendar, EMA-chain state | `database.py:598-649` (already cited in §38.1) |
+| `prices_adjusted` corporate-action corrections | **Unbounded** — reaches back to a symbol's earliest row | Corporate-action / retroactive correction, not a computation window | `apply_price_adjustments.py:386-405`, confirmed already hard-blocked on Postgres per CLAUDE.md |
+
+**Minimum required Postgres retention for production computation: ~700 calendar days**, confirmed as the binding constraint (every other requirement in the table is smaller). **§38's proposed ~2-year (~730-day) window is CONFIRMED correct, not merely assumed** — it sits ~30 days above the binding requirement, and the 700-day figure itself already includes convergence margin (the cited docstring shows differences were already down to float-precision noise by 700 days, meaning the true minimum is somewhat below 700). No case is found for shortening the existing window; a small additional prerequisite (39.24) is to confirm this margin with an explicit test before cutover, not to simply trust the arithmetic.
+
+**Separating the three retention questions the task asked to keep distinct:**
+- **Production computation retention (Postgres): ~700-730 calendar days**, already satisfied by the existing trim.
+- **Audit/history retention: full, indefinite** — lives only in local SQLite; nothing in Postgres's free tier should ever be asked to hold this.
+- **Research/backtest retention: full, indefinite** — also local-only; `research_db.py`'s optional Postgres connection (per CLAUDE.md's "Cloud transition" section) is an opt-in convenience for a handful of diagnostic scripts, not a requirement that Postgres carry multi-year data — nothing found this session requires it to.
+- **Corporate-action correction capability: unbounded, local-archive-only**, already the codebase's own existing design (the Data Health hard-block), not a new restriction.
+
+### 39.2 The production-state contract — MANDATORY vs. NON-MANDATORY
+
+Not every table needs to gate publication; the contract should be as small as it can be while still preventing a genuinely wrong or incomplete state from appearing actionable.
+
+**MANDATORY FOR PUBLICATION** (a session cannot publish without all of these):
+- Expected trading date confirmed (ksestocks source, per `data_health.py`'s existing `expected_session` check — already built, already correct).
+- `prices` complete for the expected date **and** the confirmed eligible-universe size for that date is within a normal range (a genuinely new check — §34.6/35.4 already flagged that no universe-size completeness check exists anywhere today; this is the single most important addition this contract requires).
+- `prices_adjusted` current through the expected date, on the same universe-size basis.
+- `stock_signals` and `sector_signals` current through the expected date (both already have `MAX(date)` checks today; neither currently gates publication of anything, since no publication concept exists yet).
+- `boring_signals`: scan completed for the expected date, resume-window within its 15-day cap (§34-36) — the highest-stakes table, real capital traded against it.
+- `setup_log`: appended for the expected date.
+- No hook that is MANDATORY reported `status='error'` for the session.
+
+**NON-MANDATORY / DEGRADED-OK** (publication proceeds; the specific feature is marked degraded, not the whole state):
+- `leaders_scan`/`leaders_top_picks` — a watch-list/research feature, not itself a trigger for real capital.
+- `market_regime` — informative context (regime label), not itself an executable signal.
+- `recovery_signals`/`portfolio_signals` — **currently ineligible for MANDATORY status even if the owner wanted them there**, per 39.1's new finding: they have no backfill mechanism, so gating on them would mean a single missed day could block publication indefinitely until someone manually re-ran them. Fixing their pending-date-loop defect (matching `setup_log`/`leaders_scan`'s existing pattern) is a prerequisite to ever promoting them to MANDATORY (39.24).
+- `pipeline_runs`/heartbeat completeness itself — this is the ledger recording the contract, not a signal being gated by it.
+- Agent output, breadth oscillator, Twitter drafts, Excel sync — explicitly bonus/non-critical by existing design (§37.D), unchanged.
+
+### 39.3 Trust state machine — minimum model, not over-engineered
+
+```
+NOT RUN → RUNNING → COMPUTED → VALIDATING → ┬→ VERIFIED → PUBLISHED
+                        │                    │
+                        └──────→ FAILED ←────┘
+                                   │
+                        (also reachable from RUNNING via HUNG/timeout, 39.7)
+```
+Plus two states that describe the *dashboard's* view of the last publication, not the run in progress:
+- **STALE** — the last `PUBLISHED` state exists but is older than the freshness contract allows (39.5).
+- **DEGRADED** — the last `PUBLISHED` state is current, but one or more NON-MANDATORY components fell back to their previous value (e.g. `leaders_top_picks` unchanged because nothing cleared its threshold — a legitimate empty result, not a fault).
+
+**Deliberately not modelled as separate top-level states** (would be over-engineering per the task's own instruction): "partially complete" and "blocked" — both collapse into `FAILED` (a run that doesn't reach `VALIDATING` with everything MANDATORY present is simply not published; the *reason* is detail in `pipeline_runs`, not a distinct state the dashboard needs to expose). "Recovery" is not a state either — it's just the next `RUNNING` attempt; recovery doesn't need its own place in this state machine, only its own rules (39.9). "Superseded" is implicit: a new `PUBLISHED` state simply replaces the previous one as "current," and the previous one's full record remains in `pipeline_runs`/state history for audit, not as a live state.
+
+**What the owner needs to see, and nothing more:** `CURRENT / VERIFIED` or `STALE / NOT VERIFIED — DO NOT TRADE`. Everything above exists to make that one binary honest, not to be surfaced to the end user directly.
+
+### 39.4 Publication boundary — atomicity
+
+**Can individual tables be updated before verification?** Yes, and this is fine, **provided the dashboard never reads those tables directly for its actionability verdict** — it must read only the publication marker (39.11) and treat anything written after the last successful publish as provisional. This is the same principle §36/§38 already established for `boring_signals`'s dashboard render path having zero staleness awareness — the fix is not to prevent tables from being written mid-run (they must be, that's how the computation works), it is to insert one new, small gate between "tables were written" and "the dashboard is allowed to call this today's answer."
+
+**Is true atomic publication feasible?** A single-transaction, all-tables-at-once commit is not realistic here (the tables span multiple independent hook scripts, some using `psycopg2`/others SQLite, run sequentially, not one transaction) — but an **equivalent** is: a single row, written last, only after every MANDATORY check passes, that the dashboard's read path treats as the sole switch. This is exactly what 39.11's proposed `production_state` record is for. This is additive to the existing structure (§38.8 already proposed this; this section confirms it is the correct and sufficient mechanism, not merely one option among several).
+
+### 39.5 "Kiran = SIGNAL" — the exact logical contract
+
+```
+KIRAN = SIGNAL  requires ALL of:
+  Postgres reachable
+  AND latest production_state.validation == PASS
+  AND latest production_state.published_at is within the freshness window (39.6)
+  AND the specific signal's own signal_date/lookback matches that published state's
+      data_cutoff (i.e. the signal wasn't computed against a different, earlier or
+      later, dataset than what's currently authoritative)
+  AND the signal's own table was MANDATORY-complete in that publication (39.2)
+```
+
+```
+KIRAN = DO NOT TRADE  if ANY of:
+  Postgres unreachable
+  OR no production_state has ever been published
+  OR latest production_state.validation == FAIL
+  OR latest production_state is older than the freshness window
+  OR a MANDATORY table was incomplete/errored in the latest run
+  OR publication itself did not complete (partial write detected)
+  OR a known, unresolved data gap exists for the expected session
+  OR the state's own coherence cannot be proven (e.g. mismatched data_cutoff
+     across MANDATORY tables — one table computed against yesterday's prices,
+     another against today's, which must never both be called "current")
+```
+
+**"Probably current" is not a state this contract has room for** — every condition above is a boolean the publication step can check mechanically; there is no branch that defaults to "assume it's fine."
+
+### 39.6 Freshness contract — defined against verified state, not process activity
+
+**Explicitly not** "last updated timestamp," per the task's own instruction — a hook can update its own heartbeat while producing no new valid data (already observed for real: §36.2's `prices_adjusted` freeze kept logging `WARNING`s for 8 days while `sector_signals`/`stock_signals`/`boring_signals` all sat frozen; the *process* was active, the *state* was not advancing).
+
+Freshness is instead defined entirely in terms of `production_state.data_cutoff` (39.11) vs. the expected trading session:
+- **Expected run frequency:** once per trading day, matching the existing `daily_scraper.yml` cron.
+- **Expected trading-date progression:** the ksestocks-derived `expected_session`, already computed by `data_health.py` — unchanged.
+- **Acceptable delay after market close:** the existing schedule (22:00 PKT) already reflects the documented finding that ksestocks doesn't finish publishing until ~19:40 PKT (CLAUDE.md); no evidence this session that this needs to change.
+- **Holiday/weekend handling:** already correctly derived from `prices`' own distinct dates, not a hand-maintained calendar (§35.4) — unchanged, confirmed still the right approach.
+- **Maximum permitted age of actionable state:** `data_cutoff` must equal `expected_session` — i.e. **zero permitted staleness for MANDATORY tables**, not a grace period. A one-session-behind state is, by this contract, `STALE`, full stop — matching the owner's own stated "no silent staleness" principle exactly. (This is stricter than treating "1-2 sessions behind" as tolerable, which §34.4's own historical delay distribution shows was common under the old model — the target contract does not inherit that tolerance.)
+
+### 39.7 Missed run detection — who notices, how fast
+
+**Design:** a second, independent, much simpler scheduled check (does not need to be GitHub Actions itself — could be as simple as a second, tiny cron job, or a third-party uptime-style pinger) that asks one question only: *"has `production_state.published_at` advanced to today's expected session by a fixed cutoff time?"* If not, it raises the alert (39.18) — **the detector must be a separate mechanism from the pipeline it's watching**, since a failure mode that takes down the pipeline (workflow disabled, secret rotated and broken, repository access issue, GitHub-wide outage) could just as easily prevent the pipeline itself from reporting its own failure. This directly answers "who notices, how fast": a purpose-built watchdog, checking by a fixed daily deadline, not the owner noticing the dashboard "looks old" — which is explicitly the failure mode this whole review exists to close (§34.5's confirmed root cause of the PRL incident).
+
+### 39.8 Failed run detection
+
+Already partially real (`_record_hook`'s `status='error'` branch, §37.D) but currently only observable per-hook, with no aggregate view. Target: the same publication step (39.4) that checks MANDATORY completeness naturally also serves as failed-run detection — any hook exception, any validation failure, any timeout (39.9) all converge on the same outcome: publication does not advance, and the previous verified state remains current. No new detection mechanism is needed beyond what MANDATORY-completeness checking already requires; failed-run detection is a *side effect* of the publication gate, not a separate system.
+
+### 39.9 Hung run / timeout — RUNNING vs. STUCK
+
+**Not currently distinguishable at all** — nothing in today's architecture records "a run started" separately from "a run finished," so a process that starts and never returns (hangs, is killed externally, the runner is terminated) leaves no trace distinct from "never ran." Design: a `production_state` row (or a dedicated `run_lease` marker) written at the **start** of a run, with a `status='running'` and an expected-completion deadline (a lease), not just at the end. A second run — whether the next day's scheduled trigger or a manual retry — checks this lease: if the previous lease has expired without a terminal status (`published`/`failed`), it is treated as `STUCK`, logged as such, and the new run proceeds (the stale lease does not block a fresh attempt, it is evidence for the alert in 39.18, not a lock that could itself cause a permanent stall). GitHub Actions' own 60-minute workflow timeout already provides a hard backstop (the runner is killed if it hangs that long) — this design adds the *visibility* GitHub Actions' timeout alone doesn't provide (a killed-by-timeout run still needs its lease correctly marked `failed`, not left dangling as `running` forever).
+
+### 39.10 Duplicate / overlapping runs
+
+**Already correctly prevented for the one case that exists today**: `daily_scraper.yml`'s `concurrency: group: daily-scraper, cancel-in-progress: false` serializes the scheduled cron against a manual `workflow_dispatch` of the *same* workflow (confirmed, §37/§38's own reading of the file) — a second trigger queues rather than racing.
+
+**Not protected against, and already observed to be a real risk, not hypothetical:** an *out-of-band* invocation from outside that one workflow — exactly what happened at least three times in this system's real history (§35/§36: the 08-12 and two 08-17 unexplained interventions). GitHub Actions' concurrency group cannot protect against a process that never goes through GitHub Actions at all. **Required protection, design only:** the publication step itself (39.4) should refuse to publish if a lease (39.9) from a *different, still-active* run is currently held — i.e. the lease mechanism doubles as duplicate-run protection regardless of *where* the second run originates (a manual script, a different machine, anything), not just protection scoped to one workflow file. This is a stronger, more general guarantee than GitHub's own concurrency group and is exactly the control this system's own history shows is actually needed.
+
+### 39.11 Production state identity — minimum required metadata
+
+```
+production_state
+    session_date     -- the trading date this state represents
+    state_id         -- unique identifier for this specific publication
+    source_run_id    -- which pipeline execution produced it (ties back to pipeline_runs)
+    data_cutoff      -- the latest date of input data actually used
+    published_at     -- UTC timestamp of publication
+    validation       -- PASS | FAIL, plus which MANDATORY checks passed/failed
+    mandatory_complete -- boolean, explicit, not inferred
+```
+This is the minimum needed to answer "exactly what state is the dashboard showing" — every one of these fields is either already computable from data already gathered by `data_health.py`'s existing checks, or is a small, natural addition to the same check (this is not new infrastructure, it is a small aggregation on top of infrastructure already built in §31).
+
+### 39.12 Local SQLite archive contract
+
+```
+POSTGRES (production_state.published_at advances)
+        │
+        ↓  (PULL — the local machine reaches out, never the reverse, 38.6)
+LOCAL PULL JOB
+        │  copies: any row newer than the local archive's own high-water mark,
+        │  for every table, only from sessions with production_state.validation == PASS
+        │  (never pulls a partially-published or failed session's tables)
+        ↓
+LOCAL SQLITE ARCHIVE
+```
+- **What is copied:** full rows for every production table, for any `session_date` the archive doesn't yet have, **sourced only from sessions Postgres itself marked `PASS`** — the local archive should never even have the option of holding a state Postgres itself didn't trust.
+- **When:** whenever the local machine is online — this can be as simple as the existing logon-triggered Task Scheduler job, repurposed (38.6), not a new trigger mechanism.
+- **How completeness is verified:** the pull job checks its own copy's row counts/date-max against Postgres's, post-pull, and records its own small `last_synced_at`/`last_sync_status` marker locally — the same pattern already used for `pipeline_runs`, applied one level further out.
+- **How failed pulls are detected:** the same marker — a `last_synced_at` that hasn't advanced is directly analogous to a stale heartbeat, and should surface the same way (a banner on the local dashboard, not a silent gap).
+- **Several days offline:** no different in kind from one day offline — the pull job's own high-water mark means it resumes exactly where it left off, copying everything published since, in one catch-up pass. This is the same resumable-by-construction principle already required project-wide (per this machine's own global standing instruction that long-running/resumable jobs must pick up from where they left off, not restart).
+- **Can it resume safely?** Yes, by construction, since it is a pure pull-and-append against Postgres's own already-validated history — there is no state-dependent replay risk here (unlike the Postgres `boring_signals` bulk-load's non-determinism, §35.3), because the source of truth (Postgres) is not itself being recomputed by this job, only copied.
+
+### 39.13 Offline local dashboard — confirmed correct design
+
+`Internet/Postgres reachable` → local dashboard reads Postgres directly, live, identical to the remote dashboard (no reason for the local dashboard to prefer its own archive when the authoritative source is one query away). `Internet/Postgres unreachable` → local dashboard falls back to its own archive's last-synced state, **explicitly labeled**: `OFFLINE — LAST VERIFIED STATE: [production_state.published_at from the last successfully pulled session] — DO NOT TRADE`. **Confirmed correct, not merely assumed:** this preserves the one genuine capability today's architecture has that a naive Postgres-only design would lose (§37/§38's flagged offline-access tradeoff) while never allowing the local archive to be mistaken for a live, independently-verified signal — the label carries the *actual* published timestamp of the state being shown, not "now," which is the exact mechanism that prevents this from silently becoming a second production authority.
+
+### 39.14 Disaster recovery — production-state recovery vs. historical-data recovery, kept separate
+
+| Loss scenario | Production-state recovery | Historical-data recovery |
+|---|---|---|
+| Postgres lost | Next successful pipeline run re-publishes from a fresh scrape + the ~700-800 day window it needs (39.1) — production resumes within one run cycle | **Not recovered by the pipeline at all** — the full 21-year history is not reconstructible from a fresh scrape; this depends entirely on the local SQLite archive, or a separate Postgres-side backup (Supabase's own, tier/retention unverified per §38.15) |
+| Local SQLite lost | **No production impact** — this is the entire point of moving authority off the local machine; the local dashboard temporarily has no offline/archive capability until re-synced | **This is the actual gap this review must state plainly, per the task's own instruction**: the local archive is not itself a backup of anything — it is the *only* full copy of the pre-~2026 history in this design (Postgres never holds it). Losing the local machine without a separate, independent backup of that archive would be a genuine, unrecovered historical-data loss. **Not solved here** — recorded as a required future capability (39.24), same as the general local-growth question the owner already scoped out of this review |
+| GitHub Actions config lost (workflow file deleted, repo access lost) | Production halts (no computation runs) until the workflow is restored — this is a configuration-as-code artifact and should be recoverable from the git repository itself, which already has its own remote/local copies (CLAUDE.md's deployment section) | No data impact |
+| Local machine unavailable (any duration) | **No production impact** by design — this is the central point of §37/§38's recommendation | Local archive simply falls behind; catches up via 39.12's resumable pull whenever the machine returns, however long that is |
+| Postgres history deliberately pruned (the existing rolling trim, or a future manual prune) | No impact, provided the pruned window still comfortably exceeds ~700-800 days (39.1) | No impact — this data already exists, permanently, in the local archive; this is precisely the property the rolling trim already assumes and this review confirms is correct |
+
+**Explicit, not glossed over:** the local SQLite archive is a **durable copy**, not a **backup**, in the strict sense the task asks to distinguish — it lives on the same single machine as everything else the owner operates, with no independent copy, no offsite/second-location redundancy, and no verified restore procedure. This is recorded as a genuine, currently-open disaster-recovery gap, not solved in this review, per the task's own explicit instruction.
+
+### 39.15 GitHub Actions adequacy — verdict
+
+**YES, WITH SPECIFIC CONTROLS.** Restated from §38.7 with the two prerequisites now framed as gating conditions on the "YES," not optional extras:
+
+| Dimension | Assessment |
+|---|---|
+| Cron reliability / missed cron | Acceptable — GitHub's own occasional cron-skip is already self-healed by the pipeline's date-driven catch-up |
+| Runner failure / timeout | Acceptable — 60-minute limit, no evidence of ever approaching it |
+| Overlapping workflows | Strong — already correctly configured (concurrency group) for the one workflow that exists |
+| Secrets | Strong — already correctly using repo secrets |
+| Network/database failures | Acceptable — Supabase's own free-tier soft-failure risk (already observed once, §33.4) is independent of GitHub Actions itself |
+| Logging | Acceptable as a supplement, not a primary record — GitHub's ~90-day default retention is not the durable ledger |
+| **Alerting** | **Weak — confirmed absent in practice** (the existing "notify on failure" step is a log annotation only). **Required control before full authority rests here.** |
+| **Silent non-execution detection** | **Weak — confirmed absent.** Nothing today distinguishes "no run needed" from "no run happened." **Required control** (39.7's independent watchdog). |
+| Execution history | Acceptable, supplementary |
+| Recovery / manual intervention | Acceptable (`workflow_dispatch` exists) |
+| Operational burden | Low, matching the owner's stated need — no new infrastructure class required |
+
+**Two required controls, not optional nice-to-haves, before this review would consider GitHub Actions sufficient on its own:** (1) real failure alerting reaching the owner directly (39.18), (2) an independent missed-run watchdog (39.7) that does not depend on the same pipeline it is checking. Neither requires infrastructure beyond what already exists in this project's toolset.
+
+### 39.16 Alerting / owner notification — minimum practical mechanism
+
+**No specific notification service is assumed without repository evidence supporting it** — nothing in this codebase currently sends the owner anything (no email/SMS/Slack integration found anywhere in this repo). The minimum practical mechanism, design-only: any of (a) GitHub's own built-in email-on-workflow-failure (a repo/account setting, not new infrastructure — GitHub already offers this natively), (b) a single outbound webhook call from the workflow's failure step to a service the owner already uses (the existing `daily_scraper.yml` already has a stubbed-but-incomplete `curl` comment in exactly this spot), or (c) this Claude program itself, if run on a recurring schedule, checking `production_state` and surfacing a plain-language alert to the owner directly — the same mechanism already used elsewhere in this environment for scheduled checks. **Not chosen here** — this review's job is to establish that the gap is real and specify the shape of the fix, not to pick the exact channel, which is better decided with the owner's own preference for how they want to be reached.
+
+### 39.17 Failure matrix
+
+| # | Scenario | New actionable state produced? | Detected by | Previous verified state remains? | User sees | Manual intervention required? |
+|---|---|---|---|---|---|---|
+| 1 | No GitHub Actions run at all | No | Independent watchdog (39.7) | Yes | `STALE / NOT VERIFIED` | No — next scheduled run self-heals; watchdog alert is informational unless it recurs |
+| 2 | GH Actions starts, crashes | No | Publication gate never reached; lease left dangling, later marked `failed`/`stuck` | Yes | `STALE / NOT VERIFIED` | No, unless the crash recurs |
+| 3 | Pipeline hangs | No | Lease timeout (39.9) | Yes | `STALE / NOT VERIFIED` | No — next run proceeds regardless of the stale lease |
+| 4 | Market data incomplete (partial scrape) | No — universe-size completeness check (39.2, new) fails MANDATORY | Publication gate | Yes | `STALE / NOT VERIFIED` | No |
+| 5 | `prices_adjusted` incomplete | No | Same gate | Yes | `STALE / NOT VERIFIED` | No |
+| 6 | One critical (MANDATORY) signal table fails | No | Same gate | Yes | `STALE / NOT VERIFIED` | No |
+| 7 | `boring_signals` fails | No | Same gate (MANDATORY) | Yes | `STALE / NOT VERIFIED` | No |
+| 8 | Postgres unavailable | No | Connection failure, run fails cleanly | Yes (whatever was last published, read from cache if the dashboard itself can't reach Postgres either) | `STALE / NOT VERIFIED` (or a connection-specific message) | No, unless prolonged (39.18 escalation) |
+| 9 | Validation fails | No, by definition | Publication gate | Yes | `STALE / NOT VERIFIED` | No |
+| 10 | Publication itself fails (e.g. the final marker write fails after everything else succeeded) | **No — this is the one case needing explicit care**: all underlying tables may be correct, but if the marker write fails, the state must still read as unpublished | The marker write's own success/failure, checked and retried within the same run | Yes | `STALE / NOT VERIFIED` (conservatively, even though the data was actually fine) | No — next run re-publishes cleanly |
+| 11 | Local archive pull fails | No impact on production authority | Local `last_synced_at` marker (39.12) | Yes (Postgres unaffected) | Local dashboard shows an older "last synced" timestamp | No, unless prolonged |
+| 12 | Local machine offline | No impact on production authority | N/A — not a production concern | Yes | Remote dashboard unaffected; local dashboard, if used, shows offline/stale label | No |
+| 13 | Two runs overlap | Prevented by lease (39.10) | Lease check | Yes | Unaffected | No |
+| 14 | Recovery runs after partial state | The recovery run re-attempts the full contract from scratch; a partial prior attempt never counted as published, so there is nothing to "merge" or reconcile — recovery is just another normal run | Publication gate, same as any run | Yes until the recovery run itself passes | Unaffected until a real publish succeeds | No |
+| 15 | Data arrives late | Publication simply waits for the next successful run once data exists — no different from a normal daily cycle | N/A | Yes | `STALE / NOT VERIFIED` until then | No |
+| 16 | Market holiday | No new session expected — `expected_session` (ksestocks-derived) doesn't advance, so nothing is falsely flagged stale | `data_health.py`'s existing holiday-agnostic logic (§35.4) | Yes (correctly, and correctly not flagged) | `CURRENT / VERIFIED` (yesterday's session, correctly) | No |
+| 17 | Weekend | Same as holiday | Same | Yes | Same | No |
+| 18 | Unexpected upstream (ksestocks) outage | No | Scraper's own retry + publication gate | Yes | `STALE / NOT VERIFIED` | No, unless prolonged |
+| 19 | Corrupt/inconsistent historical input | Depends on scope — if it affects the MANDATORY window (~700-800 days), publication gate should catch it via the same universe/coherence checks; older corruption outside that window is a local-archive/research concern, not a production-publication one | Publication gate (recent) / not automatically caught (older, out-of-window) | Yes | `STALE / NOT VERIFIED` if recent; unaffected if outside the production window | Possibly, for older corruption (a data-quality investigation, not a pipeline failure) |
+| 20 | Local archive is lost | **No production impact at all** (39.14) | N/A for production; a real historical-data loss, not detected automatically today | Yes, production unaffected | Remote/local-when-online dashboards unaffected; local-when-offline capability temporarily gone until re-synced (and full pre-window history is unrecoverable without a separate backup, 39.14) | Yes — restoring/re-establishing the local archive, and recognizing the backup gap this exposes |
+
+### 39.18 Capital-safety test, applied
+
+Applying "could this failure cause the user to believe a stale, incomplete, or unverified signal is current?" to every row of 39.17: **the answer is NO for every scenario, under the design proposed in this section** — specifically because none of them can advance `production_state.published_at`/`validation=PASS` without every MANDATORY condition holding, and every dashboard (local and remote, online and offline) reads that one marker rather than any individual table. **This is a design guarantee, not yet an implemented one** — it holds only once 39.2's MANDATORY gate, 39.4's publication marker, and 39.13's offline labeling are actually built; under today's *current* architecture, several of these scenarios (4, 5, 6, 10 in particular) **would** currently risk exactly this failure, since no MANDATORY gate or publication marker exists yet (confirmed, §37.D/§38.9).
+
+### 39.19 Final design — component responsibility table
+
+| Component | Responsibility | Authority | Input | Output | Failure behaviour | Recovery behaviour |
+|---|---|---|---|---|---|---|
+| Market data source (ksestocks) | Publish daily OHLCV | External, unowned | N/A | Raw HTML/data | Scraper retries 3x, then reports 0 rows for that date, non-fatally | Next run's date-driven scrape re-attempts |
+| Ingestion (`scraper.py`, via GitHub Actions) | Scrape new dates, one pass | Not authoritative itself — a stage | ksestocks | `prices`/`index_prices` (Postgres) | Logged, non-fatal; downstream MANDATORY checks catch resulting incompleteness | Next scheduled run |
+| Processing (`apply_price_adjustments`, `stock_signals`, `sector_signals`, `regime`, `signal_engine`, `leaders_scan`, `backfill_setup_log`, `boring_signals` — all `_pg` paths) | Compute derived tables | Not authoritative individually — inputs to validation | `prices`/`prices_adjusted` (Postgres, bounded window) | Derived Postgres tables | Per-hook try/except, unchanged from today | Unbounded backfill (most tables) or fixed to be so (`recovery_signals`/`portfolio_signals`, 39.24) |
+| Validation (new) | Check MANDATORY completeness (39.2) | The gate, not itself a data source | All of the above | PASS/FAIL | A FAIL simply withholds publication | Automatic — reattempted every run |
+| Publication (new) | Write `production_state` (39.11) | **The sole switch from "computed" to "authoritative"** | Validation result | One new small record | Failure here specifically is treated conservatively (39.17 #10) — no state, not a wrong one | Next run re-publishes cleanly |
+| Postgres | Serve the authoritative state | **Authoritative for production signals** | Publication | Query results | Connection failure → dashboards show stale | Managed by Supabase; local archive is not a substitute backup (39.14) |
+| Remote dashboard | Read authoritative state | Read-only | Postgres | UI | Shows stale label if `production_state` is old/unreachable | N/A — always reflects Postgres directly |
+| Local dashboard | Read authoritative state when online; last-synced archive when offline | Read-only, never independently computes (39.13) | Postgres (online) / local archive (offline) | UI | Explicit offline/stale labeling | N/A |
+| Local pull job (repurposed Task Scheduler) | Archive newly-published, validated sessions | **Not authoritative — archive only** | Postgres | Local SQLite | `last_synced_at` stalls, surfaced locally | Resumable by construction (39.12) |
+| Local SQLite archive | Durable full-history store; recovery/research source | **Durable copy, explicitly not a backup** (39.14) | Local pull job | Full history for research/recovery | N/A (read mostly) | A real, currently-unsolved gap: no independent backup of this archive exists (39.24) |
+| Missed-run watchdog (new) | Detect silent non-execution | Independent of the pipeline it watches | `production_state`'s own timestamp | Alert | If the watchdog itself fails, this is a second-order risk, acceptably low given its simplicity | N/A |
+
+### 39.20 Final verdict
+
+**A. What exactly constitutes a VERIFIED Kiran production state?** A `production_state` record whose `validation = PASS` — meaning every MANDATORY table (39.2) is present, complete against a confirmed universe size, current through the expected trading session, and no MANDATORY hook reported an error — and whose publication write itself succeeded.
+
+**B. What exact conditions permit a new signal to become actionable?** All of 39.5's `KIRAN = SIGNAL` conditions: Postgres reachable, latest `production_state.validation == PASS`, published within the freshness window (39.6 — zero-tolerance, must equal the expected session), and the specific signal's own data belongs to that same published state (matching `data_cutoff`).
+
+**C. What exact conditions force `STALE / NOT VERIFIED — DO NOT TRADE`?** Any of 39.5's `KIRAN = DO NOT TRADE` conditions — Postgres unreachable, no state ever published, latest validation FAILed, the state is older than the expected session, a MANDATORY table was incomplete, publication itself didn't complete, a known data gap exists, or MANDATORY tables disagree on which data cutoff they used.
+
+**D. Can SQLite ever independently generate a fresh production signal?** **No.** Confirmed correct by this review's own evidence (39.1's new findings included) — every real cross-backend inconsistency this program has found came from independent computation, never from replication.
+
+**E. What is the authoritative production database?** Postgres.
+
+**F. What is the role of the local SQLite database?** Durable, ever-growing historical archive and recovery/research source, fed by a one-way pull from Postgres's already-validated publications — never a second computation.
+
+**G. What minimum data/history must remain in Postgres?** ~700-730 calendar days for the large per-symbol-per-day tables (confirmed by repository-level dependency analysis, 39.1 — not merely assumed from §38), matching the existing rolling trim almost exactly. Full current state, untrimmed, for the small tables. Nothing beyond that — full history lives locally only.
+
+**H. Is GitHub Actions adequate as the sole production scheduler?** **Yes, with specific controls** — not an unconditional yes. Two required, both already answerable within this project's existing toolset: real failure alerting, and an independent missed-run watchdog.
+
+**I. What additional controls are required?** The MANDATORY-completeness gate and publication marker (39.2/39.4/39.11); a run-lease for hung-run and duplicate-run protection (39.9/39.10); the missed-run watchdog and real alerting (39.7/39.16/39.18); fixing `recovery_signals`/`portfolio_signals`'s latest-date-only defect before they can ever be MANDATORY (39.1/39.2); extending the existing rolling trim to `sector_signals` (carried from §38).
+
+**J. What remains unresolved?** The account's actual Supabase plan/storage ceiling (still not verified against the dashboard, carried from §38). Whether the 11 non-price tables are individually gap-free in the local archive (still only spot-checked). The exact choice of alert channel (39.16 — deliberately left to the owner's preference). Whether the local SQLite archive needs a genuine independent backup beyond itself (39.14 — flagged as a real, currently-open gap, explicitly not solved here, and explicitly distinct from the already-out-of-scope "future database growth" question).
+
+**K. What must be completed before architecture implementation/cutover?** In order: (1) the already-known `boring_signals`/`prices_adjusted` data-integrity repairs (§34.9/§35.8/§36.9, unchanged); (2) fixing `recovery_signals`/`portfolio_signals`'s backfill defect (39.1, new this pass); (3) building the MANDATORY-completeness/publication/lease mechanism (39.2/39.4/39.9-39.11) — this is the actual reliability contract, not optional polish; (4) the missed-run watchdog and real alerting (39.7/39.16); (5) confirming the ~700-day retention margin with an explicit test, not just the arithmetic in 39.1.
+
+**L. What decisions require explicit user approval?** Everything in §38.15, unchanged, plus: the exact alert channel (39.16); whether to accept the local-archive-is-not-a-backup gap (39.14) as an acceptable, explicitly-acknowledged risk for now, or require a real backup solution before cutover; the order of the five prerequisites in (K) relative to each other, if the owner wants to parallelize any of them.
+
+**Date of this entry: 2026-08-21. Status: DESIGN REVIEW ONLY — no code, schema, database, GitHub Actions, Supabase, Task Scheduler, UI, or configuration was modified; nothing was implemented. Corrects §38.4's `recovery_signals`/`portfolio_signals` role recommendation in part (39.1 — §38's text preserved above, unmodified, per the standing rule) and confirms §38's ~2-year Postgres retention figure via independent repository-level dependency analysis rather than accepting it as given. Awaiting independent review before any implementation begins.**
+
+---
+
+## 40. <span style="color:#dc2626;">🔴 Kiran Migration Readiness + Cutover Plan Review (2026-08-21)</span>
+
+Turns §37-39's completed architecture and reliability-contract design into a dependency-aware implementation sequence. Read-only. New evidence this pass: a full inventory of every directly-runnable script in the repository (every `if __name__ == "__main__":` block, ~60 files), to answer item 4's "what must be disabled/restricted" with actual evidence rather than assumption. No code, schema, database, GitHub Actions, Supabase, Task Scheduler, UI, deployment, or configuration was touched; no fixes, migration, or cutover were performed.
+
+### 40.1 New evidence: the production-write attack surface is wider than previously catalogued
+
+**CONFIRMED, direct inventory of every `__main__` block in the repository:** roughly 60 scripts are directly runnable via `python <script>.py`. Classified by what they can write:
+
+**Scripts that write directly to core production tables, outside any pipeline path, confirmed by direct read:**
+- **Four full, standalone copies of `main.py` itself** — `main_backup_e8.py`, `main_backup_e84b.py`, `main_backup_e85.py`, `main_backup_e86a.py` — each a complete, independently runnable snapshot of the pipeline entry point from an earlier development epoch, each still importing the live `config.DB_PATH` and therefore still capable of writing to the *current* production `psx_data.db` if executed, **completely bypassing whatever hook chain, heartbeat, or (once built) MANDATORY-completeness gate the current `main.py` has**. This is a previously-uncatalogued, concrete instance of exactly the "undocumented trigger" risk category §37-39 discussed in the abstract — a real, sitting-in-the-repo mechanism for exactly the kind of out-of-band write already confirmed to have happened three times (§35/§36).
+- `migrate_to_supabase.py` — the original full SQLite→Supabase migration tool, still present, still runnable, with `--table`/`--cutoff-date` flags, capable of re-copying (and, depending on its own idempotency, potentially overwriting) any production table.
+- `apply_price_adjustments.py`, `backfill_setup_log.py` (including a `--repair-dates`/`--execute` flag), `backfill_regime_columns.py`, `backfill_sector_signals.py`, `compute_forward_returns.py`, `signal_engine.py` (confirmed callable standalone — this is the documented mechanism behind CLAUDE.md's own "last done 2026-07-01 by hand" note for `recovery_signals`) — all legitimate, documented recovery/backfill tools **today**, and all capable of writing to a MANDATORY production table from outside the one pipeline once that pipeline is supposed to be the sole authority.
+- `fix_mislabeled_date.py`, `fix_mixed_date.py` (both directly `UPDATE`/`DELETE FROM prices`/`index_prices`) and `fix_paper_actual.py` (`DELETE FROM trade_setups`) — one-time, already-used manual repair scripts, left in the repository, still executable, confirmed direct evidence of exactly the ad hoc informal-fix pattern this program has already found in the act three times.
+- `import_actual_trades.py`, `import_open_prices.py`, `load_bi_history.py` — legitimate, still-needed data-import tools (Excel sync, historical backfill), out of scope to disable, but worth noting they also write outside the one-pipeline model and should stay explicitly exempted, not silently forgotten, from any future "only the pipeline may write" enforcement.
+
+**Scripts confirmed to have NO standalone CLI entry point at all** — `boring_signals.py`, `leaders_scan.py`, `sector_signals.py`, `stock_signals.py`, `regime.py`, `database_pg.py`. **This is itself informative, not just an absence of evidence:** these modules can only be invoked by *importing* their functions from another script or an interactive session — there is no "official" backdoor command for them. This directly explains why the three confirmed out-of-band incidents (§35/§36) left no CLI trace in any log: whoever ran them did so via a raw Python import, not a named, discoverable script — a materially harder thing to prevent by simply renaming/archiving files, and a specific reason the publication-marker design (§39.4/§39.11, restated in 40.9 below) matters more than trying to lock down every possible entry point individually.
+
+**Research/backtest-only scripts** (out of scope, do not touch production signal tables): `backtest*.py`, `grand_test*.py`, `kelly.py`, `market_structure_diagnostic.py`, `breakout_events_v2.py`, `breakout_v2_*.py`, `content_generator.py`, `kiran_voice.py`, `agent_learn.py`, `agent.py` (writes only to `agent_*` tables), `health_check.py` (read-only diagnostic).
+
+### 40.2 A. Current dependency graph
+
+```
+ksestocks.com
+     │
+     ├─ LOCAL:  Task Scheduler (logon) → run_update.bat → main.py --all  ──┐
+     │                                                                      │  BOTH paths run
+     └─ CLOUD:  GitHub Actions (cron 22:00 PKT) → main.py --update  ───────┘  the SAME cmd_update()
+                                                                                function body — every
+                                                                                internal call branches
+                                                                                on _PG_URL (re-derived
+                                                                                identically in 6+ files,
+                                                                                §37.A)
+                     │
+     ┌───────────────┼──────────────────────────────────────────────────────────┐
+     ↓               ↓                    ↓                  ↓                  ↓
+ prices/       prices_adjusted /   stock_signals /    boring_signals /   setup_log /
+ index_prices  corporate_action    sector_signals /   leaders_scan /     signal_engine
+ (scraper.py)  (apply_price_        market_regime      leaders_top_       (recovery_signals/
+               adjustments.py)     (own append          picks              portfolio_signals —
+                                    functions, no        (own _pg           CONFIRMED
+                                    heartbeat, §37.D)     twins;             latest-date-only,
+                                                          boring_signals     §39.1, no heartbeat)
+                                                          the only hook
+                                                          with a mirror-
+                                                          to-Postgres
+                                                          heartbeat)
+     │
+     └──────────────────────────────────────────────────────┐
+                                                              ↓
+                                              dashboard.py (single file, auto-
+                                              switches backend via database.py's
+                                              module-level override, §37.A) —
+                                              reads whichever backend the CURRENT
+                                              process happens to be pointed at,
+                                              no publication concept, no
+                                              cross-backend awareness
+```
+
+**No component in this graph currently has "must change during migration" marked NO** except the raw ingestion step (`scraper.py` itself, and ksestocks as the source) and the individual `_pg`-suffixed computation functions' internal logic (their math is not in question — only *how many times* and *from where* they get invoked is). Every other stage — the dual triggers, the dual write targets, the dashboard's read path, the two `pipeline_runs` ledgers — changes shape under Option A.
+
+### 40.3 B. Future authority map
+
+Unchanged from §38.10/§39.20 (E, F): **Postgres is the sole production authority; local SQLite is a durable, pull-fed, non-computing archive.** Restated here only to attach the new evidence from 40.1: achieving this is not merely "point the dashboard at Postgres" — it requires *actively retiring or fencing off* the write surface catalogued in 40.1, not just building the new publication path alongside it. A migration that builds §39's contract but leaves `main_backup_e85.py` sitting in the repo, runnable, has not actually achieved single-authority — it has built a second lock on a door that has three other unlocked doors next to it.
+
+### 40.4 C. Table-by-table migration map
+
+| Table | Current SQLite role | Current Postgres role | Future role | Production authority | Local archive | Migration action |
+|---|---|---|---|---|---|---|
+| `prices` / `index_prices` | Independent scrape target | Independent scrape target | Single-pipeline output | Postgres | Yes, full history | Local scrape stops; local pull-sync starts (§38.6/§39.12) |
+| `prices_adjusted` | Independent compute (has had its own incident, §36.2) | Independent compute (has had its own incident, §35.1) | Single-pipeline output, bounded window | Postgres (bounded ~700-730 days) | Yes, full history, **including corrections reaching before the Postgres floor** (§39.1 — already correctly hard-blocked to SQLite-only per CLAUDE.md) | Repair 07-07 gap first (§35.1/§34.9); then single-pipeline |
+| `stock_signals` | Independent compute | Independent compute | Single-pipeline output | Postgres | Yes, full history | Single-pipeline, MANDATORY table |
+| `sector_signals` | Independent compute | Independent compute, **not currently in the Postgres rolling trim** (§38.1 gap) | Single-pipeline output | Postgres | Yes, full history | Add to rolling trim (§38 carried item) + single-pipeline, MANDATORY |
+| `market_regime` | Independent compute | Independent compute | Single-pipeline output | Postgres | Yes, full history (state-chained `regime_days` — full rebuild needs full history, §39.1) | Single-pipeline, NON-MANDATORY (context, not an executable signal) |
+| `boring_signals` | **Verdict B — currently more trustworthy** | **Verdict C — non-deterministic build, PRL incident signal absent** | Single-pipeline output | Postgres, **only after §34.9/§35.8/§36.9's rebuild (true chronological replay) lands** | Yes, full history | **Highest-priority prerequisite** — do not cut over before this repair (40.7) |
+| `leaders_scan` | Independent compute | Independent compute | Single-pipeline output | Postgres | Yes | Single-pipeline, NON-MANDATORY |
+| `leaders_top_picks` | Current | **Frozen at 2026-06-30** (`save_top_picks()` latest-date-only, §29.9, still unfixed) | Single-pipeline output | Postgres, once fixed | Yes | **Prerequisite**: fix the latest-date-only defect (pre-existing, unrelated to this program's new finding but blocking in the same way) |
+| `setup_log` | Independent compute, self-heals | Independent compute, self-heals (shared pending-date policy, §37.B — the one table already built the target way) | Single-pipeline output | Postgres | Yes | Single-pipeline, MANDATORY — closest table to migration-ready today |
+| `recovery_signals` | Independent compute, **latest-date-only (§39.1, new)** | Independent compute, **latest-date-only (§39.1, new)** | Single-pipeline output | Postgres, once fixed | Yes | **Prerequisite**: fix backfill loop (40.8) before ever MANDATORY |
+| `portfolio_signals` | Independent compute, **latest-date-only + zero monitoring (§38.4/§39.1, new)** | Same | Single-pipeline output | Postgres, once fixed | Yes | **Prerequisite**: same fix as `recovery_signals`, plus add to `data_health.py`'s checked lists (currently absent from both) |
+| `pipeline_runs` | Local ledger | Cloud ledger — **two separate ledgers today** | One ledger + the new `production_state` marker (§39.11) | Postgres | Mirrored/archived locally (§38.4) | Collapse to one ledger as a side effect of single-pipeline |
+| `trade_setups` | Excel-synced ground truth + System/Support Reversal | Synced separately (2026-07-31 fix) | Excel remains ground truth for `Actual` rows; System-generated rows follow the single-pipeline model | Excel (human) for `Actual`; Postgres for computed rows | Yes | Lowest-risk table — already closest to a one-way-sync pattern |
+| `corporate_action_suspects` | Full history, unbounded correction capability | N/A / not audited this pass for Postgres parity | **Local-only, by design** (§39.1 — already correctly hard-blocked on Postgres via the Data Health page's existing Confirm-button block) | SQLite | Yes, and this **is** its production role, not merely archival | No migration needed — already correctly local-only |
+
+### 40.5 Which existing code path becomes the one production pipeline
+
+**`main.py`'s `cmd_update()` function, invoked via GitHub Actions' `daily_scraper.yml` cron** (`python main.py --update`) — not a new pipeline, the existing one. Confirmed entry point, environment, and every stage already traced in §37.A/40.2. **Hidden database-selection points confirmed this pass, complete list:** the module-level `_PG_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")` line, independently re-derived in `sector_signals.py:31`, `stock_signals.py:13`, `regime.py:33`, `leaders_scan.py:26`, `signal_engine.py:19`, `boring_signals.py`, `data_health.py:39`, `apply_price_adjustments.py`/`database_pg.py`, plus three more inline re-checks inside `main.py`'s own `cmd_update()` body (lines ~189, ~228, ~419 — for the rolling-trim and prices_adjusted hooks specifically, redundant with `database.py`'s own module-level override). None of these need to change their *logic* — once only GitHub Actions ever sets `DATABASE_URL`, they all correctly resolve to Postgres by the existing mechanism, with no code change required. **What must change is not this detection logic — it is ensuring nothing except this one path ever runs with the local, SQLite-defaulting environment and writes to a table this contract now calls MANDATORY.**
+
+**Paths confirmed to duplicate this computation today:** the local Task Scheduler → `run_update.bat` → `main.py --all` path (identical function body, opposite `_PG_URL` state) — the entire subject of §37-39. Nothing else duplicates the *scheduled* computation; 40.1's inventory is the *unscheduled*, ad hoc duplication surface.
+
+### 40.6 D. What must eventually be disabled or restricted (documented only, nothing disabled this pass)
+
+| Item | Why | Priority |
+|---|---|---|
+| Local Task Scheduler "PSX Daily Update" task (`run_update.bat` → `main.py --all`) | The core subject of §37-39 — must stop writing production signals; repurposed to the pull-sync job (§38.6), not deleted | Central to the migration itself |
+| `main_backup_e8.py` / `e84b.py` / `e85.py` / `e86a.py` | **New this pass** — four full, runnable, unfenced copies of the exact thing being retired, each capable of writing straight past every control this plan builds | High — trivial to archive/rename, meaningfully closes a real gap |
+| `migrate_to_supabase.py` | Re-running it post-cutover risks re-copying or overwriting Postgres's now-authoritative, curated state with a stale/different snapshot | Medium — restrict to explicit, signed-off use only, same discipline already applied to its first run |
+| `apply_price_adjustments.py`, `backfill_setup_log.py`, `backfill_regime_columns.py`, `backfill_sector_signals.py`, `compute_forward_returns.py`, `signal_engine.py` standalone invocation | Each can legitimately be *needed* for a real recovery — the goal is not to delete them, it is to ensure any such invocation still produces a `pipeline_runs`/`production_state` record (§35.8/§36.9 item already named) so it can never again leave zero trace | Medium — a process/discipline fix, not a code deletion |
+| `fix_mislabeled_date.py`, `fix_mixed_date.py`, `fix_paper_actual.py` | Already-used, one-time scripts with no ongoing purpose; leaving them live and executable is unforced risk for zero remaining benefit | Low effort, worth doing — archive, don't delete (per this program's own archive-don't-delete convention) |
+| Raw Python import of `boring_signals.py`/`sector_signals.py`/etc. functions from an ad hoc script or interactive session | **Cannot be "disabled" the way a CLI script can** — this is 40.1's key finding. The real control is the publication-marker gate (§39.4), which makes any such write provisional-only until the one pipeline's own validation step confirms and publishes it, not a restriction on who can call the underlying functions | Structural — addressed by 39's design, not by file permissions |
+
+### 40.7 E/D. `boring_signals` / `prices_adjusted` prerequisites
+
+**Must be fixed before migration** (promoting a known-less-trustworthy copy to sole authority is the one thing this entire program has repeatedly warned against, §34.8/§35.7/§38.14): the `boring_signals` non-deterministic bulk-load must be replaced with a true chronological day-by-day replay (§35.3's Test 2 already demonstrates the correct method, from a floor early enough to catch real incidents like PRL) — not another clean-slate load. The Postgres-side `prices_adjusted` 07-07 gap (§35.1) must be closed, since it's the confirmed root cause of the 14-row `rs_60_decile` disagreement.
+
+**Can be fixed after migration:** nothing found this pass in the "not urgent" category for these two specifically — both are direct, confirmed causes of the exact C-verdict this program has held on Postgres `boring_signals` since §34, and cutting over before they're closed would make the migration itself the mechanism promoting a less-trustworthy state, not a side effect to clean up later.
+
+**Must be independently re-verified, not just fixed:** an integration test asserting SQLite/Postgres `rs_60`/`rs_60_decile` agreement over a shared, gap-free window (§34.9 item 5, still not built) — this is the actual acceptance test for "Postgres is now at least as trustworthy as SQLite was," and per this review's own principle, should gate cutover, not follow it.
+
+### 40.8 F. `recovery_signals` / `portfolio_signals` prerequisites
+
+**Must be repaired before cutover, not after** — per 40.4's table, these cannot be MANDATORY under §39's contract until fixed, and per this review's capital-safety principle, a table that's silently unrecoverable today should not be inherited by the new architecture unexamined just because it's NON-MANDATORY today.
+
+**Minimum safe repair:** the same shared pending-date-loop pattern already used by `setup_log`/`leaders_scan` (§24/§25) — a `_pending_signal_engine_dates()` policy mirroring the existing one, looped inside `run_recovery_signals()`/`run_portfolio_signals()` rather than always computing only `all_df["date"].max()`.
+
+**Tests required:** a fixture-copy regression test verifying a simulated N-day gap is fully backfilled and a re-run is idempotent — the same test shape already used for the `setup_log`/`leaders_scan` fix (§25.3's "simulated 14-date gap filled completely... re-run left the count unchanged").
+
+**Historical coverage that must be verified:** whether either table's *existing* history already has a silent gap from this defect (the same kind of question §36 answered for `boring_signals` — not yet asked for these two; a real, named open item, not assumed clean).
+
+**Monitoring required before production-safe:** `portfolio_signals` added to `data_health.py`'s `EVERY_SESSION` or `HEARTBEAT` list (currently in neither, §38.4/§39.1) — without this, even a correctly-fixed backfill loop would still be invisible if it silently stopped running.
+
+### 40.9 E. Publication contract — implementation-ready
+
+Restated from §39.4/§39.11 in concrete form: a `production_state` record (`session_date, state_id, source_run_id, data_cutoff, published_at, validation, mandatory_complete`) written **once, last**, by the single pipeline, only after every MANDATORY table (§39.2, now including the repaired `recovery_signals`/`portfolio_signals` once 40.8 lands — though this review does not require promoting them to MANDATORY immediately, only making that promotion *possible*) is confirmed complete against a universe-size check and free of `status='error'`. Individual tables **may** and **do** get written before this marker exists mid-run — that is unavoidable given the pipeline's real structure (multiple sequential hook scripts, not one transaction) — but no dashboard may ever read those tables directly for its actionability verdict; every read path goes through the marker. **Mixed-date reads are prevented by the same mechanism**: a dashboard checks `production_state.data_cutoff` once and uses that single date for every table it queries, never re-checking `MAX(date)` per table mid-render (which is what allows two tables computed against two different days to silently both look "current" today).
+
+### 40.10 F. Freshness contract — implementation-ready
+
+Restated from §39.6: `production_state.data_cutoff` must equal the ksestocks-derived `expected_session` for `CURRENT / VERIFIED`; anything older is `STALE / NOT VERIFIED — DO NOT TRADE`, with **zero grace period** — this is deliberately stricter than the old architecture's tolerated 1-7 day delay distribution (§34.4), and this review does not weaken it for implementation convenience, per the task's own explicit instruction.
+
+### 40.11 G. Watchdog design — implementation-ready
+
+Restated from §39.7: a second, independent, minimal scheduled check — not part of the pipeline it watches — asking only "has `production_state.published_at` reached today's `expected_session` by a fixed cutoff?" Runs on its own schedule (a second small GitHub Actions workflow, or this Claude program itself on a recurring check, is sufficient — no new infrastructure class required, matching item 23's "strict auditor" instruction against unnecessary complexity). Checks: missed run (marker never advanced), hung run (a `run_lease`, §39.9, past its deadline with no terminal status), stale published state (marker present but old), failed publication (marker absent despite a run having started).
+
+### 40.12 H. Alerting requirements
+
+Restated from §39.16: no specific channel is assumed without evidence — nothing in this repository currently notifies the owner of anything. Minimum viable options, unchanged: GitHub's own native email-on-workflow-failure (zero new infrastructure), the already-stubbed-but-incomplete webhook comment in `daily_scraper.yml`, or this Claude program checking `production_state` on a schedule and surfacing a plain-language alert directly. **Required before cutover, at minimum:** missed run, failed run, and repeated validation failure must reach the owner without them opening the dashboard — the other categories (stale state, publication failure, database unavailable) are all downstream consequences the same alert path already covers once `production_state` exists.
+
+### 40.13 I. Local archive design — implementation-ready
+
+Restated from §38.6/§39.12: the repurposed local job pulls, per session, only from `production_state` rows with `validation == PASS`, appending anything newer than its own local high-water mark, across every table — never computing. Records its own `last_synced_at`/`last_sync_status`/`source_state_id` locally (the same heartbeat pattern already used project-wide, applied one level further out). Resumable by construction after any length of offline time, since it is a pure append against Postgres's own already-validated history, not a replay. Incomplete pulls are detected the same way any other heartbeat gap is detected — a `last_synced_at` that hasn't advanced.
+
+### 40.14 J. Postgres retention design
+
+Confirmed, not re-derived (§39.1's dependency table stands): **~700-730 calendar days for production computation** on the large per-symbol-per-day tables (`prices`, `prices_adjusted`, `stock_signals`, `sector_signals` — the last currently missing from the existing trim, §38.1's flagged gap), full untrimmed current state for the small tables. **Historical archive retention: full, indefinite, local-only.** **Research/backtest retention: full, indefinite, local-only** — nothing found this session requires Postgres to hold it. **No historical Postgres data should be deleted as part of this migration** — the existing rolling trim already handles ongoing retention; the migration's job is to extend its table coverage (`sector_signals`), not to perform any one-time deletion.
+
+### 40.15 K. GitHub Actions readiness requirements
+
+Restated from §39.15/39.20(H): **YES, WITH SPECIFIC CONTROLS**, not an unconditional yes. Two required, neither needing infrastructure beyond what's already in this project's toolset: real failure alerting (40.12) and the independent watchdog (40.11). Everything else already evaluated adequate (concurrency protection, secrets, timeout margin, cron self-healing via date-driven catch-up) — restated, not re-litigated.
+
+### 40.16 L. Shadow-mode plan
+
+**Appropriate here, and genuinely temporary** — not a new permanent second brain, precisely because its only job is to validate the *transition*, not to run indefinitely alongside production:
+
+- **Duration:** a fixed number of trading sessions, not calendar days (holidays/weekends contribute nothing to validation) — recommend a minimum long enough to include at least one real missed-run/recovery event if possible, but no less than 10 trading sessions of clean agreement as a floor.
+- **Comparison scope:** the same acceptance test already named in 40.7 for `boring_signals` (SQLite/Postgres `rs_60`/`rs_60_decile` agreement over a gap-free window), extended to every MANDATORY table's key outputs — not a byte-for-byte diff of every column (rounding artifacts, §34.2, are expected and acceptable), but agreement on the fields that actually drive an actionable decision (`strategy_confirmed`, signal existence, direction).
+- **Acceptable differences:** harmless float-precision rounding (already characterized, §34.2). **Not acceptable:** any disagreement on signal *existence* or `strategy_confirmed`, for any date in the comparison window.
+- **What constitutes failure:** any not-acceptable disagreement found, on any date, halts the shadow period and returns to repair (40.7/40.8), not a partial go-ahead.
+- **Historical replay required:** yes — the shadow period should include a replay-verification pass over the already-completed `boring_signals` rebuild's own validation window (reusing 40.7's prerequisite test, not duplicating it), plus live forward agreement during the shadow window itself.
+- **State-dependent behaviour:** explicitly the reason §35.3's Test 2 method (true chronological sequential replay) is required for the `boring_signals` rebuild specifically — a shadow comparison against a *differently-built* Postgres history (e.g. another clean-slate load) would not be a valid test of the *live* mechanism going forward.
+- **Not a second production brain, because:** during shadow mode, the *dashboard* continues reading today's actual current authority (local SQLite, per today's architecture) — the shadow Postgres path is compared, logged, and reported on, but never surfaced to the owner as actionable, and the shadow period has a defined end condition (10+ sessions clean, or explicit failure), not an indefinite parallel run.
+
+### 40.17 M. Migration sequence — derived from the dependency graph, not assumed
+
+```
+Phase 1 — Repair known data-integrity defects
+  Prerequisite: none (can start immediately once approved)
+  Action: boring_signals true-replay rebuild (40.7); prices_adjusted 07-07 gap fix (40.7);
+          recovery_signals/portfolio_signals backfill-loop fix (40.8); extend rolling trim
+          to sector_signals (40.14); leaders_top_picks latest-date-only fix (pre-existing,
+          §29.9)
+  Verification: the integration test named in 40.7/40.8 passes against a disposable copy
+  Rollback: none needed — these are correctness fixes to the existing dual-pipeline
+            architecture, valuable regardless of whether migration proceeds
+
+Phase 2 — Establish the production-state contract (code only, not yet gating anything)
+  Prerequisite: Phase 1 complete (repairs must exist before a MANDATORY gate can trust
+                what it's gating)
+  Action: build production_state marker (40.9), MANDATORY/NON-MANDATORY check logic (39.2),
+          run_lease mechanism (39.9/39.10)
+  Verification: unit tests against a fixture DB; the marker correctly reflects PASS/FAIL
+                for deliberately-broken fixture scenarios
+  Rollback: trivial — additive code, not yet wired into any dashboard read path
+
+Phase 3 — Establish watchdog + alerting
+  Prerequisite: Phase 2 (needs production_state to watch)
+  Action: independent watchdog (40.11), real alert channel (40.12)
+  Verification: deliberately withhold a publish in a test environment, confirm the alert fires
+  Rollback: trivial — a monitoring addition, no production dependency
+
+Phase 4 — Establish local archive consumer
+  Prerequisite: Phase 2 (needs production_state to know what's safe to pull)
+  Action: repurpose the local Task Scheduler job from compute to pull-sync (40.13)
+  Verification: local archive correctly stays behind Postgres, catches up correctly after
+                a simulated multi-day local-offline gap
+  Rollback: revert the Task Scheduler job to its current compute behaviour — no data lost,
+            since nothing about Postgres has changed yet
+
+Phase 5 — Shadow mode
+  Prerequisite: Phases 1-4 all complete
+  Action: run the single-pipeline path (GitHub Actions) in parallel with today's dual
+          pipelines, comparing outputs, publishing nothing as authoritative yet (40.16)
+  Verification: 40.16's exact acceptance criteria
+  Rollback: simply end the shadow period without cutover; no production impact either way,
+            by construction
+
+Phase 6 — Cutover
+  Prerequisite: Phase 5 passes clean
+  Action: dashboards (local and remote) switch their read path to production_state-gated
+          Postgres reads; local Task Scheduler's compute job is disabled (already repurposed
+          in Phase 4)
+  Verification: 40.18's exact go/no-go criteria, checked immediately pre-cutover
+  Rollback: 40.19's exact rollback plan
+
+Phase 7 — Post-cutover verification
+  Prerequisite: Phase 6
+  Action: monitor production_state/watchdog/alerting for a defined burn-in period
+          (recommend the same 10-trading-session floor as shadow mode)
+  Verification: no unplanned STALE states, no watchdog false-negatives, local archive
+                staying in sync
+  Rollback: 40.19, still available throughout burn-in
+
+Phase 8 — Retire the old write surface
+  Prerequisite: Phase 7 burn-in clean
+  Action: archive (not delete) main_backup_e8*.py, fix_*.py one-time scripts (40.6);
+          restrict migrate_to_supabase.py to explicit sign-off only; confirm every
+          remaining recovery/backfill script still produces a pipeline_runs/
+          production_state trace when run
+  Verification: 40.1's inventory re-checked — no unfenced production-write path remains
+                that bypasses production_state
+  Rollback: N/A — this phase only removes risk, it does not change production behaviour
+```
+
+**Deliberately different from the example sequence in the task prompt:** repairs (Phase 1) come before the contract (Phase 2), not after, because §39's own capital-safety principle requires not building trust machinery around data already known to be untrustworthy. Shadow mode (Phase 5) comes after the local archive consumer (Phase 4), not before, because a meaningful shadow comparison needs the full target architecture already wired, not just the compute path. "Freeze research/strategy definitions" (the task's own Phase 0 example) is not included as a separate phase — nothing in this migration touches strategy/threshold definitions at all (per the standing instruction that architecture work must not become a reason to alter research conclusions), so there is nothing to freeze that isn't already untouched by construction.
+
+### 40.18 N. Cutover criteria — exact go/no-go
+
+**GO only if ALL of:**
+1. Phase 1's data-integrity repairs are complete and independently re-verified (40.7/40.8's named tests pass).
+2. The production-state contract (Phase 2) correctly gates a deliberately-broken fixture scenario in testing.
+3. The watchdog (Phase 3) has been proven to fire on a deliberately-withheld test publish.
+4. Real alerting (Phase 3) has been proven to reach the owner, not just log a message.
+5. The local archive consumer (Phase 4) has correctly resumed after a simulated multi-day offline gap.
+6. Shadow mode (Phase 5) completed its full comparison window with zero not-acceptable disagreements (40.16).
+7. Postgres's own `boring_signals`/`prices_adjusted` state passes the specific acceptance test named in 40.7 — not merely "shadow mode looked fine in aggregate."
+8. `recovery_signals`/`portfolio_signals` show zero silent gaps across their own existing history (40.8's historical-coverage check).
+9. Rollback (40.19) has been rehearsed at least once in a non-production context, not merely designed on paper.
+10. The owner has explicitly approved: the offline-access tradeoff (§38.14), the local-archive-is-not-a-backup gap being an accepted risk for now (§39.20 L), and the specific alert channel (40.12).
+
+**NO-GO if any single one of the above is unmet.** This is a hard AND, not a weighted score — per this review's own capital-safety principle, migration should fail closed.
+
+### 40.19 O. Rollback plan — exact criteria
+
+**What would be reverted:** the dashboards' read path, back to today's respective backends (local dashboard → local SQLite compute; remote dashboard → Postgres compute) — **not** a data rollback, since nothing about the underlying data changes during cutover itself (cutover is a read-path and trigger-ownership switch, not a migration of the data itself, given Postgres has been independently computing all along).
+
+**How quickly:** should be near-immediate — a configuration/read-path change, not a data restore, provided the local Task Scheduler compute job was only *repurposed* (Phase 4), not deleted, and can be reactivated.
+
+**What state remains authoritative during rollback:** explicitly, whichever backend the dashboard is pointed back at for that specific viewer — and this is exactly where rollback must be handled with the same care as cutover itself: **reactivating the local compute job without also reverting the dashboard's read path, or vice versa, recreates the two-realities problem this entire program exists to close.** Rollback must be defined and executed as a single atomic decision (both dashboards + both compute triggers move together), not a partial, one-piece-at-a-time reversal.
+
+**How stale data is prevented during rollback:** the same freshness contract (40.10) applies regardless of which backend is authoritative at any given moment — a rollback to the local-compute model should still show `STALE / NOT VERIFIED` if the local job hasn't run recently, not silently assume "local is always current" the way today's pre-migration architecture implicitly does.
+
+**How the user knows rollback occurred:** the dashboard's own status display should say so explicitly, not merely change behaviour silently — a one-line "Kiran reverted to local-authoritative mode on [date] — see [reason]" is enough, matching this program's own stated principle of no silent state changes anywhere in this system.
+
+**Can rollback accidentally reactivate two competing pipelines?** **Yes, if done carelessly — this is the one real risk in this whole plan's rollback design**, and it is named explicitly rather than assumed away: if the local compute job is reactivated (to restore local authority) while the GitHub Actions cron is not simultaneously paused, both pipelines run again, recreating exactly today's problem. **Required control:** rollback must include an explicit, single step that pauses the *other* pipeline, not just reactivates the one being rolled back to — this is a genuine design requirement for the rollback mechanism, not an afterthought.
+
+### 40.20 P. Data loss / data integrity protection
+
+| Risk | Assessment |
+|---|---|
+| Missing rows | No migration step in this plan deletes or moves rows — Postgres has been independently accumulating its own data all along; cutover changes *authority*, not *contents* |
+| Duplicate rows | Not a new risk from migration itself — existing `UNIQUE`/`ON CONFLICT` constraints (already fixed for `pipeline_runs`, `leaders_scan`, `setup_log` per §29.7-29.8) remain the protection, unchanged by this plan |
+| Date gaps | Addressed structurally by the MANDATORY-completeness check (39.2) going forward; historical gaps already found (§35/§36) are documented, not silently carried forward as if resolved |
+| Schema mismatches | Not touched by this plan — no schema change proposed anywhere in §37-40 |
+| Positional lookback shifts | The exact mechanism behind §35.1's finding — addressed by the universe-size completeness check (39.2), which is a new control specifically because today's architecture has no defense against it at all |
+| Stale/partial state | The entire subject of the publication contract (40.9) |
+| State-dependent replay | The exact reason the `boring_signals` rebuild must use true chronological replay (§35.3's Test 2 method), not another bulk load — named explicitly in 40.7/40.16 |
+| Corporate-action corrections | Confirmed already correctly scoped local-only (§39.1/40.4) — no change proposed |
+| Local archive truncation | Not proposed anywhere in this plan — the local archive only ever grows (§38/§39's own design), no truncation step exists |
+| Postgres retention | Confirmed sufficient at ~700-730 days for production purposes (40.14); no historical Postgres data deletion proposed as part of this migration |
+
+**No destructive operation is proposed anywhere in this plan.** Every phase in 40.17 is additive (new code, new checks, new marker) or a trigger/read-path change (Phases 4, 6), never a delete/overwrite of existing data.
+
+### 40.21 Q. User operational burden after cutover
+
+Checked directly against the task's own list:
+
+| Post-cutover requirement | Met? |
+|---|---|
+| No manual Python | Yes — the one pipeline runs unattended on GitHub Actions; the local job is a passive pull, also unattended |
+| No manual DB sync | Yes — the pull job is automatic, resumable, and self-reports its own staleness |
+| No log inspection | Yes, provided the alerting (40.12) is real and reaches the owner directly — this is the one item whose fulfillment depends on a prerequisite this plan names but does not itself build |
+| No determining whether a run occurred | Yes — the watchdog (40.11) does this, not the owner |
+| No SQLite-vs-Postgres reconciliation | Yes — there is only one computation left to reconcile against itself |
+| No restarting pipelines | Yes, under normal operation; a genuine incident (e.g. GitHub Actions config lost, §39.14) would still need a human, same as any real system — not a burden this architecture claims to eliminate, only to make rare and clearly signalled |
+| No deciding whether today's signal is stale | Yes — the dashboard states it plainly (`CURRENT/VERIFIED` or `STALE/NOT VERIFIED`), the owner reads, not computes |
+
+**One item explicitly not fully closed by this plan alone:** alerting (40.12) is designed but its exact channel is left to the owner's choice — until that choice is made and wired, "no log inspection" is not yet actually true, it is only true once that specific prerequisite is completed.
+
+### 40.22 Capital-safety review, per phase
+
+Applying "could this phase cause an incorrect signal to become actionable?" to every phase in 40.17: **No, for every phase**, by the same structural argument as §39.18 — Phases 1-5 either fix data, build machinery, or run in shadow (never surfaced as actionable); Phase 6 (cutover) is gated by 40.18's hard AND, which fails closed by design; Phase 7 is observation only; Phase 8 removes risk without changing behavior. **The one phase requiring the most care is Phase 6 itself**, precisely because it's the only phase that changes what the owner actually sees — which is exactly why 40.18's criteria are structured as a hard gate rather than a checklist to satisfy loosely.
+
+### 40.23 Unresolved risks (carried forward, not newly solved)
+
+The account's actual Supabase plan/storage ceiling, still not verified against the dashboard (§38/§39, unchanged). Whether the 11 non-price tables are individually gap-free in the local archive (still only spot-checked). The exact alert channel (40.12, deliberately left open). Whether the local archive needs a genuine independent backup before cutover is acceptable, or whether this is a knowingly-accepted risk (§39.14/§39.20 L, unchanged — this plan does not resolve it, only restates it as a required pre-cutover decision, item 10 of 40.18). Whether `recovery_signals`/`portfolio_signals`' *existing* history already has a silent gap from their newly-confirmed defect (40.8, a real open question, not yet checked).
+
+### 40.24 Decisions requiring explicit user approval
+
+Everything already named in §38.15/§39.20(L), unchanged, plus: authorization to begin Phase 1 (the data-integrity repairs) — this plan documents readiness, it does not authorize execution; the shadow-mode duration/acceptance threshold (40.16 proposes a 10-session floor, not a fixed mandate); the exact alert channel (40.12); whether to accept the local-archive-backup gap for now or require it solved first (40.18 criterion 10); and, given 40.1's new finding, explicit sign-off on archiving the four `main_backup_e8*.py` files and the used-up `fix_*.py` scripts, since even "archive, don't delete" is a repository change this review is not authorized to perform itself.
+
+**READ-ONLY REVIEW — NO IMPLEMENTATION OR PRODUCTION CHANGE WAS PERFORMED.**
+
+**Date of this entry: 2026-08-21. Status: MIGRATION READINESS REVIEW ONLY — no code, schema, database, GitHub Actions, Supabase, Task Scheduler, UI, deployment, or configuration was modified; no fixes applied; no data migrated; no pipeline disabled; no cutover performed. Confirms and extends §37-39 without contradicting any of their conclusions — the one correction is procedural (40.17's phase ordering differs from the task prompt's own illustrative example, with the difference explained, not §37/38/39's substance). Awaiting explicit user authorization before Phase 1 of §40.17 begins.**
+
+---
+
+## 41. <span style="color:#dc2626;">🔴 Phase 1 baseline + write-surface inventory — HALTED on a genuine stop condition before any repair (2026-08-21)</span>
+
+Phase 1 of the migration plan (§40.17) was explicitly authorized this session, scoped to: baseline, a formal production-write-surface inventory, classification of the four `main_backup_e8*.py` copies, and repairs to `prices_adjusted`/`boring_signals`/`recovery_signals`/`portfolio_signals`. Baseline and inventory work below is complete and read-only. Repair work did not begin — investigating the `prices_adjusted` repair surfaced a stop condition per the authorization's own §16 ("an unexplained production state mutation... do not resolve these by guessing"), so this entry halts here and reports rather than proceeding.
+
+### 41.1 Baseline (read-only, CONFIRMED)
+
+- Branch: `main`. Commit: `3d77a9df5a67ffc9e0da0cac096b69437ef74ec6` (merge of PR #15, boring_signals Postgres port).
+- Working tree at session start: two uncommitted files, `CLAUDE.md` and `docs/KIRAN_CLEANUP_AUDIT.md` — this is §33-40's investigation writeup from earlier in the day, not yet committed. Not touched or committed by this entry.
+- Test suite: `pytest tests/` — **88 passed**, 0 failed, 333.97s.
+- Local DB config: `DATABASE_URL` and `SUPABASE_DB_URL` both unset in the shell environment — confirms local always defaults to SQLite (`psx_data.db`, 881 MB), consistent with §37.A. `.env` (untracked, not read for values) defines `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `SUPABASE_DB_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — no `DATABASE_URL` key locally, matching GitHub Actions being the only place that variable is set (as a repo secret).
+- GitHub Actions workflows on disk: `ci.yml`, `daily_scraper.yml`, `eod-scraper.yml`, `fix_gal_sector.yml`, `weekly_backtest.yml`, `weekly_ml_retrain.yml`, `weekly_sim.yml`, and **`setup_log_repair.yml`** — this last one is not in CLAUDE.md's workflow table. **New finding, low severity:** read directly — `workflow_dispatch` only, requires explicit `dates` input, defaults `dry_run: true`, calls `backfill_setup_log.py --repair-dates ... [--execute]`, already referenced in prose at §25/§27/§28. A documentation gap in CLAUDE.md's table, not an undisclosed production trigger — recommend adding it to that table as a Phase 1 cleanup, not a safety finding.
+
+### 41.2 Four `main_backup_e8*.py` copies — classified per the authorization's §4 questions (CONFIRMED)
+
+All four exist on disk exactly as §40.1 named them: `main_backup_e8.py` (375 lines), `main_backup_e84b.py` (379 lines), `main_backup_e85.py` (391 lines), `main_backup_e86a.py` (402 lines) — vs. current `main.py` at 552 lines; each differs from current `main.py` by 900+ diff lines (confirmed via direct diff, not assumed from size).
+
+| Question | Finding |
+|---|---|
+| Executable? | Yes — each is a complete, syntactically standalone script with its own `if __name__ == "__main__"` entry (confirmed by direct read, not just the `main_backup_*.py` filename pattern) |
+| Tables it can write | Same production tables as current `main.py`'s hook chain existed at that snapshot's epoch — at minimum `prices`, `index_prices`, `prices_adjusted`, `sector_signals`, `stock_signals` (all imported directly: `from database import (...)`, `import sector_signals`, `import stock_signals`) |
+| Which database | **All four** import `DB_PATH` from the live, current `config.py` (`from config import ... DB_PATH ...`) and call `sqlite3.connect(DB_PATH)` directly — meaning each would write to **today's actual production `psx_data.db`**, not a frozen snapshot of one. `main_backup_e86a.py` additionally re-derives `_pa_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")` internally (line 147) — the only one of the four with a live Postgres write path, making it the highest-risk of the four if ever run with `DATABASE_URL` set in the environment (e.g. under a GitHub Actions shell, or a local session with `.env` sourced) |
+| Differs from current main.py? | Yes, substantially — confirmed by direct diff (929-956 diff lines each vs. today's 552-line file), not inferred from file size |
+| Credentials/config paths of its own? | No hardcoded paths or credentials in any of the four — they all inherit the *live* config, which is the actual risk (not a separate stale target) |
+| Referenced anywhere? | **No** — repo-wide search (all `.py`/`.yml`/`.bat`/`.ps1`/`.md`/`.txt`/`.cfg`/`.ini`/`.toml` files) for any of the four filenames found zero references outside `docs/KIRAN_CLEANUP_AUDIT.md` itself. No script imports them, no workflow invokes them, no batch/PowerShell launcher names them |
+| Scheduled anywhere? | No — not present in any `.github/workflows/*.yml`, and no Task Scheduler XML in the repo references them |
+| Invoked by another script? | No — same search as above |
+| Evidence it has ever executed? | **INFERRED, not CONFIRMED, either way.** Filesystem mtimes: `main_backup_e8.py` 2026-06-24, the other three clustered 2026-07-08 (same session — matches the E8.7 Postgres-port work described in CLAUDE.md's "Deferred" section). Git history: all four were first *committed* together in commit `907770b` (2026-07-29, "Sync working tree" — the mass 542-file commit item #2 in the top-priority list), meaning they sat untracked-but-present on disk before that, consistent with normal editor "save as backup before a big edit" behavior rather than a deliberate secondary pipeline. mtimes reflect last **write**, not last **execution** — a `python main_backup_e85.py` run wouldn't necessarily modify the file, so this evidence supports "not scheduled, not imported, not referenced" strongly, but cannot fully rule out a one-off manual `python main_backup_e85.py` execution at the terminal. No `pipeline_runs` heartbeat row or other execution-log evidence was searched this pass (out of scope for this halt point — see 41.4) |
+| Could it explain a previously-unexplained production state transition? | **UNRESOLVED** — not eliminated as a hypothesis for the three confirmed out-of-band incidents (§35/§36) or for 41.3 below, but no positive evidence found connecting them either. Flagging as open, not closed |
+
+**Verdict on the four files, this pass: INFERRED dormant, not CONFIRMED harmless.** Consistent with §40.6's recommendation (archive, don't delete) — not executed this pass, since that's a repository change requiring the sign-off named in §40.24, not yet given.
+
+### 41.3 New finding, not in §40.1's inventory: additional undocumented backup copies of *other* production modules
+
+**CONFIRMED by direct repo search**, not limited to `main.py`: four more backup-suffixed files exist that §40.1's scan (scoped to `__main__` blocks) did not surface because at least one has no CLI entry —
+
+- `apply_price_adjustments_backup_e85.py` — same `DROP TABLE IF EXISTS prices_adjusted` / full-rebuild pattern as current `apply_price_adjustments.py` (confirmed: both files contain an identical `CREATE TABLE prices_adjusted AS SELECT * FROM prices` construct)
+- `database_pg_backup_e84b.py`, `database_pg_backup_e85.py` — backup copies of the Postgres implementation module
+- `page_flows_backup_e84b.py` — backup copy of the retired Flows page module
+
+None of these were individually classified this pass (out of the four files §4 named explicitly) — flagging their existence as a gap in 40.1's own inventory scope (`__main__`-block search misses importable-only modules with destructive functions, the same blind spot 40.1 itself already noted for `boring_signals.py`/`sector_signals.py`/etc.). **Recommend Phase 1 (resumed) extend the same 10-question classification to these four before Phase 1 is called complete.**
+
+### 41.4 STOP CONDITION — unexplained production schema + data mutation in `prices_adjusted`, no corresponding code found anywhere in the repository or its git history
+
+Investigating the `prices_adjusted` repair (§6 of the authorization) started by reading `append_new_prices_adjusted()` directly (`apply_price_adjustments.py:273-302`). **First correction to the authorization's own premise:** the described defect — a bare `INSERT...SELECT *` breaking after `hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag` were added — is **already fixed**. The live function uses an explicit column list (`INSERT INTO prices_adjusted (symbol, date, close, volume, high, low, open) SELECT symbol, date, close, volume, high, low, open FROM prices ...`), confirmed matching §36.2's own account of commit `d23f9b2` (2026-08-12). No crash risk from this specific mechanism remains.
+
+**What was found instead, read directly against the live local `psx_data.db` (read-only queries only):**
+
+1. `prices_adjusted`'s live schema has the three columns (`hit_circuit_up INTEGER NOT NULL DEFAULT 0`, `hit_circuit_down INTEGER NOT NULL DEFAULT 0`, `thin_trading_flag INTEGER NOT NULL DEFAULT 0`) — confirmed via `PRAGMA table_info`.
+2. **These are not empty placeholder columns.** Read-only value distribution: `hit_circuit_up` = 22,793 of 1,763,055 rows flagged 1; `hit_circuit_down` = 21,699 flagged 1; `thin_trading_flag` = 173,619 flagged 1. Real, non-trivial computed data exists across a large fraction of the table's history.
+3. **No file anywhere in the current working tree — searched with no extension filter, so this includes every `.py` file, every backup copy (including the four `main_backup_e8*.py` and the four in 41.3), every workflow, every doc — contains the strings `hit_circuit` or `thin_trading`, except this audit document itself** (which only discusses them in prose, describing the historical crash).
+4. **`git log -S"hit_circuit_up" -- '*.py'` across full history returns zero commits.** This string was never added to any `.py` file in any commit, ever — not merely deleted later. Whatever computed the current 218,111 non-zero rows across these three columns was never version-controlled.
+5. The raw `prices` table (the source `apply_price_adjustments.py --all`'s full-rebuild path copies from) has **no such columns at all** (`PRAGMA table_info(prices)` confirmed 7 columns, none matching). `build_adjusted_prices()`'s full-rebuild path is `DROP TABLE IF EXISTS prices_adjusted` → `CREATE TABLE prices_adjusted AS SELECT * FROM prices` — this **inherits `prices`'s schema**, not `prices_adjusted`'s own. A full `apply_price_adjustments.py --all` run (a legitimate, currently-runnable recovery script per §40.1) would **silently drop all three columns and their 218,111 non-zero values**, with no error, no warning — the table would simply no longer have them afterward.
+6. The daily incremental hook (`append_new_prices_adjusted()`) does not populate these columns for new rows — SQLite silently fills them with their `DEFAULT 0`. Since real (non-zero) computation clearly happened historically, and nothing currently computes it going forward, **every date appended since whatever session originally back-filled these columns has been silently getting placeholder zeros instead of whatever the original logic intended** — a live, ongoing, silent divergence between old and new rows in the same column, invisible because nothing currently reads these columns downstream (confirmed — no `.py` file references them outside the DDL default itself).
+
+**This is the STOP CONDITION named explicitly in the authorization's §16:** *"an unknown production writer," "an unexplained production state mutation," "any ambiguity about whether a change is safe."* All three apply. Per §16's instruction, this is not resolved by guessing — not by inventing a plausible circuit-breaker/thin-trading formula and backfilling it, not by silently accepting the zeros as intentional, and not by "fixing" the append function to compute something without knowing what the original 218,111 flagged rows were actually measuring or whether anything is even supposed to consume them.
+
+**What this means for the authorized Phase 1 repair list:** the `prices_adjusted` repair as specified in §6 of the authorization (fix the crash-causing `INSERT...SELECT *`) is **already done, pre-existing** — no action needed there. But a **different, previously-uncatalogued defect** sits in the same function's neighborhood, and it does not have a safe default resolution without user input on: (a) what these three columns were originally meant to represent and whether that logic exists anywhere outside this repository, (b) whether they should be preserved, backfilled correctly, or deliberately abandoned/dropped as dead schema, and (c) whether their presence changes the risk assessment of ever running `apply_price_adjustments.py --all` (currently silently destructive to this data).
+
+### 41.5 What was NOT done this pass, and why
+
+Per the authorization's own §16, work halted here rather than continuing into `boring_signals`/`recovery_signals`/`portfolio_signals` repairs. Although those three appear independent of the `prices_adjusted` finding on the surface, this entry stops before touching any of them out of the same caution — a database capable of an undocumented, unversioned, silent schema/data mutation on one table warrants confirming there isn't a similar surprise waiting in the others before writing to any of them, and that judgment call belongs to the user, not to an assumption made mid-repair.
+
+**Status: Phase 1 baseline and inventory (partial) complete. Phase 1 repairs NOT started. Blocked on user decision re: 41.4. No code, schema, or data was modified this pass — every action was read-only (`PRAGMA table_info`, `SELECT COUNT`/`GROUP BY`, `git log`, `diff`, `grep`, `pytest`).**
+
+---
+
+## 42. <span style="color:#dc2626;">🔴 Provenance forensics — the `prices_adjusted` mystery columns, extended backup-file classification, corrected write-surface count (2026-08-21)</span>
+
+Follow-up to §41.4's stop condition. **READ-ONLY FORENSIC INVESTIGATION. NO CODE, SCHEMA, DATABASE, DATA, DEPLOYMENT, OR PRODUCTION EXECUTION WAS MODIFIED.** One synthetic disposable SQLite file was created, used, and deleted to test a rebuild path in isolation (42.6) — it never touched `psx_data.db` or Postgres.
+
+### 42.1 When did the columns first appear? (CONFIRMED, narrowed; exact instant UNRESOLVED)
+
+Not re-derived from nothing — carries forward §36.2's already-established finding (log-based: the `INSERT...SELECT *` crash began firing 2026-08-03) and narrows it further with new evidence:
+
+- **Full history distribution is smooth and real**, not sparse or accidental: `hit_circuit_up=1` rows exist in every single year 2005-2026 (yearly counts ranging 284-1,712), tracking overall market activity levels, not clustered at one date. This means whatever computed these values processed the **entire 2005-2026 history in one pass**, not incrementally over time.
+- **The non-zero data has a hard ceiling: max date with any non-zero value across all three columns is 2026-07-31** (`hit_circuit_up`/`hit_circuit_down` max 2026-07-28/31, `thin_trading_flag` max 2026-07-31).
+- **Every row dated after 2026-08-03 — 6,365 rows, confirmed by direct count — has all three columns exactly 0, with zero exceptions.** This is deterministic, not statistical.
+- **Conclusion (CONFIRMED by direct data query, not inferred):** the one-time full-history backfill that produced the 218,111 non-zero rows ran once, at a point on or immediately before 2026-08-03 — consistent with, and now double-confirming, §36.2's timeline for when the three columns were added to the schema. Since that moment, **not one row has received a real computed value** — every new row silently gets the SQLite column `DEFAULT 0`. **Exact timestamp of the backfill, and who/what ran it, remain UNRESOLVED** — SQLite carries no schema-change audit trail, and (42.2 below) no version-controlled code exists to check against.
+
+### 42.2 Repository-wide and full-history search — CONFIRMED, the producer code does not exist in this repository, ever
+
+Widened well beyond the original `git log -S"hit_circuit_up" -- '*.py'`, per this task's explicit instruction:
+
+- **All branches, not just `main`:** `git rev-list --all --count` = 273 revisions across `main`, 8 local branches, and 13 remote-tracking branches (`docs/*`, `feat/*`, `fix/*`).
+- **Semantic term sweep**, pickaxe (`-S`) across all branches, all files, for: `hit_circuit`, `circuit_up`, `circuit_down`, `thin_trading`, `limit_up`, `limit_down`, `thin trading`, `illiquid`, `trading halt`, `price limit`. Only two non-trivial hits, both dead ends investigated and closed (below): `thin trading` (the two-word phrase, no underscore) appears in six old commits, and `hit_circuit`/`circuit_up`/`circuit_down`/`thin_trading` all appear together in exactly one commit, `5293fdb`.
+- **`5293fdb` ("Add CI test gate...", 2026-08-12) investigated and ruled out as a dead end:** the match is inside the committed binary `tests/fixtures/psx_fixture.db`, not in any `.py` file — confirmed directly by opening that fixture DB read-only: its `prices_adjusted` table has the identical schema (same three columns, same `NOT NULL DEFAULT 0`) and non-trivial non-zero data (97/12/30 flagged rows in a 29,630-row slice). This is fully explained by `tests/fixtures/build_fixture_db.py`'s own documented method — it copies `sqlite_master`'s DDL and a `SELECT *` row slice **verbatim from the live local `psx_data.db`**, opened strictly `mode=ro`, with no special-casing of any column. **The fixture is an innocent bystander that faithfully mirrors whatever the live DB already had — it corroborates that the columns and real data existed by the fixture's generation date, it does not explain their origin.**
+- **The `thin trading` (two-word) hits** all trace to commit `907770b` (the mass "Sync working tree" commit, unrelated prose in research folders) and four older, unrelated commits from before this codebase's current form (`e9b5cdb`, `d0eaba1`, `7bdd152`, and one on `fix/signal-engine-local-db-routing`) — read directly, none reference these columns or circuit-breaker logic; false positives on the common English phrase.
+- **Conclusion, CONFIRMED:** across 273 revisions on every branch this repository has, the strings `hit_circuit_up`, `hit_circuit_down`, and `thin_trading_flag` were **never added to any `.py` file, ever**. Whatever computed and wrote the 218,111 non-zero values did so using code that was never version-controlled in this repository — not deleted-and-recoverable, genuinely never committed.
+
+### 42.3 Postgres comparison — CONFIRMED, columns do not exist there at all
+
+Read-only session (`conn.set_session(readonly=True, autocommit=True)`, closed immediately after), querying `information_schema.columns`: production Postgres `prices_adjusted` has exactly the original 7 columns (`symbol, date, close, volume, high, low, open`) — no `hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag`, and no evidence they were ever added there. 297,162 rows (vs. SQLite's 1,763,055 — consistent with Postgres's known bounded-retention window). **This means the mystery data is SQLite-local-only** — not a Postgres-side gap to close, but also not something a future single-Postgres-authority migration would inherit automatically; if these columns matter, they'd need to be designed and ported, not assumed to already exist on the target.
+
+### 42.4 Data-level forensics and semantics — INFERRED for all three (not CONFIRMED, per the standard this task set)
+
+All queries read-only against local `psx_data.db` (`mode=ro` or plain `SELECT`, no writes).
+
+**`hit_circuit_up` / `hit_circuit_down`:** joined each flagged row to its own symbol's prior trading day's close via `LAG() OVER (PARTITION BY symbol ORDER BY date)` and computed the resulting % change. Full-population distribution (not cherry-picked — first look was a 20-row recent sample that came back suspiciously clean at ~+10.0%; the full 22,793/21,699-row distribution is more textured but tells a *more* convincing story, not less): dominant clusters at **+5.0%** (9,008 rows), **+7.5%** (1,421), **+10.0%** (1,192), with a long tail of nearby values (4.5-4.9%, 7.1-7.4%, 10.1-10.3% — consistent with compounding of `prices_adjusted`'s own corporate-action adjustment factors slightly shifting an originally-clean round number). `hit_circuit_down` mirrors this exactly in the negative direction (-5.0% dominant at 7,819, then -7.5%, -4.9%, etc.). **This multi-regime clustering (5% / 7.5% / 10%) is itself a meaningful signature, not noise** — it is consistent with the Pakistan Stock Exchange's own circuit-breaker/price-band percentage having changed more than once across the 2005-2026 window this table spans, which is external market-structure knowledge, not something derivable from this codebase alone. **Classification: INFERRED — "did this symbol hit its daily upper/lower price-limit band that session" is a strong, well-supported hypothesis for what these two columns represent. Not CONFIRMED — no producer code exists to verify the exact per-date threshold logic (e.g. how a price-tier-dependent or date-dependent band would have been looked up), and this task's own instruction is explicit that a plausible-looking distribution is not proof.**
+
+**`thin_trading_flag`:** tested three hypotheses read-only — low volume, narrow high/low range, and exact `high == low`. Low volume was **ruled out**: flag=1 rows actually average *higher* volume (4.75M) than flag=0 rows (1.35M), the opposite of an illiquidity signature. The winning signature: **`thin_trading_flag = 1` if and only if `high == low`, exactly, with zero exceptions across all 173,619 flagged rows out of 1,763,055 total** — a deterministic, perfectly reproducible boolean equivalence, not a statistical tendency. Also confirmed **mutually exclusive** with `hit_circuit_up`/`hit_circuit_down` in the live data (every flagged row has both circuit columns at 0) — a distinct condition, not a side effect of circuit-lock days. **Classification: INFERRED, but the strongest of the three findings this pass** — this is a 100%-consistent, zero-exception empirical equivalence (`thin_trading_flag ⟺ high=low`), meaning even without the producer's source code, the flag can be reproduced exactly from data already in the table. Still marked INFERRED rather than CONFIRMED strictly because "the data pattern matches perfectly" is not the same evidence tier as "the code that wrote it was read directly" — per this task's own evidence hierarchy, and because a session with zero intraday range could itself have more than one underlying market cause (a genuine single-print/no-real-trading session vs. some other stale-price artifact) that this data alone can't fully distinguish.
+
+**No column was classified C (semantics UNRESOLVED) or D (confirmed obsolete)** — all three produced meaningful, non-arbitrary data signatures. **No reconstruction, backfill, or code change was implemented for any of them, per this task's explicit instruction — classification only.**
+
+### 42.5 Does any current production code read these columns? CONFIRMED — no
+
+Repository-wide search, no file-extension filter (so this includes every `.py` file, every workflow, every doc, every backup copy found in this session and in §40.1/§41): the only file containing `hit_circuit` or `thin_trading` anywhere is this audit document itself. **Confirmed: zero readers, zero writers (beyond the DDL default), in the entire current + historical codebase.** This does not imply they are safe to discard — per this task's own final rule, unused production data may still represent an undocumented intended feature; the correct action is preserve-and-classify, not clean up, and none was touched.
+
+### 42.6 Rebuild risk — upgraded from INFERRED (§41.4, code-read only) to CONFIRMED (empirical test, disposable copy)
+
+§41.4 inferred from reading `build_adjusted_prices()`'s source that a full `apply_price_adjustments.py --all` rebuild would silently drop the three columns. This pass tested it directly: built a throwaway synthetic SQLite file (`tempfile.mktemp()`, deleted immediately after) with a minimal `prices`/`prices_adjusted` pair matching the real schema and one seeded row (`hit_circuit_up=1`), then ran `build_adjusted_prices()`'s exact two statements (`DROP TABLE IF EXISTS prices_adjusted` → `CREATE TABLE prices_adjusted AS SELECT * FROM prices`) against it. **Result, CONFIRMED, not inferred:** the rebuilt table has exactly 7 columns — `hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag` and the seeded row's flagged value are gone, no error raised, no warning printed. This is a live, real, currently-armed risk — `apply_price_adjustments.py --all` is one of §40.1's own catalogued "legitimate, currently-runnable recovery tools," and running it today (for its actual intended purpose, applying a newly-confirmed corporate action) would destroy this data as an undocumented side effect.
+
+### 42.7 Daily append risk — CONFIRMED (restated from §41.4 with the exact row count added)
+
+`append_new_prices_adjusted()`'s explicit 7-column `INSERT` (symbol/date/close/volume/high/low/open) leaves the three mystery columns to SQLite's own `DEFAULT 0`. Directly confirmed via count: **100% of the 6,365 rows written since 2026-08-03 have all three columns at exactly 0** — this is the live, ongoing version of the mixed-historical-definition problem, not merely a future risk. Every day this hook runs without a fix, the "silently-zeroed" population grows relative to the "really-computed-once" population.
+
+### 42.8 Extended classification of the four backup files found in §41.3
+
+| File | Executable? | Writes to | Diff vs. current counterpart | References mystery columns? | Referenced anywhere? | Scheduled? | First committed |
+|---|---|---|---|---|---|---|---|
+| `apply_price_adjustments_backup_e85.py` | Yes — has `__main__` | SQLite `psx_data.db` (own hardcoded `DB_PATH = os.path.join(BASE, "psx_data.db")`, independently derived but resolves to the same live file) | **Only 5 lines** — near-identical to current `apply_price_adjustments.py`; carries the *exact same* undocumented-column-drop risk as 42.6 if ever run | No | No | No | `907770b` (2026-07-29 mass sync) |
+| `database_pg_backup_e84b.py` | **No** `__main__` block — importable only | Postgres, via its own `_get_url()` reading `DATABASE_URL`/`SUPABASE_DB_URL` — same live production Postgres | 3,828 diff lines vs. current `database_pg.py` — substantially older epoch | No | No | No | `907770b` |
+| `database_pg_backup_e85.py` | **No** `__main__` — importable only | Same as above | 3,873 diff lines — also substantially older | No | No | No | `907770b` |
+| `page_flows_backup_e84b.py` | No `__main__` — Streamlit page module | SQLite (own fallback `DB_PATH`) | 85 diff lines — fairly close to current (already-retired) `page_flows.py` | No | No | No | `907770b` |
+
+None of the four explain the mystery-column provenance. All four share the same profile as the original four `main_backup_e8*.py` files: dormant by every available check, first surfaced (not created) by the same mass commit, no execution evidence found either way.
+
+### 42.9 Corrected, extended production-write-surface inventory
+
+**§40.1 stated "~60" directly-runnable scripts. Independently re-counted this pass, not merely cited: 89** `__main__`-block Python files in the repository (`grep -rl "__main__" --include="*.py"`, excluding `tests/`), confirmed by direct listing. The gap is mostly scope, not a prior error — §40.1's pass evidently under-covered the `research/`, `boring_study/`, and `backups/` subdirectories and a longer tail of one-off historical/backtest scripts than it enumerated by name. **Recording the corrected number here rather than silently using it** — §40.1's substantive conclusions (four `main.py` copies, the no-CLI blind spot for `boring_signals.py` etc.) are not contradicted, only its total count.
+
+**New backup/one-off files found in the full 89-script list, not previously catalogued anywhere (§40.1 or §41):**
+
+| File | Writes to | Diff vs. current | Notable | First committed |
+|---|---|---|---|---|
+| `signal_engine_backup_2c.py` | SQLite (`DB_PATH`) | 1,860 diff lines vs. current `signal_engine.py` | **Notable: this is a backup of the exact module Phase 1 was authorized to repair** (`recovery_signals`/`portfolio_signals` backfill logic). Checked directly for a hidden correct implementation — it does not have one; still uses the same `MAX(date)`-only pattern as current `signal_engine.py`, no backfill loop | `907770b` (mass sync) |
+| `signal_engine_backup_e6.py` | SQLite (`DB_PATH`) | 1,943 diff lines | Same check, same result — `MAX(date)`-only, no backfill loop present in this older version either | `907770b` |
+| `migrate_to_supabase_backup_e4i.py` | Both — SQLite source + Postgres target (`SUPABASE_DB_URL`) | Not diffed (no current direct counterpart beyond `migrate_to_supabase.py`) | Same dormant profile as the rest of the mass-sync backups | `907770b` |
+| `research/migrate_to_supabase.py` | Both — SQLite + Postgres (`DATABASE_URL`/`SUPABASE_DB_URL`) | — | **Different provenance from the rest — predates the mass sync entirely**, committed `e9b5cdb` (2026-05-29, "pre_audit_stable_snapshot"), sitting in the `research/` subfolder since before this audit program began. Not referenced anywhere either | `e9b5cdb` |
+| `backups/fix_regime_2026-07-31.py` | Postgres (`SUPABASE_DB_URL`) | — | **Different from every other file in this section — this one is a known-good, already-documented, deliberately-committed one-off repair script**, its own dedicated commit message ("Fix production market_regime/index_prices divergence"), matching CLAUDE.md's and this program's already-established §16 fix. Not a new risk — recorded here only for inventory completeness | `6da9eab` (2026-07-31, its own commit, not the mass sync) |
+
+None of these five reference the mystery columns either (same repo-wide, no-extension-filter search in 42.5 covers them).
+
+### 42.10 Final classification (per this task's decision tree, §12)
+
+| Column | Classification | Basis |
+|---|---|---|
+| `hit_circuit_up` | **B — semantics strongly INFERRED, producer not confirmed** | Multi-regime % move clustering (5% / 7.5% / 10%) matching known PSX circuit-band history; no source code found anywhere |
+| `hit_circuit_down` | **B — semantics strongly INFERRED, producer not confirmed** | Mirror of the above in the negative direction |
+| `thin_trading_flag` | **B — semantics strongly INFERRED, producer not confirmed** | Deterministic, zero-exception equivalence to `high=low`; no source code found anywhere |
+
+**No column reached A (producer confirmed) or C (fully unresolved) or D (confirmed obsolete).** Per this task's explicit instruction, class B means: **do not reconstruct; requires explicit review** — no backfill, no drop, no code change proposed or performed.
+
+### 42.11 Whether Phase 1 can safely resume
+
+**Not yet, on `prices_adjusted` specifically — the user still needs to decide** whether to preserve-as-is, attempt a reviewed reconstruction (now with a much stronger empirical starting hypothesis than at the §41.4 halt point, especially for `thin_trading_flag`'s exact equivalence), or deliberately retire the three columns. Two independent, previously-unrecorded live risks now sit on this table and were not part of the original Phase 1 repair scope: (1) `apply_price_adjustments.py --all` (and its near-duplicate backup) will silently destroy this data on next run — CONFIRMED, not hypothetical; (2) every day since 2026-08-03 has silently written false zeros — CONFIRMED, ongoing, growing.
+
+**`boring_signals`/`recovery_signals`/`portfolio_signals` repairs were not investigated this pass** (out of the same scope discipline as §41.5) — nothing new found this session changes the assessment that they remain independently repairable once the user gives direction on 42.10's three B-classified columns, but that direction has not yet been given.
+
+**Status: read-only forensic investigation complete for the stop condition raised in §41.4. No code, schema, database, data, deployment, or production execution was modified.** One disposable synthetic SQLite file was created and destroyed for the 42.6 test; it never touched `psx_data.db` or Postgres. Phase 1 repairs remain blocked pending user decision.
+
+---
+
+## 43. <span style="color:#16a34a;">🟢 Producer CONFIRMED — the three `prices_adjusted` columns trace to the user's own `ml_feature_study` project, not an unknown writer (2026-08-21)</span>
+
+**Correction to §41/§42's classification, stated explicitly per this program's own no-silent-correction rule.** §42.10 classified all three columns as **B — semantics strongly inferred, producer not confirmed**, based on an exhaustive search *inside* the `psx_pipeline` repository (273 revisions, all branches) turning up nothing. That search was correctly scoped to `psx_pipeline` but the producer lives **outside** it, in a sibling project directory — which is exactly why it was invisible to any `git log` search run from inside this repo, no matter how wide.
+
+### 43.1 Discovery path
+
+While mapping every backup-pattern file on disk for the write-surface inventory (42.9's continuation), found `backups/psx_data_backup_pre_ml_study_circuitflags_2026-08-03.db` — a backup filename that names both "ml_study" and "circuitflags" together, dated 2026-08-03, matching §42.1's independently-derived backfill-timing window exactly. Cross-referenced against `RESEARCH_LOG.md` (this machine's permanently-maintained cross-project research log, per the global standing instruction) — its "ML Feature Study" row (2026-08-03 → 2026-08-04, **Concluded — positive**, location `C:\Users\Lenovo\ml_feature_study`) states directly: *"researched PSX's actual circuit-band-by-period history ... and added hit_circuit_up/hit_circuit_down/thin_trading_flag boolean columns to prices_adjusted (22,793 / 21,699 / 173,619 of 218,111 frozen rows respectively)"* — **exact match to this program's own independently-derived row counts** (§42.4).
+
+### 43.2 Producer script read directly — CONFIRMED, highest evidence tier
+
+`C:\Users\Lenovo\ml_feature_study\scripts\compute_circuit_flags.py` (read in full, not excerpted). Confirmed by direct read:
+
+- Connects to `C:\Users\Lenovo\psx_pipeline\psx_data.db` — the actual production SQLite file — and **takes a `shutil.copy2` backup first**, writing exactly the file this investigation already found (`backups/psx_data_backup_pre_ml_study_circuitflags_2026-08-03.db`). Good practice, followed correctly.
+- Encodes PSX's **real regulatory circuit-band history**, with intermediate phase-in steps this program's own coarser data-forensics pass (§42.4) could see the shadow of but not the exact schedule: 5.0% pre-2020-01-20, four biweekly phase-in steps (5.5/6.0/6.5/7.0%) through 2020-03-19, 7.5% held ~4 years to 2024-05-26, four more phase-in steps (8.0/8.5/9.0/9.5%) through 2024-07-21, 10.0% from 2024-07-22 — plus a Rs1 floor (`band_amount = max(prior_close * band_pct, 1.00)`) and a tick-size tolerance (`max(0.05, 0.5% * prior_close)`).
+- **Exact algorithm:** a row is "frozen" if `high == low == close` and `volume > 0`. Among frozen rows with a valid prior close, `hit_circuit_up`/`hit_circuit_down` fire if the move from the prior close reaches that date's band (within tolerance) in that direction; every other frozen row (band not reached, or no prior close — a symbol's first-ever row) is `thin_trading_flag`. **This exactly explains §42.4's empirical finding** that `thin_trading_flag=1` rows are a strict subset of `high=low` rows, not a full equivalence to it — §42.4's phrasing ("if and only if") was slightly too strong for the *full* frozen population (circuit-hit rows are also `high=low` but are not `thin_trading_flag`); corrected here explicitly rather than silently.
+- Writes back via `ALTER TABLE ... ADD COLUMN` (idempotent — checks `existing_cols` first) then a targeted `UPDATE ... WHERE symbol=? AND date=?` **only for the non-zero rows** — consistent with, and now fully explaining, every non-zero row this program found and the fact that every row is either a real computed value or the column's own `DEFAULT 0`, with no third state.
+
+**Producer, timing, exact formula, and intent are now CONFIRMED — not inferred, not corroborated-by-log-alone, but read directly from the script that did it.** This was **the user's own, already-completed, already-logged research work** (Concluded — positive, per `RESEARCH_LOG.md`), not an unauthorized, unknown, or malicious writer. Reclassifying per this task's own decision tree: **hit_circuit_up / hit_circuit_down / thin_trading_flag all move from B to A — semantics and producer CONFIRMED.**
+
+### 43.3 One inaccuracy found in the *other* project's own documentation — flagged, not chased further (out of Kiran's Phase 1 scope)
+
+The `ml_feature_study` project's own specification (`ML_Feature_Study_Specification_v9.md`) additionally claims: *"one small, additive code change to `psx_pipeline\research_filters.py` — a new `drop_thin_trading_bars()` function, following the exact convention of the existing `drop_placeholder_zero_bars()`."* **Checked directly against the live file and its full git history: this function does not exist, and never has** — `research_filters.py`'s only two functions are `exclude_known_artifact_symbols()` and `drop_placeholder_zero_bars()` (confirmed by direct read and `git log --all -S"drop_thin_trading_bars"` returning zero commits). The file's own docstring is explicit that it "writes to psx_data.db in any way -- read-only" is not the issue here — the issue is narrower: the *documented* filter helper was apparently never actually added, or was added and lost without anyone noticing. **This does not affect Kiran/psx_pipeline's production-integrity picture** (research_filters.py is confirmed read-only/research-only either way, and its absence doesn't touch any of the three quarantined columns' data) — flagged here only because it surfaced directly in the course of this investigation, is a real documentation/code mismatch, and this program's own standing rule is to flag every checked figure, not just the ones inside `psx_pipeline`. Left for the user's attention in the `ml_feature_study` project, not chased further here — out of scope for a Kiran Phase 1 authorization.
+
+### 43.4 What this changes for Phase 1 — and what it does NOT change without further authorization
+
+**What it resolves:** the §22 hard-stop-condition category "unknown producer of production-critical data" is now resolved — the producer is known, was the user's own deliberate work, and is fully reproducible (the exact script still exists and runs against nothing but `prices_adjusted`'s own price/volume columns plus a fixed, documented band schedule).
+
+**What it does NOT do, absent further explicit direction:** this entry does **not** authorize backfilling the 6,365 zeroed rows, does not authorize porting the columns to Postgres, does not authorize wiring `compute_circuit_flags.py`'s logic into the daily pipeline, and does not authorize touching the three columns in any way. The continuation authorization this session operated under was explicit and unconditional on this point ("Do not touch, reconstruct, migrate, delete, or rebuild ... regardless of new evidence" was the operating instruction at the time this investigation began) — a classification upgrade from B to A is exactly the kind of new evidence that changes what's *possible* to safely do, not a standing instruction to now go do it. **The quarantine guard built in §43 (apply_price_adjustments.py's `snapshot_quarantined_columns()`/`restore_quarantined_columns()`, 7 passing regression tests) remains in place and is unaffected by this finding** — it still protects the data with zero assumptions about semantics, which is strictly more conservative than the new A classification requires, and there's no reason to remove it.
+
+**Recommended next step (not performed, requires explicit user sign-off):** if the user wants these columns fully correct rather than quarantined, the lowest-risk path is now well-defined — run `compute_circuit_flags.py`'s exact, unmodified logic (or import it directly) against current `prices_adjusted` to backfill the 6,365 zeroed rows and wire an equivalent incremental version into `append_new_prices_adjusted()` so future rows stop silently defaulting to zero. This is a Phase 1-shaped repair now that the producer is confirmed, but it was not in scope for this continuation's explicit authorization and is not performed here.
+
+**Status: read-only. Confirmed by direct code read (highest evidence tier available), not by log corroboration alone. No code, schema, or data was modified as part of this entry.**
+
+---
+
+## 44. <span style="color:#16a34a;">🟢 Phase 1 repairs — write-surface classification, exception-handling fixes, heartbeat coverage (2026-08-21)</span>
+
+Continuation of Phase 1 under the hard-fence authorization: `prices_adjusted`'s three quarantined columns not touched (§42's guard already protects them and needed no change). This entry covers everything else authorized: full write-surface classification, and the two known-defect repair tracks (broad-exception audit / heartbeat inadequacy, `backfill_setup_log.py`'s silent-loss hazard).
+
+### 44.1 Complete write-surface classification, 7-category taxonomy
+
+Building on §40.1's original inventory and §42.9's corrected count (89 `__main__`-block scripts, not "~60"), extended the search beyond `__main__` blocks specifically because this task's own instruction warned against conflating "no CLI" with "cannot write" — found an entire additional family of **importable-only** backup modules (`dashboard_backup_*.py`, `database_backup_*.py`, `database_pg_backup_e5/e5b/e6/e7/e82/e83/e84a.py` — nine more Postgres-module backups beyond the two already found in §41.3) that §40.1's `__main__`-only scan structurally could not see. Full glob for every backup/epoch-suffixed file on disk (`find . -iname "*backup*" -o -iregex ".*_e[0-9][a-z]*\.py$"`) is the authoritative list this classification is built from — not the narrower `__main__` list alone.
+
+| Category | Definition used | Members (production-table-capable only; pure research/backtest scripts writing exclusively to their own staging tables are noted in 44.1.7, not repeated per-file here) |
+|---|---|---|
+| **1. ACTIVE PRODUCTION WRITER** | Reached, directly or via import, from the one scheduled path: GitHub Actions' `daily_scraper.yml` → `python main.py --update` → `cmd_update()` | `main.py` itself; and, imported from inside `cmd_update()`: `apply_price_adjustments.py`'s hook functions, `regime.py`, `page_flows.py`'s `scrape_flows_today()`, `sector_signals.py`, `stock_signals.py`, `signal_engine.py`, `backfill_setup_log.py`, `boring_signals.py`, `leaders_scan.py`, `market_breadth_oscillator.py` (via subprocess), `agent.py` (via subprocess, explicitly "bonus" per its own comment) |
+| **2. ACTIVE BUT MANUALLY INVOKED** | A real, currently-used tool with a documented manual-run purpose, not on the scheduled path | `apply_price_adjustments.py --all`, `backfill_regime_columns.py`, `backfill_sector_signals.py`, `compute_forward_returns.py` (also auto-called inside the setup_log hook), `migrate_to_supabase.py`, `signal_engine.py` (standalone), `scan_corporate_actions.py`, `import_actual_trades.py`, `import_open_prices.py`, `acquire_open_prices.py`, `load_bi_history.py`, `kiran_voice.py`, `kiran_sim.py`, `phase4_train.py`; `.github/workflows/setup_log_repair.yml` (`workflow_dispatch`, dry-run default — §41.1) |
+| **3. DORMANT** | Writes to a production DB if run, present on disk, **zero references anywhere in the repository, no scheduling evidence, no confirmed execution history** | All `main_backup_e8/e84b/e85/e86a.py` (§41.2); `apply_price_adjustments_backup_e85.py`, `page_flows_backup_e84b.py` (§41.3); `signal_engine_backup_2c.py`, `signal_engine_backup_e6.py`, `migrate_to_supabase_backup_e4i.py` (§42.9); **newly found this pass:** `database_pg_backup_e5.py`, `database_pg_backup_e5b.py`, `database_pg_backup_e6.py`, `database_pg_backup_e7.py`, `database_pg_backup_e82.py`, `database_pg_backup_e83.py`, `database_pg_backup_e84a.py`, `database_pg_backup_e84b.py`, `database_pg_backup_e85.py`, `database_pg_backup_e9.py` (ten total Postgres-module backups, not two — §41.3 only found the two newest by coincidence of an earlier, narrower search); `database_backup_2c.py`, `database_backup_e5.py`, `database_backup_phaseA.py` (backups of `database.py` itself — the SQLite/Postgres auto-switch module every other production writer depends on); `dashboard_backup_phase3.py`, `dashboard_backup_phase4.py`, `dashboard_backup_phaseA.py`, `dashboard_backup_step3.py` (Streamlit UI, not a direct production writer, but each `import`s writer modules and could trigger a write via its own UI actions if ever launched — flagged, not dismissed); `portfolio_backup_2c.py`, `processor_backup_e8.py`, `regime_backup_e82.py`, `sector_signals_backup_e84a.py`, `stock_signals_backup_e83.py`; `research/migrate_to_supabase.py` (different provenance, pre-audit era, §42.9) |
+| **4. HISTORICAL ARTIFACT** | Already-used, one-time repair script with a real, closed incident behind it, own dedicated commit (not the mass sync) | `fix_mislabeled_date.py`, `fix_mixed_date.py`, `fix_paper_actual.py` (mass-sync commit, but each already independently described as one-time in §40.6); `backups/fix_regime_2026-07-31.py` and `backups/backup_regime_fix_2026-07-31.py` (**newly found: a second, smaller, no-`__main__` file alongside the one §42.9 already classified — confirmed same commit `6da9eab`, an earlier draft kept alongside the final script, not a separate incident**) |
+| **5. READ-ONLY** | No `INSERT`/`UPDATE`/`DELETE`/`REPLACE`/`to_sql`/`executemany`/DDL found in the file | `health_check.py`, `market_structure_diagnostic.py`, `audit_historical_gaps.py`, `screener_audit.py`, and the majority of the `boring_study/`, `prebreakout_v2_*` (phase4b/4c/5/6), `weinstein_*`, `minervini_*`, `rectangle_candidate_generation*.py`, `backtest_full_universe.py`, `backtest_ogdc.py`, `backtest_recovery_bases.py` one-off analysis scripts |
+| **6. TEST/DISPOSABLE** | Root-level `test_*.py` (outside `tests/`, not collected by `pytest.ini`'s scope) | `test_assemble_rectangle.py`, `test_data_status_display.py`, `test_fit_horizontal_level.py` |
+| **7. UNKNOWN** | — | None — every file found this pass classified into 1-6 with direct evidence |
+
+### 44.1.1 Per-writer detail for every category-1/2/3 script (the task's specific per-writer question set)
+
+For every ACTIVE / MANUAL / DORMANT writer above: SQLite or Postgres or both is answered by 44.1's table position plus the individual classifications already on record in §40.1 (database-selection points), §41.2 (the four `main.py` backups), §41.3/§42.8/§42.9 (the other backups) — not re-derived here to avoid duplicating several thousand words of already-recorded evidence. **New this pass:** all ten `database_pg_backup_*.py` files import `psycopg2` and re-derive `_get_url()` from `DATABASE_URL`/`SUPABASE_DB_URL` identically to current `database_pg.py` (confirmed by direct grep of each file, not assumed from the naming pattern) — meaning every one of them, if ever imported and called, would write to the **current, live** production Postgres, not a frozen target. None of the ten have a `__main__` block (importable only) and none are referenced anywhere in the repository outside this audit document.
+
+**Bypass-normal-controls question, answered directly:** every DORMANT writer bypasses `main.py`'s per-hook `_record_hook` heartbeat entirely if run standalone — there is no mechanism in this codebase that prevents a raw `python main_backup_e85.py` or a raw Python import of `database_pg_backup_e9.py`'s functions from writing to production with zero audit trail. This is the same structural point §40.1 already made about the publication-marker gate being the real defense, not file-level restriction — restated here because the newly-found ten Postgres-module backups make the surface meaningfully larger than §40.1's original accounting.
+
+### 44.1.2 Historical execution: distinction maintained, not collapsed
+
+Per this task's explicit instruction: **"no repository references" is not equated with "cannot execute."** Every DORMANT classification above is qualified as such — capable-of-writing, not confirmed-to-have-written. Filesystem mtimes were checked where informative (§41.2's four `main.py` backups) and are evidence of last-write, not last-run. No claim in this section states or implies any DORMANT file has never executed; several (§41.2's table) explicitly carry "INFERRED dormant, not CONFIRMED harmless."
+
+### 44.2 Repair 1 of 2 — `backfill_setup_log.py`'s SQLite path had the same silent-permanent-loss shape already fixed on Postgres
+
+**CONFIRMED by direct code read**, not inferred: `append_setup_log_today()`'s per-date loop (`backfill_setup_log.py`, SQLite path) used a single broad `except Exception -> log.warning(...)` that **continued** to the next date on any failure. Because `_pending_setup_log_dates()` computes pending work from `MAX(setup_date) FROM setup_log` (a pure high-water mark, `d > last_logged`), a failure on date D followed by a **success** on date D+1 would silently and **permanently** drop D — `MAX(setup_date)` advances to D+1, and the policy can never select D again. This is the exact defect class §21/§24 already found and fixed for `market_regime`/`sector_signals`/`setup_log`'s *original* single-date bug — but a *second* instance of the same failure shape was sitting in the loop's own error handling, one level deeper, undetected until this pass.
+
+**Already fixed on the Postgres twin** (`_append_setup_log_today_pg`, confirmed by direct read): a two-tier handler — a transient error (`psycopg2.OperationalError`/`InterfaceError`) rolls back and **breaks** (stops the loop so the date stays reachable next run); anything else rolls back, logs at `.exception` level, and **re-raises** (fails the run loudly rather than reporting false success) — with an explicit comment citing §25/§27/§28 as the historical incidents this exact pattern was built to prevent. The SQLite path never received the same fix.
+
+**Repair applied:** ported the identical two-tier structure to the SQLite path. **Deliberately did not reuse the existing `_TRANSIENT_DB_ERRORS` constant** — read directly and confirmed it resolves to `psycopg2`'s exception classes whenever `psycopg2` is importable at all (not based on which backend is actually running), and since `psycopg2` is a hard dependency of this project, it is importable in every environment including ones where the SQLite path is executing — reusing it would mean a real `sqlite3.OperationalError` never matches the "transient" branch. Added a dedicated `_SQLITE_TRANSIENT_ERRORS = (sqlite3.OperationalError,)` for this path instead, with a comment explaining exactly why the existing constant was not safe to reuse.
+
+**Tests:** `tests/test_setup_log_backfill_error_handling.py`, 4 new tests, all passing — (1) an unexpected error on a middle pending date raises and does not let a later date commit; (2) after that failure, a second run can still reach and correctly backfill the date that failed (the core regression); (3) a transient `sqlite3.OperationalError` breaks without raising; (4) after a transient failure, a second run resumes cleanly and every originally-pending date ends up logged. Existing `tests/test_setup_log_backfill.py` (18 tests) and `tests/test_setup_log_pg_resume.py` re-run clean, no regression.
+
+### 44.3 Repair 2 of 2 — the same defect shape found and fixed in `boring_signals.py`'s pending-scan loop
+
+**CONFIRMED by direct code read:** `scan_boring_breakouts_pending()`'s per-date loop (both SQLite and Postgres variants) had the identical broad-except-and-continue shape. Structurally different resume policy than `setup_log` (a *bounded* `max_lookback`-window resume, not a pure high-water mark — deliberate, already documented, already audited in §35/§36 for the window-size question), so the *permanent*-loss risk is bounded rather than unbounded. But the **broad exception swallowing itself is the same class of problem this task's §11.A named directly**: if `scan_boring_breakouts()` had a genuine bug (not a transient blip) that failed on every pending date, the old loop would silently log N warnings, return `total=0`, and `main.py`'s `_record_hook("boring_signals", ..., rows_written=n_new)` would then record **`status="ok"`** — indistinguishable from a legitimate clean scan that found nothing. This table feeds real trading capital (the PRL incident, §33) — a false "ok, zero signals" is exactly the failure mode this task's §12 names as unacceptable.
+
+**Repair applied:** the same two-tier pattern as 44.2, applied to both `_scan_boring_breakouts_pending_sqlite` and `_scan_boring_breakouts_pending_pg`. A transient error now breaks (tolerated — the bounded window means a later run can still reach it); anything else raises (fails the run loudly). Added `_SQLITE_TRANSIENT_ERRORS`/`_pg_transient_errors()` locally in `boring_signals.py` rather than importing from `backfill_setup_log.py`, keeping the two modules' exception classification independent (no new coupling introduced for a Phase 1 repair).
+
+**Tests:** `tests/test_boring_signals_pending_error_handling.py`, 3 new tests, all passing — unexpected error raises and does not scan later dates; transient error breaks without raising; a clean run with no errors scans every pending date in order. Existing `tests/test_boring_signals_pg.py` (9 tests) re-run clean.
+
+### 44.4 Heartbeat coverage extended to close confirmed blind spots — with a correction to what was actually blind
+
+**Checked `data_health.py` directly before writing anything**, rather than assuming §37-39's characterization still held. Correction, stated explicitly: `EVERY_SESSION` already includes `sector_signals`, `stock_signals`, `market_regime`, **and `recovery_signals`** (checked via each table's own `MAX(date)`/`MAX(as_of_date)` against the expected session) — a stronger check than a heartbeat for tables that always produce a row when they run successfully. §37-39's "zero monitoring" language, read literally, would overstate the gap for these four; the real, confirmed gap was narrower: **`portfolio_signals` alone was in neither `EVERY_SESSION` nor `HEARTBEAT`**, confirmed by direct read of both lists.
+
+**What was still genuinely missing, confirmed by direct read of `main.py`'s `cmd_update()`:** the `regime`, `sector_signals`, `stock_signals`, and `signal_engine` (`recovery_signals`/`portfolio_signals`) hooks had **no `_record_hook` call at all**, success or failure — meaning `pipeline_runs` (the actual audit ledger for "did this producer run, and did it fail") had zero rows for these four hooks specifically, even though three of the four tables they write are separately checked by `EVERY_SESSION`'s freshness test. The two mechanisms answer different questions (`EVERY_SESSION`: "is the data fresh" — `pipeline_runs`: "did the process run, and if it failed, why") and are complementary, not redundant — a hook that ran, failed, and left yesterday's date in place would pass a naive "no crash" check but should still leave an error trail, which only `pipeline_runs` provides.
+
+**Repairs applied, `main.py`:**
+- `regime`, `sector_signals`, `stock_signals` hooks: added `_record_hook(name, _session_date)` on success and `_record_hook(name, _session_date, status="error", detail=str(exc))` on failure — same pattern already used correctly by `corporate_action`/`setup_log`/`leaders_scan`/`boring_signals`.
+- `signal_engine` hook: added **two** separate heartbeats, `recovery_signals` and `portfolio_signals`, each using that sub-signal's **own** reported status/rows_written/message from `signal_engine.main()`'s return dict (not a single blanket status for both) — so a failure isolated to one of the two doesn't get misreported against the other.
+
+**Repair applied, `data_health.py`:** added `("portfolio_signals", "portfolio_signals")` to the `HEARTBEAT` list (not `EVERY_SESSION` — `run_portfolio_signals()` snapshots the latest `sector_signals` date rather than guaranteeing one row per trading session, so a date-equality check could false-positive the same way `leaders_top_picks` would).
+
+**Not changed:** `sector_signals.py`/`stock_signals.py`/`regime.py` themselves — no return-value or logic change, only the call sites in `main.py` around them. `signal_engine.py` itself — unchanged, its existing return dict already carried everything needed. No test added specifically for the heartbeat additions (`_record_hook` is a pre-existing, already-tested primitive used identically to its four existing call sites; the new call sites are the same three-line pattern, not new logic) — covered instead by the full test suite continuing to pass with these hooks now instrumented.
+
+### 44.5 What was investigated and NOT touched, in scope discipline
+
+`flow scrape` (`page_flows.py`), `days_to_nearest_transition` backfill, the `agent.py` subprocess hook, `market_breadth_oscillator.py` subprocess, rolling trim, and the no-new-data branch's `run_analysis`/`leaders_scan` calls were read but not modified — each already carries an inline comment explaining a deliberate reason its current handling is acceptable (agent explicitly "bonus," trim "failure is logged but never crashes the pipeline" by design, days_to_nearest explicitly retrospective-only). Per this task's own instruction not to blindly replace every broad exception in the repository, these were left as-is; flagged here as reviewed, not silently skipped.
+
+### 44.6 Full test suite
+
+`pytest tests/` re-run after every change in this entry, full suite (not a subset): **102 passed, 0 failed** (360.66s, includes the `app-boot` 15-page Streamlit smoke test) — 88 baseline + 7 (§42's quarantine guard, unaffected, re-verified) + 4 (44.2's `backfill_setup_log.py` fix) + 3 (44.3's `boring_signals.py` fix). No regression.
+
+### 44.7 Status
+
+**No production database, schema, or the three quarantined `prices_adjusted` columns were touched.** Every change in this entry is to Python control flow (exception handling, heartbeat calls) in `backfill_setup_log.py`, `boring_signals.py`, `main.py`, and `data_health.py`, plus two new test files. `apply_price_adjustments.py`'s quarantine guard from §42 required no change and was re-verified still present and passing (7/7 tests). Write-surface classification (44.1) is investigation only, no files moved/renamed/deleted. Phase 1's `prices_adjusted` disposition remains as stated in §43.4: producer confirmed, quarantine guard in place, backfill/port/wire-in **not authorized and not performed**.
+
+---
+
+## 45. Producer validation — disposable reproduction, exact historical match, one new unrelated finding surfaced along the way (2026-08-21)
+
+**READ-ONLY. NO PRODUCTION WRITE. NO BACKFILL PERFORMED.** All computation ran against a disposable SQLite file in a scratch directory; production `psx_data.db` was only ever opened `mode=ro`. The recovered producer script (`C:\Users\Lenovo\ml_feature_study\scripts\compute_circuit_flags.py`) was read but never modified or executed directly — its logic was copied verbatim into a disposable driver script with only the I/O paths retargeted (documented in full below, so the substitution is auditable).
+
+### 45.1 Task A — Producer contract, extracted by direct code read
+
+**Inputs:** source DB `psx_data.db` (hardcoded `DB` constant); source table `prices_adjusted` only (not `prices`, i.e. **adjusted** prices, not raw); explicit column list `symbol, date, close, volume, high, low, open` (not `SELECT *`); no join against `stock_metadata`/`sectors`/any symbol-metadata table — the universe is simply every `(symbol, date)` row present in `prices_adjusted`, unfiltered; no external file is read — the circuit-band schedule is a literal, hardcoded lookup table in the script itself (`band_pct()`), described as "researched 2026-08-03" from PSX regulatory history, not sourced from any file dependency.
+
+**Outputs, exact formulas (verbatim from the script, not paraphrased):**
+- `frozen = (high == low) & (low == close) & (volume > 0)` — the single-print/pinned-price precondition for any flag to be possibly non-zero. Rows with `volume == 0` (a different, already-documented artifact — `drop_placeholder_zero_bars()` in `research_filters.py`) are excluded from `frozen` entirely, by construction.
+- `prior_close = close.shift(1)`, grouped by `symbol`, after sorting by `(symbol, date)` — the immediately preceding row for that symbol in the table's own date order, not a calendar-aware lookback.
+- `band_pct(date)`: an 11-step, string-compared schedule — 5.0% before 2020-01-20, four biweekly phase-in steps to 7.5% by 2020-03-20 (held ~4 years), four more phase-in steps to 10.0% by 2024-07-22, held since. Matches PSX's real, documented circuit-band regulatory history per `ml_feature_study`'s own data-integrity report (independently cross-checked, not merely trusted).
+- `band_amt = max(prior_close * band_pct, 1.00)` (Rs1 floor for low-priced stocks); `tolerance = max(0.05, 0.005 * prior_close)` (tick-size allowance).
+- `hit_circuit_up = frozen & has_prior & (move >= band_amt - tolerance)`; `hit_circuit_down` is the mirror in the negative direction. `has_prior = prior_close.notna() & (prior_close > 0)`.
+- Conflict handling: `hit_down = hit_down & ~(hit_up & hit_down)` if both ever fire on the same row. **Minor inaccuracy found in the producer's own code, reported per this task's §13 instruction, not silently fixed:** the accompanying `print()` message says "resolving by larger |move|" but the actual code unconditionally favors `hit_up`, never comparing magnitudes. **Proven inert, not merely asserted:** algebraically, `band_amt - tolerance > 0` for every possible `prior_close > 0` and every `band_pct` in the schedule (the tolerance formula's 0.5% coefficient is always smaller than the schedule's smallest band, 5%, by more than a factor of 5) — meaning `move` can never simultaneously satisfy both `>= threshold` and `<= -threshold` for a positive threshold, so `conflict` is mathematically always empty. Confirmed empirically too: `conflict.sum() == 0` in this session's own full-population reproduction, matching `ml_feature_study`'s own report ("zero rows flagged both up and down"). A real inaccuracy in the code comment, but never live.
+- `thin_trading = frozen & ~(hit_up | hit_down)` — every frozen row that isn't a circuit hit, including the 1,025-1,036 rows (count grows as the table grows) with no valid `prior_close` (a symbol's first-ever row) — these fall into `thin_trading` by construction, not by a special case.
+- Non-frozen rows get `0/0/0` **by construction, not as a placeholder** — this is the correct, intended output for the ~1.54M rows that were never single-print/pinned in the first place. Important distinction carried into 45.4 below.
+
+**Missing-data/duplicate/holiday handling:** none explicit — the script trusts `prices_adjusted` to have at most one row per `(symbol, date)` (consistent with that table's actual constraint) and does no holiday-awareness (a calendar gap simply means `prior_close` skips to the next row that exists, which is correct behaviour for a trading-days-only table).
+
+**Write-back mechanism:** idempotent `ALTER TABLE ... ADD COLUMN` (checks existing columns first) then `UPDATE ... WHERE symbol=? AND date=?` for **only the non-zero rows** — rows not touched keep the column's own `NOT NULL DEFAULT 0`. This has a direct, important consequence for 45.5/45.6 below: **the script is naturally idempotent and self-updating** — re-running it against today's full `prices_adjusted` would recompute from scratch and correctly write whatever's newly non-zero, with no special "resume" logic needed.
+
+**Reproducibility assessment:** deterministic (no randomness, no network I/O, no wall-clock dependency beyond the fixed date-string schedule) — CONFIRMED. State-dependent in one specific, checked way: it depends on `prices_adjusted`'s own current values, so a symbol whose historical prices are retroactively rewritten between two runs will reproduce differently — checked directly (45.3) and found to be exactly what happened for one symbol.
+
+### 45.2 Task B — Disposable reproduction, full population, not a sample
+
+Read `psx_data.db`'s `prices_adjusted` (all 10 columns, current state — 1,763,592 rows) via a `mode=ro` connection, wrote it into a disposable SQLite file (`ground_truth` table). Ran the producer's exact formulas (copied verbatim, not reimplemented) against the 7 raw columns from that same snapshot. Full 2005-2026 population processed — computationally practical, no sampling needed (total run time under a minute). No write, at any point, to `psx_data.db` or Postgres.
+
+### 45.3 Task C — Exact comparison, value-level, not aggregate-only
+
+Naive full-population comparison initially showed 78/26/454 mismatches across the three columns (0.001-0.03%) — **not exact equality**, so per this task's §8 instruction, investigated rather than accepted. Splitting the population correctly resolved essentially all of it:
+
+- **The one confirmed root cause of every historical mismatch: symbol `DLL`, and it alone.** All hit_circuit_up/hit_circuit_down mismatches (excluding the boundary date, below) belong to `DLL`. **CONFIRMED, not inferred:** directly compared `DLL`'s `prices_adjusted` values in the producer's own pre-run backup (`backups/psx_data_backup_pre_ml_study_circuitflags_2026-08-03.db`, taken by the script itself at 07:54 AM 2026-08-03) against current production — `DLL`'s **entire historical close/high/low/open series has been uniformly rescaled by a factor of ~10.3398x** since that backup was taken (e.g. `2005-01-03`: 85.20 → 8.2401; ratio 10.3398, consistent across dozens of spot-checked dates to 4 decimal places). This changes `prior_close` for every date, which changes whether `move >= band_amt - tolerance` evaluates true, which is why the reproduction and the stored value disagree for `DLL` specifically — **not a flaw in the producer's logic**, a genuine change in its input data.
+- **This rescale is itself a NEW, separate, unexplained finding — flagged per this program's own standing rule, not chased to full resolution (out of scope for this producer-validation task):** `DLL` has **zero** rows in `corporate_action_suspects` (any status, any date) and zero mentions in `corporate_action_suspects_clean.csv` — the rescale did not go through either of Kiran's own documented correction paths. **INFERRED, not confirmed, likely explanation:** `ml_feature_study\docs\corp_action_retroactive_scan_candidates.csv` (that project's own separate research artifact, a candidate list, not an applied-corrections log) has a `DLL,2026-06-08,60.43,624.83,-90.33%,DROP_50` row — `624.83/60.43 = 10.3398`, matching the observed rescale factor to 4 decimal places. This strongly suggests the correction traces to `ml_feature_study`'s own research (the same project that produced the circuit-flags columns), applied directly to `psx_pipeline`'s production SQLite outside any documented pipeline — the same structural pattern as the circuit-flags columns themselves, on a different table/mechanism. **No script performing this specific update was found in either project** (the one script referencing the candidates list, `diag_corp_action_scan_and_setup_triggers.py`, is read-only — no `UPDATE`, no `commit`, confirmed by direct read). **UNRESOLVED: the exact script or interactive session that applied this rescale.** Recorded here as a new open item for the Production Integrity Program, not investigated further in this task.
+- **All remaining mismatches (31 of hit_circuit_up excluding DLL boundary, 1 of hit_circuit_down excluding DLL, 30 of thin_trading_flag excluding DLL) are on the single date `2026-08-03` itself — and this is not a reproduction failure either.** **CONFIRMED directly:** every one of those symbols' `2026-08-03` row is **absent entirely** from the producer's own pre-run backup (`SELECT ... WHERE date='2026-08-03'` returns zero rows in the backup, non-zero in current production) — the original script's snapshot was taken before that day's session data had been scraped at all (consistent with CLAUDE.md's own documented note that PSX doesn't finish publishing EOD data until evening PKT). **The original producer never saw `2026-08-03`'s own row either** — its `0/0/0` for that date is the same "never computed" state as every later date, not a genuine historical value to reproduce against. The true closed-historical boundary is `date < 2026-08-03`, not `<=`.
+
+**Corrected, final comparison, excluding `DLL` (separately explained) and restricting to the population the producer actually processed (`date < 2026-08-03`):**
+
+| Column | Rows compared | Exact matches | Mismatches | Mismatch rate |
+|---|---|---|---|---|
+| `hit_circuit_up` | 1,752,550 | 1,752,550 | **0** | 0% |
+| `hit_circuit_down` | 1,752,550 | 1,752,550 | **0** | 0% |
+| `thin_trading_flag` | 1,752,550 | 1,752,550 | **0** | 0% |
+
+**Exact equality achieved across the entire closed-historical population, value-level, not row-count-level.** This is the strongest possible result this task's §9 asked for.
+
+### 45.4 Task D — the post-2026-08-03 population, corrected boundary
+
+**Corrected population: `date >= 2026-08-03`, not `> 2026-08-03`** — 7,428 rows (526 on 2026-08-03 itself + 6,902 after; the earlier session's "6,365" figure was accurate as of when it was first checked and has simply grown with each subsequent trading day — not a discrepancy). **CONFIRMED: all 7,428 currently hold exactly `0/0/0`.**
+
+Running the producer's exact logic against this population (as part of the same full reproduction run, not a separate pass):
+
+| | Count | Disposition |
+|---|---|---|
+| Not "frozen" at all (`high != low` or `volume = 0`) | 6,974 | **Legitimately zero** — correct producer output, not a placeholder. The `0/0/0` for these rows is not wrong; it's what the producer would compute too. |
+| Frozen, producer computes `hit_circuit_up=1` | 47 | Currently wrong (forced 0), should be 1 |
+| Frozen, producer computes `hit_circuit_down=1` | 5 | Currently wrong (forced 0), should be 1 |
+| Frozen, producer computes `thin_trading_flag=1` | 402 | Currently wrong (forced 0), should be 1 |
+| **Total needing a value change** | **454** | 6.1% of the never-computed population, 0.026% of the whole table |
+
+`DLL` has **zero** rows in this 454-row set — its separate rescale issue does not entangle with the post-08-03 backfill question.
+
+### 45.5 Task E — Reproducibility, both historical and forward
+
+**Historical reproduction: CONFIRMED, exact, value-level, across the entire closed population** (45.3). **Forward/missing-period reconstruction: CONFIRMED deterministic** — the same formula, run once against today's `prices_adjusted`, produces a single, reproducible, well-defined classification for all 7,428 never-computed rows (45.4), using nothing but data already present in the table. No invented values, no formula changes — this is exactly "recovered original producer → exact historical reproduction → deterministic missing-period reconstruction" that this task's core principle (§23) names as the gold standard, and it has been met.
+
+### 45.6 Future-proofing requirement, identified but NOT implemented (per this task's §17 instruction)
+
+The daily pipeline's `append_new_prices_adjusted()` (`apply_price_adjustments.py`) will continue writing `0/0/0` placeholders for every new row forever unless one of two explicit decisions is made: (a) port the producer's incremental logic (it only needs a symbol's own trailing price history, no external state) into the daily hook so new rows get real values going forward, or (b) formally document these three columns as **historical-only, frozen as of their one-time computation, not maintained** — and, if (b), consider whether the columns should say so at the schema or documentation level so a future reader doesn't mistake silence for freshness. **This is a decision for the user, not made here** — identified as the control this program's own capital-safety principle requires, not designed or implemented.
+
+### 45.7 Proposed production-backfill plan — NOT EXECUTED, awaiting explicit authorization
+
+| Item | Detail |
+|---|---|
+| Exact rows to change | The 454 rows named in 45.4 (or, equivalently and more simply, re-run the full write-back logic against all 7,428 never-computed rows — the other 6,974 would be written as 0, identical to their current state, a safe no-op) |
+| Exact columns to change | `hit_circuit_up`, `hit_circuit_down`, `thin_trading_flag` only — no other column of `prices_adjusted` touched |
+| Expected before/after counts | `hit_circuit_up`: 22,793 → 22,840 (+47). `hit_circuit_down`: 21,699 → 21,704 (+5). `thin_trading_flag`: 173,619 → 174,021 (+402) |
+| `DLL` | Excluded from consideration either way — has zero rows in the backfill set; its separate, unresolved rescale issue (45.3) is a different problem, not a blocker for this backfill, but should not be treated as "resolved" by this action |
+| Source of truth | The producer's own exact formulas (45.1), applied via a byte-identical re-implementation, run against current `prices_adjusted` — not a new formula, not a variant |
+| Reversibility | Full `prices_adjusted` backup before any write (same discipline the original producer used, and this project's own standing "backup before write" rule) — a targeted `UPDATE` touching 454 rows is trivially revertible from that backup if anything looks wrong afterward |
+| Validation checks | Re-run this task's exact §45.3/45.4 comparison methodology immediately after, confirm the before/after counts match this table exactly, confirm zero rows outside the 454-row set changed, confirm total row count unchanged |
+| Regression tests | A new pytest file exercising the same disposable-DB methodology used in this task (45.2), asserting a controlled fixture backfills identically to a fresh full computation |
+| Future-proofing | 45.6's decision must be made and, if (a) is chosen, implemented as a separate, explicitly-authorized follow-on — a backfill without it would just recreate the same gap again after the next trading day |
+| Audit-ledger changes | This entry, closed out with an execution record (commit, before/after verification, test results) once and if authorized |
+
+**Not performed. Awaiting explicit authorization before any production write.**
+
+### 45.8 Classification ledger — superseding, not erasing, §42/§43
+
+§42.10's original **B** classification (semantics inferred, producer unconfirmed) is superseded by §43's producer discovery (upgrade to **A**) and further strengthened here: **A, with exact historical reproduction now demonstrated**, not merely a matching row count. The original B-classification text in §42 is left in place, unedited, per this program's no-silent-correction rule — this entry documents the evolution, not a rewrite of the historical record.
+
+### 45.9 Status
+
+**CONFIRMED:** producer contract (45.1), exact historical reproduction across the full closed population excluding one separately-explained symbol (45.3), deterministic forward reconstruction (45.4/45.5). **INFERRED:** `DLL`'s rescale traces to `ml_feature_study`'s own retroactive corporate-action research (matching ratio, no applying script found). **UNRESOLVED:** the exact mechanism/timing that applied `DLL`'s rescale to production; whether other symbols have a similar undocumented retroactive correction not yet surfaced (not systematically checked this pass — this task's scope was the circuit-flags producer, not a full-table corporate-action audit). **No production write performed.** `prices_adjusted`'s three quarantined columns remain untouched; the quarantine guard from §42 remains in place and unaffected. Phase 1 backfill remains **not authorized**.
+
+---
+
+## 46. DLL rescaling forensics — legitimate corporate action, isolated, near-zero production footprint (2026-08-21)
+
+Follow-up to §45.3's flagged open item. **READ-ONLY. NO PRODUCTION WRITE. NO BACKFILL PERFORMED.** Every query in this entry ran against production `psx_data.db`/Postgres with `mode=ro`/`readonly=True` sessions; the two disposable scripts in this entry's methodology wrote only to scratch files. The 454-row circuit-column backfill (§45.7) remains on hold, as instructed, independent of this entry's findings — nothing here changes that hold either way.
+
+### 46.1 Task A — Exact transformation, pinpointed precisely
+
+**CONFIRMED, not approximated.** Compared `DLL`'s `prices_adjusted` values in the producer's own pre-run backup (`backups/psx_data_backup_pre_ml_study_circuitflags_2026-08-03.db`, 07:54 AM 2026-08-03) against current production, row by row:
+
+- **Exact transition date: `2026-06-08`.** Every row with `date < 2026-06-08` (3,576 rows, 2005-01-03 through 2026-06-05) has `ratio = close_backup / close_current` in the narrow band **10.339513 to 10.339943** — not a single bit-exact constant (consistent with `ROUND(price * factor, 4)` rounding at different absolute price levels, exactly as `apply_price_adjustments.py`'s `rebuild_symbol_adjusted()` computes), but a single underlying factor to 4-5 significant figures. Every row with `date >= 2026-06-08` (38 rows through the backup's own end, and all rows added since) has **ratio exactly 1.0 — zero change.**
+- **Direction, confirmed not assumed:** `current = backup / 10.3397...` (equivalently `current = backup × 0.096714...`), i.e. a **backward adjustment** applied to pre-event dates — the historical prices were divided down to be continuous with the post-event level, not the reverse.
+- **Fields affected:** `open`, `high`, `low`, `close` only. **Volume: zero differences, any date, confirmed by direct diff** — matches `rebuild_symbol_adjusted()`'s own `SET` clause exactly (it never touches volume).
+- **Raw `prices` table: unchanged.** Directly compared — `DLL`'s raw scraped prices are byte-identical between the backup and current production for every historical date (the only differences are 14 new rows for trading days added since the backup, not modifications). **The rescale exists only in `prices_adjusted`, never in `prices`** — exactly the footprint `apply_price_adjustments.py`'s own docstring promises ("raw prices table is NEVER touched").
+
+**Exact ratio derivation, CONFIRMED:** `ml_feature_study\docs\corp_action_retroactive_scan_candidates.csv` (that project's own separate, read-only candidate-scan output) contains the row `DLL,2026-06-08,60.43,624.83,-90.33%,DROP_50`. Computing `close_after / close_before = 60.43 / 624.83 = 0.0967143...`, and `1 / 0.0967143... = 10.339731921231177` — matching the observed data-derived ratio band (10.339513-10.339943) to 4+ significant figures. **This is the exact adjustment factor a `rebuild_symbol_adjusted(con, 'DLL', '2026-06-08', 0.0967143...)` call would produce, applied to every row before the ex-date** — the mechanism signature (single ex-date boundary, `ROUND(price×factor,4)` on OHLC only, volume untouched) is the exact, byte-identical fingerprint of that function, not a lookalike.
+
+### 46.2 Task B — Legitimate corporate-action check: CONFIRMED via independent external evidence
+
+Searched Kiran's own corporate-action data first: `DLL` has **zero** rows in `corporate_action_suspects` (any status, any date, confirmed by direct query) and zero mentions in `corporate_action_suspects_clean.csv` — Kiran's own documented correction paths have no record of this event at all.
+
+**External verification performed, as this task's §6 explicitly authorized.** Web search identified `DLL` as **Dawood Lawrencepur Limited**, a real PSX-listed company (sector "INV. BANKS / INV. COS. / SECURITIES COS.", matching `sectors` table). Two independent, dated, external sources: (1) a company-level note that Dawood Lawrencepur's **share face value was changed**, announced 2026-06-01; (2) **NCCPL (Pakistan's National Clearing Company) issued a revised clearing/settlement schedule specifically for DLL trades, explicitly tied to the face-value change, effective 2026-06-08** — matching the data-derived transition date **exactly, to the day**.
+
+**Conclusion: CONFIRMED — this is a real, officially-announced PSX corporate action** (a face-value change, functionally a split-like restructuring), not a data error, not a scraper artifact, not an arbitrary mutation. The magnitude (~10.34x) is consistent with a genuine face-value conversion ratio, which need not be a round number. `raw prices` correctly captured the ~90% single-day nominal price drop exactly as it occurred on PSX; `auto_detect_suspects()`'s own `DROP_50` category is this pipeline's own standard classification for exactly this class of event (large single-day drop, normally auto-confirmable per `AUTO_CONFIRM_CATS`).
+
+**Why Kiran's own auto-detection never caught it — explained, not merely unresolved:** `auto_detect_suspects()` explicitly `JOIN`s against `stock_metadata` and skips non-universe symbols (documented in its own code and in CLAUDE.md). `DLL` was **not present in `stock_metadata` on 2026-06-08** — it was only added on **2026-08-03**, two months later, as part of `ml_feature_study`'s own Step 0 universe-backfill work (confirmed directly: `stock_metadata.notes` for `DLL` reads *"ml_feature_study backfill 2026-08-03: real long-running equity, absent from stock_metadata only because Kiran's EXCLUDED_SECTORS filter drops its sector at build time"*). **Kiran's own corporate-action scanner was structurally incapable of seeing this event when it happened**, for a reason already independently documented elsewhere in this program (the `EXCLUDED_SECTORS` universe gap) — not a new defect, a known one intersecting with this event by coincidence of timing.
+
+### 46.3 Task C — ML-research trace: mechanism CONFIRMED, calling agent UNRESOLVED
+
+**CONFIRMED:** the applying mechanism's SQL fingerprint (46.1) is identical to `apply_price_adjustments.py`'s `rebuild_symbol_adjusted()` — the same, sanctioned, already-existing correction function this codebase uses for every other confirmed corporate action, not a foreign or novel mutation path.
+
+**Searched both projects directly for the calling script — none found.** `rebuild_symbol_adjusted` is referenced in `psx_pipeline` only by its own definition (`apply_price_adjustments.py`), its near-duplicate backup, and the Dashboard's Data Health Confirm-button call chain (`dashboard.py`/`dashboard_pg.py`/`database_pg.py` and their backups) — the **only** documented caller requires a `corporate_action_suspects` row to exist first, which `DLL` never had. In `ml_feature_study`, the only match for `rebuild_symbol_adjusted` is a mention inside `DATA_INTEGRITY_REPORT_2026-08-03.md` (prose, not code).
+
+**Classification, per this task's own standard: mechanism = CONFIRMED (exact fingerprint match). Calling script/session = UNRESOLVED.** The most consistent explanation given everything else this program has found (the circuit-flags columns, this event) is a direct, interactive Python call to `rebuild_symbol_adjusted()` — bypassing the dashboard/suspects-table workflow entirely, the same undocumented-direct-DB-access pattern already established twice this session. **Not stated as confirmed causality, per instruction.**
+
+### 46.4 Task D — System-wide search: DLL is confirmed isolated, not systemic
+
+**Methodology:** for all 1,004 symbols with a matching `(symbol, date)` row in both the pre-run backup and current `prices_adjusted`, computed `ratio = close_backup / close_current` for every row and checked for any symbol with a non-1.0 ratio anywhere in its history.
+
+**Result: exactly one symbol — `DLL` — shows any change at all.** Zero other symbols (of 1,004 checked) show any ratio deviation, matching or otherwise. **DLL's isolation is now a directly-checked fact, not an assumption** — this task's own §8 explicitly warned against claiming isolation without a systematic check; this entry performed one.
+
+### 46.5 Task E — SQLite vs Postgres: a real, live, confirmed divergence
+
+**CONFIRMED, read-only Postgres session:** Postgres's `prices_adjusted` has 485 `DLL` rows (2024-08-21 onward, consistent with the ~2-year rolling retention trim). **Postgres was never touched by the SQLite-side correction** — its 2026-06-01 through 2026-06-05 rows still show the original, un-adjusted values (e.g. 2026-06-05 close = `624.83`, matching the backup exactly), while 2026-06-08 onward shows the new, post-event scale (`60.43`, `60.63`, ...). **SQLite is now smooth and continuous across the 2026-06-08 boundary; Postgres still has a live, unresolved ~10.34x discontinuity at that exact date.** This is a genuine, new, confirmed SQLite/Postgres divergence for `DLL` specifically — a different, narrower failure class than the "both backends independently compute, sometimes differently" pattern this program has documented elsewhere (§34-39): here, one backend was corrected and the other was never told.
+
+### 46.6 Task F — Production dependency: DLL's actual footprint, mapped directly from data, not assumed
+
+Checked every production signal/setup table directly: `stock_signals` — **14 rows**, all dated 2026-08-03 through 2026-08-21 (exactly the window since `DLL` joined `stock_metadata`). `boring_signals`, `setup_log`, `recovery_signals`, `portfolio_signals`, `leaders_scan`, `leaders_top_picks` — **zero rows, every one, confirmed by direct count.** `active_stocks_on_date` (the gate `sector_signals.py` uses to decide which symbols feed a sector's aggregate) — **zero rows for `DLL`, any date** — `DLL` has never contributed to any sector-level aggregate (`sector_signals`, and therefore nothing downstream of it) at all.
+
+**DLL's entire production footprint, past or present, is 14 rows in one intermediate table (`stock_signals`) — nothing else in the entire pipeline has ever read, aggregated, or acted on its data.**
+
+### 46.7 Task G — Are DLL's computed outputs actually wrong? Bounded, not fully resolved
+
+`stock_signals.py`'s backfill/append logic uses a **120-calendar-day lookback** (`backfill_stock_signals()`, confirmed by direct read) for the price history feeding `base_tightness`, `pivot_distance_pct`, and related window calculations. For `DLL`'s earliest signal date (2026-08-03), that lookback reaches back to roughly **2026-04-05** — **crossing the 2026-06-08 adjustment boundary.**
+
+**Scale-sensitivity distinction, per this task's §13 — correctly applied, not assumed:** `rs_score_20` (a relative-return-style measure) would be scale-invariant under a *uniform* rescale of the whole series, but `base_tightness`/`pivot_distance_pct` (range/level-based window statistics) are **scale-sensitive to a discontinuity specifically** — if the lookback window had spanned an *unadjusted* jump, these would show a spurious extreme value.
+
+**Empirical check, not just formula inspection:** `DLL`'s actual stored `stock_signals` values (46.6's 14 rows) look ordinary — `base_tightness` in a plausible 6-17% range, `rs_score_20` a small negative number, no extreme outliers consistent with a raw discontinuity artifact. This is consistent with (not proof of) the rescale having already been applied in `prices_adjusted` by the time these rows were computed, since a computation against an unadjusted, still-discontinuous window would be expected to produce visibly extreme values, not ordinary-looking ones.
+
+**UNRESOLVED, precisely bounded:** the *exact* moment `rebuild_symbol_adjusted()` ran for `DLL` relative to the exact moment each of the 14 `stock_signals` rows was computed cannot be reconstructed from available evidence (no timestamped log ties the two events together) — so full certainty that every one of the 14 rows used the corrected series isn't achievable. **What bounds the risk to a non-issue regardless:** per 46.6, none of these 14 rows feed anything else — even in the worst case (one or more of them computed against a still-discontinuous window), the blast radius is contained entirely within an intermediate diagnostic table nothing else reads.
+
+### 46.8 Task H — Historical signal impact: none found, and none possible given 46.6
+
+Per 46.6, `DLL` has zero rows in `setup_log`, `leaders_scan`, `boring_signals`, `recovery_signals`, or `portfolio_signals` — there is no setup, no confirmed strategy signal, no ranking, and no portfolio/recovery signal for `DLL` to have been corrupted, at any date, past or present. **No further disposable-environment recomputation was needed to establish this — the absence is total and directly countable**, not something a simulated recompute could add confidence to.
+
+### 46.9 Task I — Other undocumented price mutations: none found within this entry's bounded scope
+
+Per this task's §14 instruction, deliberately did not broaden beyond a DLL-connected check. 46.4's systematic scan (all 1,004 symbols, full history) is itself already the bounded-but-real check this section asks for — it found nothing beyond `DLL`. No second systemic pattern was encountered; nothing here triggers this task's own stop condition for scope expansion.
+
+### 46.10 Status
+
+**CONFIRMED:** exact transformation (46.1), a real officially-announced PSX corporate action explains it (46.2, independently externally verified), the applying mechanism's fingerprint matches `rebuild_symbol_adjusted()` exactly (46.3), isolation across all 1,004 symbols (46.4), the SQLite/Postgres divergence (46.5), DLL's total production footprint is 14 rows in one intermediate table with zero downstream propagation (46.6/46.8).
+
+**INFERRED:** the specific calling script/session was a direct, undocumented `rebuild_symbol_adjusted()` invocation, consistent with this program's already-established pattern of research-session direct DB access (46.3).
+
+**UNRESOLVED:** exact identity of the calling script/session (46.3); exact ordering of the rescale vs. `DLL`'s 14 `stock_signals` computations (46.7) — bounded to a non-issue by 46.6/46.8's total-isolation finding regardless of how that ordering question resolves.
+
+**PRODUCTION IMPACT:** none demonstrated, and structurally very unlikely to exist, given 46.6's direct count. The live SQLite/Postgres divergence (46.5) is real but currently inert — nothing reads Postgres's `DLL` `prices_adjusted` rows for any purpose that has been found.
+
+**SCOPE LIMITS:** did not audit every symbol's corporate-action history for similar gaps beyond the specific rescale-detection method in 46.4; did not attempt to locate the exact calling script beyond the searches described in 46.3; did not check whether Postgres's stale `DLL` data has ever been read by any Cloud-side computation (no Postgres-side `DLL` signal rows were found in the tables checked, consistent with no impact, but a full Postgres-side signal audit for `DLL` specifically was not separately performed).
+
+**RECOMMENDATION:**
+1. **DLL's `prices_adjusted` rescale does not require repair** — it is the correct, legitimate adjustment for a real corporate action, already correctly applied in SQLite. The only real gap is documentation/audit-trail: no `corporate_action_suspects` row exists for it. Recommend (not performed here) adding one retroactively via the normal dashboard/CSV path once authorized, purely for audit-trail completeness — the price data itself needs no change.
+2. **The 454-row circuit-column backfill (§45.7) can proceed on its own merits** — this investigation found no connection between the DLL anomaly and the circuit-flags producer's validity (DLL contributed zero rows to the 454-row set, per §45.4/§45.7). The hold this task imposed was precautionary; the precaution did not surface a reason to keep holding.
+3. **Postgres's stale `DLL` history (46.5) is worth fixing before any future Postgres-authoritative migration** (§37-40) — not urgent today given zero demonstrated current impact, but a real, confirmed data-quality gap that migration readiness should account for.
+4. **No further DLL-specific forensic work is required.** The one remaining open question (46.3's exact calling script) is a historical-curiosity item, not a live risk, given 46.6's total-isolation finding.
+
+**STILL UNSAFE (verdicts unchanged, per instruction):** Postgres `boring_signals` — **C, not safe to trust for live trading**. Local SQLite `boring_signals` — **B, safe only with explicit limitations**. This entry neither improves nor worsens either verdict — DLL was never part of `boring_signals`' computation at any point.
+
+---
+
+## 47. First production write of this program — 454-row `prices_adjusted` circuit-flags repair, executed and verified (2026-08-21)
+
+**PRODUCTION SQLITE WAS WRITTEN IN THIS ENTRY.** Every prior entry in this Phase 1 continuation was read-only; this one is not, by explicit authorization following §45's exact-reproduction result and §46's clearance of the DLL hold. Postgres was **not** touched — SQLite-local only, exactly as authorized.
+
+### 47.1 Authorization
+
+Authorized specifically and only: restoring `hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag` for the rows written by the daily append hook since 2026-08-03, which silently defaulted them to `0` (§41.4/§42.7's already-confirmed, already-explained defect). Not authorized: Postgres changes, migration, signal/strategy changes, unrelated cleanup, or expanding the write beyond the independently-reconfirmed target population.
+
+### 47.2 Provenance recap (not re-derived, cited)
+
+Producer: `C:\Users\Lenovo\ml_feature_study\scripts\compute_circuit_flags.py` (§43). Historical reproduction: 1,752,550/1,752,550 exact matches, zero mismatches, across the full closed population excluding `DLL` (§45.3, itself independently explained and cleared in §46). Forward reconstruction: confirmed deterministic (§45.5).
+
+### 47.3 Database identity — verified via live configuration, not assumed
+
+`config.DB_PATH` (the same constant every production script imports) resolves to `C:\Users\Lenovo\psx_pipeline\psx_data.db`. Pre-write state, recorded directly: size **881,614,848 bytes**, mtime **2026-08-21 21:01:08**, `PRAGMA integrity_check` = **ok**, `prices_adjusted` row count **1,763,592**, date range **2005-01-03 to 2026-08-21**, schema confirmed to already carry the three quarantined columns (`NOT NULL DEFAULT 0`).
+
+### 47.4 Backup — created and independently verified before any write
+
+`shutil.copy2` (matching this codebase's own established convention) to `backups/psx_data_pre_circuit_flags_backfill_20260821_215101.db`. Source size **881,614,848** = destination size **881,614,848** (exact match). Independently re-opened the backup file itself (not merely trusted the copy) and ran `PRAGMA quick_check` = **ok**, confirmed `prices_adjusted` row count **1,763,592** matches source. Backup left in place, outside the active production path, timestamped, not overwriting any existing backup.
+
+### 47.5 Pre-repair population — independently re-derived immediately before write, not blindly trusted from §45
+
+Re-ran the full producer reproduction against **current** production (not a cached result) immediately before writing:
+
+| | Count | Matches §45's earlier figure? |
+|---|---|---|
+| Authorized population (`date >= 2026-08-03`) | 7,428 | Yes, unchanged (no new post-08-03 rows appeared since the last check, and none should have — confirms nothing else wrote to `prices_adjusted` in between) |
+| Class A (current == expected) | 6,974 | Yes |
+| Class B (current != expected, needs write) | 454 | Yes |
+| `hit_circuit_up` needing `1` | 47 | Yes |
+| `hit_circuit_down` needing `1` | 5 | Yes |
+| `thin_trading_flag` needing `1` | 402 | Yes |
+| Class B rows with an *unexpected* existing non-zero value | 0 | — (none found; every target row's prior state was cleanly `0/0/0`) |
+| `DLL` rows in the target set | 0 | — (confirmed consistent with §46) |
+| Pre-08-03 historical row count | 1,756,164 | Matches the pre-run backup's own total exactly — confirms the historical population was untouched between the forensic pass and this write |
+
+**All values re-derived independently matched the earlier forensic session's figures exactly — no discrepancy triggered the required STOP.**
+
+### 47.6 Pre-write safety gate — all eight conditions checked and passed
+
+1. DB path confirmed via `config.DB_PATH`, not memory. 2. Backup created and independently verified (`quick_check` = ok). 3. Database unchanged since the pre-write snapshot (row count re-checked immediately before the transaction: 1,763,592, matching). 4. Target population count exactly 7,428, matching. 5. Exactly 454 rows require modification, matching. 6. Every expected value reproduced from the confirmed, unmodified producer formula. 7. Every target row's `date >= 2026-08-03` (asserted in code, not just eyeballed). 8. Zero target rows had an unexpected existing non-zero value (asserted in code). **All eight passed; the repair proceeded.**
+
+### 47.7 Repair performed
+
+Single explicit transaction (`BEGIN` / per-row `UPDATE ... WHERE symbol=? AND date=?` / verify / `COMMIT`), touching only `hit_circuit_up`, `hit_circuit_down`, `thin_trading_flag`, only for the 454 rows in the independently-derived target set. In-transaction assertions before commit: exactly 454 rows affected (`cur.rowcount` summed), row count unchanged (1,763,592 before and after), every written row re-read within the same transaction and confirmed to exactly match its expected value (0 mismatches) before `COMMIT` was issued. No exception was raised; no rollback occurred.
+
+### 47.8 Post-write validation
+
+**A. Exact agreement:** re-ran the full producer reproduction against now-current production. For the authorized population (`date >= 2026-08-03`): `hit_circuit_up` stored-nonzero = producer-computed-nonzero = 47; `hit_circuit_down` = 4 = 4 (the `date > 2026-08-03` sub-slice used by the verification script; the 5th, on the boundary date itself, is confirmed separately); `thin_trading_flag` = 372 = 372 (same boundary note, 402 total including 2026-08-03 itself). **Zero mismatches in the authorized population.**
+
+**B. Change count:** exactly **454** rows changed — confirmed twice, independently: once by the transaction's own `cur.rowcount` sum, once by a full-table before/after diff against the 47.4 backup (`454` rows where any of the three flag columns differ, matching exactly).
+
+**C. Column scope:** confirmed by the same full-table diff — **zero** rows show any difference in `close`/`volume`/`high`/`low` (verified with a NaN-safe comparison after an initial naive check flagged a false positive from `open IS NULL` rows comparing unequal to themselves in pandas — diagnosed and corrected before drawing any conclusion, not glossed over). Only the three authorized columns were ever touched.
+
+**D. Row scope:** all 454 changed rows have `date` between `2026-08-03` and `2026-08-21` inclusive — none outside the authorized population. Zero changed rows belong to `DLL`.
+
+**E. Legitimate zeros preserved:** of the 7,428-row authorized population, exactly **6,974** rows are unchanged (still `0/0/0` on both sides of the diff) — the legitimately-zero rows were not touched.
+
+**F. Historical population preserved:** the post-write reproduction's only remaining mismatches anywhere in the table are the already-known, already-explained `DLL` rows (§45.3/§46) — identical in shape and count to the pre-write state. The 1,752,550-row closed-historical population (excluding `DLL`) remains exactly consistent with the producer.
+
+### 47.9 Database integrity, post-write
+
+`PRAGMA integrity_check` = **ok**. `prices_adjusted` row count **1,763,592**, unchanged. Schema string byte-identical to the pre-write schema. Total table count **50**, matching the pre-write backup's own table count exactly — no table added, removed, or altered.
+
+### 47.10 Regression test added
+
+`tests/test_circuit_flags_backfill_repair.py`, 3 tests:
+1. `test_formula_matches_the_audited_production_result` — the producer's exact formula, reproduced as a tested function for the first time (previously only existed as a one-off scratch script), verified against a small controlled fixture covering all three flag outcomes plus a correctly-non-frozen row.
+2. `test_restoration_only_touches_rows_that_actually_need_it` — regression for "accidental expansion of the repair beyond the intended population": a fixture with a pre-boundary row that *would* compute a flag if it were in-scope, confirmed excluded; only the one genuinely in-scope, genuinely-needing-a-value row is selected.
+3. `test_append_new_prices_adjusted_KNOWN_GAP_still_writes_placeholder_zeros` — pins the still-open gap this repair deliberately did not close (the daily hook still defaults new rows to `0/0/0`), with an explicit comment that a future intentional fix should update this test, not silently break it.
+
+All three pass. Existing `tests/test_apply_price_adjustments_quarantine.py` (§42's guard, 7 tests) re-run clean, confirming the guard is unaffected by this write.
+
+### 47.11 Full test suite
+
+Full `pytest tests/` re-run twice: once immediately after the production write (before the new test file existed) — **102 passed, 0 failed** (350.19s), confirming the write itself caused no regression anywhere in the existing suite; once more after adding §47.10's new test file — **105 passed, 0 failed** (676.77s) — 102 + 3 new. No test was weakened, skipped, or deleted to make the suite pass.
+
+### 47.12 Scope confirmation
+
+**SQLite: changed (454 rows, 3 columns, 1 table).** **Postgres: unchanged — not connected to for any write operation in this entry.** **Schema: unchanged.** **Data outside the 454 authorized rows: unchanged**, confirmed by full-table diff (47.8.C/D). No code file's production logic was modified (the new test file adds a test-only formula function, does not alter `apply_price_adjustments.py`'s actual daily-hook behaviour — the KNOWN_GAP test in 47.10 explicitly proves this). No migration, no strategy/signal change, no unrelated cleanup, no backup file deleted, no dashboard change.
+
+### 47.13 Status
+
+**REPAIRED:** `psx_data.db`'s `prices_adjusted` table, 454 rows, 3 columns (`hit_circuit_up` +47, `hit_circuit_down` +5, `thin_trading_flag` +402), executed 2026-08-21. **VERIFIED:** backup created and independently checked before write; in-transaction verification before commit; full post-write reproduction (zero mismatches in the authorized population); full-table before/after diff (exact 454-row, 3-column scope, zero price/volume drift once a NaN-comparison artifact in the verification script itself was caught and corrected); `PRAGMA integrity_check` ok pre- and post-write; schema and table count byte-identical pre/post; 105/105 tests passing (102 pre-existing + 3 new). **NOT CHANGED:** Postgres (untouched), the three columns' historical values (pre-2026-08-03, all preserved exactly), `DLL` (zero rows in the repair set, its separate §46 issue untouched), strategy/signal/research definitions, any file outside this entry's explicit list (`tests/test_circuit_flags_backfill_repair.py` added; no `.py` production file modified).
+
+**STILL UNSAFE, unchanged per instruction:** Postgres `boring_signals` — **C, not safe to trust for live trading**. Local SQLite `boring_signals` — **B, safe only with explicit limitations**. This repair touched `prices_adjusted` only, a table `boring_signals` does not currently read for these three columns (§42.5, still true) — the verdicts are unaffected by this entry, in either direction.
+
+**Remaining known items, carried forward, not addressed by this entry:** the daily append hook still defaults new rows to `0/0/0` going forward (§45.6, pinned by 47.10's KNOWN_GAP test) — this repair will need to be repeated again unless/until that's separately authorized and fixed. Postgres's stale `DLL` history (§46.5) remains unfixed, currently inert. `DLL`'s missing `corporate_action_suspects` audit-trail entry (§46.10 recommendation #1) remains unaddressed.
+
+---
+
+## 48. Correction to §46.3 — the DLL calling mechanism was already documented, five days earlier, in this same ledger
+
+**Found while doing a final consistency pass before ending this session — not found during §46 itself, which is the actual defect being corrected here.** §46.3 classified the script or session that applied `DLL`'s `prices_adjusted` rescale as **UNRESOLVED**, and offered an **INFERRED** guess that it likely traced to `ml_feature_study`'s own research, based on a matching ratio in that project's `corp_action_retroactive_scan_candidates.csv`. **Both the UNRESOLVED classification and the INFERRED guess are superseded by evidence that was sitting in this exact document the entire time.**
+
+### 48.1 What §32 (2026-08-17) already established, in full
+
+`§32.4 — ✅ DLL corrected (production write)`, four days before this session started: **factor `0.096714` (= 60.43/624.83) applied to all 3,576 `prices_adjusted` rows before 2026-06-08**, backed up first to `backups/DLL_prices_adjusted_prefix_20260817_125803.csv`, **dry-run inside a rolled-back transaction first, then committed, then re-verified on a fresh read-only connection**. Every number matches this session's own independently-derived findings exactly: factor to 6 significant figures, row count (3,576) exact, date boundary (2005-01-03 → 2026-06-05) exact.
+
+**This is CONFIRMED, not merely corroborated:** §32.4's own write-up is itself a controlled, gated, backed-up-first, dry-run-verified production repair — the same shape of operation as this session's own §47, performed by a prior session working through this same audit program, not an ad hoc or foreign mutation. §32.3 explains the origin: a **full historical sweep of `prices_adjusted`** (2005-01-03 → 2026-08-13, read-only, run natively within `psx_pipeline` using the same `>12% single-day close-to-close drop` detection logic `auto_detect_suspects()` already uses, just applied to the whole history instead of a rolling window) found **24,481 qualifying discontinuities**, narrowed to a **16-event DROP_50 shortlist**, of which `DLL` (2026-06-08, −90.3%, ratio 10.34) and `MTL` (2026-06-22, already caught by the normal detector) were the two fixed at that time. §32.5 records **11 other names still uncorrected** as of 2026-08-17 (`LUCK, SYS, LCI, KOHC, KTML, THCCL, AHCL, KML, BECO, BNL, CLOV`), explicitly held pending a scan-window redesign (§32.6) at the user's own direction.
+
+### 48.2 Corrected classification
+
+| | §46.3 (this session, before the correction) | Corrected |
+|---|---|---|
+| Calling mechanism | UNRESOLVED | **CONFIRMED** — §32.4, a controlled, backed-up, dry-run-verified production repair, documented in this same ledger |
+| Likely origin | INFERRED — probably `ml_feature_study` | **Superseded** — the actual origin is a native `psx_pipeline` full-history sweep (§32.3), performed by a prior session in this same audit program, entirely independent of `ml_feature_study`. `ml_feature_study`'s own candidate-scan CSV finding the same event with a matching ratio is best explained as **coincidental convergence** — both are independently applying a similar `>12%`/`DROP_50`-style single-day-drop heuristic to the same underlying raw price data, not one causing or copying the other. No evidence of any connection between the two projects was found for this specific event (§32's own text makes no mention of `ml_feature_study`). |
+
+### 48.3 Correction to §46.4's isolation claim — a scope clarification, not a retraction
+
+§46.4 systematically checked all 1,004 symbols for a price change **since the 2026-08-03 backup** and found only `DLL`. **That specific claim remains true and unretracted** — no other symbol's `prices_adjusted` values changed between 2026-08-03 and this session's start. But §32.5's own table (already on record four days earlier) shows this is a narrower question than "is `DLL` the only symbol with an unadjusted-corporate-action problem" — it is not: **11 other names (`LUCK, SYS, LCI, KOHC, KTML, THCCL, AHCL, KML, BECO, BNL, CLOV`) had known, already-documented, still-uncorrected unadjusted splits as of 2026-08-17**, per §32.5, simply outside this session's 2026-08-03-to-now comparison window because they were never corrected during that window either. **§46's own scope was explicitly bounded to the `DLL` anomaly** (per that task's own §14 instruction not to broaden), so this isn't a failure of that task — it's a reminder, recorded here explicitly per this program's no-silent-correction rule, that "isolated within this session's specific check" is not the same claim as "isolated across the whole system's corporate-action history," and §32.5's list should be the reference for the latter question, not §46.4.
+
+### 48.4 Why this wasn't caught during §46 itself
+
+§46's investigation searched `corporate_action_suspects` (the live table — empty for `DLL`), `corporate_action_suspects_clean.csv` (also empty for `DLL`), and both projects' source code — all reasonable, direct evidence sources. **It did not search this audit ledger's own prior sections for a matching record.** Given this ledger is the designated single source of truth for every production-integrity finding in this program (per this program's own non-negotiable rule, "What this is" in the accompanying memory record), a keyword search of `docs/KIRAN_CLEANUP_AUDIT.md` itself for `DLL` should have been one of the first checks in §46, not a final-pass discovery. **Recorded here as a process gap for this program to avoid repeating**, not merely as a data correction.
+
+### 48.5 Status
+
+**No production write in this entry.** Pure correction to the written record, per this program's explicit no-silent-correction rule — §46's original text is left unedited above; this entry documents what was wrong and why, rather than rewriting history. Nothing about §47's already-executed 454-row repair is affected by this correction — that repair concerned three different columns (`hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag`) and a different table population (post-2026-08-03 rows) than §32/§46's `DLL` price-rescale question, and `DLL` was independently confirmed to have zero rows in §47's repair set.
+
+---
+
+## 49. Causal repair — the daily append hook itself no longer zeros circuit flags (2026-08-21)
+
+**PRODUCTION CODE WAS CHANGED IN THIS ENTRY. No production database, SQLite or Postgres, was written to.** §47 repaired the 454 historical rows already damaged by the daily append hook, but explicitly left the hook itself unfixed (§47.13, pinned by a KNOWN_GAP test). This entry closes that specific, separately-authorized gap: the causal defect in `append_new_prices_adjusted()`.
+
+### 49.1 Authorization
+
+Authorized specifically and only: tracing and repairing the daily append hook so newly-appended `prices_adjusted` rows receive correct `hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag` values from the confirmed producer, instead of the column default of `0`. Not authorized: Postgres changes, schema changes, historical rewrites, migration/cutover, watchdogs, or any change to strategy/signal/research logic. SQLite only, code-path repair, not another historical-data repair.
+
+### 49.2 Investigation performed
+
+Full-repository search for every write to `prices_adjusted` (`INSERT INTO`, `INSERT OR REPLACE`, `REPLACE INTO`, `UPDATE`, `CREATE TABLE`, `ALTER TABLE`, and all references to the three quarantined columns). Confirmed exactly two live production writers, matching this project's already-documented dual-pipeline architecture (`CLAUDE.md`, §33-40) — no new, previously-undocumented writer was found:
+
+1. **SQLite path** — `apply_price_adjustments.py`, called from `main.py`'s `cmd_update()` (`main.py:240-249`) whenever `DATABASE_URL`/`SUPABASE_DB_URL` is unset. Three functions in call order: `ensure_suspects_table` → `append_new_prices_adjusted` → `auto_detect_suspects`.
+2. **Postgres path** — `database_pg.py`'s `_pg`-suffixed siblings, called from the same `main.py` hook when `DATABASE_URL`/`SUPABASE_DB_URL` *is* set (the GitHub Actions `daily_scraper.yml` environment). See §49.7 — read for evidence completeness, explicitly **not** touched, per hard scope.
+
+A third file, `apply_price_adjustments_backup_e85.py`, also contains an `INSERT INTO prices_adjusted` statement, but is a dead stale backup — confirmed via repo-wide grep that nothing imports or calls it (`CLAUDE.md`'s own "Known Gaps" section already flags this class of backup file as a standing, documented risk, not a new finding). **CONFIRMED not a live writer.**
+
+`build_adjusted_prices()` (the full-rebuild path, `--all`/no-flag CLI invocation) and `rebuild_symbol_adjusted()` (the Data Health confirm-suspect path) were also inspected — both are pre-existing, out of scope for this task (the full rebuild already has the §41-42 quarantine-preservation fix; the confirm-suspect path applies a factor to existing rows, it does not create new ones with a fresh 0-default). Neither was modified.
+
+### 49.3 Exact root cause — CONFIRMED
+
+`append_new_prices_adjusted()` (`apply_price_adjustments.py`, pre-repair line 337-366) inserted new rows with an **explicit column list that omitted the three circuit-flag columns**:
+
+```sql
+INSERT INTO prices_adjusted (symbol, date, close, volume, high, low, open)
+SELECT symbol, date, close, volume, high, low, open FROM prices WHERE date > ?
+```
+
+`prices_adjusted`'s schema (confirmed live via `PRAGMA table_info`, reproduced below) defines the three columns as `NOT NULL DEFAULT 0`:
+
+```
+(7, 'hit_circuit_up',    'INTEGER', 1, '0', 0)
+(8, 'hit_circuit_down',  'INTEGER', 1, '0', 0)
+(9, 'thin_trading_flag', 'INTEGER', 1, '0', 0)
+```
+
+Because the INSERT never names these three columns, SQLite silently applies their column default (`0`) to every newly-appended row — deterministically, on every run, regardless of what the confirmed producer formula would compute. This is **not** a `SELECT *`/schema-drift bug (the INSERT already named columns explicitly, which is why it never crashed or drew attention) — it is a column list that was correct for the seven raw-price columns and simply never included the three flag columns that were added to the schema later. No exception was ever raised; the rows look completely valid.
+
+**Evidence chain:**
+```
+daily production entry point:  main.py cmd_update() -> apply_price_adjustments.append_new_prices_adjusted(con)
+append function:                append_new_prices_adjusted() (apply_price_adjustments.py:337, pre-repair)
+source data:                    prices table, correct raw OHLCV
+INSERT:                         explicit 7-column list, circuit-flag columns not named
+circuit columns:                never assigned a value by this statement
+incorrect zero values:          supplied entirely by the column's own NOT NULL DEFAULT 0
+```
+
+Classification: **CONFIRMED** — demonstrated directly from the pre-repair source text (git-diffable, `apply_price_adjustments.py` at commit `3d77a9d`) and the live schema read via `PRAGMA table_info(prices_adjusted)` against `psx_data.db`, not inferred.
+
+### 49.4 Confirmed producer — how it was safely incorporated
+
+Producer: `C:\Users\Lenovo\ml_feature_study\scripts\compute_circuit_flags.py` — a standalone script, not an importable module (it executes a DB backup, a full-table read, and a full-table write as top-level statements on import; naively `import`-ing it from the daily hook would re-run all of that on every append). **Dependency/environment difference, documented before any change:** to incorporate its logic safely, the band-schedule function and the hit/thin classification formula were **transcribed verbatim** into two new pure functions in `apply_price_adjustments.py` — `circuit_band_pct(date_str)` and `compute_circuit_flags(df)` — with no side effects (no DB open, no backup, no unconditional write), taking/returning plain DataFrames. The formula itself (band percentages by date, the Rs1 floor, the tick-size tolerance, the frozen/hit-up/hit-down/thin classification, including the up-vs-down conflict tie-break) is unchanged, character-for-character, from the confirmed producer — this is the same formula already ported into the test suite's oracle in `tests/test_circuit_flags_backfill_repair.py` (§47.10), now promoted to the actual production implementation both the historical-repair tests and the daily hook share.
+
+A new private helper, `_circuit_flags_for_new_rows(con, symbols, min_date, expected_count)`, adapts the producer's whole-table vectorized computation to an incremental append: it pulls one lookback row per symbol (the last close strictly before `min_date`, so `prior_close` is correct for each symbol's first new row — reproducing exactly what a `groupby().shift(1)` over the full table would see at that boundary) plus the newly-inserted rows themselves, runs `compute_circuit_flags` over the combined frame, then trims the lookback rows back out. This was **verified to reproduce the confirmed producer exactly**, not just assumed correct by construction — see §49.6.
+
+### 49.5 Scope of the defect — checked, not expanded
+
+While tracing the INSERT, all seven other columns (`symbol`, `date`, `close`, `volume`, `high`, `low`, `open`) were confirmed present and correctly named in the same explicit column list — **no other column is affected by this defect**. The repair adds exactly the three circuit-flag columns to the write; every other column's value and code path is untouched (confirmed by test — §49.8, Test 5).
+
+### 49.6 Repair performed
+
+`apply_price_adjustments.py`:
+- Added `circuit_band_pct()`, `compute_circuit_flags()`, `_circuit_flags_for_new_rows()` (new, pure, no side effects — §49.4).
+- Rewrote `append_new_prices_adjusted()`: the raw-row INSERT (unchanged, still an explicit column list, never `SELECT *`) and the circuit-flag computation/write now happen **inside one transaction**. If `_circuit_flags_for_new_rows()` raises for any reason, the `except Exception: con.rollback(); raise` block rolls back the entire transaction — including the raw-row insert — and re-raises (not swallowed, not caught broadly and discarded). Before `COMMIT`, every newly-written row is re-read and compared against the computed values (same in-transaction verify-before-commit discipline as §47.7); any row-count or value mismatch also raises and rolls back. Nothing is committed unless the write is verified correct. On success, only `con.commit()` publishes the new rows.
+- `main.py`'s existing outer `try/except Exception: logger.warning(...)` around this hook (`main.py:227-261`) was **not modified** — it already correctly logs and heartbeats a failure without crashing the rest of the daily pipeline; with this repair, a failure now correctly means "the append rolled back, nothing published," where before it would have meant "the append succeeded with silently wrong values." No change to that isolation boundary was needed or made.
+
+**Production DB read-only verification, not touched for write:** a disposable copy of `psx_data.db` (temp directory, deleted after use) had its `prices_adjusted` rows for `date >= 2026-08-13` (3,206 rows, 9 trading dates) deleted, leaving `prices` (the raw source) intact, then the repaired `append_new_prices_adjusted()` was run against the copy to re-derive those rows from scratch. All 3,206 re-derived rows matched the real, already-`§47`-verified production values in the live `psx_data.db` **exactly** — 0 mismatches, 0 rows only on either side (`up=27, down=3, thin=191` reproduced exactly). Live `psx_data.db` was opened read-only for the comparison query only; confirmed unchanged afterward (size `881,614,848` bytes — byte-identical to §47.3/§47.9's recorded value; row count `1,763,592` — unchanged; `PRAGMA integrity_check` = **ok**; all three re-checked directly after this session's read-only queries). **CONFIRMED**, not inferred: the repaired code reproduces the confirmed-correct production values on real historical data, not just synthetic fixtures.
+
+### 49.7 Postgres append path — found, evidenced, explicitly NOT touched
+
+`database_pg.py`'s `append_new_prices_adjusted_pg()` (lines 1957-1992) is the Postgres analog of the function repaired above, called from the same `main.py` hook when `DATABASE_URL`/`SUPABASE_DB_URL` is set. It uses:
+
+```sql
+INSERT INTO prices_adjusted SELECT * FROM prices WHERE date > %s
+```
+
+This is a **different failure mechanism** than the SQLite defect (genuine `SELECT *`/positional projection, not an incomplete-but-explicit column list) and was not previously documented at this level of specificity anywhere in this ledger. This is **CONFIRMED** by direct code read, not inferred. Per this task's hard scope ("Do NOT modify Postgres," reiterated four times in the authorizing instructions) and this project's already-established, already-authorized-for-design-only dual-pipeline finding (`CLAUDE.md`, §33-40 — Postgres becoming sole authoritative production is a target direction, not yet authorized for implementation), this was **not** treated as a new-writer STOP condition — it is the same, already-known second pipeline, not a previously-unknown one — and was left completely unmodified. Recorded here as a **remaining risk** (§49.10), not repaired, not migrated, not touched.
+
+### 49.8 Test-suite changes
+
+`tests/test_circuit_flags_backfill_repair.py` — rewritten (not appended to as a separate file, to satisfy the test-governance requirement to replace, not merely supplement, the KNOWN_GAP pin):
+
+1. `test_formula_matches_the_audited_production_result`, `test_restoration_only_touches_rows_that_actually_need_it` — **repointed** from a test-local shadow copy of the formula to the real production `apply_price_adjustments.compute_circuit_flags` — now exercise production code directly, unchanged assertions/intent.
+2. `test_append_new_prices_adjusted_now_computes_real_circuit_flags` — **replaces** `test_append_new_prices_adjusted_KNOWN_GAP_still_writes_placeholder_zeros`. Same fixture (a new +10% frozen row), inverted assertion: now asserts `(1, 0, 0)`, not `(0, 0, 0)` — proves the defect is closed, not merely documented.
+3. `test_append_matches_producer_across_full_pipeline_and_direct_formula` — **Task Test 1 + Test 2.** Four symbols in one append batch: an explicit hit-up case, an explicit hit-down case, an explicit thin-trading case, and a non-frozen zero case — the production append path's written values are compared both against a direct read of `prices_adjusted` and against an independently-built `compute_circuit_flags()` call on the same raw fixture data (arms-length cross-check, not circular).
+4. `test_append_is_immune_to_prices_table_column_reordering` — **Task Test 3.** `prices`' physical column order is deliberately scrambled relative to `prices_adjusted`'s, with all-distinct values per column; would fail immediately if `SELECT *` or any positional assumption were reintroduced into the INSERT.
+5. `test_append_rolls_back_completely_when_circuit_calc_fails` — **Task Test 4.** Monkeypatches `compute_circuit_flags` to raise; asserts the whole call raises, `prices_adjusted`'s row count is unchanged, and specifically that no row for the new date was committed — proves fail-closed, not just "the flags stayed zero."
+6. `test_append_leaves_ohlcv_columns_unaffected_by_flag_computation` — **Task Test 5.** Distinct, non-round OHLCV values confirmed copied through exactly.
+7. **Task Test 6** (the 454 historical rows are not invalidated) is satisfied by construction, not a new unit test: this repair touches only `append_new_prices_adjusted()` (the incremental-append path); it does not call, modify, or re-run `build_adjusted_prices()`/the historical backfill path, and the §49.6 read-only production comparison independently re-confirmed the live rows are unchanged (byte-identical file size and row count).
+
+Existing `tests/test_apply_price_adjustments_quarantine.py` (§42's guard, 7 tests, exercises `build_adjusted_prices()` — a different function, not touched by this repair) re-run clean, unaffected.
+
+### 49.9 Test results
+
+`tests/test_circuit_flags_backfill_repair.py` + `tests/test_apply_price_adjustments_quarantine.py` run together: **14 passed, 0 failed** (both files, isolated run, before the full-suite run). Full `pytest tests/`: **109 passed, 0 failed** (614.42s) — up from §47.11's **105 passed** baseline. Accounting for the +4: of the 105 pre-existing tests, one (`test_append_new_prices_adjusted_KNOWN_GAP_...`) was replaced in place by `test_append_new_prices_adjusted_now_computes_real_circuit_flags` (net 0 change in count), and four wholly new tests were added (`test_append_matches_producer_across_full_pipeline_and_direct_formula`, `test_append_is_immune_to_prices_table_column_reordering`, `test_append_rolls_back_completely_when_circuit_calc_fails`, `test_append_leaves_ohlcv_columns_unaffected_by_flag_computation`): 105 + 4 = 109. No test was weakened, skipped, or deleted to make the suite pass; no unrelated test failed.
+
+### 49.10 Production impact / database impact
+
+**SQLite changed: NO** (code-only change; the read-only disposable-copy verification in §49.6 confirmed the live `psx_data.db` file is byte-identical in size and unchanged in `prices_adjusted` row count after this session's read-only queries). **Postgres changed: NO** — not connected to for any operation in this entry. **Historical rows changed: NO** — the 454 rows repaired in §47, and all rows before them, are untouched; this repair only changes what happens the *next* time `append_new_prices_adjusted()` runs against live data (the next scheduled `main.py --update` / Task Scheduler run, or the next manual invocation). **Schema changed: NO** — no `ALTER TABLE`, no new column, no new table.
+
+### 49.11 Remaining risks — not addressed by this entry
+
+- **Postgres's `append_new_prices_adjusted_pg()` still has an equivalent-class defect** (§49.7) — `SELECT *` into a target with three extra `NOT NULL DEFAULT`-style columns. Whether this currently errors at runtime, silently zero-fills, or behaves some third way was **not executed or tested against live Supabase** (out of hard scope) — classification for its exact runtime behavior is **UNRESOLVED**, only the code shape itself is CONFIRMED. This needs its own separately-authorized investigation before any repair, exactly as this entry needed its own authorization for the SQLite side.
+- **`rebuild_symbol_adjusted_pg()`** (the Postgres Data Health confirm-suspect path) and **`build_adjusted_prices()`'s** interaction with the three flag columns on Postgres were not audited in this entry — out of scope.
+- The next real production run of `append_new_prices_adjusted()` against live `psx_data.db` (not a disposable copy) has not yet happened as of this entry — §49.6's verification is a faithful re-derivation on a disposable copy of real data, not a live production execution. The first live run should be watched (its `_record_hook("corporate_action", ...)` heartbeat and log line) to confirm it behaves as verified.
+- All remaining risks already carried forward from §47.13 and §48 (Postgres `boring_signals` still C/not-safe-to-trust, Postgres's stale `DLL` history, `DLL`'s missing audit-trail entry, the broader dual-pipeline architecture question) are unaffected by this entry and remain open.
+
+### 49.12 Verification status
+
+Root-cause claim: **CONFIRMED** (direct source-code + live-schema evidence, §49.3). Repair correctness: **CONFIRMED** (109/109 suite pass; disposable-copy re-derivation exactly matches 3,206 real, already-independently-verified production rows, 0 mismatches, §49.6). Fail-closed behavior: **CONFIRMED** (regression test forces the failure and proves no row commits, §49.8 item 5). Postgres equivalent-class defect: **CONFIRMED to exist** as code, **UNRESOLVED** as to live runtime behavior (§49.11, explicitly not executed).
+
+### 49.13 Files changed
+
+**Production:** `apply_price_adjustments.py` only (274 insertions, 7 deletions against the last commit `3d77a9d` — new `circuit_band_pct`, `compute_circuit_flags`, `_circuit_flags_for_new_rows`; rewritten `append_new_prices_adjusted`). `main.py` was inspected, not modified by this entry (its own pre-existing uncommitted diff from an earlier session's `boring_signals` Postgres-port work is unrelated to this repair).
+
+**Tests:** `tests/test_circuit_flags_backfill_repair.py` (rewritten in place — 2 tests repointed at production code, 1 test replaced, 4 tests added). `tests/test_apply_price_adjustments_quarantine.py` unmodified, re-run clean.
+
+### 49.14 Status
+
+**ROOT CAUSE CLOSED** for the SQLite append path (`main.py`'s local/Task-Scheduler pipeline). **NOT CLOSED** for the Postgres append path — a same-class, separately-scoped defect exists there (§49.7/§49.11), explicitly out of this entry's hard scope, requiring its own authorization. This program continues to run two independent production pipelines (`CLAUDE.md`, §33-40); this entry repairs one of them for this one defect.
+
+---
+
+## 50. Postgres circuit-flag append forensics — read-only, no production defect found where §49.7 expected one (2026-08-21)
+
+**READ-ONLY INVESTIGATION. No Postgres write, no schema change, no SQLite write, no production code change in this entry.** §49.7 flagged `database_pg.py`'s `append_new_prices_adjusted_pg()` (`INSERT INTO prices_adjusted SELECT * FROM prices`) as a same-class hazard to the SQLite defect §49 repaired, explicitly classified UNRESOLVED pending live execution. This entry resolves that classification by querying live Supabase directly.
+
+### 50.1 Authorization
+
+Authorized specifically and only: read-only forensic investigation of whether `append_new_prices_adjusted_pg()` produces incorrect `hit_circuit_up`/`hit_circuit_down`/`thin_trading_flag` values in live Postgres, and under what conditions. No repair. No write of any kind to Postgres. `database_pg.py` not modified.
+
+### 50.2 Finding — CONFIRMED, and it overturns §49.7's premise
+
+**Postgres's `prices_adjusted` table has no `hit_circuit_up`, `hit_circuit_down`, or `thin_trading_flag` columns at all.** Queried live via `information_schema.columns` against Supabase (`SUPABASE_DB_URL`, read-only):
+
+```
+prices_adjusted (7 columns, ordinal order):
+  1  symbol   text     NOT NULL
+  2  date     date     NOT NULL
+  3  close    numeric
+  4  volume   bigint
+  5  high     numeric
+  6  low      numeric
+  7  open     numeric
+```
+
+`prices` has the identical 7 columns, in the identical order. Directly confirmed by executing `SELECT hit_circuit_up FROM prices_adjusted LIMIT 1` against live Supabase: `psycopg2.errors.UndefinedColumn: column "hit_circuit_up" does not exist`. **CONFIRMED**, not inferred — this is not a case of the columns existing and being silently zeroed; the columns are structurally absent from the Postgres schema. §49.7's characterization ("a same-class integrity hazard... a genuine SELECT */positional projection [mismatch]") is **corrected here**, per this program's no-silent-correction rule: it is not corrected because it was unreasonable to flag at the time (§49.7 explicitly classified it UNRESOLVED and declined to touch Postgres, which was the right call under that task's hard scope) — it is corrected because live execution now shows the actual mechanism is different in kind, not just degree, from the SQLite defect.
+
+Full-repository grep (`hit_circuit`, `thin_trading`) confirms **zero references** to any of the three column names anywhere in `database_pg.py`, `dashboard.py`, `dashboard_pg.py`, or any other file outside `apply_price_adjustments.py` (SQLite-only production code) and SQLite-only test fixtures. No Postgres code path reads, writes, or otherwise depends on these columns. The feature does not exist on the Postgres side of this pipeline at all — not degraded, not silently wrong, simply never built there.
+
+### 50.3 Exact mechanism of `INSERT ... SELECT *` under the actual current schemas
+
+Because `prices` and `prices_adjusted` have identical 7-column schemas in identical ordinal order, `INSERT INTO prices_adjusted SELECT * FROM prices WHERE date > %s` maps positionally 1:1 with no mismatch: `symbol→symbol, date→date, close→close, volume→volume, high→high, low→low, open→open`. There is no column-count mismatch (which would raise a Postgres error, not silently corrupt), no positional drift, and no destination column left to receive a wrong or default value, because no destination column exists beyond the 7 that already match. **CONFIRMED** by live spot-check: for `date = '2026-08-21'`, all 537 rows' `close`/`volume`/`high`/`low`/`open` values match exactly between `prices` and `prices_adjusted` (0 mismatches, direct pandas comparison against live Supabase).
+
+### 50.4 Production evidence — post-2026-08-03 population
+
+The premise of "how many post-2026-08-03 rows are 0/0/0 vs. expected-nonzero" **does not apply** — there is no column to hold 0/0/0 or any other value. This is itself the forensic result, not a gap in the investigation: **zero rows, zero columns, zero mismatches possible, because the columns do not exist.** Reproducing the confirmed producer formula (`compute_circuit_flags.py`) against Postgres's `prices_adjusted` data was not performed, because there is nowhere in Postgres to compare its output against — doing so would only reproduce what the *SQLite* table should contain, which is already covered by §47/§49.
+
+Append-path completeness (a different, legitimate question) was checked instead: `prices` and `prices_adjusted` in Postgres are current through `2026-08-21`, and for the most recent 8 trading dates every date's row count matches exactly between the two tables. The append mechanism is running and current.
+
+### 50.5 Historical evidence
+
+**No historical evidence of a circuit-flag defect exists, because there has never been a circuit-flag column in Postgres to be defective.** This is distinct from "the defect existed historically and was fixed" — it is "the feature was never present." Git provenance (§50.7) supports this was not a regression (a column dropped at some point) but an omission from the original Postgres schema design.
+
+**A related but distinct piece of historical evidence was found while checking date completeness (§50.6), directly relevant to the already-known 2026-07-07 gap and the boring_signals RS-ranking finding in §35.1/§35.7:**
+
+- **CONFIRMED, full-history query:** exactly two dates exist in Postgres `prices_adjusted` with **no matching date at all in `prices`**: `2026-07-09` and `2026-07-15`. Since `append_new_prices_adjusted_pg()` can only ever copy rows that already exist in `prices` (`WHERE date > last_adjusted`), it **cannot** have originated these two dates' data — their presence in `prices_adjusted` with nothing in `prices` is unexplained by this function and predates or is independent of it.
+- **CONFIRMED, already-documented gap re-verified live:** `2026-07-07` has **zero rows in both `prices` and `prices_adjusted`** — symmetric, not an append-path artifact. Since the append function only mirrors what `prices` already has, a date missing from `prices` will correctly never appear in `prices_adjusted` either; this is expected behavior given an upstream gap, not evidence the append function itself drops dates.
+- **CONFIRMED, full-history query:** the append function has never dropped a date `prices` actually has — **zero dates exist in `prices` that are absent from `prices_adjusted`**. Its forward-copy mechanism has 100% date coverage relative to its own source table across the entire history checked.
+- **CONFIRMED, exact counts:** two dates show a **row-count deficit** in `prices_adjusted` versus `prices` for the same date — `2026-07-08` (625 in `prices` vs. 608 in `prices_adjusted`, −17) and `2026-07-10` (623 vs. 611, −12). **INFERRED explanation, not proven:** `append_new_prices_adjusted_pg()`'s boundary condition (`date > MAX(date) already in prices_adjusted`) is a one-way ratchet — once any row exists in `prices_adjusted` for a given date, that date can never receive additional rows later, even if `prices` subsequently gains more rows for that same date (e.g., a late-arriving or corrected scrape). If `prices` gained those extra 17/12 rows for 07-08/07-10 sometime after `prices_adjusted`'s tail had already moved past those dates, this structural property — present in **both** the Postgres and the (pre-§49) SQLite implementations, since both share the identical `WHERE date > last_adjusted` design — would fully explain the deficit without any bug in either language's implementation. This was **not traced to a specific cause** (out of this task's bounded scope: "do not attempt a full historical reconstruction... do not repair them"), but is recorded as directly relevant evidence for the open `prices_adjusted`-completeness question in §35.1/§35.7/§35.8 item 2.
+
+### 50.6 Read-only queries executed (for reproducibility)
+
+All against live Supabase via `database_pg.get_conn()` (SELECT only; the context manager's `conn.commit()` on clean exit is a no-op for a read-only transaction — no data was ever changed):
+1. `information_schema.columns` for `prices` and `prices_adjusted` (schema, §50.2).
+2. `SELECT hit_circuit_up FROM prices_adjusted LIMIT 1` (expected-and-confirmed `UndefinedColumn` error, §50.2).
+3. `MAX/MIN(date)`, `COUNT(*)` and per-date row counts for both tables, most recent 8 dates (§50.4).
+4. Full pandas comparison of all 5 OHLCV columns for every symbol on `2026-08-21`, both tables (§50.3).
+5. Full-history `FULL OUTER JOIN` of distinct dates between `prices` and `prices_adjusted` (§50.5, the two-date anomaly and the zero-dropped-dates result).
+6. Full-history per-date row-count comparison, flagging any date where the two tables disagree (§50.5, the 07-08/07-10 deficits).
+
+No `INSERT`, `UPDATE`, `DELETE`, `ALTER`, or `TRUNCATE` was executed against Postgres at any point in this entry.
+
+### 50.7 Git provenance
+
+- `07be702` (2026-07-01) — "feat: Supabase migration + PG database layer" — introduces `migrate_to_supabase.py` and the initial Postgres schema (`supabase_schema.sql`, `CREATE TABLE IF NOT EXISTS "prices_adjusted"` with exactly the same 7 columns confirmed live in §50.2 — this file's own DDL for `prices_adjusted` has never included the three flag columns, in the version currently in the repository).
+- `f4b67d4` (2026-07-08) — "feat(E8.5): port prices_adjusted append and corporate action suspects to Supabase" — introduces `append_new_prices_adjusted_pg()` itself, one week after the schema that constrains it.
+- `git log -S "hit_circuit_up" --all` across the **entire** repository history returns exactly **one** commit (`5293fdb`, the CI test-gate fixture builder) — consistent with, and reconfirming, §41's already-established finding that these three columns' origin in **SQLite** is untraceable in git (added directly to the live DB file, never through a tracked migration). **INFERRED, not directly provable:** since `migrate_table()` (`migrate_to_supabase.py:216-218`) explicitly derives its column list from **Postgres's own schema** (`get_pg_column_info()`, "Column info from Postgres (authoritative schema)" per that function's own code) and then `SELECT`s only those named columns from SQLite — the three flag columns would never have been copied to Postgres by this migration script **regardless of whether SQLite already had them at migration time**, because Postgres's schema was never told to expect them. This is a **CONFIRMED mechanism** (direct code read) for *why* the gap persists structurally; it is **UNRESOLVED** whether SQLite already had the columns as of 2026-07-01 (the same open question §41 already carries, not newly resolved here).
+
+### 50.8 Relationship to SQLite §49
+
+These are explicitly two different findings, not one finding observed twice:
+
+- **SQLite (§49): CONFIRMED PRODUCTION DEFECT, REPAIRED.** The three columns exist in SQLite's schema (`NOT NULL DEFAULT 0`); the append path's explicit-but-incomplete column list caused every new row to silently receive the wrong default value instead of a computed one. This was real, observed, production-impacting (454 rows), and has been fixed and verified.
+- **Postgres (§50): NO DEFECT OF THAT KIND EXISTS, BECAUSE THE FEATURE ISN'T THERE.** The three columns do not exist in Postgres's schema at all. There is no wrong value being written, because there is no column to write a value into, correct or otherwise. This is a **feature-parity gap** (the same class of gap already catalogued in `CLAUDE.md`'s "Known Gaps: Postgres Parity" section for `stock_signals` recompute and `market_regime.regime_days`), not a data-corruption defect.
+
+Do not conflate "Postgres lacks this feature" with "Postgres has this feature and it's broken." They imply different remediation: the SQLite case needed a bug fix (done, §49); a Postgres circuit-flag feature, if ever wanted, needs a **new** schema migration (`ALTER TABLE prices_adjusted ADD COLUMN ...`) plus a **new** computation path ported into `append_new_prices_adjusted_pg()` — new work, not a repair of existing broken work, and explicitly not authorized or performed in this or the prior entry.
+
+### 50.9 Database changes
+
+**Postgres writes: NO.** **Postgres schema changes: NO.** **SQLite writes: NO.** **Historical data changes: NO.** Every query executed against Supabase in this entry was a `SELECT` (or a `SELECT` that failed with `UndefinedColumn`, itself informative and harmless). `git status` before and after this entry shows no change to `database_pg.py` or any other production file.
+
+### 50.10 Files changed
+
+None, except this audit-ledger entry. No forensic scripts were retained — all queries were run inline via `python -c` against `database_pg.get_conn()` and are reproduced verbatim in §50.6 for anyone who needs to re-run them.
+
+### 50.11 Tests
+
+No new automated tests were added — this was a live read-only data/schema forensic investigation, not a code change requiring regression coverage. The existing 109/109 SQLite-side suite (§49.9) is unaffected and was not re-run in this entry (no code changed).
+
+### 50.12 Recommendation
+
+**No repair is warranted for "corrupted circuit flags in Postgres" — there is nothing to repair; the columns don't exist.** If a circuit-flag feature on the Postgres/Cloud side is ever wanted (e.g., because a dashboard page or signal starts depending on it there), that is **new feature work**, separately scoped and separately authorized: (1) an explicit `ALTER TABLE prices_adjusted ADD COLUMN` migration on Postgres, (2) a Postgres port of the `compute_circuit_flags`/`circuit_band_pct` logic already built and tested in `apply_price_adjustments.py` (§49.4), (3) a decision on backfilling Postgres's existing history or starting clean from go-live (the same choice already made for `boring_signals`, §CLAUDE.md). None of this is recommended as urgent — nothing currently reads these columns on the Postgres/Cloud side, so there is no live consumer waiting on it.
+
+Separately, and **not part of this investigation's mandate to solve**: the two unexplained dates (`2026-07-09`, `2026-07-15`) and the two row-count deficits (`2026-07-08`, `2026-07-10`) found in §50.5 are relevant new evidence for the already-open `prices_adjusted` completeness question in §35.1/§35.7/§35.8 item 2, and are flagged there for whoever picks that item up next.
+
+### 50.13 Verdict
+
+**POSTGRES CIRCUIT-FLAG APPEND: HAZARD ONLY — NO OBSERVED CORRUPTION.** More precisely than the available verdict options: there is no live hazard to a column that doesn't exist. The `SELECT *` pattern is not itself unsafe under the schemas actually in production today (identical 7-column layout on both sides, verified live) — it would only become unsafe if Postgres's `prices_adjusted` schema were ever changed to add columns `prices` doesn't also have, at which point this same class of risk (untested, unreviewed schema drift under a `SELECT *` INSERT) would resurface. That conditional risk is real and worth carrying forward as a standing caution against ever adding a Postgres-side column to `prices_adjusted` without also revisiting this INSERT statement — but it is a **latent code-hazard-if-the-schema-ever-changes**, not a present defect.
+
+---
+
+## 51. Postgres `prices`/`prices_adjusted` completeness forensics — four anomaly dates traced to two known, partially-fixed incidents (2026-08-21)
+
+**READ-ONLY INVESTIGATION. No Postgres write, no schema change, no SQLite write, no production code change in this entry.** §50.5 flagged four unexplained dates (`2026-07-08`, `2026-07-09`, `2026-07-10`, `2026-07-15`) where Postgres `prices` and `prices_adjusted` disagree. This entry traces their provenance.
+
+### 51.1 Authorization
+
+Read-only forensic investigation only, per this task's explicit hard scope. No repair, no cleanup, no historical rewrite, no code change. `database_pg.py` not modified — confirmed via `git status` before and after this entry (identical file set to §50's end state).
+
+### 51.2 Re-derived counts (independently re-queried, not trusted from §50)
+
+| date | prices rows | adjusted rows | prices-only symbols | adjusted-only symbols | overlap (by symbol name) |
+|---|---|---|---|---|---|
+| 2026-07-08 | 625 | 608 | 17 | 0 | 608 |
+| 2026-07-09 | 0 | 611 | 0 | 611 | 0 |
+| 2026-07-10 | 623 | 611 | 12 | 0 | 611 |
+| 2026-07-15 | 0 | 621 | 0 | 621 | 0 |
+
+**Exact match to §50's figures — no drift since that entry.** But symbol-name overlap is not the same as value agreement — see §51.3, which found this "overlap" figure conceals near-total value divergence on the two deficit dates.
+
+### 51.3 Symbol-level and value-level analysis — the deficit dates are not "17/12 rows short," they are almost entirely stale
+
+For 2026-07-08 and 2026-07-10, a full OHLCV comparison of the symbol-name-overlapping rows (not just presence/absence) found:
+
+- **2026-07-08: 608 overlapping rows, 585 with at least one differing OHLCV value (96.2%).**
+- **2026-07-10: 611 overlapping rows, 597 with at least one differing OHLCV value (97.7%).**
+
+**CONFIRMED, direct comparison.** This means the "17-row deficit" and "12-row deficit" language from §50.5 understated the actual anomaly: the 17/12 missing symbols are a real gap, but the *other* ~600 symbols nominally present on both sides are themselves almost entirely mismatched in value. `prices_adjusted`'s entire 07-08 and 07-10 sessions are effectively a different, stale snapshot from `prices`' current state, not a near-complete mirror with a small number of missing symbols.
+
+For 2026-07-09 and 2026-07-15 (the fully adjusted-only dates), a value-level check against the immediately adjacent date found: `prices_adjusted`'s row for every symbol checked (`AKGL`, `GHNI`, `SHCM`) on **2026-07-09 is byte-identical to its own 2026-07-10 row**, and on **2026-07-15 is byte-identical to its own 2026-07-16 row** — same `close`/`volume`/`high`/`low`/`open`, to the last decimal. **CONFIRMED** for the three symbols directly checked; **INFERRED** (not individually re-checked) that this holds across the full 611/621-row populations, given the consistency of the pattern and §51.4's independent corroborating code evidence.
+
+### 51.4 Mechanism — CONFIRMED via git-documented incidents and live GitHub Actions history, not speculation
+
+**Two separate, already-documented production incidents fully explain all four anomalies, compounded by a third fact common to both: neither incident's fix, nor the pre-existing forward-only append design, was ever applied retroactively to `prices_adjusted`.**
+
+**Incident 1 — a premature/out-of-hours manual scrape landed stale data (explains 2026-07-08 and, in part, 2026-07-10):**
+
+- `database_pg.py`'s `upsert_prices()` (`database_pg.py:293-328`) carries this comment, verbatim: *"close is only overwritable for a symbol's most recent date on record... allowing a same-day re-run to correct a close caught before the source fully finalized (see **2026-07-08 KSE-100 incident: a 14:53 PKT scrape landed a stale index close**, and the old unconditional freeze meant no later run that day could fix it)."*
+- Live GitHub Actions history (`gh run list --workflow=daily_scraper.yml --created "2026-07-06..2026-07-16"`), read-only: a **manual `workflow_dispatch` run at `2026-07-08T09:52:28Z`** (= **14:52 PKT**, matching the incident comment's "14:53 PKT" to the minute) ran the full pipeline (`daily_scraper.yml`'s `workflow_dispatch` trigger runs the identical job as `schedule` — `python main.py --update`, confirmed by reading the workflow file directly — there is no reduced/different code path for a manual trigger). CLAUDE.md already documents that the scheduled run's 22:00 PKT timing is deliberately late because ksestocks.com does not finish publishing final EOD figures until evening PKT; a 14:52 PKT run is roughly 5 hours before that threshold — squarely in the window CLAUDE.md already warns produces stale/incomplete data.
+- The commit fixing the underlying `upsert_prices` freeze bug, `692042e` ("Fix close-price freeze bug in upsert_prices/upsert_index_prices"), is dated **2026-07-09 19:11:32 PKT — the day after the incident**, and fixes `prices`/`index_prices` only. It does not touch, and was never intended to touch, `prices_adjusted`.
+- Sequence, evidence-backed: the 14:52 PKT manual dispatch scraped and wrote pre-close, stale OHLCV into `prices` for 07-08; the same run's pipeline immediately executed `append_new_prices_adjusted_pg()`, copying that stale snapshot into `prices_adjusted` and advancing its date boundary to (at least) 07-08; the same evening's scheduled run (`2026-07-08T18:16:55Z`, an anomalously short `2m20s` versus the ~10-11 minute norm for every other run in this window — consistent with an early-return "no new date to scrape, only re-upsert existing" path) corrected `prices`' high/low/volume/open in place via `upsert_prices`'s unconditional `COALESCE` columns, and (once `692042e` landed the next day) `close` as well; `prices_adjusted`, having no update/correction path of its own, never received any of these corrections. **A parallel `workflow_dispatch` at `2026-07-10T09:48:19Z` (09:48 UTC = 14:48 PKT)** shows the identical pattern on 2026-07-10, and likely contributes to that date's mismatches as well — **INFERRED for 07-10's contribution from this specific mechanism** (not separately confirmed by a named incident comment the way 07-08 is), since 07-10's anomaly is also, and more directly, explained by Incident 2 below.
+- **Classification: CONFIRMED** for 07-08 (named incident, matching timestamp, matching mechanism, matching code comment). **INFERRED** for 07-10's share of this same mechanism.
+
+**Incident 2 — a ghost/duplicate-date scrape, compounded by a bug in the ghost-cleanup function itself (explains 2026-07-09/2026-07-10 as a pair, and — by an identical, independently-observed pattern — 2026-07-15/2026-07-16):**
+
+- `database_pg.py`'s `cleanup_ghost_dates()` (`database_pg.py:450-534`) carries this comment, verbatim: *"The old version ran two separate DELETEs (forward then backward) in the same transaction; when a premature same-day scrape stored an earlier real date's data under a later fake date (**2026-07-10 incident: 07-09 real, 07-10 fake, identical H/L/C**), the forward DELETE matched 07-09 against its LEAD (07-10) and removed the genuinely correct 07-09 first. By the time the backward DELETE ran, its LAG reference for 07-10 was already gone (07-09 deleted), so the actually-fake 07-10 survived uncorrected."*
+- This fix (the current single-snapshot, both-directions-at-once DELETE logic) was committed as `907770b` ("Sync working tree: commit accumulated local production edits and research artifacts"), dated **2026-07-29 15:03:37 PKT — nineteen days after the incident it describes.**
+- This is a **directly documented, self-acknowledged historical bug in the cleanup mechanism itself**: for **nineteen days**, `cleanup_ghost_dates()` on Postgres deleted the wrong (older/genuinely-real) member of a matching ghost-date pair from `prices`, leaving the fake/newer member in place, until `907770b` fixed the ordering. This fully explains why `prices` today has **zero rows for 2026-07-09** (deleted by the old buggy cleanup, which targeted the older date) while 2026-07-10 shows a normal-looking 623-row day (the old bug left the original fake duplicate in place, and it was presumably subsequently overwritten with real data by a later run's `upsert_prices` — consistent with Incident 1's same-day-correction mechanism above; **INFERRED**, not directly traced to a specific later run).
+- `prices_adjusted`, appended once (before either the ghost duplicate or the buggy cleanup's mis-deletion), retains **both** original members of the duplicate pair, byte-identical to each other, forever — exactly matching §51.3's direct observation for `AKGL`/`GHNI`/`SHCM`.
+- **The 2026-07-15/2026-07-16 pair shows the identical fingerprint** (`prices_adjusted`'s 07-15 row is byte-identical to its own 07-16 row, for every symbol checked; `prices` has zero rows for 07-15 and a normal 07-16). `cleanup_ghost_dates()`'s **current** (post-`907770b`) policy explicitly deletes the *newer* of a matching pair — which would delete 07-16, not 07-15 — the opposite of what's observed. This is consistent with 07-15 having been removed by the **same pre-`907770b` buggy version** (which deleted the *older* member, as documented for 07-09), i.e., **07-15/07-16 is very likely a second, previously-unnamed instance of the exact same bug**, occurring before the 07-29 fix and never individually called out in the codebase the way the 07-09/07-10 pair was. **Classification: INFERRED, strongly supported by an exact structural match to a directly-CONFIRMED mechanism** — not itself named in any commit or comment, so not raised to CONFIRMED. No GitHub Actions anomaly (failed run, unusual manual dispatch) was found near 2026-07-15 the way one was found for 07-08/07-10 (`gh run list` for that window shows only normal scheduled runs), which is consistent with this being a *cleanup-bug* artifact rather than a stale-scrape artifact — the underlying duplicate-date scrape that created the original 07-15/07-16 ghost pair was not itself identified in this pass (**UNRESOLVED**: what produced the original duplicate for this specific pair, as opposed to why it survived).
+
+**The common thread across all four anomalies, CONFIRMED by direct code read:** `append_new_prices_adjusted_pg()` (§49.7/§50) has no update/correction path — it is a pure forward INSERT keyed off its own table's `MAX(date)` — and `cleanup_ghost_dates()` (both its buggy pre-`907770b` form and its fixed current form) only ever issues `DELETE FROM prices`, never touching `prices_adjusted` in either version. **No code path in this repository has ever reconciled `prices_adjusted` against a correction or cleanup applied to `prices` after the fact.** This is a structural gap, not a one-off bug — every mechanism that has ever corrected `prices` post-hoc (the `upsert_prices` close-freeze fix, the ghost-date cleanup, and its own later bug fix) leaves `prices_adjusted` unaware.
+
+### 51.5 Production execution evidence
+
+- **GitHub Actions**: `gh run list --workflow=daily_scraper.yml` (read-only, authenticated `gh` CLI) is the primary evidence source used in §51.4 — confirms exact run timestamps, trigger types (`schedule` vs `workflow_dispatch`), durations, and success/failure status for the full 2026-07-06 to 2026-07-16 window. One scheduled run failed outright (`2026-07-06T18:54:32Z`); two manual `workflow_dispatch` runs occurred at times inconsistent with CLAUDE.md's documented "wait for evening PKT" rule (`2026-07-08T09:52:28Z`, `2026-07-10T09:48:19Z`); one scheduled run completed anomalously fast (`2026-07-08T18:16:55Z`, 2m20s vs. a ~10-11 minute norm).
+- **`pipeline_runs` table (Postgres)**: exists, but contains only **4 rows total**, all for the `boring_signals` hook, all dated **2026-08-17 through 2026-08-21** — this heartbeat mechanism did not exist (or was not being written) during the July 2026 window under investigation. **This is a genuine evidentiary gap, reported as such rather than papered over: no `pipeline_runs`-sourced execution evidence exists for 07-08/07-09/07-10/07-15.** All execution evidence for this entry comes from GitHub Actions' own run history, not from this repository's internal heartbeat table.
+- No local Windows Task Scheduler log evidence was sought or is claimed here — SQLite's pipeline runs on a wholly separate local schedule, and §51.6 establishes SQLite was unaffected regardless of what triggered it locally during this window.
+
+### 51.6 SQLite comparison
+
+**CONFIRMED, direct query, read-only, both databases:** SQLite's `psx_data.db` shows **zero anomaly for any of these four dates** — `prices` and `prices_adjusted` row counts match **exactly** on 2026-07-07, 07-08, 07-09, 07-10, 07-15, and 07-16 (502-512 rows per date, no gaps, no deficits, no adjusted-only dates). This is strong corroborating evidence, not decisive proof, that the anomalies are specific to the Postgres/GitHub-Actions execution path: the manual `workflow_dispatch` triggers implicated in §51.4 are a GitHub Actions-only mechanism (there is no equivalent "manually re-run against SQLite" trigger in this pipeline's design — SQLite is driven by local Windows Task Scheduler, `daily_morning.bat`/`daily_evening.bat`, an entirely separate execution context per `CLAUDE.md`), and `cleanup_ghost_dates()`'s pre-`907770b` bug, while present in both `database.py` (SQLite) and `database_pg.py` (Postgres) implementations by inspection, apparently never fired against SQLite's actual data during this window — this was **not tested by forcing a comparable scenario**, only observed as an absence of the symptom. Absolute row-count parity between SQLite's own `prices`/`prices_adjusted` (both consistently smaller than Postgres's, a separate already-known universe-size difference, not investigated further here) supports, but does not independently prove, that SQLite's history for this window is clean.
+
+### 51.7 Writer inventory
+
+Repository-wide search across `.py`, `.sql`, `.yml`, `.yaml`, `.sh`, `.ps1` for `INSERT`/`UPDATE`/`DELETE`/`TRUNCATE`/`COPY`/`executemany`/`to_sql`/`execute_values`/`upsert` in combination with `prices_adjusted`:
+
+| Writer | File | Active? | Can write Postgres? | Historical execution evidence |
+|---|---|---|---|---|
+| `append_new_prices_adjusted_pg()` | `database_pg.py:1957` | Yes, called from `main.py cmd_update()` daily | Yes (this is the primary writer) | Confirmed running daily through 2026-08-21 (§51.2/§50.4) |
+| `rebuild_symbol_adjusted_pg()` | `database_pg.py:2077` | Dead code — not called from `dashboard.py` (hard-blocked under `_PG_URL`, per `CLAUDE.md` "Known Gaps") | Yes, but only `UPDATE`s existing rows' OHLCV, never touches flag columns or creates new rows | No evidence of execution against production found or sought in this entry (out of scope — unrelated to date-completeness) |
+| Rolling 2-year trim | `database_pg.py` `_TRIM_TABLES` list, `c9080d6` | Yes, part of `main.py` pipeline | Yes, `DELETE` only | Removes old rows past a retention window; cannot explain any of the four anomalies (never adds rows, and none of the four dates are near the retention boundary) |
+| `migrate_to_supabase.py` `migrate_table()` | `migrate_to_supabase.py:204` | One-time historical tool, not part of the daily pipeline | Yes, `INSERT ... VALUES %s ... ON CONFLICT DO NOTHING` (`execute_values`) | Ran once around `07be702` (2026-07-01), **before** `append_new_prices_adjusted_pg()` existed (`f4b67d4`, 2026-07-08) and therefore before any of the four anomaly dates. **Ruled out** as the source of these specific anomalies by timing alone — the anomaly dates (07-08 onward) postdate the one-time migration. |
+| `apply_price_adjustments_backup_e85.py` | repo root | Dead stale backup, SQLite-only (`sqlite3.connect`), no Postgres path | No | Not applicable — confirmed in §49.2, re-confirmed here by grep, unchanged |
+| Any `.sql`/`.yml`/`.yaml`/`.sh`/`.ps1` writer | — | None found | — | Grep across all these extensions for `prices_adjusted` found only `supabase_schema.sql`'s `CREATE TABLE`/index DDL (schema-only, no data writes) and the workflow file's job definition (invokes `main.py --update`, not a direct SQL writer) |
+
+**No previously-undocumented Postgres writer was discovered.** The writer set is unchanged from §50.7/§49.7 — this entry adds execution *timing* evidence (GitHub Actions history) for the already-known writer, not a new writer.
+
+### 51.8 Current completeness status
+
+**CONFIRMED, re-queried in this entry, not assumed from §50:** both `prices` and `prices_adjusted` are current through **2026-08-21** (unchanged from §50.4). Zero dates in `prices` since 2026-08-01 are missing from `prices_adjusted`. The four anomaly dates are historical and contained — no new instance of either mechanism was found closer to the present, and the specific `upsert_prices` freeze bug (Incident 1) has been fixed since `692042e` (2026-07-09) and the `cleanup_ghost_dates()` ordering bug (Incident 2) has been fixed since `907770b` (2026-07-29). **Going forward, a fresh instance of Incident 1 is prevented by the `692042e` fix, and a fresh instance of Incident 2's specific ordering flaw is prevented by `907770b` — but the structural gap named at the end of §51.4 (no code path ever reconciles `prices_adjusted` against any correction made to `prices`) is unaddressed by either fix and remains fully live:** any *future* correction to `prices` — whatever its cause — will still never propagate to `prices_adjusted`, by design, today.
+
+### 51.9 Database changes
+
+Postgres writes: **NO**. Postgres schema changes: **NO**. SQLite writes: **NO**. Historical data changes: **NO**. Every Postgres query executed in this entry was a `SELECT` (via `database_pg.get_conn()`, whose `conn.commit()` on clean exit is a no-op for read-only transactions). The one `gh` CLI usage was `gh run list` (a read-only listing call) and `gh auth status` — no run was triggered, cancelled, or re-run.
+
+### 51.10 Files changed
+
+None (production). This audit-ledger entry only. No forensic scripts were retained — all queries were run inline via `python -c` against `database_pg.get_conn()`, reproduced in §51.2/§51.3/§51.6/§51.8's described queries for anyone who needs to re-run them; the `gh run list` commands used are quoted directly in §51.4/§51.5.
+
+### 51.11 Open questions — genuinely unresolved, not solved by this entry
+
+1. What produced the original 07-15/07-16 duplicate-date pair specifically (the scrape-level trigger, as opposed to why it survived in `prices_adjusted`) — no matching GitHub Actions anomaly or named incident was found for this pair, unlike 07-08/07-10.
+2. Whether `prices`' current 2026-07-10 data (post-hoc, now a normal-looking 623-row day) is itself fully correct, or still carries residue from either incident — not independently re-verified against a third source in this entry.
+3. Whether SQLite's `cleanup_ghost_dates()` (present in `database.py` since the initial commit, by inspection) ever encountered and mishandled an equivalent scenario locally at any point in its history — §51.6 only establishes no symptom is visible for *these specific four dates*, not a full historical audit of SQLite's own ghost-date handling.
+4. The exact remaining ~-29-row (net) discrepancy between Postgres's overall `prices` (296,496) and `prices_adjusted` (297,699) row counts is only partially reconciled by these four dates (+611 +621 −17 −12 = +1,203 net, matching the observed +1,203 differential closely but not verified to the exact row) — full reconciliation across the entire history was not attempted (out of this task's bounded scope).
+
+### 51.12 Recommendation
+
+**No repair performed, none proposed for immediate execution.** If and when a repair is separately authorized, it should be scoped narrowly to *these four specific dates* (not a general `prices_adjusted` rebuild): replace `prices_adjusted`'s 2026-07-08/2026-07-09/2026-07-10/2026-07-15 rows with a fresh copy of `prices`' current (corrected) state for those same dates, backed up first, verified via the same before/after diff discipline used in §47.7-47.9. Separately, and of materially higher priority given §51.4's structural finding: **the absence of any reconciliation path between `prices` corrections and `prices_adjusted` is a live, ongoing gap** (not limited to these four historical dates) that will keep producing exactly this class of silent staleness every time `upsert_prices`, `cleanup_ghost_dates`, or any future correction mechanism touches an already-appended date — this is worth a dedicated, separately-scoped design discussion (e.g., should `append_new_prices_adjusted_pg()` re-verify/re-sync a trailing window of already-appended dates on every run, not just append strictly-new ones?), not a one-off fix. Neither is authorized or performed here.
+
+### 51.13 Final Verdict
+
+**POSTGRES COMPLETENESS: PARTIALLY EXPLAINED — FURTHER FORENSICS REQUIRED.** Three of the four anomalies (2026-07-08, 2026-07-09, 2026-07-10) are explained with CONFIRMED-to-strongly-INFERRED confidence, each tied to a specific, git-documented, timestamp-corroborated incident. The fourth (2026-07-15) is explained only by structural analogy (INFERRED) — its own originating trigger was not found. All four share a CONFIRMED common structural cause for *why they were never corrected*: `prices_adjusted` has no reconciliation path against any post-hoc correction to `prices`. This is not "unresolved" (real, specific, evidenced mechanisms were found for three of four dates) and not "proven sound" (the anomalies are real and the reconciliation gap is real and ongoing) — it sits between, with one date's originating trigger still open.
+
+---
+
+## 52. Transition from open-ended forensics to a finite control document — KIRAN BORING STATE register created (2026-08-21)
+
+**No production code, schema, or data changed in this entry — documentation only, per explicit read-only-analysis scope.** §33 through §51 accumulated fifteen sessions' worth of forensic findings with no finite closing condition. This entry does not add new findings; it organizes everything found so far (plus a handful of directly-confirmed current-state facts — the `pipeline_runs` row count, the backups directory contents, the uncommitted `git status`, the four surviving `main_backup_e8*.py` files, `health_check.py`'s Postgres-only scope, and the absence of a local equivalent) against a fixed set of trust requirements, each with an explicit status, evidence citation, and closeable acceptance criterion.
+
+**New document:** [`docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`](KIRAN_BORING_STATE_TRUST_REGISTER.md) — the **Production Trust Gap Register + Definition of Done**. Contains: a 15-domain current-state reconstruction (data ingestion through write-surface control), ten trust domains (A-J) each scored against direct evidence, a 15-row finite gap register (`TR-01` through `TR-15`) with per-row risk/blocker/required-proof/acceptance-criterion, and an explicit Definition of Done separating cutover-blocking gaps from non-blocking and intentionally-GREY (historical, contained) ones.
+
+**Headline finding not previously stated in exactly this form:** the single highest-priority item on the new register is **TR-11 — working tree vs. deployed production**. `git status`, re-checked in this entry, shows the SQLite circuit-flag repair (§49) and every file this session's investigations rely on as "current state" are **uncommitted on `main`** alongside seven other modified files. Every GREEN verdict this program has issued for SQLite (§49's root-cause closure specifically) describes the *working tree*, not necessarily what is actually running in production today, until this is committed and deployed through the documented CI gate. This is recorded as the register's own top blocking item, not glossed over.
+
+**Status:** the register is a living document, not a one-time snapshot — update it in place as gaps close or new evidence changes a status, rather than superseding it with a new numbered ledger entry each time. No repair, implementation, migration, or cutover was authorized or performed in this entry.
+
+---
+
+## 53. Red-team strengthening pass on the Trust Register — Definition of Done raised, three rows added (2026-08-21)
+
+**No production code, schema, or data changed in this entry — documentation only, amending `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md` (§52) in place, per explicit scope.** §52's original register was itself reviewed a second time, same day, against the North Star it claims to operationalize; several acceptance criteria were found weaker than the North Star actually requires. This entry documents what changed, why, and which red-team concern drove each change. **§52's original text is not erased** — the register document was amended in place (it is a living control document by design, not append-only like this ledger), but every changed row carries an inline `[AMENDED 2026-08-21]`/`[NEW 2026-08-21]` marker, and this entry is the permanent, append-only record of the diff's rationale.
+
+### 53.1 What was amended, and the specific concern behind each
+
+- **TR-13 (`boring_signals` trust bar) — raised from "at least B" to "A / fully-proven."** Concern: the original criterion would have let a signal derived from a table with an *explicit, named, capital-relevant limitation* (§35.5's 15-day silent-loss window — the exact mechanism behind the PRL incident, §33) pass as "safe for live capital" simply because its letter grade cleared a low bar. B means "safe with limitations," not "safe" — and the limitation sits inside the signal path, not outside it. TR-08 must now translate anything below A/fully-proven to **NOT VERIFIED — DO NOT TRADE** rather than pass it through.
+- **TR-08 (publication contract) — expanded from "a flag exists" to a defined multi-field publication record with an explicit non-regression guarantee.** Concern: a bare `production_state` boolean cannot express *which* run, *which* source state, or *why* a signal is or isn't trustworthy, and says nothing about what happens when a new run fails partway — the original text didn't rule out a partially-completed run becoming visible. Amended to require run identity, source-as-of, code version, and separately-tracked freshness/completeness/coherence/validation status, plus an explicit rule: a failed or incomplete run must never overwrite the previously-published good state.
+- **TR-04 (derived-state coherence) — scope widened from "would this have caught `prices_adjusted`'s 4 known dates" to full dependency-graph coverage.** Concern: the original criterion was satisfiable by a mechanism that only watched the one table this program happened to investigate. Using existing, already-documented evidence (CLAUDE.md's own `cmd_update()` hook-order list), five additional tables sharing the identical `MAX(date)`-forward-boundary append pattern were named as requiring the same coverage: `stock_signals`, `sector_signals`, `market_regime`, `recovery_signals`/`portfolio_signals`, `setup_log`.
+- **TR-03 (`prices_adjusted` verification) — the oracle was at risk of being circular.** Concern: "re-derive from `prices` and diff" ignores that `prices_adjusted` is not a pure function of raw prices — the `DLL` corporate-action history (§32/§46/§48) proves adjustment factors are a second, independent input. Amended to require the verification oracle to independently reproduce both the raw-price state *and* the confirmed corporate-action inputs, built independently of the function under suspicion.
+- **TR-05 (freshness) — extended from execution-time-only to a continuous serving-boundary check.** Concern: the original check only asked "did the last health check pass," which says nothing about whether the *currently displayed* state is still within its freshness window if no new run has happened since. A state that was fresh when published must actively re-degrade to NOT VERIFIED as it ages past policy, checked at serve time, not merely recorded once at run time.
+- **TR-11 (deployment identity) — strengthened from "`git status` clean" to a full identity chain ending in an independently-verified deployed commit SHA.** Concern: a clean working tree proves nothing about what was actually committed, whether CI actually ran against it, or whether the deployed artifact matches. **Not executed by this entry** — the acceptance criterion was strengthened; the working tree was not touched, and no commit was made.
+- **TR-09 (backup/DR) — strengthened from "a routine backup exists" to include failure-domain independence, a proven restoration test, and explicit RPO/RTO.** Concern: the original criterion proved backups exist, not that Kiran could actually recover from losing a database. Kept non-blocking, per this pass's own explicit judgment (defense-in-depth, not a live-signal correctness gate).
+- **TR-14 (universe completeness) — the proposed "rolling symbol-count baseline" mechanism was rejected as insufficient and replaced with a named dependency gap.** Concern: PSX has legitimate listings/delistings/suspensions; a rolling count cannot distinguish a legitimate universe change from a silent partial scrape. The corrected invariant requires a genuinely point-in-time expected-universe source, which this codebase does not currently have — recorded as an explicit blocking dependency, not solved.
+- **TR-15 (historical GREY containment) — the acceptance criterion no longer treats "documented in this register" as proof of containment.** Concern, directly evidenced by §51: Kiran's signal computation is state/replay-dependent (trailing lookback windows), and the four known `prices_adjusted` anomaly dates (2026-07-08/09/10/15) are only six weeks old as of this entry — well within common 20d/60d lookback windows. Under the corrected containment test (cannot affect future computation/publication/lookback contamination), these four dates fail containment and correctly belong under TR-03/TR-04's blocking status, not TR-15's GREY — the amended register no longer lists them under TR-15 for exactly this reason.
+- **TR-01 (authority) — expanded from "which database the dashboard reads" to four explicit dimensions:** computation authority, state authority, publication authority, consumer authority. All four must resolve to the same backend; today none of the four is actually decided.
+- **TR-07 — scope clarified, not weakened,** to make explicit that it covers alerting on a failure the pipeline itself detects, and does not (and cannot) cover a pipeline that never starts — that gap is why TR-18 exists.
+
+### 53.2 New rows added
+
+- **TR-16 — Signal Provenance.** Every actionable signal must be traceable, on demand, to the exact run/source-state/code-version/validation-result/publication-decision that produced it. Cutover blocking.
+- **TR-17 — Atomic Verified Publication.** No reader may ever observe a mixture of tables from two different runs (e.g., `prices`/`signals` from run N, `boring_signals` still at run N-1) as if it were one valid state; a failed or partial run must never become partially visible. Cutover blocking, tightly coupled to TR-08 but kept independently testable per the task's own instruction.
+- **TR-18 — Independent Watchdog / Missed-Run Detection.** The one failure class no other row in the register (before this pass) could catch: a pipeline that never starts at all produces zero application-level failure signal, so nothing built *inside* the monitored pipeline can detect it. Requires a monitor operating independently of the pipeline it watches, with its own dead-man's-switch protection against silently failing itself. Cutover blocking.
+
+### 53.3 Definition of Done — recalculated
+
+Cutover-blocking set grew from 10 rows to 13: TR-01, TR-03, TR-04, TR-05, TR-06, TR-07, TR-08, TR-11, TR-13, TR-14, TR-16, TR-17, TR-18. This is the intended, not incidental, outcome of a red-team pass whose job was to find exactly this kind of gap. TR-09/TR-10/TR-12/TR-02(Postgres) remain non-blocking, per explicit judgment calls stated in each row. TR-15 no longer defines a blanket GREY category — each candidate item must individually pass a stated containment test.
+
+### 53.4 Scenario verification
+
+Section 5a was added to the register (not this ledger) working through the eight red-team scenarios (pipeline never starts; a hook silently produces zero rows; source corrected but derived table stays stale; a run fails halfway; deployment runs stale code; dashboard shows an aged signal; provenance reconstruction; a historical anomaly remains) against the amended Definition of Done. All eight are caught by a specific, named row with a testable acceptance criterion. This is a conceptual verification of the *contract's* completeness, not a claim that any of these mechanisms exist yet — none were implemented in this entry.
+
+### 53.5 Status changes
+
+No TR-xx row's **current status** (RED/AMBER/GREEN/GREY evidence) changed in this entry, only **acceptance criteria** — this pass amends what "done" means, not what evidence currently exists. The one exception in effect, not in stated evidence: TR-13's bar moved from B to A, which mechanically reclassifies both backends' *current* B/C ratings as further from done than the original register implied, even though the underlying `boring_signals` evidence itself (§34.8/§35.7) is unchanged.
+
+### 53.6 Scope discipline
+
+No production Python, schema, database, dashboard, workflow, or deployment was touched. No commit was made — TR-11's own newly-strengthened criterion was explicitly not executed against the accumulated uncommitted diff (§52's TR-11 finding). No repair from any cited gap (§35.8, §51.12, or any TR-xx's "required proof" column) was performed. `git status` at the end of this entry shows the same production-file set as at the start of §52, plus the register document itself (amended, not newly created) and this ledger entry.
+
+### 53.7 Status
+
+**Documentation-only amendment complete.** The Trust Register's Definition of Done is now believed, by this pass's own conceptual scenario check (§53.4), to be a sufficiently rigorous and finite *contract* for what "Kiran is allowed to say SIGNAL" must mean — not a claim that Kiran currently satisfies it. Every row that changed status from "would have passed" to "correctly blocks" under the amended criteria is recorded above. Next work, if and when separately authorized, is closing the 13 blocking rows in §5 of the register — not further amendment of the contract itself, absent new evidence that the contract still has a gap.
+
+---
+
+## 54. Controlled implementation phase — read-only planning pass, no implementation performed (2026-08-21)
+
+**No production code, schema, dashboard, workflow, or data changed in this entry. Read-only architecture verification + planning only, per this task's explicit hard scope.** With §53's red-team pass complete, the Trust Register is now the accepted control contract. This entry is the first deliverable of the implementation phase: a dependency-verified implementation plan against TR-01 through TR-18, produced by inspecting actual repository state rather than assuming the task's own illustrative ordering was technically optimal.
+
+### 54.1 Authorization
+
+Read-only planning only. No TR-xx implementation was started. No production write of any kind was performed. `git status` at the end of this entry is identical to its state at the start (verified before and after).
+
+### 54.2 Verification performed
+
+Re-read `main.py`'s full `cmd_update()` hook chain (all `_record_hook()` call sites, both committed `HEAD` and the uncommitted working tree, via `git show HEAD:main.py` vs `git diff main.py`); re-read `data_health.py`'s `record_run()`/`_record_pg()`/`_env_pg_url()` in full, both committed and working-tree diff; re-ran a fresh, live, read-only query against Supabase (`SELECT hook_name, COUNT(*) FROM pipeline_runs GROUP BY hook_name`); confirmed `run_update.bat`'s Task Scheduler trigger is "at logon," not a fixed time (re-citing the already-established fact from §Boring-State current-state item 5, not re-derived); checked dashboard.py's read paths for the tables driving actionable signal pages. No new production-DB writes; the live query above was a `SELECT` only.
+
+### 54.3 TR-01–TR-18 implementation matrix, dependency graph, production-write boundaries, and authorization boundaries
+
+Full tables delivered directly to the user in this session's response — not duplicated verbatim here to avoid ledger bloat on a document this ledger's own rules favor keeping evidence-dense rather than table-heavy. Summary: **13 blocking rows remain RED/AMBER; none were reclassified GREEN in this entry** (per §18's no-status-inflation rule — this was a planning pass, not an implementation pass, so no acceptance criterion was newly demonstrated). The verified dependency graph diverges from the task's own suggested linear chain in one material way: TR-11 (diff classification), TR-09/TR-10/TR-12, and TR-18's design/groundwork have **no actual code dependency** on the AUTHORITATIVE→FRESHNESS→COMPLETENESS spine and can proceed in parallel from Phase 0; TR-08 (the publication contract) is the real convergence point most other rows feed into, not merely one stop along a line.
+
+### 54.4 Two hidden risks found, both fed back into the register as narrow, evidence-only amendments (not new rows)
+
+1. **`pipeline_runs` Postgres coverage is worse than TR-06's prior description implied.** `corporate_action`, `setup_log`, and `leaders_scan` are already instrumented with `_record_hook()` calls in the **committed, deployed** `main.py` (confirmed via `git show HEAD:main.py`), and `data_health.py`'s `record_run()` already has the `if _PG_URL: ...` branch that should route their heartbeats to live Postgres on every GitHub Actions run. A fresh, live, read-only query this entry (`SELECT hook_name, COUNT(*) FROM pipeline_runs GROUP BY hook_name`) still shows **only `boring_signals`, 4 rows** — unchanged from §51's original finding, now re-confirmed as persistent rather than a one-off artifact. **Root cause: UNRESOLVED** — either those three hooks fail before reaching `_record_hook()` in a way that also skips their `except`-branch heartbeat, or the GitHub Actions execution context itself is preventing the write; resolving this requires live debugging, which is implementation, not planning, and was correctly not attempted in this read-only pass. **Practical consequence:** extending heartbeat coverage to the remaining hooks (TR-06's literal fix) should not proceed until this existing, already-deployed gap is diagnosed — otherwise new instrumentation risks silently inheriting the same unexplained failure. Fed into the register as an added evidence note on TR-06, not a new row (the underlying requirement — "every critical hook has completion+coverage verification" — already fully covers this; only the evidence needed sharpening).
+2. **TR-18 (independent watchdog) has no well-defined expected run window for the local/SQLite pipeline.** `run_update.bat` triggers "at Windows logon," not a fixed clock time (already-established fact, re-cited not re-derived) — there is no principled way to say "the local pipeline should have run by HH:MM" without either accepting a loose window that would miss real multi-day outages, or establishing a new fixed local schedule as an explicit prerequisite the register didn't previously name. Does not block TR-18 for the Postgres/GitHub-Actions side (real cron schedule exists there). Fed into the register as an added dependency note on TR-18's row, not a new row.
+
+### 54.5 Register changes
+
+`docs/KIRAN_BORING_STATE_TRUST_REGISTER.md` was touched in this entry — two small, targeted evidence/dependency additions (TR-06, TR-18), each explicitly marked `[EVIDENCE ADDED 2026-08-21]` inline. **No row's status, acceptance criterion, or blocking classification changed.** This is evidence maintenance, not the kind of requirement amendment §53 performed — no new invariant was discovered missing from the contract in this pass.
+
+### 54.6 Immediate next implementation task (identified, not started)
+
+**TR-11 Step 1 — classify the accumulated uncommitted diff, analysis only, no commit.** Zero production-data-mutation risk, foundational (nothing this register or ledger cites as "current state" is actually deployed until this closes), and directly advances the first two links of TR-11's own §53-strengthened acceptance chain. **Not started, per this task's explicit instruction to identify but not begin implementation without separate, later authorization.**
+
+### 54.7 Status
+
+Planning-only. Every claim in this entry's cited matrix follows the evidence standard (§16 of the controlling task: CONFIRMED/INFERRED/UNRESOLVED) — no TR row was upgraded without a demonstrated acceptance criterion, and none was demonstrated in this entry. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 55. TR-11 Step 1 — accumulated working-tree diff classified, no commit performed (2026-08-22)
+
+**Analysis-only entry. No commit, push, reset, checkout, file deletion, production code modification, database write, or deployment occurred in this entry.** Per §54's identification of TR-11 Step 1 as the recommended next action, this entry performs exactly that: classifies every modified and untracked file in the working tree, reconciles each claimed repair against its actual diff and test evidence, and produces a proposed (not executed) commit manifest.
+
+### 55.1 Working-tree state
+
+`HEAD = 3d77a9d` (origin/main, 0 ahead / 0 behind — no divergence). 9 modified tracked files (`CLAUDE.md`, `apply_price_adjustments.py`, `backfill_setup_log.py`, `boring_signals.py`, `breadth_data.csv`, `data_health.py`, `docs/KIRAN_CLEANUP_AUDIT.md`, `main.py`, `market_breadth_oscillator.png`; 3,382 insertions / 5,323 deletions), 5 untracked files (the Trust Register + 4 test files). Identical to §52-54's own state — nothing changed between those entries and this one except this session's own analysis reads.
+
+### 55.2 Classification result
+
+Four files (`apply_price_adjustments.py`, `backfill_setup_log.py`, `boring_signals.py`, `data_health.py`) are **Category A/B — verified production repairs / supporting changes**, each reconciled 1:1 against a specific ledger section (§49, §44.2, §44.3, §44.4 respectively) with test evidence **independently re-run in this entry, not merely cited**: `apply_price_adjustments.py`'s 109/109 suite, and a fresh 34-test run covering `test_setup_log_backfill_error_handling.py` (4 new), `test_boring_signals_pending_error_handling.py` (3 new), and their cited unaffected siblings (`test_setup_log_backfill.py` 18, `test_boring_signals_pg.py` 9, `test_setup_log_pg_resume.py` 5) — **all 34 passed**, confirming the working-tree diff is exactly the version §44 describes as tested, not a drifted copy.
+
+`CLAUDE.md` and `docs/KIRAN_CLEANUP_AUDIT.md` are Category D (documentation only). The 5 untracked files are Category D/E (documentation and test-only) — notably, `tests/test_apply_price_adjustments_quarantine.py`, despite being described in the ledger as long-standing §42 infrastructure, was confirmed via `git log --all -- tests/test_apply_price_adjustments_quarantine.py` to have **zero commit history on any branch** — it has never once been committed, consistent with the "ALL UNCOMMITTED" state this whole program has operated under.
+
+`main.py`'s diff contains exactly one coherent change (10 lines extending `_record_hook()` to `regime`/`sector_signals`/`stock_signals`/`recovery_signals`/`portfolio_signals`, matching §44.4) but is classified **Category C — unverified production change**: §44.4 itself notes no dedicated test was added for these call sites ("covered by full suite continuing to pass"), and this session re-confirmed §54's Hidden Risk 1 is still open — a fresh, live, read-only query would need to be re-run to check whether this is still true (not re-run in this entry to avoid duplicating §54's already-current finding), meaning this specific file's live correctness, once deployed, remains genuinely unconfirmed rather than merely untested-but-trusted.
+
+`breadth_data.csv`/`market_breadth_oscillator.png` were traced to their actual origin: **mechanically regenerated** by `market_breadth_oscillator.py`, called unconditionally (no `_PG_URL` gate) from every local `cmd_update()` run, confirmed via direct code read that `dashboard_pg.py` never references either file — a side effect of routine local pipeline execution, not a deliberate edit belonging to any authorized repair. Row count dropped 5,333→495 between `HEAD` and the working tree, consistent with the script's own current retention window, not a bug. Recommended exclusion from any production commit, with a separate, later policy question raised (not resolved here) about whether these files belong in `.gitignore` at all.
+
+### 55.3 Deployment-gap finding
+
+Every Category A/B repair (`apply_price_adjustments.py`, `backfill_setup_log.py`, `boring_signals.py`, `data_health.py`) exists **only in the working tree** — `git show HEAD:<file>` confirmed none of these fixes are present in the currently-deployed commit. This reconfirms §52/§53/§54's own repeated finding with file-level specificity: nothing this program has verified as a correct repair is actually live in production yet.
+
+### 55.4 Proposed commit manifest (not executed)
+
+**COMMIT candidates:** `apply_price_adjustments.py`, `backfill_setup_log.py`, `boring_signals.py`, `data_health.py`, `CLAUDE.md`, `docs/KIRAN_CLEANUP_AUDIT.md`, `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`, and all 4 untracked test files. **HOLD:** `main.py`'s heartbeat-extension diff, pending diagnosis of the still-open Hidden Risk 1 (§54.4 item 1). **EXCLUDE:** `breadth_data.csv`, `market_breadth_oscillator.png`.
+
+### 55.5 Unresolved items carried forward
+
+Hidden Risk 1 (why 3 already-deployed hooks' heartbeats don't land in live Postgres `pipeline_runs`) remains unresolved — not re-investigated in this entry, correctly deferred as implementation-adjacent debugging rather than diff classification. The `breadth_data.csv`/`.png` tracking-policy question is newly raised, not resolved.
+
+### 55.6 Register/ledger changes
+
+No change to `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md` in this entry — this task's classification work does not reveal any missing or incorrect trust requirement, only evidence about the current diff's readiness, which belongs in this ledger entry, not the register.
+
+### 55.7 Status
+
+**TR-11 Step 1 complete.** Step 2 (authorized commit) is **not** authorized by this entry — per this task's explicit boundary, only identification of readiness was performed. 8 of 9 modified tracked files (plus all 4 untracked test files and the new register doc) are assessed as commit-ready pending explicit authorization; `main.py` is held pending the Hidden Risk 1 diagnosis; the CSV/PNG pair is recommended for exclusion. `git status` at the end of this entry is unchanged from its state at the start. **No commit, push, or deployment occurred. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 56. Hidden Risk 1 diagnosis — root cause narrowed, not confirmed; STOP condition invoked (2026-08-22)
+
+**Read-only forensic entry. No production code, schema, workflow, or configuration was modified. One idempotent, no-op `CREATE TABLE IF NOT EXISTS pipeline_runs` DDL statement was executed against production Postgres as part of a local diagnostic test — identical to `ensure_ledger_pg()`'s own statement, the table already existed, zero schema or data change resulted. No `INSERT`/`UPDATE`/`DELETE` was executed against any database at any point.** This entry investigates §54/§55's Hidden Risk 1: why `corporate_action`/`setup_log`/`leaders_scan`'s already-deployed `_record_hook()` calls produce no rows in live Postgres `pipeline_runs`, while `boring_signals`' do.
+
+### 56.1 Methodology
+
+Read-only throughout: `git log`/`git show`/`git merge-base` for ancestry and commit provenance; `gh run list`/`gh run view --log` (read-only GitHub API calls) for GitHub Actions execution history and actual log output; fresh `SELECT`-only queries against both live Postgres (`database_pg.get_conn()`) and local SQLite (`psx_data.db`); one local, disposable diagnostic script testing the bare `psycopg2.connect(url)` pattern with real local credentials (a connection test, not a database mutation — separate from the DDL statement disclosed above). No secret value was displayed, logged, or compared in plaintext; only structural properties (percent-encoding presence, host/port) were inspected.
+
+### 56.2 Observation, re-verified
+
+Unchanged from §51/§54/§55: live Postgres `pipeline_runs` = 4 rows, all `boring_signals`, dated 2026-08-17/18/20/21. **New this entry:** local SQLite's own `pipeline_runs` was checked for the first time in this diagnostic chain and shows **full, correct coverage** — `corporate_action`/`leaders_scan`/`setup_log` each have 5 rows (2026-08-13 through 2026-08-21), and even the *uncommitted* new hooks (`regime`/`sector_signals`/`stock_signals`/`recovery_signals`/`portfolio_signals`) each already have 1 row dated 2026-08-21, confirming the working-tree code has been executed locally at least once. `gh run list` (read-only) confirms 5 successful, full-duration (11-15 min) GitHub Actions `schedule` runs since `38ddadb` (the heartbeat mechanism's introducing commit) was deployed — `git merge-base --is-ancestor 38ddadb HEAD` confirms that commit is genuinely in the deployed history, not just present in `main.py`'s current text.
+
+### 56.3 What was proven
+
+1. **The heartbeat calling mechanism (`_record_hook()`) is correct** — proven by 5+5 successful local writes across 8 distinct hook names, including the 5 hooks currently held at TR-11.
+2. **The 3 "missing" hooks' own business logic runs successfully on GitHub Actions** — confirmed via direct log inspection of run `32508280040` (2026-08-21): `"No new corporate action suspects detected."`, `"setup_log (PG): 68 rows inserted for 2026-08-21."`, `"Leaders deep scan updated."`
+3. **`_record_pg()` (the actual Postgres-write function) is coded, by its own docstring, to "swallow everything by design"** — `except Exception: pass`, with **no logging on success or failure**. A full-log grep for `heartbeat`/`pipeline_runs`/`ensure_ledger`/any psycopg2 error class returned zero matches, which is exactly what both a silent success and a silent failure look like.
+4. **`_record_pg()` deviates from this project's own hardened connection pattern**: `database_pg.py`'s `_connect()` uses a custom `_parse_pg_url()` specifically because (per that function's own comment) "standard urlparse breaks when the password contains special characters" — a bug this codebase already hit and fixed once (`git log -S`, commit `c361482`). `_record_pg()` instead passes the raw URL string directly to `psycopg2.connect()`.
+5. **The bare-connect pattern was tested locally with the real local `.env` credential and succeeded** — disproving a *universal* breakage of this pattern, but not ruling out that GitHub Actions' separately-configured `DATABASE_URL` secret could differ from local `.env`'s `SUPABASE_DB_URL` value in a way that reproduces the same bug class in that specific environment only.
+6. **`boring_signals`' 4 Postgres rows correlate by date with local SQLite's own `boring_signals` rows, not with any GitHub Actions run timestamp** — confirming those rows originate from local-machine `mirror_to_postgres=True` executions, not from GitHub Actions' native `_PG_URL` branch, and therefore do **not** constitute evidence that the primary (non-mirrored) branch works.
+
+### 56.4 Root cause — NOT proven, two plausible mechanisms named
+
+**No single proven cause was established.** Two code-evidenced, plausible mechanisms remain, both consistent with all observed evidence and both currently indistinguishable given `_record_pg()`'s total silence:
+
+1. A connection-string parsing difference between GitHub Actions' `DATABASE_URL` secret and local `.env`'s `SUPABASE_DB_URL`, exploiting the same password-special-character bug class already fixed once elsewhere in this codebase but never applied to `_record_pg()`.
+2. Transient Supabase nano-tier / connection-pooler behavior specific to GitHub Actions' usage pattern (a separate, ad hoc `psycopg2.connect()` per heartbeat call, opened independently of the hook's own `database_pg.get_conn()` connection, across a long multi-hook run) — supported by an already-documented precedent in this same codebase (`main.py`'s `init_db()` comment: "Supabase's nano-tier compute briefly rejecting writes with 'cannot execute CREATE TABLE in a read-only transaction'").
+
+### 56.5 Confidence classification
+
+**CONFIRMED:** the observation; the calling mechanism's correctness; `_record_pg()`'s blanket silent-swallow design; its divergence from the project's own hardened connection pattern; the bare-connect pattern's local success. **INFERRED:** one of §56.4's two mechanisms is the actual cause. **UNRESOLVED:** which one (if either); whether the two secrets' values differ; whether the failure is deterministic or intermittent.
+
+### 56.6 STOP condition invoked
+
+Per this task's explicit instruction, this entry stops here rather than improvising a fix: resolving which mechanism (if either) is the actual cause would require either exposing/comparing the two secret values (prohibited — secret exposure) or deploying temporary success/failure logging into `_record_pg()` and observing one live GitHub Actions run (prohibited — production code/config modification and workflow re-run, both out of this task's scope). Minimum future instrumentation identified, not performed: add a single success-path `logger.info(...)` and replace `_record_pg()`'s bare `except Exception: pass` with a `logger.warning(...)`-then-`pass`, then observe one real run's log.
+
+### 56.7 Impact on TR-06 / TR-11
+
+TR-06's existing evidence note (added §54) is reconfirmed, not contradicted, and sharpened: the blocking issue is specifically `_record_pg()`'s design (silent swallow + unhardened connection), not a hook-logic defect, and any future TR-06 heartbeat-coverage work should also harden this function or the same invisible-failure risk will recur for every newly-instrumented hook. **`main.py` remains HOLD** — the uncommitted heartbeat extension for `regime`/`sector_signals`/`stock_signals`/`recovery_signals`/`portfolio_signals` shares the identical, unverified write path already shown to produce zero observable rows for 3 structurally identical, already-deployed hooks; committing it would very likely reproduce the same silent gap five more times with no way to detect it.
+
+### 56.8 Status
+
+Diagnosis narrowed but not resolved, per this task's own evidence standard (do not call a plausible mechanism a confirmed root cause). `git status` at the end of this entry is unchanged except for this appended section. **No commit, push, deployment, database write, production code modification, schema change, or workflow change occurred. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 57. `_record_pg()` diagnostic instrumentation — narrowly-scoped observability change, not deployed (2026-08-22)
+
+**Production code was modified in this entry (`data_health.py` only). No commit, push, or deployment occurred. No production database, SQLite or Postgres, was connected to or written to — every test exercising the new code paths runs against a faked `psycopg2.connect`/`database_pg._parse_pg_url`, never a real network call.** §56 diagnosed but could not resolve Hidden Risk 1 (three already-deployed heartbeats produce no live Postgres `pipeline_runs` rows) because `_record_pg()`'s own total silence (`except Exception: pass`, no logging on success or failure) made the failure point structurally unobservable without instrumentation, and §56.6 explicitly stopped short of adding that instrumentation as out of that entry's scope. This entry performs exactly the deferred step: make `_record_pg()` observable, nothing else.
+
+### 57.1 Authorization boundary
+
+Authorized specifically and only: add safe success/failure logging to `_record_pg()` and, if needed, reuse the project's existing hardened Postgres connection helper. Explicitly not authorized and not performed: any change to pipeline hook behavior, to `main.py`'s held heartbeat extension, to any schema, to any production data, to `boring_signals`/`prices_adjusted` repair work, to dashboard routing, to publication gating, to watchdogs, to schedules; no commit, no push, no deployment unless separately authorized (it was not).
+
+### 57.2 Exact instrumentation added
+
+`data_health.py` only:
+
+- Added `import logging`, `import time`, and a module-level `logger = logging.getLogger(__name__)` (previously absent from this file entirely).
+- Rewrote `_record_pg()`'s body so the four stages named in the authorizing task — connection, INSERT, commit, success — are each individually observable, while preserving the original function's absolute guarantee that it never raises (the outer `try/except Exception: pass` remains, now as a last-resort net around stages that are already individually caught and logged, not the only safety net):
+  - **Connect failure** → `logger.warning("pipeline_runs heartbeat failed: hook=%s date=%s stage=connect error=%s elapsed=%.2fs", ...)`, exception class name only, then returns (connection never opened, nothing to close).
+  - **INSERT failure** → `conn.rollback()`, then the same warning shape with `stage=insert`, then returns; connection is still closed via the enclosing `finally`.
+  - **Commit failure** → same warning shape with `stage=commit`, then returns; connection still closed.
+  - **Success** (INSERT + commit both completed) → `logger.info("pipeline_runs heartbeat written: hook=%s date=%s elapsed=%.2fs", ...)`.
+- No log line at any stage includes the connection string, `url`, host, port, password, or raw exception text — only `type(exc).__name__` (e.g. `OperationalError`, `UndefinedTable`), since psycopg2 error messages can themselves embed the DSN and were judged unsafe to log verbatim even after truncation. This is stricter than the authorizing task's own "sanitized exception message" allowance — the class name alone was judged sufficient to distinguish the four stages and safer than attempting message sanitization.
+- Elapsed time (`time.monotonic()`-based) is included on every log line, satisfying the "elapsed time" optional field named in the authorizing task.
+- `hook_name`/`run_date`/`status`(implicit — logged as part of the INSERT payload, not separately)/`rows_written`(same) are already parameters to this function; `hook_name`/`run_date` are the two included directly in every log line, matching the task's own worked example format (`"pipeline_runs heartbeat written: hook=setup_log date=2026-08-21"`) essentially verbatim.
+
+### 57.3 Connection-path decision
+
+Investigated per the authorizing task's explicit instruction: `database_pg.py`'s `_parse_pg_url(url)` (module-level, pure — takes a URL string, returns a `psycopg2.connect(**kwargs)`-ready dict; does not itself read the environment) is reusable as-is by `_record_pg()`, which already receives its own `url` argument from either `_PG_URL` (module-level env read) or `_env_pg_url()` (the `.env`-fallback path used for `mirror_to_postgres`). No wrapper or duplication was needed — `_record_pg()` now calls `psycopg2.connect(**_parse_pg_url(url))` in place of the prior bare `psycopg2.connect(url)`, via a local `from database_pg import _parse_pg_url` inside the function body, matching the exact lazy-import convention this same file already uses elsewhere for `database_pg.get_conn` (`data_health.py`'s `_open()`, line ~451) — not a new pattern introduced by this entry. `database_pg._connect()` itself was not reused directly, since it reads `_get_url()` from the environment internally and takes no `url` argument, which would have silently discarded `_record_pg()`'s own `url` parameter (the exact value that already differs, in the `mirror_to_postgres` case, from whatever `_PG_URL`/`os.environ` holds) — reusing `_connect()` verbatim would have been a behavior change beyond the diagnostic scope authorized here, so `_parse_pg_url()` was reused directly instead, which is both sufficient and scope-correct. No connection-parsing code was duplicated; no unrelated connection code was refactored.
+
+### 57.4 Tests
+
+Added five new tests to `tests/test_data_health.py` (existing file, not a new one), all isolated — no real Postgres connection, no real `psx_data.db`, no import-time network I/O:
+
+1. `test_record_pg_logs_connect_failure_without_leaking_url` — fakes `psycopg2.connect` to raise `psycopg2.OperationalError`; asserts exactly one WARNING log line, `stage=connect`, `error=OperationalError`, and asserts the literal password (`s3cr3t`) and host (`example.invalid`) from the test's own fake connection string do **not** appear anywhere in the logged message — the direct regression test for the "must never leak credentials" requirement.
+2. `test_record_pg_logs_insert_failure_and_rolls_back` — a `_FakeConn`/`_FakeCursor` pair (defined in this entry, no `unittest.mock`) that raises on the `INSERT INTO pipeline_runs` statement specifically; asserts `rollback()` was called, `commit()` was not, the connection was closed, and exactly one WARNING with `stage=insert` was logged.
+3. `test_record_pg_logs_success` — same fakes, no failure injected; asserts `commit()` was called, the connection was closed, and exactly one INFO log line containing `"heartbeat written"` and the correct `hook=` was emitted.
+4. `test_record_pg_never_raises_on_unexpected_error` — monkeypatches `database_pg._parse_pg_url` itself to raise `ValueError`, outside all three named stages; asserts `_record_pg()` still does not raise, proving the outer swallow-net is still intact and the new stage-specific logging did not narrow the original "never raises" guarantee.
+5. (Existing, unmodified) `test_record_run_never_raises` continues to cover `record_run()`'s own contract end-to-end with `_PG_URL` forced to `None` (SQLite path) — not touched by this entry, re-run as part of the full-file run below to confirm no regression.
+
+**Full-file run:** `pytest tests/test_data_health.py -v` — **24 passed, 0 failed** (19 pre-existing + 5 new). **Full-suite run:** `pytest tests/` — **113 passed, 0 failed**, up from §55.2's 109/34-cross-file baseline plus this entry's own +5, no other file's test count changed, no test skipped, no test weakened. No test in either run opens a real network connection or touches `psx_data.db`; the DB-backed tests in this file (`temp_db` fixture and its dependents) all force `_PG_URL = None` and use a `tmp_path`-scoped throwaway SQLite file, unchanged from before this entry.
+
+### 57.5 Production-impact assessment
+
+**Postgres: not connected to.** No `INSERT`/`UPDATE`/`DELETE`/`SELECT`/`ALTER`/`CREATE` was executed against Supabase at any point in this entry — every test double is a plain Python fake object with no network capability, and no manual/ad hoc script was run against live Supabase either. **SQLite: not connected to** by anything in this entry — the modified function (`_record_pg`) is exclusively the Postgres write path; the SQLite branch of `record_run()` is untouched, byte-for-byte, by this diff. **Schema: unchanged** — `ensure_ledger_pg()`'s DDL text itself was not modified, only monkeypatched to a no-op in two of the five new tests to isolate them from that call. **Workflow/schedule: unchanged** — no `.github/workflows/*.yml` file was touched. **Behavioral change to a real, currently-running production system: none yet**, because nothing in this diff is deployed — it exists only in the working tree, exactly like every other currently-uncommitted repair this program has produced (§55's own finding, unchanged in kind by this entry).
+
+### 57.6 Confirmation: `main.py` heartbeat extension remains uncommitted/HOLD
+
+`main.py` was read for context (per this task's required-reading list) but **not modified** by this entry — confirmed by `git status`/`git diff --stat`, which shows only `data_health.py` and `tests/test_data_health.py` as newly changed by this session, with `main.py` continuing to carry the exact same pre-existing, pre-this-session diff (the `regime`/`sector_signals`/`stock_signals`/`recovery_signals`/`portfolio_signals` `_record_hook()` extension) it already carried at the start of this entry. **`main.py` remains HOLD**, unchanged from §55.4/§56.7's classification, and this entry does not lift that hold — resolving Hidden Risk 1's actual root cause (connection-string divergence vs. Supabase pooler flakiness, §56.4) still requires observing a real GitHub Actions run with this instrumentation deployed, which has not happened.
+
+### 57.7 Next diagnostic step after deployment
+
+Once this instrumentation is separately authorized for commit, push, and deployment (not performed by this entry), the next real `daily_scraper.yml` run will, for the first time, produce one of four distinguishable outcomes for each of `corporate_action`/`setup_log`/`leaders_scan`'s heartbeat calls: (a) a `stage=connect` WARNING — pointing at the connection-string-divergence mechanism named in §56.4 item 1; (b) a `stage=insert` or `stage=commit` WARNING — pointing at a transaction-level failure (e.g. Supabase pooler/read-only-transaction flakiness, §56.4 item 2, or a constraint violation distinct from either named mechanism); (c) an INFO `"heartbeat written"` line with no corresponding new `pipeline_runs` row on inspection — which would newly implicate something *between* commit and durability (unexpected, not previously hypothesized, would need its own follow-up); or (d) an INFO `"heartbeat written"` line with a matching new row confirmed live — meaning the defect was already fixed by this connection-path change alone (`_parse_pg_url()` vs. the bare `psycopg2.connect(url)` §56.4 named as one of the two live hypotheses) and Hidden Risk 1 is resolved. Whichever of (a)/(b)/(c)/(d) is observed, it is the first time this diagnosis will have direct evidence rather than two indistinguishable hypotheses — this is the entire purpose of this entry's change.
+
+### 57.8 Files changed
+
+**Production:** `data_health.py` only (72 insertions, 7 deletions against the working-tree state at the start of this entry — new `logging`/`time` imports, module-level `logger`, rewritten `_record_pg()`). **Tests:** `tests/test_data_health.py` (133 insertions — 5 new tests, appended after the existing `test_record_run_never_raises`, nothing removed or altered in the 19 pre-existing tests). No other file was modified by this entry.
+
+### 57.9 Status
+
+**Instrumentation implemented, tested, NOT deployed**, per this task's explicit STOP instruction. `git status` at the end of this entry shows exactly two files changed by this session (`data_health.py`, `tests/test_data_health.py`) layered on top of the same pre-existing working-tree diff described in §55/§56 — no other file touched, no file staged, no commit created. **No commit, push, or deployment occurred. No production database, schema, or workflow was touched. `main.py`'s heartbeat extension remains uncommitted and HOLD. Kiran remains NOT VERIFIED — DO NOT TRADE.** A separate, explicit authorization is required before this entry's diff may be committed, pushed, or deployed.
+
+---
+
+## 58. Diagnostic instrumentation deployed and observed against one real production run — `leaders_scan` write CONFIRMED fixed, `corporate_action`/`setup_log` UNRESOLVED, remaining hooks not exercised (2026-08-22)
+
+**Deployment + read-only observation entry.** §57's instrumentation was explicitly authorized for commit/push/deployment (two-message authorization exchange this session — see §58.1). This entry records exactly what was deployed, exactly one real GitHub Actions run's observed behavior, and a direct live-Postgres verification. **No production data was mutated by any action in this entry** — the only Postgres interaction beyond the pipeline's own scheduled write path was a single read-only `SELECT` against `pipeline_runs`, run twice (once for the top-10-by-`finished_at` view, once for the per-hook `COUNT(*)`).
+
+### 58.1 Authorization boundary
+
+Explicitly authorized this session, in order: (1) `git add data_health.py tests/test_data_health.py` + commit + push — blocked by branch protection on `main` (3 required status checks, PR-only merges), so re-authorized as (2) push to a new branch (`diag/record-pg-instrumentation`) + PR into `main`, to be merged via `gh pr merge` once all 3 required checks are green, explicitly without `--admin` and without merging on a pending/failing check; (3) after merge, verify `origin/main`, then trigger `workflow_dispatch` only (not wait for the scheduled cron); (4) STOP after the run and report — no further repair, patch, or status-escalation without a fresh authorization. All four steps were followed in the order authorized; no step was taken that wasn't explicitly requested (no `--admin`, no squash/rebase substituted without asking, no second run triggered, no code changed after the observation).
+
+### 58.2 Exact deployment sequence, each step verified before proceeding
+
+1. Staged exactly `data_health.py` + `tests/test_data_health.py` (`git add`); confirmed via `git diff --staged --name-only` before committing — exactly those two paths, nothing else staged.
+2. Committed as `00c4970` on local `main`. Confirmed via `git show --name-only --format="" HEAD` — exactly those two files in the commit.
+3. `git push origin main` — **rejected** (`GH006`, protected branch, PR-only, 3 required status checks: "Clean install on Python 3.11", "Unit tests", "App boot smoke test", `required_approving_review_count: 0`). Local commit and working tree were unaffected by the rejection — confirmed via `git log -1` (still `00c4970`) and `git status --short` (all 8 other pre-existing modified files and 5 untracked files still present, untouched).
+4. Created branch `diag/record-pg-instrumentation` pointed at `00c4970` via `git branch <name> <sha>` (not `checkout -b`, so the working tree and current branch were never touched) — confirmed via `git branch --show-current` (still `main`) and `git status --short` immediately after (identical to before).
+5. Pushed the branch; confirmed remote tip via `git ls-remote` = `00c4970`; confirmed `git diff --name-only 3d77a9d origin/diag/record-pg-instrumentation` = exactly the two files.
+6. Opened PR #16 (`diag/record-pg-instrumentation` → `main`); confirmed via `gh pr view 16 --json files` = exactly the two files; `headRefOid` = `00c4970`; `mergeable: MERGEABLE`.
+7. Polled `gh pr checks 16` until all three named checks completed; all three: `SUCCESS`/`pass` (Clean install 31s, Unit tests 43s, App boot smoke test 56s). `mergeStateStatus: CLEAN` confirmed immediately before merge.
+8. Merged via `gh pr merge 16 --merge` (regular merge commit, not squash/rebase, no `--admin`). Result: merge commit `98e2b80`, parents `3d77a9d` (old `main`) and `00c4970` (the diagnostic commit) — confirmed via `git log -1 origin/main --format="%P"`.
+9. **Post-merge verification, per authorization step 3:** `git diff --name-only 3d77a9d origin/main` = exactly `data_health.py`, `tests/test_data_health.py` — **no unrelated change entered `main`**, confirmed directly, not assumed.
+10. Fast-forwarded local `main` to `98e2b80` (`git merge --ff-only`, pre-checked `git merge-base --is-ancestor` first) — confirmed this did not disturb the other 8 modified/5 untracked working-tree files (`git status --short` identical before and after, apart from `data_health.py`/`tests/test_data_health.py` now showing clean).
+
+### 58.3 Deployment identity
+
+**Deployed commit SHA: `98e2b80bb5d8ad7a29df304be972767095080ef9`** (merge commit on `origin/main`, containing diagnostic commit `00c4970150fc84d6bc0fee2e45e3a96425eb08c2` as a parent). This is a direct, independently-verified answer to the class of question TR-11 exists to force — not "a push happened" but "here is the exact SHA, here is the exact diff against the pre-deployment tip, here is confirmation nothing else rode along."
+
+### 58.4 GitHub Actions run
+
+Triggered via `gh workflow run daily_scraper.yml --ref main` at `2026-08-22T08:59:25Z`. Run `32563727475`, `event: workflow_dispatch`, `headSha: 98e2b80` (confirmed the run executed against the deployed instrumentation, not a stale checkout). Completed `2026-08-22T09:01:18Z` — **conclusion: success**, but **duration ~2 minutes, not the ~10-11 minute norm** documented in §51.4 for a full scrape. This is the same signature §51.4 already named for an early-return run.
+
+### 58.5 What actually executed — read directly from the full run log, not assumed
+
+The log's first substantive line: `"Database is already up to date (latest: 2026-08-21)."` This run landed on `main.py`'s early-return branch (`cmd_update()`, lines 142-201 at the deployed SHA) — dispatched at 08:59 UTC = ~13:59 PKT, well before the evening-PKT threshold CLAUDE.md documents as when ksestocks.com finishes publishing final EOD figures, so there was genuinely no new trading date to scrape for 2026-08-22 yet. **This is the same premature-manual-dispatch pattern §51.4 already documented as a live risk (the 2026-07-08/07-10 incidents)** — recorded here as a reproduction of that same structural condition, not a new incident, since this run only *read* (no scrape/write to `prices`) and caused no data damage.
+
+**Read directly from `main.py`'s source at the deployed SHA (lines 142-201):** the early-return branch executes a same-day price re-check, `run_analysis()`, and an unconditional re-run of `leaders_scan` (marked in-code "idempotent — safe to re-run") followed by rolling trim — and explicitly, per the branch's own comment, "does not touch `cleanup_ghost_dates`, `prices_adjusted`/suspects, regime, sector/stock signals, setup_log, agent, or leaders scan[sic — comment predates the leaders_scan re-run being added] — those stay skipped exactly as before when there is genuinely nothing new." **Confirmed by direct log read:** the *only* heartbeat-instrumented hook that executed in this run was `leaders_scan`. `corporate_action` and `setup_log` (the other two Hidden-Risk-1 hooks) were not called at all — not a failure of anything, a structural consequence of `main.py`'s own early-return branch, unrelated to `_record_pg()`.
+
+### 58.6 `_record_pg()` stage outcome by hook — direct log evidence
+
+Full-log grep for `stage=`/`heartbeat failed` (the new WARNING-path markers): **zero matches** — no connect/insert/commit failure was logged anywhere in this run.
+
+One heartbeat attempt occurred:
+```
+2026-08-22T09:00:56.0496577Z  INFO  Leaders deep scan updated.
+2026-08-22T09:00:58.0893915Z  INFO  pipeline_runs heartbeat written: hook=leaders_scan date=2026-08-21 elapsed=2.04s
+```
+This `"heartbeat written"` line is emitted, per §57's own code, only after `conn.commit()` returns without raising — i.e., this is direct log evidence of a successful connect → insert → commit sequence for `leaders_scan`, using the new `database_pg._parse_pg_url()` connection path.
+
+`corporate_action`: **not exercised this run** (§58.5) — no data point either way. `setup_log`: **not exercised this run** — no data point either way. `boring_signals`: not exercised this run either (it is a local-only, `mirror_to_postgres`-triggered hook, not part of `main.py`'s GitHub Actions path at all — consistent with §56.3 item 6's existing finding that its Postgres rows never came from GitHub Actions).
+
+### 58.7 Live Postgres `pipeline_runs` evidence — read-only verification, independent of the log
+
+Queried directly via `database_pg.get_conn()` (`.env`'s `SUPABASE_DB_URL`, read locally, never printed or logged) — two `SELECT`-only queries, no write of any kind:
+
+```
+SELECT hook_name, run_date, finished_at, status, rows_written
+FROM pipeline_runs ORDER BY finished_at DESC LIMIT 10;
+
+ leaders_scan     2026-08-21  2026-08-22 09:00:56.053356+00  ok  NULL   <- NEW
+ boring_signals   2026-08-21  2026-08-21 15:59:54.080645+00  ok  2
+ boring_signals   2026-08-20  2026-08-20 17:21:29.008223+00  ok  14
+ boring_signals   2026-08-18  2026-08-19 05:12:40.588627+00  ok  5
+ boring_signals   2026-08-17  2026-08-17 14:52:27.105787+00  ok  22
+
+SELECT hook_name, COUNT(*) FROM pipeline_runs GROUP BY hook_name;
+ boring_signals   4
+ leaders_scan     1   <- NEW, first row this hook has EVER had
+```
+
+**Table total: 4 rows (all `boring_signals`, matching §51.5/§56.2's exact baseline) → 5 rows.** The one new row is `leaders_scan`/`2026-08-21`, `finished_at = 2026-08-22 09:00:56.053356 UTC`. Cross-checked against the log: `record_run()` captures `finished_at` at function entry (before connect), the log's `"heartbeat written"` line prints after commit, ~2 seconds later per the reported `elapsed=2.04s` — `09:00:56` (DB) + `2.04s` ≈ `09:00:58` (log timestamp), **matching to the second.** This is not a coincidental pre-existing row: `pipeline_runs` has never had a `leaders_scan` row before, at any point in this program's history (§51.5, §54, §55, §56.2 all independently confirmed the same 4-row, all-`boring_signals` baseline going back to 2026-08-17).
+
+### 58.8 Root-cause classification
+
+Per §57's classification scheme:
+
+- **`leaders_scan`: (E) — successful writes and rows now present. CONFIRMED**, not inferred: log evidence (INFO "heartbeat written" after a real commit) and independent live-Postgres row evidence agree, timestamps correlate to the second, and the row is provably new against a well-established historical baseline. The hardened `database_pg._parse_pg_url()` connection path is now proven, in at least one live GitHub Actions execution, to succeed where the prior bare `psycopg2.connect(url)` pattern (same hook, same environment, same secret, five prior successful full-duration runs since `38ddadb`, §56.2) produced zero rows for five consecutive days. This directly supports — **for `leaders_scan` specifically** — §56.4's mechanism 1 (the un-hardened connection path) over mechanism 2 (transient Supabase pooler flakiness), since a pooler-flakiness explanation would not predict a clean, non-retried, first-attempt success.
+- **`corporate_action`: UNRESOLVED** — not exercised by this run. No stage evidence, no Postgres evidence, positive or negative. Structural reason (§58.5), not a defect.
+- **`setup_log`: UNRESOLVED** — same as `corporate_action`, same reason.
+- **`regime`/`sector_signals`/`stock_signals`/`recovery_signals`/`portfolio_signals`: UNRESOLVED and out of this diagnostic's reach entirely** — their `_record_hook()` calls exist only in `main.py`'s still-HOLD, uncommitted heartbeat-extension diff (§55.4/§56.7), which was not deployed and remains untouched.
+
+**What this entry does NOT establish, stated explicitly per this task's own caution:** this is one hook, one observation, on a run that took the early-return branch. It does not prove the connection-path fix generalizes to `corporate_action`/`setup_log` (different call sites, same `_record_pg()` function, so mechanistically likely — but "likely" is not "confirmed," and this program's own repeated lesson (§55's own working-style note) is to not extrapolate a specific verified result into an untested one. It does not prove the fix is deterministic (n=1) rather than a lucky single success against an intermittent pooler issue (§56.4 mechanism 2) — mechanism 2 is weakened but not eliminated by one success. It does not establish anything about `TR-06`'s full requirement (coverage assertions against expected row/date/symbol counts, not just heartbeat presence).
+
+### 58.9 Impact on TR-06
+
+**TR-06 remains 🔴 RED, unchanged.** This entry is evidence toward TR-06's blocking diagnosis (§54/§56's "root cause UNRESOLVED" note is now partially resolved — for `leaders_scan` only), not evidence that TR-06's acceptance criterion is met. TR-06 requires every hook in the daily chain to write a heartbeat *with a coverage assertion*, distinguishing a hook that ran correctly from one that ran and silently produced less than expected — this entry only establishes that a heartbeat write *can* reach Postgres now, for one hook, on one run. No coverage-assertion mechanism exists yet, for any hook, on either backend. The Trust Register's status table and Definition of Done are **not updated by this entry** — per this task's explicit instruction not to alter acceptance criteria or statuses merely because instrumentation is ready or one run succeeded.
+
+### 58.10 `main.py` status
+
+**Unchanged, still HOLD.** Not read for modification in this entry beyond the lines already quoted for evidence (142-201). Not staged, not committed, not part of PR #16, not part of merge `98e2b80`. `git diff --name-only 3d77a9d origin/main` (§58.2 step 9) directly confirms `main.py` did not enter `main` in this deployment.
+
+### 58.11 Next authorized diagnostic step, not yet performed
+
+To obtain the missing `corporate_action`/`setup_log` data point, the next observation needs a run that takes the **full-scrape branch** (`new_dates` non-empty) — i.e., either the actual scheduled `22:00 PKT` cron run (which will have a genuinely new trading date to process) or a manually-dispatched run timed after PSX's EOD data is finalized in the evening. This was not performed in this entry, per the explicit instruction to stop after one observation and report. No further run was triggered, no code was changed, no repair was attempted based on this result.
+
+### 58.12 Production-impact assessment
+
+**Postgres:** one real production write occurred, but it was the pipeline's own scheduled/intended write path (`leaders_scan`'s heartbeat, via the already-deployed, already-authorized `main.py` code calling the newly-deployed `_record_pg()`) — not a side-effect of this diagnostic session's own actions. This session's own direct interaction with Postgres was exactly two read-only `SELECT` statements. **No data was mutated, no schema was changed, no unrelated table was touched.** `main.py`'s early-return branch also performed its normal same-day price re-check and rolling trim (1,795 rows deleted, all within the already-established, already-authorized 2-year retention window per the health check's own "Rolling trim sanity: PASS" result) — routine, already-existing, already-authorized production behavior, not something this entry caused or changed.
+
+### 58.13 Status
+
+**Diagnostic instrumentation is now live on `main` (commit `98e2b80`) and has produced its first real production observation.** `leaders_scan`'s heartbeat write to Postgres is **CONFIRMED FIXED** by the hardened connection path, evidenced independently by log and live-database query. `corporate_action`/`setup_log` remain **UNRESOLVED** — not yet observed under the new instrumentation, pending a full-scrape-branch run. **TR-06 remains RED. `main.py` remains HOLD. Kiran remains NOT VERIFIED — DO NOT TRADE.** No further code change, repair, or status escalation was made in this entry beyond what is documented above; the next diagnostic step (§58.11) requires its own authorization, not assumed by this entry.
+
+---
+
+## 59. Weekend TR-06 forensic pass — read-only, no production change, no new evidence obtained (2026-08-22)
+
+**Analysis-only entry. No file, test, documentation, or configuration was modified. No database mutation (two read-only `SELECT`s against `pipeline_runs`, re-confirming §58's baseline unchanged). No `workflow_dispatch` — a manual dispatch was explicitly evaluated and withheld (§59.6). No commit, push, PR, or deployment.** Scope: determine precisely what TR-06 requires, what is already proven, what remains unproven, and whether any of that gap can be closed without a further production observation. This entry does not attempt to close any of it.
+
+### 59.1 TR-06's invariant, quoted precisely
+
+Trust Register row TR-06: **"Every critical hook has completion + coverage verification, not just exception absence."** Required Proof: *"Extend `_record_hook()` (or equivalent) to every step of `cmd_update()`'s chain, with expected-coverage assertions (row/date/symbol counts against a known-good baseline), not just 'did it raise.'"* Acceptance Criterion: *"Every hook in the daily chain writes a heartbeat with a coverage assertion; a hook that runs but produces less than expected is distinguishable from one that runs correctly."*
+
+This bundles two obligations of very different size: **(a)** heartbeat presence (what §57/§58 address) and **(b)** a coverage/completeness assertion distinguishing "ran, under-produced" from "ran correctly." **(b) has no implementation anywhere in this codebase**, confirmed this entry (§59.3) — not merely unverified, structurally absent.
+
+### 59.2 Full execution-graph map — `cmd_update()`'s 12 daily-chain steps vs. instrumentation
+
+Built by diffing `git show 98e2b80:main.py` (deployed) against the working tree (held), not by re-citing a prior summary:
+
+| Step | Try/except? | `_record_hook()`? | Status |
+|---|---|---|---|
+| Scrape + upsert prices | No (unguarded) | No | core path, unguarded |
+| `cleanup_ghost_dates()` | No (same block) | No | same |
+| `corporate_action` | Yes | Yes | **DEPLOYED** |
+| `regime` | Yes | Yes | **HELD only** |
+| days_to_nearest_transition backfill | Yes | No | never instrumented |
+| flow scrape | Yes | No | never instrumented |
+| `sector_signals` | Yes | Yes | **HELD only** |
+| `stock_signals` | Yes | Yes | **HELD only** |
+| `recovery_signals`/`portfolio_signals` | Yes | Yes ×2 | **HELD only** |
+| `setup_log` | Yes | Yes | **DEPLOYED** |
+| `boring_signals` (Boring Breakouts) | Yes | Yes (`mirror_to_postgres=True`) | **DEPLOYED** |
+| Agent daily (subprocess) | Yes | **No** | never instrumented, anywhere |
+| Auto-save support-reversal setups | Partial | **No** | never instrumented |
+| `leaders_scan` (deep scan) | Yes | Yes | **DEPLOYED**, plus a second call site on the early-return branch |
+| Market breadth oscillator (subprocess) | Yes | **No** | never instrumented |
+| Rolling trim | Yes | **No** | never instrumented (infra housekeeping, arguably out of hook scope) |
+
+**Finding:** of 12 daily-chain steps, only 4 hook names are live in production (`corporate_action`/`setup_log`/`boring_signals`/`leaders_scan`). 5 more exist only in `main.py`'s HELD, uncommitted diff (`regime`/`sector_signals`/`stock_signals`/`recovery_signals`/`portfolio_signals`). **3+ more steps have zero heartbeat code anywhere, deployed or held.**
+
+**Silent-failure/skip conditions confirmed:** the early-return branch (`main.py:142-201`, `"Database is already up to date"`) structurally skips 7 of the 9 instrumented-or-instrumentable hooks — only `leaders_scan` re-runs there — matching exactly what §58 observed and explaining why that run could only produce one data point.
+
+### 59.3 New structural finding — 4 of the 5 HELD heartbeats would be write-only even if committed
+
+`data_health.py`'s `check_all()` reads `pipeline_runs` only for hooks in its own `HEARTBEAT` list: `setup_log`, `leaders_scan`, `boring_signals`, `corporate_action`, `portfolio_signals`. **`regime`, `sector_signals`, `stock_signals`, `recovery_signals` are not in that list** — `check_all()` instead checks those four tables' own `MAX(date)` via `EVERY_SESSION`, never querying `pipeline_runs` for those hook names at all. Confirmed by direct read of `check_all()`'s `HEARTBEAT` loop (`data_health.py:441-475`) against the `EVERY_SESSION`/`HEARTBEAT` list definitions (`data_health.py:53-75`). **Only `portfolio_signals` among the 5 HELD additions is actually consumed by the coverage-checking code today.** This means committing and deploying the HELD `main.py` diff unchanged would not, by itself, extend what the dashboard's own verdict watches for 4 of those 5 hooks — their new heartbeat rows would be written and never read.
+
+Separately confirmed, directly relevant to (b) above: `check_all()`'s `HEARTBEAT` query is `SELECT run_date, status FROM pipeline_runs WHERE hook_name = {p} ORDER BY run_date DESC LIMIT 1` — it reads only `run_date` and `status`. **`rows_written` is captured by `_record_hook()`/`record_run()`/`_record_pg()` and stored in the table, but is never read back or compared against any expected value anywhere in the codebase.** This is direct code evidence, not inference, that TR-06's coverage-assertion requirement cannot be satisfied by the current schema-plus-check-logic combination no matter how reliably hooks report `status="ok"` — the data needed for a baseline comparison is already being thrown away on the read side.
+
+### 59.4 Test-suite classification
+
+All 22 test functions (24 collected IDs) in `tests/test_data_health.py` classified against: A=CONNECT, B=INSERT, C=COMMIT, D=SUCCESS logging, E=failure-stage observability, F=hook invocation, G=heartbeat persistence, H=coverage/completeness assertion, I=other.
+
+- 13 tests (`test_iso_normalises_date_types` through `test_unreadable_database_is_red_not_blank`, plus the 3 `test_missing_table_detected_on_both_backends` param variants): **I** — pure `Verdict`/date/error-classification logic.
+- `test_fully_current_system_is_green`, `test_zero_row_run_still_counts_as_a_run`, `test_record_run_is_idempotent`: **G, SQLite-only** — proves `record_run()`'s SQLite branch, says nothing about Postgres.
+- `test_record_run_never_raises`: **E-adjacent, SQLite path forced** (`_PG_URL=None`), does not exercise `_record_pg()`.
+- `test_record_pg_logs_connect_failure_without_leaking_url`: **A+E**, against a faked `psycopg2.connect`.
+- `test_record_pg_logs_insert_failure_and_rolls_back`: **B+E**, faked connection/cursor.
+- `test_record_pg_logs_success`: **A+B+C+D**, faked connection object — proves the code's own logic, not real psycopg2/Supabase behavior.
+- `test_record_pg_never_raises_on_unexpected_error`: **E**.
+
+**Confirmed by repo-wide grep (`cmd_update|_record_hook|import main\b` across `tests/`): zero tests invoke `main.py`'s hook call sites.** The 4 matches found are docstring/comment mentions in unrelated test files (`test_boring_signals_pending_error_handling.py`, `test_setup_log_backfill.py`, `test_sector_signals_backfill.py`, `test_regime_backfill.py`), never an actual call. **F (hook invocation) and H (coverage assertion) have zero test coverage** — F because nothing calls the real call sites, H because no such code exists to test.
+
+### 59.5 Per-hook evidence reconstruction — no generalization from `leaders_scan`
+
+| Hook | Evidence | Classification |
+|---|---|---|
+| `leaders_scan` | §58: log + live-Postgres row, timestamp-correlated to the second, first-ever row for this hook | **CONFIRMED**, n=1, one specific call site (early-return branch, `main.py:183/186`) |
+| `corporate_action` | Zero log lines in the one post-fix observation (structurally skipped); pre-fix: 5 successful full-duration runs, zero rows produced under the old code | **UNRESOLVED** post-fix |
+| `setup_log` | Same reasoning as `corporate_action` | **UNRESOLVED** post-fix |
+| `boring_signals` | Not exercised post-fix (full-scrape-branch-only hook); all 4 pre-existing rows trace to local-mirror runs, never GitHub Actions' native `_PG_URL` branch, per §56.3 item 6 | **UNRESOLVED**, and distinct — the *native* GH-Actions path has never once been confirmed, pre- or post-fix |
+
+### 59.6 Production-observation decision this entry — withheld, with reasoning
+
+Checked before taking any action: last scraped date `2026-08-21` (Friday); "today" at investigation time `2026-08-22` (Saturday), confirmed via `date -d`. Read `scraper.py`'s `dates_since()` directly: candidate dates are filtered through `_is_weekday()` unconditionally — no time-of-day condition changes this, so `new_dates` is guaranteed empty for any dispatch on a Saturday regardless of hour. `daily_scraper.yml`'s cron (`0 17 * * 1-5`) does not fire on Saturday or Sunday either — there is no scheduled run to wait for until Monday. **A manual dispatch this entry would have reproduced §58's already-observed early-return branch exactly, producing zero new information** — withheld on that basis, per the authorizing task's explicit instruction not to dispatch merely for convenience under this exact condition. Re-confirmed live `pipeline_runs` unchanged since §58 (5 rows, same as before) via two read-only `SELECT`s.
+
+### 59.7 What Monday's full-scrape run can and cannot prove
+
+**Can prove:** `corporate_action`/`setup_log`'s stage-by-stage outcome for the first time under the hardened path; `leaders_scan`'s *second*, distinct call site (`main.py:409`, full-scrape branch); `boring_signals`'s *native* GH-Actions write path, distinct from the local-mirror rows seen to date.
+
+**Cannot prove, even on a clean success:** TR-06's coverage-assertion criterion (§59.1/§59.3 — no code exists to produce this evidence regardless of outcome); reliability/determinism (n≈2-5 per hook after Monday is still not proof against §56.4's un-eliminated "transient Supabase pooler flakiness" hypothesis — a single clean day is consistent with both competing mechanisms, not just the connection-string one); anything about the 5 HELD hooks (`main.py` not deployed) or the 3+ never-instrumented chain steps (no code exists); anything about the separate local/SQLite pipeline (untouched by this diagnostic entirely).
+
+### 59.8 Weekend progress — uncertainty eliminated without a production observation
+
+1. Precisely which of the 12 daily-chain steps are deployed vs. held vs. never-instrumented at all — established by direct diff, not memory (§59.2). Previously known only in aggregate ("5 hooks held"); the 3+ zero-instrumentation steps were not previously enumerated this precisely.
+2. That 4 of the 5 HELD heartbeats would be write-only against the current `check_all()` even if committed unchanged (§59.3) — new finding, not previously in the ledger.
+3. That `rows_written` is captured and stored but never read back anywhere — direct proof (not inference) that TR-06's coverage-assertion half cannot be satisfied by the current schema/check-logic combination regardless of heartbeat reliability (§59.3).
+4. That zero tests invoke `main.py`'s hook call sites, confirmed by grep, not assumed (§59.4).
+5. That deployed `main.py` (`98e2b80`) is byte-identical to `3d77a9d`, confirmed by direct `git diff`, not cited from a prior session's claim.
+
+All classified as static/code/schema/test evidence, per this entry's own instruction, never conflated with production observation.
+
+### 59.9 Status
+
+**TR-06 remains 🔴 RED — this entry found precise, code-level reasons it should remain RED even after a hypothetically perfect Monday observation, not grounds to change its status.** The gap has two tiers: Tier 1 (narrow) — one more full-scrape observation for `corporate_action`/`setup_log`/`boring_signals`'s native path, which only resolves Hidden Risk 1's diagnosis, not TR-06 itself; Tier 2 (the actual acceptance criterion) — a coverage-assertion mechanism that does not exist in any form, plus wiring 4 of the 5 HELD heartbeats into actual check logic, plus instrumenting 3+ untouched chain steps — new implementation work, unauthorized, out of scope for this entry and for Monday alike. `main.py` remains HOLD, untouched, not read for anything but evidence in this entry. **No commit, push, deployment, database write, production code modification, schema change, or workflow dispatch occurred. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 60. Monday full-scrape run observed — `corporate_action`/`setup_log` FIRST-EVER writes confirmed, `boring_signals` native GH-Actions path CONFIRMED, Tier 1 gap closed; TR-06 still RED (2026-08-24)
+
+**Observation entry, one authorized `workflow_dispatch` + two read-only `SELECT`s against `pipeline_runs`.** Continuation of §59's plan: observe the next genuine trading-day full-scrape run for the `corporate_action`/`setup_log`/`boring_signals`-native-path data points §58/§59 left open. This entry executes exactly Tier 1 from §59.9/§59's memory pointer — nothing else.
+
+### 60.1 Why dispatched manually rather than waiting for the 22:00 PKT cron
+
+At investigation time: `date -u` = `2026-08-24T14:30Z` (19:30 PKT), `daily_scraper.yml`'s cron fires at `17:00 UTC`/`22:00 PKT` — 2.5 hours out. User explicitly confirmed Monday's EOD data was already available at this hour and directed a manual dispatch rather than waiting for the cron, matching the precedent already established in §58.2 step 3 (manual `workflow_dispatch` is this program's normal way to observe a run, not an escalation). This is the same weekday, same-mechanism dispatch §59.6 declined only because Saturday's `_is_weekday()` filter guaranteed an empty `new_dates` — that condition does not apply to a Monday dispatch after EOD data is live.
+
+### 60.2 Run identity and completion
+
+`gh workflow run daily_scraper.yml` → run `32739159412`, `workflow_dispatch`, headSha `98e2b80` (the same deployed instrumentation commit as §58). Dispatched `14:30:47 UTC`, completed `success` at `14:44:26 UTC` — **13m39s total duration**, closely matching §58.2's one prior confirmed full-scrape-branch run (`32508280040`, `13m37s`) and far outside the early-return branch's observed 1-2min range (§58, §59.6). Duration alone was the first signal this took the full-scrape branch, not the early-return shortcut.
+
+### 60.3 Log evidence — full-scrape branch confirmed, all four target hooks exercised
+
+Full run log fetched via `gh run view --log` (669 lines) and grepped for chain-branch markers. No `"already up to date"` early-return string present. In hook-execution order:
+
+```
+14:36:38 INFO pipeline_runs heartbeat written: hook=corporate_action date=2026-08-24 elapsed=2.25s
+14:40:45 INFO setup_log (PG): 65 rows inserted for 2026-08-24.
+14:42:28 INFO setup_log (PG): forward returns updated.
+14:42:30 INFO setup_log (PG): 157 rows labelled.
+14:42:33 INFO pipeline_runs heartbeat written: hook=setup_log date=2026-08-24 elapsed=2.25s
+14:42:39 WARNING boring_signals (pg): scanning 2 date(s), 2026-08-21 -> 2026-08-24.
+14:42:46 INFO boring_signals (pg): scanned 2026-08-21, inserted 0 new signal(s)
+14:42:54 INFO boring_signals (pg): scanned 2026-08-24, inserted 3 new signal(s)
+14:43:01 INFO boring_signals (pg): updated 2 signal statuses
+14:43:03 INFO pipeline_runs heartbeat written: hook=boring_signals date=2026-08-24 elapsed=2.23s
+14:43:37 INFO pipeline_runs heartbeat written: hook=leaders_scan date=2026-08-24 elapsed=2.21s
+14:44:02 INFO Rolling trim complete: 3733 rows deleted (prices=1209, prices_adjusted=1209, stock_signals=583, setup_log=149, symbol_active_dates=583)
+```
+
+Full-log grep for `error|traceback|exception|WARNING` (excluding the expected `boring_signals` scan-range WARNING above) surfaced one genuine, unrelated failure: `14:43:04 WARNING Agent daily hook: exited 1 — ERROR agent — anthropic package not installed`. This is the `TradingDeskAgent("daily")` chain step (`main.py` hook order item 9, per this project's `CLAUDE.md`) — one of the "3+ chain steps have zero heartbeat code anywhere" §59.2 already enumerated (the Agent daily subprocess, named explicitly). **A real operational failure, but not a TR-06 finding** — no heartbeat exists for this step either way, so this run neither helps nor hurts its diagnosis; recorded here only because it's a genuine production defect (a missing `anthropic` package in the GH Actions runner's environment) surfaced incidentally. No other WARNING/ERROR/traceback anywhere in the 669-line log.
+
+### 60.4 Independent live-Postgres verification (not log claims alone)
+
+Per this program's standing rule (§78 of the memory pointer / repeated throughout this ledger — "independently re-verify, don't trust prior narratives"), queried live Supabase directly and read-only, using the same `database_pg._parse_pg_url()` + `psycopg2.connect(**kwargs)` pattern §57 hardened, credentials sourced from this machine's own `.env`:
+
+```
+SELECT hook_name, run_date, status, rows_written, finished_at
+FROM pipeline_runs
+WHERE hook_name IN ('corporate_action','setup_log','leaders_scan','boring_signals')
+ORDER BY finished_at DESC LIMIT 15;
+```
+
+Top 4 rows, all `run_date = 2026-08-24`, all `status = 'ok'`:
+
+| hook_name | rows_written | finished_at (UTC) |
+|---|---|---|
+| `leaders_scan` | NULL | 14:43:34.872874 |
+| `boring_signals` | 3 | 14:43:01.752790 |
+| `setup_log` | 65 | 14:42:30.815085 |
+| `corporate_action` | 0 | 14:36:35.858516 |
+
+A second query, `SELECT hook_name, COUNT(*) ... GROUP BY hook_name`, confirmed table-wide totals: `corporate_action` = **1** (row total, all-time), `setup_log` = **1** (row total, all-time), `leaders_scan` = **2**, `boring_signals` = **5**. A third query pulled `boring_signals`'s full history ordered by `finished_at`: `2026-08-17`, `2026-08-18`, `2026-08-20`, `2026-08-21`, `2026-08-24` — 5 rows, matching the count.
+
+**Cross-checks, each independently verified rather than assumed:**
+- `setup_log`'s `rows_written = 65` matches the log's `"65 rows inserted for 2026-08-24"` line exactly.
+- `boring_signals`'s `rows_written = 3` matches the log's `"scanned 2026-08-24, inserted 3 new signal(s)"` line exactly.
+- Every `finished_at` timestamp falls inside this run's own execution window (`14:30:47`–`14:44:26 UTC`), and each is within ~2-3 seconds of its corresponding log `"heartbeat written"` line (same `record_run()`-writes-before-connect / logs-after-commit timing relationship §58.3 first established) — direct evidence these are real-time writes from *this* run, not stale rows or an artifact of a differently-timed process.
+- `corporate_action`/`setup_log` had **zero rows in the table before this run, at any point in this program's history** (§54/§55/§56/§58/§59 all independently confirmed this same baseline going back to 2026-08-17) — today's rows are the first this hook has ever produced, live, under any instrumentation.
+
+### 60.5 What this closes: Tier 1, all three named data points
+
+Per §59.7's own explicit prediction of what a Monday run could prove:
+
+- **`corporate_action`: CONFIRMED.** First-ever live Postgres write, `status='ok'`, `rows_written=0` (no corporate actions detected today — a legitimate zero, not a failure; the heartbeat firing at all is the finding). Resolves the "not exercised" UNRESOLVED status carried since §58.5/§59.5.
+- **`setup_log`: CONFIRMED.** First-ever live Postgres write, `status='ok'`, `rows_written=65`, log and DB agree exactly. Same resolution as above.
+- **`boring_signals` native GH-Actions path: CONFIRMED, for the first time ever.** All 4 prior rows (`08-17`/`08-18`/`08-20`/`08-21`) were already established (§56.3 item 6, re-confirmed §59.5) to trace to local-mirror runs, never GitHub Actions' own `_PG_URL` branch. Today's 5th row is the first one whose `finished_at` timestamp falls inside a GitHub Actions run's own execution window — direct, not inferred, evidence the native Cloud path works.
+- **`leaders_scan`'s second call site (full-scrape branch, `main.py:409`): CONFIRMED**, distinct from the early-return call site §58 already verified (`08-21`/`08-22`). Both of `leaders_scan`'s two call sites are now independently proven to write successfully.
+
+### 60.6 What this does NOT close — TR-06 itself, unchanged from §59's own finding
+
+**TR-06 remains 🔴 RED.** §59.3's central finding — that TR-06's acceptance criterion has two bundled parts, and part (b) (a row/date/symbol coverage assertion distinguishing "ran correctly" from "ran but under-produced") has no implementation anywhere in this codebase — is not touched by this entry. `rows_written` is captured for `corporate_action`/`setup_log`/`boring_signals` today (0/65/3) but, exactly as before, nothing anywhere reads these values back or compares them against an expected baseline. A clean run proves the heartbeat *plumbing* now reaches Postgres for these three hooks; it says nothing about whether 65 `setup_log` rows or 3 `boring_signals` signals is the *right* number for today — that comparison isn't code today, and one successful observation doesn't change that.
+
+Also unchanged: reliability/determinism is still n≈1-2 per newly-confirmed hook (this is the *second* successful full-scrape-branch run overall, the *first* for `corporate_action`/`setup_log` specifically) — §56.4's "transient Supabase pooler flakiness" alternative hypothesis is weakened further by a second consecutive clean full-duration run, but still not formally eliminated. The 5 HELD `main.py` hooks (`regime`/`sector_signals`/`stock_signals`/`recovery_signals`/`portfolio_signals`) remain undeployed, untouched by this entry. The 3+ never-instrumented chain steps (Agent daily subprocess — confirmed failing today, §60.3 — auto-save support-reversal setups, market breadth oscillator subprocess, rolling trim) remain uninstrumented. The separate local/SQLite pipeline is untouched by anything in this entry.
+
+### 60.7 Status
+
+**Tier 1 (the narrow gap named in §59.9/the memory pointer) is now closed** — all three data points a Monday full-scrape run could provide (`corporate_action`, `setup_log`, `boring_signals`-native-path) are observed and independently confirmed. **Tier 2 (TR-06's actual acceptance criterion — the coverage-assertion mechanism) remains entirely unimplemented and is unaffected by this or any future clean observation**, per §59.3's original finding. **TR-06 remains 🔴 RED. `main.py` remains HOLD. Kiran remains NOT VERIFIED — DO NOT TRADE.** No commit, push, deployment, production code modification, schema change, or database write occurred in this entry beyond the pipeline's own scheduled write path and two read-only `SELECT`s. **Next narrow action is not yet decided by this entry** — awaiting the user's direction on whether to pursue Tier 2 (the coverage-assertion implementation, unauthorized/out of scope until explicitly requested) or address the newly-surfaced Agent daily hook failure (`anthropic` package missing in the GH Actions runner), or something else entirely.
+
+---
+
+## 61. TR-06 Tier 2 implementation, dashboard blocker fix, production-DB incident remediation, and independent post-incident verification — governance record (2026-08-24)
+
+**Documentation-only entry.** This section records, after the fact, work already performed and already independently reviewed in this same session: the Tier 2 coverage-instrumentation implementation §60.6 named as the remaining gap, a second independent-review blocker found in the dashboard's own hardcoded query, a production-database incident caused by an early version of the regression test written to catch that blocker, its remediation, and a full read-only post-incident reconciliation carried out by a separate review pass under an explicit governance boundary (no file, test, config, schema, or database writes permitted; no commit/push/PR/deploy/dispatch; no Trust Register or TR-06 closure). This entry preserves that review's findings in the ledger. It does not itself constitute additional verification beyond what that review performed, and it changes no governance state beyond what is recorded in §61.13.
+
+### 61.1 Scope and purpose
+
+Three pieces of work landed in the working tree this session, uncommitted: (1) the TR-06 Tier 2 coverage-instrumentation implementation across `main.py`, `data_health.py`, `boring_signals.py`, `leaders_scan.py`, and `backfill_setup_log.py` — additive `run_id`/`execution_status`/`coverage_status`/`eligible_count`/`processed_count` fields on `pipeline_runs`, per the design-lock record in `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`; (2) a second independent-review blocker found and fixed in `dashboard.py`/`dashboard_pg.py` — both hardcoded `WHERE hook_name = 'corporate_action'`, a name `main.py`'s split stopped writing entirely, which §59.3/§60.6's own HEARTBEAT-list fix did not touch (those two dashboard functions read `pipeline_runs` directly, never through `check_all()`); (3) a production-database incident during the writing of the regression test for (2), its containment, and its remediation. A separate, read-only post-incident review then independently re-verified all three under a hard governance boundary (repository read, ledger read, one section append only — no code/test/config/database writes, no test-suite execution during that specific mandate). This entry is that review's permanent record.
+
+### 61.2 Incident remediation result — CONFIRMED
+
+An earlier version of the dashboard regression test reused `test_app_boot.py`'s `_database` fixture — safe for that file (read-only use throughout) but not safe for a test that also calls `record_run()`, because on this developer machine that fixture resolves to the real `psx_data.db` path. That write landed one row: `hook_name='corporate_action_suspects_scan'`, `run_date='2026-08-24'`, `id=31`. It was removed via a narrowly scoped transactional `DELETE`, under explicit user authorization, before this entry.
+
+Independently re-verified, read-only, against the live database rather than accepted from the incident narrative alone:
+- **No `pipeline_runs` row exists for `run_date = '2026-08-24'`, under any hook name** — confirms the artifact is gone, not merely the specific row believed to be it.
+- **`id=31` does not exist** in the table.
+- **`PRAGMA integrity_check` → `ok`.**
+- Production DB size (`881,614,848` bytes) and mtime (`2026-08-24T22:06:05`) were recorded before this verification pass and confirmed unchanged after it, including across a full 133-test execution (§61.7) — the review itself did not touch the database.
+
+No claim beyond what direct query evidence supports: this confirms the reported row is absent and the schema is intact; it does not independently reconstruct what the table's exact contents were in the seconds between the accidental `INSERT` and the `DELETE` (no pre-incident snapshot was taken to diff against). That narrower claim is recorded as **INFERRED from the DELETE's own scoping and the absence of any other anomaly**, not independently reconstructed byte-for-byte.
+
+### 61.3 Production database integrity result — CONFIRMED
+
+- `pipeline_runs` total row count: **24** (ids 1–30; gaps at 4, 9–12, 21 predate 2026-08-24 and are unrelated to this incident — not investigated further as out of scope for this entry).
+- Zero rows dated `2026-08-24`, any hook.
+- `corporate_action_suspects_scan / 2026-08-24` confirmed absent.
+- Schema carries all five TR-06 columns — `run_id`, `execution_status`, `coverage_status`, `eligible_count`, `processed_count` — read directly via `PRAGMA table_info(pipeline_runs)`, all five `notnull=0` (nullable), consistent with the additive-only migration `data_health.py`'s `ensure_ledger_sqlite()`/`ensure_ledger_pg()` implement (`ALTER TABLE ... ADD COLUMN`, guarded by a pre-existing-column check).
+- `PRAGMA integrity_check` → `ok`.
+- DB size/mtime unchanged before vs. after the full independent review, including the full test-suite run in §61.7.
+
+### 61.4 Dashboard blocker resolution — CONFIRMED
+
+Both live consumers read directly, diff confirmed against `HEAD` (`98e2b80`):
+- `dashboard.py`'s `_dh_load_summary()` closure (Data Health page, SQLite path): `WHERE hook_name = 'corporate_action'` → `WHERE hook_name = 'corporate_action_suspects_scan'`.
+- `dashboard_pg.py`'s `get_dh_summary_pg()` (Postgres path): same change.
+
+Both retain the pre-existing comment establishing that this page's "Last Checked" metric has always referred to the *suspects scan* specifically ("a scan that ran cleanly and found nothing... Last Checked"), never the unrelated `prices_adjusted` append — the semantic basis for choosing `corporate_action_suspects_scan` as the sole correct successor name, not `corporate_action_append`, is intact and was independently checked against the surrounding comment, not merely asserted by the fix's own commit message (there is no commit — checked against the working-tree diff).
+
+### 61.5 Rename audit — CONFIRMED
+
+Repo-wide search across `.py` files for `corporate_action` / `hook_name` found **no active production code path** (`dashboard.py`, `dashboard_pg.py`, `data_health.py`, `main.py`) still hardcoding the retired `hook_name = 'corporate_action'`. Remaining literal occurrences, each individually inspected for context (not string-matched and assumed):
+- Comments documenting the retirement (`data_health.py`, `dashboard.py`, `dashboard_pg.py`).
+- `tests/test_tr06_dashboard_corporate_action_regression.py` and `tests/test_tr06_coverage_fields.py`, which deliberately write under the retired name to prove the fix would fail if the old string were restored — **classification: test intentionally exercising retired-name behavior**, correct by design.
+- `tests/test_data_health.py:297` uses `"corporate_action"` as an arbitrary label inside an unrelated `_record_pg()` log-format test (connect-failure logging) — **classification: unrelated**, not a name-correctness test.
+
+`data_health.py`'s `HEARTBEAT` list carries both `corporate_action_append` and `corporate_action_suspects_scan` in place of the single retired entry, matching `main.py`'s split.
+
+### 61.6 Test-safety repair and verification — CONFIRMED
+
+The rewritten regression test (`tests/test_tr06_dashboard_corporate_action_regression.py`):
+- Builds a throwaway copy of `tests/fixtures/psx_fixture.db` under pytest's own `tmp_path` (never under the repo tree).
+- Monkeypatches `config.DB_PATH` to that copy only.
+- Carries an explicit assertion refusing to proceed if the resolved path ever equals the real `psx_data.db` path.
+
+Independently inspected, not assumed: `tests/test_app_boot.py`'s `_database` fixture (the one responsible for the original incident) is session-scoped and autouse, but scoped to that file's own tests only — no `conftest.py` exists under `tests/`, so pytest fixture visibility does not extend it repo-wide. Within `test_app_boot.py` itself its use is read-only throughout. The six new/modified test files touched this session (`test_apply_price_adjustments_quarantine.py`, `test_boring_signals_pending_error_handling.py`, `test_circuit_flags_backfill_repair.py`, `test_setup_log_backfill_error_handling.py`, `test_tr06_coverage_fields.py`, `test_tr06_dashboard_corporate_action_regression.py`) were each individually checked for their database source: all use `:memory:`, a `tmp_path`-based copy, or a read-only (`mode=ro`) fixture open. None can reach the real production database.
+
+### 61.7 Independent test results — CONFIRMED
+
+Executed independently by the post-incident review (not accepted from the original implementation's own report):
+- Dashboard regression (`test_tr06_dashboard_corporate_action_regression.py`): **4/4 passed**.
+- TR-06 focused scope (`test_tr06_coverage_fields.py` + `test_data_health.py` + `test_tr06_dashboard_corporate_action_regression.py`): **44/44 passed**.
+- Full suite (`pytest -q`, `testpaths = tests` per `pytest.ini`): **133/133 passed** (230.87s).
+
+All three counts match the original implementation's own reported counts exactly. Production DB size/mtime were checked immediately before and immediately after this run and found unchanged (§61.2/§61.3). **These counts confirm the code as written behaves as intended under the tests that exist for it. They do not constitute production-deployment authorization, TR-06 closure, or trading authorization** — see §61.13.
+
+### 61.8 TR-06 implementation verification — CONFIRMED SOUND, no new blocker
+
+- Coverage vocabulary (`EXECUTION_COMPLETED`/`FAILED`, `COVERAGE_EXPECTED`/`INSUFFICIENT`/`NOT_APPLICABLE`) applied honestly by direct code read: `support_reversal` and `corporate_action_suspects_scan` correctly report `NOT_APPLICABLE` (no eligible/processed denominator exists for either — the screener is disabled at source since 2026-07-23; the suspects scan has no scanned-symbol/date count to report), rather than a manufactured `EXPECTED`/`INSUFFICIENT` verdict. `leaders_scan`, `boring_signals`, and `setup_log` compute `EXPECTED` vs. `INSUFFICIENT` from real eligible/processed date counts, not an arbitrary global threshold.
+- `run_id` (one UUID4 per `cmd_update()` invocation) is generated once and threaded through every heartbeat call in that run; the pre-existing `UNIQUE(hook_name, run_date)` natural key is unchanged — confirmed no code path treats `run_id` as a replacement key or assumes rows sharing a `run_date` share one `run_id` beyond what a single invocation actually produces.
+- `check_all()` is confirmed **not** wired to the new coverage fields — an explicit, deliberate scope boundary per the design-lock record, not an oversight.
+- **Existing limitation, unchanged and not newly resolved by this work:** §60.6's finding stands — coverage *evidence* (`eligible_count`/`processed_count`/`coverage_status`) is now captured for the hooks this entry touches, but a general coverage-*assertion* mechanism (reading those values back and comparing against an expected baseline, the acceptance criterion's actual second bundled requirement per §59.3) still does not exist anywhere in this codebase. This entry does not change that status and does not claim to.
+
+### 61.9 HELD-code integrity — CONFIRMED
+
+`git status` confirms `regime.py`, `sector_signals.py`, `stock_signals.py`, and `signal_engine.py` (the implementation files behind the five HELD hooks: `regime`, `sector_signals`, `stock_signals`, `recovery_signals`, `portfolio_signals`) carry **zero changes** — not modified at all this session. Within `main.py`, the full diff against `HEAD` (`98e2b80`) was read line-by-line: at every HELD hook's call site, the actual business-logic call (`append_latest_regime()`, `sector_signals.append_latest_sector_signals()`, `stock_signals.append_latest_stock_signals()`, `signal_engine.main()`) is byte-identical before and after — only a `_record_hook(...)` heartbeat call was added immediately around each, matching the in-code comment's own claim ("still-HELD hooks... deliberately not touched by this change"). No call sites added, removed, or reordered; no unrelated logic changed. Content-based verification, not timestamp-based.
+
+### 61.10 Independent governance verdict
+
+The post-incident review's own stated verdict, recorded verbatim: **PASS** (independent governance verdict); **IMPLEMENTATION SOUND — READY FOR CONTROLLED DEPLOYMENT** (implementation classification); **READY FOR USER AUTHORIZATION TO CONTROLLED DEPLOYMENT** (deployment recommendation — a recommendation that authorization be sought, not authorization itself). All three are the review's classification of the *work's soundness*, not a change to this program's governance state — see §61.13, which is unaffected by any of the three.
+
+### 61.11 Ledger continuity note
+
+This ledger was silent on all of tonight's events — the Tier 2 implementation, the second dashboard blocker, the production-DB incident and its remediation, the test-safety rewrite, and the independent post-incident review — until this entry. §60.7 was the most recent entry prior to this one; nothing between §60 and this section documented any of the above. This entry exists specifically to close that documentation gap and preserve the audit trail, per this task's explicit mandate — it is a record of events already concluded, not new investigative work, and not itself a decision point.
+
+### 61.12 Remaining limitations — explicit, not resolved by this entry
+
+- TR-06's coverage-*assertion* mechanism (comparing observed `eligible_count`/`processed_count` against an expected baseline) remains entirely unimplemented, per §60.6 and confirmed unchanged in §61.8.
+- `check_all()` is not wired to the new coverage fields.
+- The 3+ never-instrumented chain steps named in §59.2/§60.3 (Agent daily subprocess — confirmed failing 2026-08-24 per §60.3's `anthropic` package finding, still unaddressed — auto-save support-reversal setups, market breadth oscillator subprocess, rolling trim) remain uninstrumented.
+- None of tonight's uncommitted work (Tier 2 instrumentation, dashboard fix, test-safety rewrite) has been committed, pushed, deployed, or exercised against live production Postgres — the independent test execution in §61.7 ran entirely against isolated/local state.
+- The pre-existing gaps at `pipeline_runs` ids 4, 9–12, 21 (§61.3) were noted but not investigated as part of this entry — out of scope.
+
+### 61.13 Status — governance state after this entry
+
+- **TR-06 Tier 1: CLOSED** (per §60.7, unchanged by this entry).
+- **TR-06 Tier 2 implementation: IMPLEMENTED** (coverage-evidence capture across the five hooks named in §61.8), independently code-reviewed and test-verified this entry.
+- **Post-incident independent verification: PASS**, per §61.10.
+- **Production DB incident: CONTAINED AND REMEDIATED** — single unauthorized row removed via targeted `DELETE`, integrity confirmed `ok`, no further writes since, independently re-verified in §61.2/§61.3.
+- **Test-safety defect: FIXED** — the regression test that caused the incident no longer can reach the production database, independently verified in §61.6.
+- **TR-06 overall: NOT CLOSED.** The coverage-assertion half of its acceptance criterion (§59.3, reaffirmed §61.8/§61.12) still does not exist in any form.
+- **Deployment: NOT AUTHORIZED** unless separately authorized by the user.
+- **Commit/push/PR: NOT AUTHORIZED** unless separately authorized by the user.
+- **Trust Register: NOT UPDATED** by this entry or by the work it records.
+- **Kiran: NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 62. TR-05 execution/serving evidence, serving-revision observability mechanism, and TR-11 deployed-SHA verification — first end-to-end instance (2026-08-26)
+
+**Governance note on scope, written first because it matters most:** this entry documents work spanning TR-05 (both informally-named "blockers," a distinction that exists only in commit-message prose, not in the Trust Register's own schema — see §62.6) and TR-11 (deployed-commit verification, continuing §55's thread). It does **not** touch, re-classify, or resolve §55's still-outstanding working-tree diff (`apply_price_adjustments.py`, `data_health.py`, `backfill_setup_log.py`, `boring_signals.py`, `main.py`'s held heartbeat extension, the CSV/PNG pair) — that diff is exactly as §55 left it, untouched by anything below.
+
+### 62.1 TR-05 execution-time gate — production execution reconfirmed
+
+Forensic read-only audit of the scheduled `daily_scraper.yml` run on 2026-08-25 (event=`schedule`, run id `32878324230`, `headSha=09cdfdb`, independently confirmed via the runner's own `git log -1` output, not just API metadata) established: `main.py --update` executed `run_freshness_gate()` against live production Postgres, computed a real (non-stubbed) verdict, logged `"Freshness gate passed -- state verified fresh as of 2026-08-25."`, and the success propagated correctly through `cmd_update()` → `main()` → workflow exit status (Health Check step ran next, job concluded `success`, no `sys.exit(1)`). Independently corroborated by `health_check.py`'s own separate E9 checks in the same run: `ALL PASS`. **This reconfirms TR-05's execution-time half for the successful path only** — the failure/fail-closed path remains untested by any production observation (no natural staleness occurred; none was manufactured, per this program's standing constraint).
+
+### 62.2 Serving-revision observability mechanism — designed, implemented, tested
+
+A new module `serving_revision.py` (pure stdlib, zero new dependencies — deliberately not GitPython, to avoid an unverifiable dependency on the `git` binary being present in the Streamlit Cloud runtime `PATH`) reads the running process's own `.git/HEAD` live, on every call, anchored to its own file location rather than process `cwd`. Never falls back to `origin/main`, a cached value, or a manually-set string — any read failure (missing `.git`, dangling ref, malformed content, permission error) returns `None`, surfaced on the Data Health page as an explicit `UNKNOWN — could not determine serving revision`, never a substitute. 12 unit tests (`tests/test_serving_revision.py`) cover symbolic/detached HEAD, packed-refs fallback, missing/malformed/dangling refs, no-cache-between-calls, and two safety-critical cases added after an independent audit pass: local `HEAD` is never replaced by `origin/main` when the two diverge (constructed test + a separate ad hoc scratch verification, both confirmed), and a read/permission error degrades to `None` rather than crashing or substituting a value. `dashboard.py` integration is 4 lines, confined to the Data Health page only (`elif cur == PAGES[14]:` block), does not touch `_pub_ok`/publication logic, and was independently re-verified via `AppTest` to render the exact SHA the helper function returns, not merely "something."
+
+Committed as `4919fac` on `feat/tr05-freshness-gates`, pushed, PR #19 opened, all 3 required CI checks passed (`Clean install on Python 3.11`, `Unit tests`, `App boot smoke test`), merged via `gh pr merge --merge` (no admin bypass) as **`d4e3e4c9bfe1c1c236d36000ae4e16af0a81e84d`** (parents: `09cdfdb` + `4919fac`). Independently re-inspected via `git show d4e3e4c9...:<file>` post-merge: `serving_revision.py`'s `get_serving_revision()`, `dashboard.py`'s import + Data Health render lines, and the pre-existing TR-05 serving-time gate (`data_health.publication_status()`, `_pub_ok`, `_render_not_verified_block`) all confirmed present at that exact commit, unmodified by this change.
+
+### 62.3 Fast-path deploy did not recycle the serving process — observed, not assumed
+
+Streamlit Cloud's webhook delivery to `share.streamlit.io/hook` fired and was accepted (HTTP 200) at `04:35:10.717Z`, ~3s after the merge (`04:35:08Z`). The app's own boot log, read via the authenticated management console, showed an in-place update cycle on the *same already-running container* (started `03:59:25`, confirmed by there being only one `"Starting up repository"` event prior to this): `[04:35:10] Pulling code changes from Github...` → `[04:35:12] Processing dependencies...` → `[04:35:14] Updated app!` — clean, no error, no traceback (confirmed by a programmatic text search of the full log for `traceback|modulenotfound|importerror`, zero hits).
+
+**Despite this, the live application did not expose the new Serving Revision block.** Confirmed three independent times, all authenticated: (1) a printout ~9 minutes post-merge, (2) a second printout ~38 minutes post-merge with the app's own cache manually cleared in between, (3) a fresh navigation performed directly by this program in the same authenticated session, well past both printouts. All three showed the pre-merge page layout with no Serving Revision block at all — not even the `UNKNOWN` fallback, meaning the new code path was not being reached, not merely failing at the read step.
+
+### 62.4 Authorized reboot — root cause confirmed, mechanism verified end-to-end
+
+User-authorized single reboot (clicked ~`05:56Z` via the app's own "Reboot" control in its authenticated options menu — `Delete`, `Analytics`, `Settings` present alongside it, neither touched). Log evidence, extracted programmatically (not manually transcribed) from the app's own log panel: a genuine fresh cycle — `[05:55:51] Starting up repository: 'kiran-trading-dashboard', branch: 'main', main module: 'dashboard.py'` → `Cloning repository...` → `Cloning into '/mount/src/kiran-trading-dashboard'...` → `Cloned repository!` — categorically different from §62.3's in-place update: a full container recreation, evidenced further by a complete from-scratch `apt-get install` of the chromium dependency tree (~300 packages), which only happens on a cold build. No error, no traceback.
+
+Post-rebuild, in the same authenticated session, navigated to Data Health and read the rendered DOM text programmatically (JavaScript text-node walk, not a screenshot transcription):
+
+```
+Serving Revision
+d4e3e4c9bfe1c1c236d36000ae4e16af0a81e84d
+```
+
+Programmatic string comparison against the expected SHA (`d4e3e4c9bfe1c1c236d36000ae4e16af0a81e84d`, established from `origin/main` HEAD post-merge via `gh api`): **exact 40-character match.** `git show` re-verification (§62.2's last paragraph) was re-confirmed against this exact SHA, not repeated from cache.
+
+**Operational finding, stated narrowly — an observation about this one application's behavior on this one occasion, not a general claim about the Streamlit Cloud platform:** for this application, an in-place update reporting `"Updated app!"` did not result in the running process serving the newly-pulled code; only a full reboot (`"Starting up repository..."` cycle) did. `"Updated app!"` alone must not be treated as equivalent to verified serving identity for this app going forward — a direct serving-revision read is the only verification this program now treats as authoritative, which is exactly what §62.2's mechanism exists to provide.
+
+### 62.5 What this proves for TR-11, and what it does not
+
+This is the first time this program has produced the full chain TR-11's acceptance criterion actually asks for: commit merged through normal PR/CI process → **the deployed commit SHA is independently verified (read back from the live deployment, not assumed)** → confirmed equal to the pushed SHA → confirmed, via `git show`, that the deployed commit's code matches what is cited as evidence. That specific clause of TR-11 is now demonstrated **for one commit, at one point in time (`d4e3e4c`, verified `~2026-08-26T06:01Z`)**.
+
+**This does not close TR-11.** §55's classification of the separate, still-uncommitted working-tree diff (predating this session, unrelated to TR-05/serving-revision) is untouched — those files remain exactly as uncommitted and unclassified-for-commit as §55 left them. TR-11's acceptance criterion also requires this verification to be a standing, repeatable property of the deployment pipeline, not a one-time manual proof obtained via an ad hoc reboot-and-check — that repeatability has not been established. TR-11 remains **RED**.
+
+### 62.6 Terminology correction — "TR-05 Blocker 2" was never a register row
+
+The original implementation commit (`ffdccf9`) coined "Blocker 1" (execution-time gate, `main.py`) and "Blocker 2" (serving-time gate, `dashboard.py`'s `_pub_ok`) as informal shorthand for TR-05's own two required halves ("machine-verified both at pipeline-execution time AND continuously at the publication/serving boundary"). Neither is a Trust Register row in its own right. A separate investigative thread (this session, prior to this entry) used "TR-05 Blocker 2" to mean "is the live Streamlit app running the merged commit containing that gate" — that question is TR-11's, not TR-05's, and is what §62.2-62.5 above actually resolve one instance of. **TR-05's own acceptance criterion — a forced-stale re-evaluation proving the serving-boundary gate actually degrades a signal to `NOT VERIFIED` at read time, not just at publish time — remains untested by any production observation and is unaffected by this entry.** It is tied to TR-05 Blocker 1's still-open failure-path item (§62.1), which this entry does not touch. **No TR-05 Blocker 2 register item is created or closed by this entry**, per explicit instruction.
+
+### 62.7 Status — governance state after this entry
+
+- **TR-05 execution-time gate (informal "Blocker 1"), production success path: CONFIRMED** (reconfirmed, §62.1) — unchanged from the prior finding.
+- **TR-05 execution-time gate, production failure path: UNRESOLVED** — untouched by this entry, not investigated, no failure manufactured.
+- **TR-05 serving-time gate (informal "Blocker 2") code presence: CONFIRMED** at `d4e3e4c` via `git show` (§62.2) — this was already established before this entry; unchanged.
+- **TR-05 formal register status: unchanged (🟡 AMBER)** — its own required proof (serving-boundary re-evaluation, forced-stale test) is not what this entry provides; see §62.6.
+- **Serving-revision observability mechanism: IMPLEMENTED, TESTED, DEPLOYED, and independently verified operating correctly in production** as of this entry.
+- **TR-11: one clause of its acceptance criterion (deployed-SHA independent verification) demonstrated for one commit; TR-11 overall remains RED** — §55's separate diff-classification thread is untouched; repeatability of today's verification is not established. See §62.5.
+- **TR-06: unaffected, unchanged from §61.13** (`Tier 1 CLOSED`, `Tier 2 IMPLEMENTED`, `overall NOT CLOSED`).
+- **Trust Register (`docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`): TR-11's Evidence column updated to cite this entry — local edit only, not committed, not pushed** (that document remains untracked by git entirely, unchanged from every prior session).
+- **This ledger entry itself: local edit only.** **Commit/push/PR: NOT AUTHORIZED for this entry or for §55's outstanding diff** unless separately authorized by the user.
+- **TR-05 overall: IMPLEMENTED — NOT CLOSED.**
+- **Kiran: NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 63. <span style="color:#eab308;">◐ TR-13 — Postgres `boring_signals` rebuilt via true chronological replay; non-determinism and PRL-absence fixed, decile-mismatch NOT fixed (2026-08-26)</span>
+
+Stage 1 of the cloud reliability program (`docs/KIRAN_CLOUD_RELIABILITY_AUDIT.md` §7). Executed, not merely designed — the repair §34.9/§35.8/§40.7 had already specified but left unauthorized. Explicitly user-authorized this session, with backup-before-write required and confirmed before any destructive step.
+
+### 63.1 What was done
+
+Live Postgres `boring_signals` (106 rows, last touched by the 2026-08-21 bulk load, §34/§35's subject) was backed up two independent ways before any write: a full CSV export (`scratch_boring_rebuild_20260826/boring_signals_pg_BEFORE_20260826_185347.csv`, 106 rows) and an in-database copy (`boring_signals_backup_20260826`, 106 rows, kept — not dropped, per this program's own backup-is-evidence convention). Both confirmed row-count-identical to the live table before proceeding. The rebuild script (`scratch_boring_rebuild_20260826/02_rebuild.py`, not committed — scratch, not production code) refused to run if the backup was missing or mismatched (checked programmatically, not just by convention).
+
+**Method:** true day-by-day chronological replay using only the real, unmodified production functions (`scan_boring_breakouts(date)`, `update_open_signal_statuses()`) — no change to `boring_signals.py` itself, per the task's explicit constraint. Floor date **2026-07-10** (SQLite's own real go-live/first-signal date, deliberately earlier than §35.3 Test 2's 2026-07-27 validation window, so every historical PRL signal date — 07-17, 08-03, 08-10, 08-13 — falls inside the replay, not just the incident date). Trading-date list derived the same way `_scan_boring_breakouts_pending_pg()` derives it internally (union of the eligible universe's own `prices_adjusted` dates), not a separately-invented calendar. **Ordering per date: `update_open_signal_statuses()` called BEFORE `scan_boring_breakouts(date)`** — the corrected ordering `tests/test_boring_signals_catchup_ordering_regression.py` (this session's other known defect, confirmed today, see that file's docstring) proves avoids the same-day resolve-and-requalify suppression bug, generalized here across the full 32-date window instead of just two dates. 32 trading dates replayed (2026-07-10 → 2026-08-25), ~9 minutes runtime (full per-symbol price history reload each call, no caching — matches real production cost, not an artifact of the rebuild approach).
+
+### 63.2 Verification — exact before/after, not "fixed" asserted
+
+**Row count:** 106 (before, bulk-loaded) → 375 (after, chronological replay).
+
+**PRL (the incident signal this whole port was built in response to):** 2 rows before (only the unrelated 08-03 date) → **22 rows after, covering 11 signal dates including all 4 of SQLite's real historical PRL dates (07-17, 08-03, 08-10, 08-13 — the incident date itself is now present)**, confirmed by direct query, not inferred. **CONFIRMED FIXED** for the specific defect named in the audit (PRL entirely absent from production).
+
+**The 10 previously-disagreeing `rs_60_decile` pairs (§35.1):** re-checked one by one against local SQLite after the rebuild — **0 of 10 now match (unchanged from before the rebuild).** This is the **expected, not a failure of this repair** — §35.1's root cause is a missing calendar day (2026-07-07) in Postgres's own `prices_adjusted` table, confirmed still present (zero rows for that date, re-checked this session, before the rebuild started) — a different table, a different defect, explicitly out of this task's authorized scope (rebuild `boring_signals` only). Rebuilding `boring_signals` against the same gapped source data reproduces the same RS_60 positional-lookback misalignment §35.1 already diagnosed. **Not fixed. Root cause unchanged. Flagged, not silently left unmentioned.**
+
+**Existence parity vs. SQLite (signal_date ≥ 2026-07-10):** 153 common, 30 SQLite-only, **222 Postgres-only** — a new, honestly-disclosed finding, not predicted at this magnitude by §33.4's "parity was never the design" framing. Root cause, reasoned from the mechanism, not guessed: SQLite's real dedup-gate state carries continuous memory from well before 2026-07-10 (its true multi-year organic history), so a position already open going into the floor date can suppress a new SQLite signal that the fresh-start Postgres replay — which has no memory of anything before its own floor — is free to fire instead. Every one of the 222 extra rows is a real, price-verified Donchian breakout (`_breakout_fires()` is a pure function of real price data — nothing here is fabricated), not a data-quality defect; the divergence is a direct, understood consequence of choosing a bounded floor rather than replaying SQLite's true full history. **Not the same defect class as §34.2's original non-deterministic bulk-load finding — that specific defect (existence depending on an undocumented, unrepeatable load procedure) is fixed; a different, bounded-floor-vs-continuous-history divergence remains, and is now a known, explained property of this design rather than an unexplained one.**
+
+**Determinism:** not re-proven by a second live rebuild this session (repeating a 9-minute full production wipe/rebuild solely to demonstrate reproducibility was judged not worth the additional live-table churn without separate authorization). Reasoned, not asserted blind: the replay is a pure function of real price history, a fixed floor date, and a fixed per-date processing order, using the same mechanism §35.3's Test 1/Test 2 already computationally proved deterministic given fixed inputs and fixed state — no new source of non-determinism was introduced by this session's driver script.
+
+### 63.3 UI change — staleness/freshness indicator (dashboard.py)
+
+Per §34.9 item 1 / §1 of the cloud audit's known-gap writeup: added a "Recorded" column to the Boring Breakouts table (`dashboard.py`, `_render_boring_breakouts_section()`), computed from the existing (already-stored, previously unsurfaced) `created_at` vs. `signal_date` gap — "Same day" / "N day(s) late." Directly answers the audit's own stated gap ("a user cannot visually distinguish 'fired today' from 'fired via a multi-day catch-up'"). Scoped to this one section only, per the task's explicit instruction — no other dashboard page touched. Not yet committed or deployed (see §63.5).
+
+### 63.4 Regression suite
+
+Full suite re-run after the rebuild: **182/182 passed**, including `tests/test_boring_signals_catchup_ordering_regression.py`'s 4 tests individually re-confirmed passing (both the defective-ordering reproduction and the corrected-ordering proof — this session's driver script uses the corrected ordering these tests validate). No other test file affected; `dashboard.py`'s change is additive-only (new column, no removed/renamed field).
+
+### 63.5 What this does and does NOT close
+
+**TR-13 moves from 🟡 AMBER (SQLite: B) / 🔴 RED (Postgres: C) to 🟡 AMBER (SQLite: B) / 🟡 AMBER (Postgres: B)** — one of TR-13's three amended sub-requirements is closed (§35.3's build non-determinism), two remain open (§35.1's completeness gap — the 07-07 date, unaddressed, out of scope this session; §35.5's 15-trading-day silent-loss window — untouched, no code in `boring_signals.py` was modified). **Postgres does NOT yet qualify for TR-13's "A / fully-proven" bar** — this repair closes the specific defect that made Postgres provably *worse* than SQLite (the missing incident signal, the unrepeatable build), it does not yet make Postgres *fully* trustworthy. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Not committed, not pushed, not deployed.** `dashboard.py`'s change exists only in the local working tree. The Postgres write itself is real and live (not reversible by a git operation — the pre-rebuild state lives only in the two backups named in §63.1). Committing/pushing the dashboard change was not authorized this session.
+
+**Backups retained, not cleaned up:** `boring_signals_backup_20260826` (live Postgres table) and the CSV export are both kept in place per this program's evidence-not-garbage convention — do not drop either without a separate, explicit decision.
+
+### 63.6 Follow-up, same day — the 222 Postgres-only orphans classified: most are dedup-gate conflicts, not clean new catches
+
+Read-only, no writes. For each of the 222 orphan rows (125 distinct symbol/date pairs after collapsing the two lookback rows per event), checked local SQLite's real organic history for whether that symbol had a position open (per SQLite's own status/resolution_date fields, evaluated as-of the orphan's fire date, not just today's current status) on the date the Postgres-only signal fired.
+
+**Result: 40 CLEAN (no local open position — a genuinely new signal the bounded floor caught that SQLite's continuous history missed or would also have caught), 85 CONFLICTED (68% of the 125 pairs) — local SQLite had an open position on that exact symbol at that time, meaning the strategy's own dedup rule would have blocked this signal from firing at all if it had known SQLite's pre-2026-07-10 history.** This is a materially worse split than "some divergence, mostly harmless" — the majority of the 222-row gap is this conflict class, not clean incremental coverage. Concrete examples (full 125-row detail in `scratch_boring_rebuild_20260826/orphan_conflict_report.csv`): `AKGL` fired on Postgres five separate times (08-11, 08-12, 08-13, 08-17, 08-18) while SQLite's real position from 08-10 was still open and unresolved until 08-19; `ASLCPS` fired eight separate times on Postgres (08-11 through 08-21) while SQLite's real 08-10 position was still `Pending` (unresolved even as of this entry).
+
+**Currently live risk: none found.** Cross-checked all 85 conflicted pairs against Postgres's current state — zero are presently `Pending`/`Executed` AND `strategy_confirmed=TRUE` (i.e., zero are showing as a live, actionable "Strategy Confirmed" signal on the dashboard today). All 85 are already resolved (`Stopped`) historical rows. **This is a data-integrity/historical-record concern, not an active trading-signal risk as of this entry.**
+
+**Not deleted, not hidden, not decided.** Per explicit instruction, no repair action was taken — this is a report-only follow-up pending a decision on what (if anything) to do about the 85 conflicted historical rows (leave as documented scar tissue, given they're all already-resolved history and not live; or a further, separately-authorized repair). TR-13's Postgres AMBER rating (§63.5) is not changed by this finding alone (it was already not claiming full parity with SQLite), but this is now the specific, quantified shape of that gap rather than an unquantified one.
+
+**Date of this entry: 2026-08-26 (same day as §63). Status: read-only follow-up, awaiting a decision on the 85 conflicted rows.**
+
+---
+
+## 64. <span style="color:#eab308;">◐ The 85 conflicted rows labeled in place (`dedup_conflict`), excluded from the performance panel — a real EV-sign-flip found and corrected on screen (2026-08-26)</span>
+
+Direct follow-up to §63.6, same day, explicitly authorized. No row deleted, no other field modified — a label added, plus the dashboard's own aggregate stats corrected to respect it.
+
+### 64.1 Schema change
+
+`dedup_conflict` (BOOLEAN NOT NULL DEFAULT FALSE on Postgres, INTEGER NOT NULL DEFAULT 0 on SQLite) added to both backends' `boring_signals` table — Postgres via a direct `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, SQLite via the same idempotent-migration pattern `ensure_boring_signals_table()` already uses for `breakout_level`/`current_stop`. Both `ensure_boring_signals_table()` and `ensure_boring_signals_table_pg()` updated so a fresh install gets the column by default going forward, not just via migration. `_normalize_boring_signals_rows()` updated to fold this into its existing bool→int normalization list alongside `liquidity_pass`/`strategy_confirmed`/`executed`, so `dashboard.py`'s shared rendering code needs no backend-specific branch.
+
+**SQLite gets the column but zero flagged rows** — this defect is specific to the Postgres rebuild's bounded floor (§63.6), not to SQLite's own continuous organic history; the column exists there purely so the one shared `dashboard.py` code path doesn't need a backend-specific branch.
+
+### 64.2 The write
+
+The 85 conflicted (symbol, signal_date) pairs from `orphan_conflict_report.csv` (§63.6) were set to `dedup_conflict = TRUE` on Postgres — **160 underlying rows** (most events fired both the N=20 and N=60 lookback, hence roughly double the pair count), confirmed by direct re-query after the write: `COUNT(*) WHERE dedup_conflict IS TRUE` = 160, `COUNT(DISTINCT (symbol, signal_date)) WHERE dedup_conflict IS TRUE` = 85, matching exactly. The write script refused to run without first confirming the §63 backup table (`boring_signals_backup_20260826`) was present — same discipline as §63's rebuild.
+
+### 64.3 Dashboard changes
+
+`dashboard.py`'s `_render_boring_breakouts_section()`: both the main open-positions table and the "Resolved (Stopped)" history table now show a "Data Flag" column ("⚠️ Known conflict" or blank) — rows are **not hidden**, per instruction; a flagged row remains fully visible and (in the main table) still has a working Mark Executed action, since hiding it would be a second, different kind of information loss.
+
+`_render_boring_performance()` (the win-rate/EV/resolved-trade-count panel): now excludes `dedup_conflict == 1` rows before computing anything, applied before the existing `strategy_confirmed` filter and regardless of the "Strategy Confirmed only" toggle state — a conflicted row is never a valid strategy outcome under any view of this page, not just the confirmed-only one.
+
+### 64.4 The number that was wrong on screen — exact before/after, not asserted
+
+Computed directly from live Postgres data, replicating `_render_boring_performance()`'s exact logic, both before the exclusion existed and after:
+
+| View | Metric | Before (85 conflicted rows included) | After (excluded) |
+|---|---|---|---|
+| Strategy Confirmed (default toggle state) | Resolved trades | 50 | 23 |
+| Strategy Confirmed | Win rate | 36.0% | 34.8% |
+| Strategy Confirmed | **EV/trade (gross)** | **+1.21%** | **-0.17%** |
+| Strategy Confirmed | EV/trade (net of 0.845% round-trip cost) | +0.36% | -1.01% |
+| All fired signals | Resolved trades | 211 | 127 |
+| All fired signals | Win rate | 35.5% | 29.1% |
+| All fired signals | EV/trade (gross) | +4.74% | +1.53% |
+
+**The headline number under the default view flips sign** — the performance panel was showing a positive expected value per trade (+1.21% gross, +0.36% net) that was, in fact, negative (-0.17% gross, -1.01% net) once the 85 known-invalid historical rows are correctly excluded. Win rate and "all fired signals" EV both move materially too, in the same direction (worse), though without a sign flip. **No live trade was affected** — separately re-confirmed this session that zero of the 85 conflicted rows are currently `Pending`/`Executed` + `strategy_confirmed=TRUE` (all are already-resolved `Stopped` history) — but this was a real, live, silently-wrong number on the actual dashboard's performance panel until this fix, not a hypothetical.
+
+### 64.5 Regression suite
+
+Full suite re-run after both the schema change and the dashboard change: **182/182 passed.** No test file needed updating — the change is additive (new column, new excluded-rows filter) and no existing test asserted on the pre-fix EV numbers.
+
+### 64.6 What this does and does NOT close
+
+**TR-13's status color is UNCHANGED** — Postgres remains 🟡 AMBER (B), not upgraded to A. This fix closes a real, distinct risk (a silently-overstated aggregate performance number, now corrected and now structurally protected against recurring for these 85 rows), but it labels the underlying divergence rather than resolving it — the 85 rows remain in the table, still fired, still real database rows, just correctly marked as known-invalid. The bounded-floor-vs-continuous-history root cause (§63.6) that produced them is unchanged and would produce the same class of row again in any future clean-slate rebuild from a bounded floor. **Not yet decided:** whether these 85 rows should eventually be reconciled against a longer replay floor, or permanently retained as labeled scar tissue — left open, per instruction, not decided in this entry.
+
+**Kiran remains NOT VERIFIED — DO NOT TRADE.** Nothing committed or pushed — `dashboard.py` and `boring_signals.py`'s changes exist only in the local working tree; the Postgres schema/data changes are real and live.
+
+**Date of this entry: 2026-08-26. Status: executed, verified, documented. Awaiting a separate decision on the 85 labeled rows' long-term disposition.**
+
+---
+
+## 65. <span style="color:#eab308;">◐ The §51 ghost-date corruption traced to a second, worse consequence — real resolved trades (including a +111% winner) silently absent from Postgres `boring_signals`; full extent scoped, no repair performed (2026-08-26)</span>
+
+**READ-ONLY INVESTIGATION for §65.2-§65.5. No Postgres write, no schema change, no SQLite write, no production code change in this entry** — the only write in this session's work is documentary (this entry, plus the RESEARCH_LOG.md row it is cross-referenced from). Independent verification against local SQLite, performed separately from — and after — §63/§64's rebuild-and-label work, found a new failure mode of the *same* already-documented root cause.
+
+### 65.1 What was found, and how it was verified (not assumed from the task description)
+
+A direct symbol-level check of Postgres `boring_signals` for `DBCI`/`PICT`/`GHNI`/`TPLI` found **zero rows with `signal_date = 2026-07-10`** for any of the four, while local SQLite's `boring_signals` has a real, resolved, `strategy_confirmed = 1` row for all four on that exact date. Per this project's standing "verify against real documents/data, don't guess" rule, each claim was independently re-derived rather than taken on faith from the task description:
+
+- **DBCI's "+111% winner" claim — CONFIRMED, not assumed.** SQLite's row: `signal_date=2026-07-10, trigger_price=10.55, status=Stopped, resolution_date=2026-07-23, current_stop=22.26`. Per `dashboard.py`'s own documented convention (§64, `_render_boring_performance()`: a resolved trade's return is `(current_stop - trigger_price) / trigger_price`), that is `(22.26-10.55)/10.55 = +111.09%`. Cross-checked against DBCI's real local `prices_adjusted` path 07-10→07-23: price ran 10.55→24.88 without ever touching the original fixed stop (9.917), consistent with a trailing-stop exit at 22.26, not a loss — the row is genuine, not a data artifact. This is the single largest winning trade in the `boring_signals` strategy's history to date, by return, of any resolved trade in either backend's table.
+- **The mechanism — CONFIRMED and directly traced to §51's own "Incident 2," not a new bug.** Live Postgres `prices_adjusted` for all four symbols on 2026-07-10 is byte-identical (open/high/low/close/volume) to their own 2026-07-09 row, while raw `prices` (unaffected) holds the correct 07-10 values — e.g. DBCI: `prices_adjusted` 07-09 and 07-10 both read `open=9.21, high=9.55, low=9.21, close=9.55, volume=1711821`, while raw `prices` 07-10 correctly reads `open=9.98, high=10.55, low=9.97, close=10.55, volume=1580564` (the same value SQLite's clean history shows). This is exactly §51.3/§51.4's already-documented "Incident 2" ghost-date duplicate-pair signature for the 2026-07-09/07-10 pair (`GHNI` was one of the three symbols §51.3 originally spot-checked for this same pattern) — **not a new corruption, a previously-unexamined downstream consequence of it.** §51 stopped at the `prices_adjusted` completeness question; this entry follows the same corrupted rows through to `boring_signals`' breakout detection.
+- **Why it suppresses the signal, not just distorts it:** `scan_boring_breakouts()`'s Donchian breakout check compares each date's high against the prior N-day range. With 07-10's real high (10.55, a genuine breakout above the `9.6455` breakout level) silently replaced by 07-09's stale, sub-breakout high (9.55), the scan sees no breakout on the real trigger day at all — the signal isn't wrong, it's **entirely absent**, with no flag, no conflict row, nothing to distinguish it from "no breakout occurred." Postgres's replay (§63) later picks up each of these four symbols' *next* real breakout, days later at a materially higher price (e.g. DBCI on 07-17 at 16.46 instead of 07-10 at 10.55) — already correctly labeled `dedup_conflict = TRUE` in §63.6/§64's classification, since SQLite's real 07-10 position was still open when that later Postgres signal fired.
+
+### 65.2 Full extent of the ghost-date price corruption — systematic scan, not spot-checks
+
+A full-history (2005–2026, all symbols) scan of Postgres `prices_adjusted` for the duplicate-adjacent-row signature (a symbol's row exactly equal, on every OHLCV field, to that same symbol's immediately preceding *or* following `prices_adjusted` row, with `volume > 0` to exclude legitimate halted/no-trade days, cross-checked against raw `prices` to exclude genuine no-movement days where both tables agree) found the corruption is **bounded to exactly the same four dates §51 already named — no additional corrupted date exists anywhere in the full ~20-year history:**
+
+| Date | Symbols affected | Mechanism (per §51.4) |
+|---|---|---|
+| 2026-07-08 | 585 | Incident 1 — premature/stale manual scrape (14:52 PKT), not a duplicate-row signature; value differs from both neighbors |
+| 2026-07-09 | 611 | Incident 2 — ghost date; `prices_adjusted` row is a byte-identical copy of 07-10; zero rows in raw `prices` |
+| 2026-07-10 | 597 | Incident 2 (same pair) — `prices_adjusted` row is a byte-identical copy of 07-09; raw `prices` is correct |
+| 2026-07-15 | 621 | Incident 2, second instance — `prices_adjusted` row is a byte-identical copy of 07-16; zero rows in raw `prices` |
+
+**638 distinct symbols affected across all four dates combined** (union, not sum — most symbols recur across more than one of the four dates). Scripts: `scratch_ghost_date_scope_20260826/01_scan_full_corruption.py`, `02_scan_bidirectional.py` (not committed — scratch, read-only). **No repair performed or proposed for immediate execution** — same recommendation as §51.12, unchanged: any future fix should be scoped to exactly these four dates, backed up first, per this program's standard discipline.
+
+### 65.3 `boring_signals` impact — full count, not just the four originally spotted
+
+Only 2026-07-10 and 2026-07-15 fall inside `boring_signals`' own floor window (2026-07-10 onward, both backends per §63.1) — 07-08 and 07-09 predate any possible `signal_date` and cannot themselves produce a missing signal row (though 07-08/07-09's corrupted prices are part of the lookback window feeding 07-10's own breakout computation — not separately quantified here, out of this entry's scope).
+
+Cross-referencing SQLite's real `boring_signals` history against the confirmed-corrupted symbol/date list (`scratch_ghost_date_scope_20260826/03_boring_signals_impact.py`): **18 distinct (symbol, signal_date) pairs exist in SQLite for the two in-scope corrupted dates. 14 of the 18 are entirely absent from Postgres — every one of the 14 traces to this exact corruption (0 are missing for any other/unexplained reason).** Of the 14:
+
+- **4 are `strategy_confirmed = 1`** (the originally-spotted set): `DBCI` (07-10, +111.0%), `TPLI` (07-10, +32.4%), `GHNI` (07-10, −2.3%), `PICT` (07-10, −2.5%).
+- **10 are not `strategy_confirmed`** (would only appear in the "All fired signals" view, not the default "Strategy Confirmed" panel): `OTSU`, `LPL`, `SHNI`, `SNBL`, `EMCO`, `CNERGY`, `LOTCHEM`, `SBL`, `OML` (all 07-10), `CPPL` (07-15).
+
+Full per-row detail: `scratch_ghost_date_scope_20260826/boring_signals_impact.csv`.
+
+### 65.4 Win-rate/EV recomputed a third way — the number moves again, materially
+
+Replicating `dashboard.py`'s `_render_boring_performance()` exactly (N=20/N=60 dedup collapse, `current_stop`-based return, `dedup_conflict` exclusion — `scratch_ghost_date_scope_20260826/04_recompute_ev_third_column.py`), adding the 4 confirmed-strategy missing trades back to the already-dedup-conflict-corrected set:
+
+| View | Metric | A) Before any fix (§64) | B) After dedup-conflict fix (§64, same day) | C) After dedup-conflict fix + corruption fix (this entry) |
+|---|---|---|---|---|
+| Strategy Confirmed | Resolved trades | 50 | 23 | **27** |
+| Strategy Confirmed | Win rate | 36.0% | 34.8% | **37.0%** |
+| Strategy Confirmed | EV/trade (gross) | +1.21% | **−0.17%** | **+4.99%** |
+| Strategy Confirmed | EV/trade (net of cost) | +0.36% | −1.01% | **+4.15%** |
+| All fired signals | Resolved trades | 211 | 127 | 141 |
+| All fired signals | EV/trade (gross) | +4.74% | +1.53% | +2.23% |
+
+**The Strategy-Confirmed headline flips sign a second time, and by a larger margin than the first correction.** The same-day −0.17%/−1.01% figure (§64) was itself correct given what was known at the time — the 85 dedup-conflict rows genuinely needed excluding — but it was computed against a `boring_signals` table that was, independently, still missing 4 real confirmed trades for an unrelated reason (the price corruption, not the dedup-conflict issue). Once both corrections are applied together, the number is **positive again, and larger in magnitude than the original overstated +1.21%/+0.36% figure this whole repair chain started from.**
+
+**This is heavily tail-dependent on one trade, disclosed plainly, not glossed over:** DBCI's +111.0% alone accounts for most of the swing — excluding DBCI from the 27-trade set, EV/trade (gross) is **+1.22%** (n=25). Even under this more conservative ex-outlier view, **the number is still a flip from negative to positive**, just a smaller one. **Per this task's explicit instruction: the true corrected EV is not "basically settled" relative to the −0.17% figure — it is a second material change, in the same direction (better), that only this same-day investigation surfaced.** The 141-trade "All fired signals" view moves the same direction with a much larger, less outlier-sensitive sample (+1.53% → +2.23%), which is corroborating evidence that this is a real correction, not purely a DBCI artifact.
+
+### 65.5 What this does and does NOT close
+
+**TR-13's status is UNCHANGED by this entry** — Postgres `boring_signals` remains 🟡 AMBER (B), same as §63.5/§64.6 left it. This entry does not repair anything (no row added, no column changed, no write performed) — it is a **scoping** finding, per explicit instruction. It sharpens, rather than resolves, the open question §63.6/§64.6 already flagged (whether/how to reconcile the bounded-floor divergence) — this entry shows that divergence's downstream effect on the performance panel is larger and more volatile than the same-day §64 fix alone accounted for, since a *third*, independent correction (this one) was still needed on the same day.
+
+**Not yet decided, explicitly out of this entry's scope, per instruction:** whether to backfill the 14 missing corrupted-date trades into Postgres `boring_signals` (would require either a targeted re-scan using corrected 07-10/07-15 price inputs, or a direct copy from SQLite with the same backup-first discipline §63/§64 used); whether to repair the underlying `prices_adjusted` corruption itself for the four named dates (§51.12's recommendation, still unexecuted); and whether the broader structural gap (`prices_adjusted` has no reconciliation path against any correction to `prices` — §51.4's closing finding) should be addressed before or independently of either fix above.
+
+**Kiran remains NOT VERIFIED — DO NOT TRADE.** This entry adds evidence that the live-displayed performance numbers have moved materially, twice, on the same day, from three successive corrections to the same underlying table — which is itself an argument for TR-08's publication contract (a viewer should never see an unverified, still-changing number presented as a settled one) rather than evidence that the table is now trustworthy.
+
+**Date of this entry: 2026-08-26. Status: read-only scoping complete, documented. No repair authorized or performed.**
+
+---
+
+## 65a. Independent audit follow-up on §65 — lookback-window contamination traced through the real production formulas; detection-methodology gap found and closed (2026-08-26)
+
+**READ-ONLY. No Postgres write, no schema change, no SQLite write, no production code change.** Two follow-up questions from independent review of §65, answered by direct computation against `boring_signals.py`'s actual, real functions — not by reasoning about them in the abstract.
+
+### 65a.1 Question 1 — does lookback-window contamination reach signals fired after the corrupted dates?
+
+**Yes, mechanically, for most of them — but it changes almost nothing that currently exists in the table.** Read `boring_signals.py` directly: `_breakout_fires()`'s `breakout_level = MAX(high[t-n:t]) * 1.01` indexes by **trading-row position** in that symbol's own `prices_adjusted` series, not by calendar date — so any signal fired within `n` trading rows of a corrupted date, for a symbol that was itself corrupted on that date, has the corrupted row inside its window. Separately, `_rs60_and_liquidity_asof()`'s RS_60 is a **single point-in-time comparison** (close at `t-1` vs. close 60 rows earlier), not a rolling window — it's only touched if one of those two exact points lands on a corrupted date.
+
+Computed directly, not estimated (`scratch_ghost_date_scope_20260826/05_lookback_contamination.py`, `06_rs60_decile_recompute_0713.py`):
+
+- **Breakout-level dimension:** of 375 live Postgres `boring_signals` rows, 311 have a corrupted date somewhere inside their `n`-row window. Recomputing `breakout_level` with SQLite's true (uncorrupted) high values substituted in: **only 51 rows' `breakout_level` numerically changes** (the corrupted date's high usually isn't the window's max — a later, higher high dominates). Of those 51, **20 would not have fired at all under true price data** — the stored close never actually cleared the corrected threshold. **Of those 20 spurious rows, exactly 1 is `strategy_confirmed = TRUE`: `PICT` on 2026-07-13** — and it is *already* excluded from the performance panel, but for an unrelated, coincidentally-also-correct reason (§63.6/§64 already flagged it `dedup_conflict = TRUE`, because SQLite had an open position from the real 07-10 signal at the time). The other 19 spurious rows are not `strategy_confirmed`, but 10 of them (`EPCL`, `GAL`, `GOC`, `JSBL`, `KOHE`, `NRL`, `PCAL`, `PKGI`, `PRL`, `SBL` — one each, distinct symbol/date events) are **not** `dedup_conflict`-flagged and are still silently counted in the "All fired signals" panel (the 127→141-trade view §65.4 reported) — a previously-undisclosed contamination of that broader number, separate from the missing-trade question §65 was about. All 20 are `status = Stopped`, none `Pending`/`Executed` — **no live/actionable risk today**, same finding-shape as §63.6.
+- **RS_60/decile dimension:** every point-contamination instance lands on the same single date, **2026-07-13** (the first trading day after the corrupted 07-10, so `t-1 = 07-10` for every symbol scanned that day). Recomputed the **entire 305-symbol eligible universe's** RS_60 and cross-sectional decile for 07-13 with corrected prices substituted (decile is a `pd.qcut` rank across the whole universe, not a per-symbol threshold — checking one symbol in isolation would have been methodologically wrong). Result: **`DBCI`, `GHNI`, `PICT`, `TPLI` (the four already-known `strategy_confirmed=TRUE` rows on 07-13) all stay in decile 9 under both as-stored and corrected data — their RS_60 was actually *understated* by the corruption, not overstated, so correcting it only reinforces the confirmation, no flip.** Four *other* symbols (`FML`, `SBL` — decile 8→9; `PIL`, `PINL` — decile 9→8) do cross the top-decile boundary under corrected data, but **none of the four ever fired an actual breakout on 07-13** (confirmed by direct query — zero `boring_signals` rows exist for any of them on that date), so this cross-sectional shift has **zero effect on any row that currently exists in the table.**
+
+**Direct answer: no currently-existing `strategy_confirmed` row's status is at risk of flipping.** The one already-known contamination case with `strategy_confirmed=TRUE` (`PICT` 07-13) is already excluded from the performance panel, just for a different reason than "it's a lookback-contaminated spurious signal." The practical, previously-undisclosed finding is narrower than the question anticipated: **the "All fired signals" broader view (not the Strategy Confirmed default view) is contaminated by ~10 further spurious rows** not accounted for in §65.4's reported 127→141 figures — those figures should be treated as an upper bound on trade count, not exact, until those 10 rows are also excluded. This does not change §65.4's Strategy-Confirmed EV numbers (−0.17% / +4.99% / +1.22% ex-DBCI), which were never contaminated by this mechanism.
+
+### 65a.2 Question 2 — what did the "no other corrupted dates" claim actually check, and how much confidence does it deserve?
+
+**Answered honestly, including a real gap that was found and then closed in this same follow-up, not glossed over.**
+
+§65.2's full-history scan used **one specific signature**: a symbol's `prices_adjusted` row exactly byte-identical (all of open/high/low/close/volume) to that same symbol's immediately adjacent row, with `volume > 0`, cross-checked against raw `prices` to exclude genuine no-movement days. This is the **exact, literal mechanism of Incident 2** (§51.4's ghost-date duplicate-pair bug) — it was run with no date filter, genuinely across the full ~20-year history, and correctly re-found only 07-09/07-10/07-15 (the three Incident-2 dates), nothing else, anywhere.
+
+**What that scan does NOT catch, and was not claimed to catch: Incident 1's signature** (07-08 — a stale, premature scrape; the value doesn't match either neighbor, it's just wrong). §65.2's coverage of 07-08 came from a **separate, second query** (a blunt `prices_adjusted != prices` diff) — and on honest re-examination of that script, **that second query was restricted to `date >= 2026-01-01`, not the full history**, which is a real gap in the original "no other corrupted dates" claim: the ghost-date-pair signature had full-history confidence, the stale-scrape signature did not.
+
+**This gap is closed in this follow-up, not just disclosed.** Re-ran the diff-count query with no date restriction at all (`scratch_ghost_date_scope_20260826/07_full_history_spike_check.py`) — full 2005–2026 history, every symbol, every date. Result: **455 total dates show any `prices`/`prices_adjusted` divergence, and they separate cleanly into two populations with a hard gap between them** — 224 dates with 1–4 symbols differing and 229 dates with 5–20 symbols differing (a long-running, low-count baseline, consistent with genuine per-symbol corporate-action rescaling — individual companies' splits/bonuses happening at different times over 20 years, not a market-wide event), and exactly **two dates with 50+ symbols differing: 2026-07-08 (585) and 2026-07-10 (597) — zero dates fall in between (the 21–50 bucket is empty).** These are the same two dates already named. **No new spike-signature date exists anywhere in the full history.**
+
+**Confidence, stated precisely rather than asserted:** full-history, two signatures (exact-duplicate-of-neighbor; and disagrees-from-raw-prices at spike magnitude), both now checked with no date restriction, together account for all 4 known dates and find nothing else — **high confidence** for both the specific bug classes seen so far. **Correction, see §65b: the phrase "two independent signatures... both agree" above is imprecise for 2026-07-10 specifically** — that date triggers both signatures because it is mechanically one corrupted row-set observed two ways (a copy of 07-09 that also, as a direct consequence, disagrees with real raw prices), not two separately-corroborating pieces of evidence. §65b restates this precisely, date by date (Incident 1's stale-scrape shape, Incident 2's ghost-duplicate shape). **Explicitly not verified, and not claimed:** whether some *third*, structurally different corruption shape could exist in the 229-date low-count baseline, hiding among legitimate corporate-action adjustments — those 229 dates were not individually vetted against `corporate_action_suspects`/CSV-confirmed events (TR-03's own independent-oracle standard), only judged by their *aggregate shape* (small, stable count over time) being inconsistent with how the two known incidents actually manifested (universe-wide scraper-level events producing large one-day spikes, not a slow trickle). This is a reasoned inference from how the known bug classes behave, not a proof that no other bug class exists.
+
+### 65a.3 Status
+
+Both follow-up questions answered by direct computation against the real production code and full, unrestricted-date-range queries — no estimate, no analogy-only reasoning. No repair performed. TR-13 status unchanged (still AMBER, Postgres). Scripts: `scratch_ghost_date_scope_20260826/05_lookback_contamination.py`, `06_rs60_decile_recompute_0713.py`, `07_full_history_spike_check.py` (not committed — scratch, read-only).
+
+**Date of this entry: 2026-08-26. Status: read-only follow-up complete, documented. No repair authorized or performed.**
+
+---
+
+## 65b. Second independent-audit follow-up on §65a — precise per-date signature accounting; a self-correction (2026-08-26)
+
+**READ-ONLY. No Postgres write, no schema change, no SQLite write, no production code change.** Two further follow-up questions, both answered by re-checking the actual saved scan output rather than re-describing §65a's prose from memory.
+
+### 65b.1 Which signature caught which of the 4 known dates — exact, not summarized
+
+Re-verified directly against the two scripts' saved output (`scratch_ghost_date_scope_20260826/confirmed_corrupted_bidirectional.csv` for the copy signature, and a fresh run of `07_full_history_spike_check.py`'s query for the stale/diff signature):
+
+| Date | Copy signature (`02_scan_bidirectional.py`, full 2005–2026, no date filter) | Stale/diff signature (`07_full_history_spike_check.py`, full 2005–2026, no date filter) |
+|---|---|---|
+| 2026-07-08 | **Not flagged** — not a duplicate of either neighbor | **Flagged — 585 symbols** |
+| 2026-07-09 | **Flagged — 611 symbols** (duplicate of 07-10) | **Cannot be flagged, structurally** — see below |
+| 2026-07-10 | **Flagged — 597 symbols** (duplicate of 07-09) | **Flagged — 597 symbols** |
+| 2026-07-15 | **Flagged — 621 symbols** (duplicate of 07-16) | **Cannot be flagged, structurally** — see below |
+
+**Answer to "which of (a)/(b) is true": (a).** All four original dates are accounted for by a genuine full-20-year sweep, using two signatures between them — but the reason 07-09/07-15 only show up in one of the two is not a gap in that check's date coverage, it's a structural property of what that check's query can see at all, worth stating precisely rather than glossing over:
+
+- The **copy signature**'s detection query runs entirely against `prices_adjusted`'s own internal shape (a symbol's row compared to that same symbol's immediately adjacent row in `prices_adjusted`) — it does not require a `prices` row to exist at all for the date being flagged, and it was run with no date restriction from the very first version of this check (§65.2). This is what caught 07-09 and 07-15.
+- The **stale/diff signature**'s detection query is `prices_adjusted JOIN prices ON symbol+date` — an **inner join**. §51.2 (and re-confirmed in §65.2) already established that raw `prices` has **zero rows at all** for 2026-07-09 and 2026-07-15 (that is the other half of Incident 2's signature — the real date's row was deleted from `prices` by the ghost-cleanup bug, while `prices_adjusted`, which never gets cleaned up, kept a stale copy). An inner join against a table with zero rows for that date **cannot** produce output for that date, regardless of what date range the query covers — this is not "not yet checked over full history," it is "structurally incapable of ever seeing this date," a different and stronger statement. Extending this query's date range (already done, §65.2) does not and could not change this.
+
+**So: 07-09 and 07-15 were never supposed to be caught by the stale/diff check, by construction — they are fully and exclusively accounted for by the copy check, which has run full-history since it was first written. Between the two signatures, all 4 dates have genuine full-20-year-history evidence.**
+
+### 65b.2 Does 2026-07-10 trigger both signatures independently, or is this one corruption seen twice — self-correction of §65a's own wording
+
+**One corruption event, observed through two different queries — not two independent confirmations.** 07-10's `prices_adjusted` row is a byte-for-byte copy of 07-09's row (the copy signature, by definition). Because raw `prices` **does** have a real, correct row for 07-10 (unlike 07-09/07-15, whose real rows were deleted — see §65b.1), that same corrupted `prices_adjusted` row necessarily also disagrees with `prices` on 07-10, which is exactly what the stale/diff signature measures. **Both checks flag exactly the same 597 symbols on 07-10** — not a coincidence, not two separate populations that happen to overlap: it is mechanically the same set of corrupted rows, described by two different diagnostic questions ("does this look like a copy of a neighbor?" and "does this disagree with the authoritative raw source?") that are logically entailed by each other once you know 07-10's `prices_adjusted` row is a stale copy and `prices`' own 07-10 row is intact.
+
+**Correcting §65a's own phrasing:** §65a.2 described the two signatures as "independent... both agree on the same 4 dates," which reads as if each date received two separately-corroborating pieces of evidence. That is accurate for **coverage** (between the two checks, all 4 dates are seen, full history) but not accurate for **07-10 specifically** as a claim of doubled confirmation — 07-10 has exactly one underlying fact (a stale copy) that happens to trip two different alarms, not two facts. 07-08 has genuinely one signature only (stale/diff); 07-09/07-15 have genuinely one signature only (copy). No date in this set actually has two *independent* lines of evidence in the sense of two separate mechanisms each independently discovering the same true fact — the two mechanisms are complementary (they cover different corruption shapes) rather than corroborating (confirming each other on the same shape). This is a correction to this program's own prior wording, not a new finding about the data — the underlying facts (4 dates, 638 symbols, both incidents already described in §51.4) are unchanged.
+
+### 65b.3 Trust Register updated — the background-noise assumption is now a visible open item, not a closed one by omission
+
+Per explicit instruction, added directly to `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`'s **TR-03** row (the row governing "`prices_adjusted` matches its full authoritative derivation... on every historical date" — the most directly on-topic row, since this is precisely an unresolved historical-completeness question), not a new row: a `[OPEN ITEM ADDED 2026-08-26, ledger §65a.2]` note stating explicitly that the "no other corrupted dates" finding is high-confidence for the two specific signatures actually observed, and is **not** a proven statement covering the ~450 background-noise dates (1–20 symbols/day, judged likely-legitimate by aggregate shape, not individually checked against `corporate_action_suspects`/CSV-confirmed events per TR-03's own independent-oracle standard). This is now visible in the register itself, not only in this ledger — the register is the document the project owner and Claude Chat are expected to check for open-vs-closed status, so the caveat needed to live there, not only in a prose ledger entry that could be missed.
+
+### 65b.4 Status
+
+Both follow-up questions answered against re-verified saved data, not restated from memory. One self-correction made to §65a's own wording (§65b.2) — the underlying facts are unchanged, only the precision of the "independent" claim. Trust Register amended (TR-03). No repair performed. TR-13 status unchanged (still AMBER, Postgres).
+
+**Date of this entry: 2026-08-26. Status: read-only follow-up complete, documented. No repair authorized or performed.**
+
+---
+
+## 65c. Third independent-audit follow-up — 2026-07-15's exact copy source identified and checked directly, not inferred by analogy to 07-09 (2026-08-26)
+
+**READ-ONLY. No Postgres write, no schema change, no SQLite write, no production code change.** One further follow-up question: §65a.2's prose applied the "structurally invisible by construction" explanation (originally stated for 07-09) to 07-15 without independently naming what 07-15 is a copy of or checking that copy-source's own raw-data status. §65b.1 had already established the *what*-it's-a-copy-of fact (07-16, from the saved `confirmed_corrupted_bidirectional.csv` output) but did not check 07-16's own raw-data status. Checked directly this entry, against live Postgres (`scratch_ghost_date_scope_20260826/08_0715_source_verification.py`, read-only, no writes).
+
+### 65c.1 Direct findings
+
+- **`prices_adjusted` row count for 2026-07-15: 621. Raw `prices` row count for 2026-07-15: 0.** Confirms §51.2/§65b.1's prior finding again, directly: 07-15's own raw source row is completely absent, not merely present-and-wrong.
+- **All 621 of 07-15's `prices_adjusted` rows are byte-for-byte identical (open/high/low/close/volume) to that same symbol's 2026-07-16 `prices_adjusted` row.** This is a full re-confirmation of the copy relationship at 100% (621/621), not a sample.
+- **2026-07-16 itself: `prices_adjusted` row count 621, raw `prices` row count 621 — full coverage, nothing missing.** Directly joined `prices_adjusted` against `prices` for 07-16: **zero rows disagree.** 07-16 is not corrupted by either signature — it is the clean, correct date whose values ended up duplicated backward into 07-15's empty slot.
+
+### 65c.2 Answering the actual question posed: does this change the "structurally invisible" classification?
+
+**No — 07-15 remains genuinely structurally invisible to the "disagrees with source" check, for the same underlying reason as 07-09, but the previously-stated explanation named the wrong mechanism and should be corrected, not just extended.**
+
+The prior wording ("extended the same explanation... without giving 07-15 its own mechanism") left open the possibility that the relevant fact was *which date 07-15 copies* — i.e., that if the copy-source's raw data were intact, the check "should have" caught the discrepancy. Checked directly: **07-16's raw data is fully intact (621/621, zero disagreement) — yet this does not create a blind spot**, because of how the check is actually built (confirmed by re-reading `02_scan_bidirectional.py`'s and `07_full_history_spike_check.py`'s SQL, both already cited in §65b.1): the "disagrees with source" check is a **same-date inner join** — `prices_adjusted[d] JOIN prices[d]` on identical `(symbol, date)`. It never compares a row's content against any date other than its own. Whether the *content* happens to match some other date (07-16) is invisible to that query entirely — it only ever asks "does this date's row match this same date's raw row," and for `date = '2026-07-15'`, the right-hand side of that join has zero rows to compare against, full stop.
+
+**The determinative fact is 07-15's own raw-data status (missing), not 07-16's.** This is exactly parallel to 07-09 (also missing its own raw row) and exactly the contrast that made 07-10 catchable (07-10's *own* raw row is intact and disagrees with the stale copy sitting in `prices_adjusted`, which is precisely why the diff signature flagged 597 symbols on 07-10 in §65b.1's table). 07-16 plays no analogous role to 07-10 here — it is not itself corrupted at all; it is simply the true, undamaged date whose values leaked backward into the neighboring empty slot.
+
+**So, stated against the two branches the follow-up question posed:** this is the **first branch** (structurally invisible, same as 07-09) — but arrived at with a corrected, verified mechanism, not by loose analogy. 07-15 is *not* a copy of 07-09 (that was never stated as fact, only left ambiguous by omission) — it is a copy of 07-16. What makes both 07-09 and 07-15 invisible to the same-date diff check is not "being a copy of a date with missing raw data" — it is simply, individually, **each of their own dates having zero raw rows**, which is a fact about 07-09 and about 07-15 directly, unrelated to what either one's `prices_adjusted` content happens to equal.
+
+**No new blind spot found.** The two-signature detection system's coverage claim (§65a.2/§65b.1: full 20-year history, both signatures, all 4 known dates accounted for) stands as previously stated. This entry closes the specific ambiguity in how that coverage claim was worded for 07-15, not a gap in the coverage itself.
+
+### 65c.3 Status
+
+Question answered by direct, fresh computation against live Postgres (row counts, full byte-identical join, full disagreement join for 07-16) — not restated from memory or extended by analogy. No repair performed, no write of any kind. TR-13 status unchanged (still AMBER, Postgres). TR-03's existing `[OPEN ITEM ADDED 2026-08-26, ledger §65a.2]` note is unaffected — this entry does not change the ~450 background-noise-date caveat, only the 4 known-date mechanism explanation. Script: `scratch_ghost_date_scope_20260826/08_0715_source_verification.py` (not committed — scratch, read-only).
+
+**Date of this entry: 2026-08-26. Status: read-only follow-up complete, documented. No repair authorized or performed.** *(Superseded in part by §66 below — this entry's "07-16 is not itself corrupted" conclusion was checked only against Postgres's own `prices` table and turned out to be wrong; §66.4 has the correction.)*
+
+---
+
+## 66. <span style="color:#16a34a;">● TR-13 fix plan Step 1 executed — 3 preconditions resolved, price data corrected for all 5 (not 4) corrupted dates, a 5th previously-undetected corrupted date found and fixed, full-2026 external verification clean (2026-08-26)</span>
+
+**WRITE ENTRY. Postgres `prices` and `prices_adjusted` were modified for 5 historical dates, backed up first, independently re-verified after.** Executed under explicit user authorization ("Once these three are resolved, proceed with Step 1... Do not proceed to Step 2 or beyond") following the sequenced fix plan proposed earlier this session. User's stated priority: caution over speed, no new breaking issues. Scripts: `scratch_ghost_date_scope_20260826/09_preconditions_check.py` through `12_external_sweep_2026.py` (not committed — scratch).
+
+### 66.1 Precondition 1 — 2026-07-10 `prices` (raw) independently verified against SQLite, not assumed
+
+Direct row-by-row comparison, all fields: **0 mismatches across all 504 symbols SQLite and Postgres both cover for 07-10.** Postgres additionally carries 119 symbols SQLite has no row for at all on that date — confirmed by further check to be almost entirely futures/derivative contracts (`-JUL`/`-AUG`/`-SEP` suffixes, matching `config.py`'s exclusion regex) plus a handful of non-equity fixed-income paper (`P0xFRR...`) never present in `stock_metadata`. **Verdict: the assumption holds** — 07-10's raw `prices` needed no correction for any symbol in Kiran's trading universe. Only `prices_adjusted` needed fixing for 07-10.
+
+### 66.2 Precondition 2 — 2026-07-08 re-derivation method specified; corporate-action check run and cleared
+
+**Method used (simpler than originally scoped, and used uniformly across all 5 dates — see §66.4):** rather than hand-replicate the adjustment-factor math in a new script, copy SQLite's own already-correctly-adjusted `prices_adjusted` value directly, symbol by symbol, for every symbol SQLite has data for. This is valid only if no confirmed corporate-action event creates a divergence between the two backends' adjustment factors for the affected symbols in the relevant window — checked directly before writing: Postgres `corporate_action_suspects` for the 585 diff-signature-affected symbols, `suspect_date >= 2026-07-08` — **9 rows found, all status PENDING, zero CONFIRMED, zero with `suspect_date` exactly 2026-07-08 (the specific risky edge case)**. SQLite's own `corporate_action_suspects` for the same symbols/window: 2 rows, both PENDING. The CSV's auto-confirmed bonus-event list (`DROP_50/33/25`): zero matches in this window. **Precondition cleared: no CONFIRMED corporate-action event touches any 07-08-affected symbol on or after 2026-07-08, so the copy-from-SQLite method is valid for all of them.** (Caveat for any future re-run of this method on a different date: this check must be re-run fresh each time — several of these PENDING suspects, e.g. `SGPL` with two open PENDING rows, could be confirmed by a human via the Data Health page at any time, which would silently invalidate a stale check.)
+
+**Correction to this session's own earlier claim:** the prior chat turn stated 07-08's raw `prices` was "already correct, only `prices_adjusted` needs fixing." Direct verification (same method as §66.1) found this was **wrong for 12 of 502 symbols** (`AGLNCPS`, `AKDHL`, `ASLPS`, `BHAT`, `CLCPS`, `EWIC`, `FIMM`, `IML`, `JVDCPS`, `SANSM`, `SHJS`, `SML`) — `open`/`high`/`low`/`volume` differed from SQLite's clean value on all 12; `close` matched on all 12 (exactly consistent with `692042e`'s close-freeze fix having corrected `close` specifically that week, per `COALESCE(prices.open, excluded.open)`'s existing-value-wins semantics for every other field). These 12 were corrected as part of §66.4's write. This is the same class of error the whole `boring_signals` EV saga has been about — an assumption stated with confidence, not independently checked, turning out to be partially wrong — caught here specifically because the user required verification before the write rather than after.
+
+### 66.3 Precondition 3 — 597 vs 611 for 2026-07-10 reconciled
+
+Direct query: **all 611** of 07-10's `prices_adjusted` rows are confirmed byte-identical copies of 07-09's row (the copy signature, 100% of the table, not 597). Of those 611, **597 also disagree with 07-10's raw `prices`** (the diff signature) — the remaining **14** have a copied value that happens to numerically equal what raw `prices` independently shows for 07-10. Checked each of the 14 individually: 8 are futures contracts with no SQLite coverage at all (unverifiable, out of universe); the other 6 (`AGLNCPS`, `FIMM`, `GEMPACRA`, `P03FRR090128`, `P05FRR090130`, `PIAHCLB`) were cross-checked against SQLite's independently-clean **07-09** value (a different, valid check than the unavailable SQLite 07-10 row) and **matched exactly for all 6** — confirming genuine non-movement for these thin/illiquid names, not masked corruption. **Answer: 611 is the correct count of symbols mechanically corrupted (copied from 07-09) on 07-10; 597 is correct for "provably wrong in value" specifically — the two numbers measure different things, neither is an error, and the ledger's existing 597 figure should be read as the latter, not as the full corruption count.** No change needed to §65.2's table — it's internally correctly labeled ("Symbols affected" for the diff-signature rows); this entry adds the precise 611-vs-597 relationship that wasn't previously spelled out.
+
+### 66.4 A 5th corrupted date found — 2026-07-16, previously misclassified as clean
+
+While re-verifying the 07-15 fix, `prices_adjusted[2026-07-16]` was found still byte-identical to the newly-corrected `2026-07-15` — but SQLite's true 07-16 values clearly differ from 07-15 for the same symbols (e.g. `GHNI`: true close 1115.42 on 07-15 vs 1143.05 on 07-16). Checked `prices` (raw), not just `prices_adjusted`: **Postgres raw `prices[2026-07-16]` is also a byte-identical copy of `prices[2026-07-15]`** for all 510 overlapping symbols, and disagrees with SQLite's true 07-16 on 500/500 common symbols checked (100%). **This directly contradicts §65c.2/§65c.3's finding** ("07-16 itself... zero rows disagree... 07-16 is not itself corrupted at all") — that finding checked only whether Postgres's `prices_adjusted[07-16]` agrees with Postgres's own `prices[07-16]`, which it does, because **both were corrupted the same way and therefore agree with each other while both disagreeing with reality.** No check before this entry had ever compared Postgres's 07-16 against an external source (SQLite) — the same class of methodological gap already flagged for other checks (§65b.1's structural-invisibility finding), now shown to have let one real date slip through undetected across five separate forensic passes (§51, §65, §65a, §65b, §65c).
+
+**Full-2026 external sweep run to bound the damage** (`12_external_sweep_2026.py`, all 156 dates where both databases have full-day coverage in 2026, `high`/`low`/`close`/`volume` compared — `open` excluded from this specific sweep because Postgres's `open` column is `NULL` for nearly all of 2026 outside recent dates, a separate, already-documented, benign gap from the never-completed-on-Postgres Open Price Import project (CLAUDE.md), not corruption): **exactly one spike found beyond the four already-known dates: 2026-07-16, at 100% mismatch. Every other one of the 156 dates showed 0% mismatch.** This is strong evidence the corruption is now fully bounded to these 5 dates, not evidence of a wider, still-hidden problem — but it is only as strong as "full year, both directions, real external comparison" can be; it does not extend before 2026 (SQLite's own pre-2020 data is itself flagged elsewhere as unverified-provenance, and a full 20-year cross-database sweep was judged out of this task's scope).
+
+### 66.5 The write — backup, correct, re-verify
+
+**Backup (before any write):** both `prices` and `prices_adjusted` rows for the 4 originally-targeted dates backed up two ways — in-database backup tables (`prices_ghostdate_backup_20260826`, `prices_adjusted_ghostdate_backup_20260826`) and CSV exports — row counts verified identical to live (1,248 and 2,451 rows respectively) before proceeding. 07-16, found mid-task, was backed up separately the same way (`*_ghostdate_backup_0716_20260826`, 621+621 rows verified) before it was touched.
+
+**Method, uniform across all 5 dates:** for every symbol SQLite has a row for on that date, upsert (`INSERT ... ON CONFLICT (symbol,date) DO UPDATE`, no `DELETE` anywhere) Postgres's `prices` row only if it currently differs from SQLite's, and `prices_adjusted` row unconditionally (all 5 dates confirmed corrupted for every SQLite-covered symbol). Symbols SQLite has no row for on that date are left untouched and logged, not silently skipped.
+
+**Rows written:**
+
+| Date | `prices` written | `prices_adjusted` written | Symbols with no SQLite source (untouched) |
+|---|---|---|---|
+| 2026-07-08 | 12 (of 502) | 502 (all) | 123 / 109 |
+| 2026-07-09 | 503 (all, raw was 0 rows) | 0 (already matched SQLite — see §66.6) | 108 |
+| 2026-07-10 | 0 (already matched — §66.1) | 504 (all) | 119 / 114 |
+| 2026-07-15 | 510 (all, raw was 0 rows) | 0 (already matched SQLite — see §66.6) | 111 |
+| 2026-07-16 | 512 (all) | 512 (all) | 121 |
+
+**Re-verification after the write:** both original detection signatures (copy-of-neighbor, disagrees-with-raw) re-run against all 5 dates, plus a fresh full-2026 external sweep. Result: **zero mismatches remain for any symbol either database independently covers** (max mismatch across all 156 dates in 2026: 0.0%). Residual flags remain only for symbols with no SQLite source at all — 135 distinct symbols total across the 5 dates: 117 futures/derivative contracts (excluded from Kiran's screener universe by `config.py`'s regex), 15 non-equity fixed-income/paper instruments (confirmed absent from `stock_metadata`), and exactly 3 active-universe equities (`AGLNCPS`, `AKGL`, `DADX`) — of which `AGLNCPS` was independently cross-verified correct via SQLite's clean 07-09 data (§66.3), leaving **`AKGL` and `DADX` as the only genuinely open, unverifiable residual gap** (both on 2026-07-16 only; both extremely thin-volume names — 75 and 500 shares on the last real trading day either database records for them — where SQLite itself has no 07-16 quote to check against). Not resolved, not silently closed — flagged for whoever next touches this data.
+
+### 66.6 A further mechanism refinement, evidenced by the write itself
+
+The write confirmed something the detection-only passes couldn't show: for **07-09 and 07-15 specifically, the pre-fix `prices_adjusted` value already matched SQLite's true value for every single SQLite-covered symbol (0 written, 100% already-matched)** — i.e., these two dates' stored values were mechanically mislabeled (mechanically indistinguishable from 07-10's/07-16's copies by the copy-signature) but were, by construction of the original bug, never actually wrong in value. This is because `append_new_prices_adjusted_pg()` appended the real 07-09/07-15 row before the ghost-duplicate bug mislabeled that same real data under the *next* day's date (07-10/07-16) — so it was 07-10's and 07-16's slots that ended up holding stale, wrong copies, not 07-09's/07-15's. **Correction to §51.4/§65c's framing**, which treated each pair symmetrically ("both dates corrupted, 611/621 symbols each") — mechanically true (both slots were touched by the same buggy append), but only one member of each pair (07-10, 07-16) was ever actually wrong in value; the other (07-09, 07-15) needed no value change, only benefited from this session's write being safely idempotent for it.
+
+### 66.7 What this does and does NOT close
+
+**Closes:** Step 1 of the TR-13 fix plan — all 5 known corrupted historical dates' `prices`/`prices_adjusted` now match SQLite's independently-verified-clean data for every symbol in Kiran's trading universe, confirmed by both original detection signatures and a fresh full-2026 external sweep. The originally-scoped "4 known dates" framing (§51/§65) is superseded by 5; the Trust Register's TR-03 evidence should be updated to reflect this (not yet done — see §66.8).
+
+**Does NOT close:** TR-13 itself — unchanged, still 🟡 AMBER. `boring_signals` has not been touched (Step 2, not authorized in this entry). The DBCI +111% trade and the other 13 corrupted-date trades (§65) are still absent from `boring_signals` until Step 2 runs. AKGL/DADX's residual gap (§66.5) is unresolved. The full-history-beyond-2026 question remains open (§66.4). **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Not committed, not pushed.** All writes in this entry are live Postgres data changes, not code changes — nothing here touches `git`. Recoverable only via the backup tables/CSVs named in §66.5.
+
+### 66.8 Trust Register update needed (not yet made)
+
+TR-03's evidence column should be amended to note: (1) the corrupted-date count is 5, not 4 (`2026-07-16` added); (2) the two detection signatures used throughout §51/§65 series can both be defeated simultaneously when a corrupted `prices` and a corrupted `prices_adjusted` agree with each other while disagreeing with reality — the only check that caught 07-16 was a direct external (Postgres-vs-SQLite) comparison, which no prior pass in this ledger had run; (3) the 4 known dates are now corrected and re-verified, per this entry. Not yet written to the register file — proposed for the same sign-off pass as the check-2 blind-spot note already pending from §65c.
+
+**Date of this entry: 2026-08-26. Status: Step 1 of the TR-13 fix plan executed and independently re-verified. Stopping here per explicit instruction — Step 2 (boring_signals regeneration) not started.**
+
+---
+
+## 67. Full-history external sweep completed (scope corrected against real Postgres data footprint), `open` NULL gap investigated and backfilled, futures-cleanup task re-confirmed queued (2026-08-27)
+
+**Executed under explicit instruction, three items, in order, before Step 2 (boring_signals rebuild) may begin.** No boring_signals work performed in this entry.
+
+### 67.1 Item 1 — full external sweep, scope corrected to what Postgres actually contains
+
+The task requested a 2005–2025 direct sweep. Checked first, not assumed: **Postgres `prices`/`prices_adjusted` contain zero rows before 2024-08-26** — confirmed by direct `MIN(date)` query on both tables. SQLite's history goes back to 2005-01-03; Postgres's does not, and never has (no writer in this codebase back-fills Postgres beyond its own live scrape history). A 2005–2024-08-25 comparison is therefore not a detection-method question — there is nothing on the Postgres side to compare against for that span, regardless of method. This also clarifies (does not contradict) the prior "full-history 2005-2026" language in §65a.2/§65b — those checks ran against Postgres's own `prices_adjusted`, which itself only ever contained 2024-08-26 onward; the phrase was accurate to what the table contains, just easy to misread as implying 20 years of Postgres data existed to check.
+
+**Real scope executed: 2024-08-26 → 2026-08-25 (496 common trading dates, the entirety of Postgres's actual history), direct Postgres-vs-SQLite comparison, `high`/`low`/`close`/`volume`** (script `13_external_sweep_full_history.py`; 2026 alone was already covered by `12_external_sweep_2026.py` in §66, re-included here for one clean combined result). **Result: zero dates above 0.0% mismatch anywhere in this range.** The 5 already-corrected dates (§66) show clean; no 6th date found.
+
+One pre-existing, already-documented gap re-surfaced by this sweep, not new: **2026-07-07 has zero rows in Postgres `prices`** (SQLite has a normal ~~502~~ **506**-row day — `[CORRECTED 2026-08-27, see §70]` this entry's own "502" figure was a mislabeling, traced and fixed in §70; §35.1's original 2026-08-21 figure, 506, was correct all along) — this is the same gap §35.1 already root-caused (the source of the `rs_60_decile` mismatch, explicitly out of scope for both §63's rebuild and this entry). Listed here because the sweep surfaced it again directly; not treated as a new finding requiring the pause-and-report protocol.
+
+**Conclusion: the corrected-date list stands at 5 (2026-07-08/09/10/15/16), confirmed complete for the only window where Postgres has any data to check against.** Whether SQLite's own pre-2024-08-26 history (2005–2024-08-25) contains an analogous corruption is a genuinely different, unanswerable-by-this-method question — Postgres has nothing there to compare against, and SQLite checking itself for internal consistency is exactly the class of check already shown (§66.4) to be insufficient on its own. Not investigated further here — out of this task's stated scope.
+
+### 67.2 Item 2 — `open` NULL gap: confirmed unrelated to the 5-date corruption, backfilled
+
+**Diagnosis before any write:** 120,610 rows in each of `prices`/`prices_adjusted` had `open IS NULL`, spanning exactly **2024-08-26 → 2026-07-06** — the entire window before `scraper.py` started capturing Open live (CLAUDE.md's documented fix, cutover confirmed precisely in the data: 2026-07-06 shows 0/605 rows with `open`, 2026-07-08 shows 625/625). **All 5 corrected dates already had 100% `open` coverage** (verified directly, e.g. `2026-07-08: 625/625`) — a direct consequence of §66's fix, which copied SQLite's full row including `open`. **Confirmed: this is a separate, pre-existing, unrelated gap, not a symptom of the ghost-date corruption or newly introduced by §66's fix.**
+
+**Backup (before any write):** `prices_open_null_backup_20260826b` / `prices_adjusted_open_null_backup_20260826b` (in-DB tables, 120,610 rows each, row-count-verified) + CSV exports of the same. SQLite checked as the correction source: 213,063 of 219,373 rows in the same window have a non-NULL `open` (SQLite itself has a smaller, separate gap of 6,310 rows in this specific window — unrelated, pre-existing, not touched).
+
+**First write attempt failed, disclosed rather than hidden:** `executemany` (one `UPDATE` per row, ~57,000 sequential round-trips to Supabase) hit `psycopg2.OperationalError: server closed the connection unexpectedly` partway through. **Verified before any retry, not assumed:** live `still-null` counts on both tables were re-queried immediately and found unchanged (120,610/120,610) — the connection had not yet reached a `commit()` when it dropped, and `database_pg.get_conn()`'s own exception handling calls `conn.rollback()` on exit, so nothing partial had landed. Backups were re-confirmed intact before retrying.
+
+**Retry, corrected method:** batched `execute_values` with an `UPDATE ... FROM (VALUES ...)` join, committed every 5,000 rows (script `15_fix_open_nulls_retry.py`) — far fewer round-trips, and a connection drop mid-run would now only cost one small, already-committed-up-to-that-point chunk rather than the whole operation. **Completed cleanly: 56,994 rows written and committed per table** (113,988 total), matching exactly the count of NULL rows for which SQLite had a source value.
+
+**Final verification:** `prices` total row count unchanged (296,833 — confirms no rows added/removed, only `open` updated); non-null `open` count 176,223 → 233,217 (+56,994); `prices_adjusted` identically, 176,423 → 233,417 (+56,994). **Remaining NULL, both tables: 63,616** — rows where SQLite has no matching `(symbol, date)` row at all (not merely a NULL `open` — no row whatsoever), so no independent source exists to fill them. Not fixed, not silently claimed fixed — disclosed as a residual, same as the futures/illiquid residual from §66.
+
+### 67.3 Item 3 — futures-cleanup task re-confirmed queued, not started
+
+`scraper.py` and `database_pg.py` show no uncommitted changes beyond what already existed before this session (checked via `git status`/`git diff --stat`); no ledger entry between §66 and this one references starting that work. **Confirmed: still correctly queued, untouched.** Per the task's own instruction, it should now proceed once items 1 and 2 above are done and clean — both are, as of this entry — but is not begun in this entry; that remains a separate, explicitly-authorized task.
+
+### 67.4 What this does and does NOT close
+
+**Closes:** the external-sweep precondition ahead of Step 2 (item 1) — 5 dates confirmed as the complete list for the only window checkable; the `open` NULL gap for every row Postgres can independently verify (item 2). **Does NOT close:** TR-13 itself (still AMBER — `boring_signals` untouched); the pre-2024-08-26 Postgres data gap (Postgres simply has no history there — a structural fact, not a bug, not this entry's to fix); the 63,616 genuinely-unfillable `open` NULLs; the 2026-07-07 `prices` gap (§35.1, unchanged); AKGL/DADX's residual from §66. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Not committed, not pushed.** All writes in this entry are live Postgres data changes only. Scripts: `scratch_ghost_date_scope_20260826/13_external_sweep_full_history.py`, `14_backup_and_fix_open_nulls.py` (failed attempt, kept for the record), `15_fix_open_nulls_retry.py` (succeeded) — not committed, scratch.
+
+**Date of this entry: 2026-08-27. Status: items 1–2 executed and verified; item 3 confirmed unchanged. Step 2 (boring_signals rebuild) still not started, per instruction.**
+
+---
+
+## 68. 2026-07-07 re-tested directly against both established corruption signatures — fits neither; `open`'s live production usage audited end-to-end (2026-08-27)
+
+**READ-ONLY. No Postgres write, no schema change, no SQLite write, no production code change.** §35.1's original "linked to the 2026-07 outage" attribution for 2026-07-07 predates the ghost-date corruption mechanism (§51) being understood at all — re-tested directly against both now-established signatures rather than accepted on citation.
+
+### 68.1 Does 07-07 fit either known corruption signature? Checked directly, not inferred.
+
+Live query, both tables: **`prices[2026-07-07]` = 0 rows. `prices_adjusted[2026-07-07]` = 0 rows.** Both completely empty — not merely different from §35.1's original phrasing (which named only `prices_adjusted` as empty; re-confirmed here that `prices` was already also empty, most plausibly at the time §35.1 was written too, simply not the detail that entry's own investigation needed to state).
+
+- **Signature (a), copy-of-neighbor:** requires a `prices_adjusted` row to exist and be byte-identical to an adjacent date's row. **Does not apply — there is no row to compare.** Structurally cannot fire on an empty table.
+- **Signature (b), 07-09/07-15 pattern (`prices` empty, `prices_adjusted` stale-but-present):** requires `prices_adjusted` to hold *some* (wrong) data while `prices` holds none. **Does not apply — `prices_adjusted` is also empty**, not stale-but-present.
+
+**Neither signature fits.** This is a third, structurally distinct pattern: complete absence from both tables, not a mislabeled-duplicate artifact in either one.
+
+### 68.2 What actually explains it, checked against the surrounding dates — refines §35.1, doesn't overturn it
+
+Queried `prices`/`prices_adjusted` row counts for 2026-06-29 through 2026-07-08 directly: 06-29 through 07-06 all show normal row counts (590–608, both tables) — **only 07-07 itself is empty.** This sharpens CLAUDE.md's own "Known Gaps" text (already cited in §35.1), which describes `market_regime`/`sector_signals` (later-stage derived tables) as missing on 07-01/02/03/06/07 due to a "2026-07 Postgres-dispatch outage" — that outage evidently did **not** prevent the base `prices` scrape/dispatch from succeeding on 07-01 through 07-06; only on 07-07, the outage's apparent final and most severe day (the fix landed 07-09, per commits `a6b9e15`/`b999ed4`), did even the base price table fail to write at all. **§35.1's attribution holds up and is now more precise, not overturned:** 07-07 is the one day within an already-known, already-explained multi-day dispatch outage where the failure was total (every table, including the base scrape) rather than partial (only later-stage derived tables). This is an outage-class event — nothing was ever written, then mislabeled, the way the five corruption dates were — not a sixth instance of the corruption mechanism. **Item 3's fix trigger is not met; no repair performed, per the task's own conditional instruction.**
+
+This remains a real, live, disclosed data-completeness gap (Postgres has zero rows for a genuine trading day SQLite holds 502–506 rows for), already tracked as the root cause of the `rs_60_decile` mismatch (§35.1, TR-13's still-open item) and re-surfaced, not newly found, by §67's sweep. Whether it should eventually be backfilled is a distinct, separately-scoped question from "is this the same bug as the other five" — it is not.
+
+### 68.3 Does anything live actually read `open` for the residual 63,616 unfilled rows? Traced end-to-end, not assumed.
+
+Checked every production file that could plausibly read the `open` price column (`dashboard.py`, `dashboard_pg.py`, `boring_signals.py`, `stock_signals.py`, `sector_signals.py`, `processor.py`, `weinstein.py`, `breakout_signal.py`, `regime.py`, `agent.py`, `backtest.py`, `kiran_sim.py`, `leaders_scan.py`, `signal_engine.py`, `screener_signals.py`), by direct code read, not by name-matching alone:
+
+- **`dashboard.py`/`dashboard_pg.py`:** zero references to the `open` price column (every "open" match is UI text — "open position," "OPEN — index above 50MA," etc.). **No exposure.**
+- **`boring_signals.py`, `stock_signals.py`, `sector_signals.py`, `processor.py`, `weinstein.py`, `breakout_signal.py`, `regime.py`, `agent.py`, `backtest.py`, `kiran_sim.py`:** zero references to the `open` column at all. **No exposure.**
+- **`signal_engine.py` (`run_recovery_signals()`/`run_portfolio_signals()`, LIVE — writes `recovery_signals`/`portfolio_signals`, called from `main.py`'s daily hook chain, feeds the Recovery Bases page):** `open` is loaded into a local array (`opens = grp["open"].values.astype(float)`) but **never referenced again anywhere in either live function** — confirmed by isolating exactly those two functions' line range and searching within it. The code comment at the point of removal explains why: `# FIX 2: remove close>open (open is structurally NULL in this dataset); replaced by close>b_high + close in upper 40% of range, which are retained.` **This is direct, pre-existing evidence that someone already hit this exact gap in production and removed the dependency on `open` rather than fix the data** — corroborating, not just consistent with, this investigation's own findings. **No live exposure today.** (A separate function in the same file, `_killed_mv_signals()`, does use `COALESCE(p.open, p.close) AS open` — already NULL-safe by construction — but the function name and CLAUDE.md's own note that Minervini was killed June 2026 confirm it is dead code, not called from `main()`.)
+- **`leaders_scan.py` (`_vol_rejection_flag()`/`_vol_rejection_flag_pg()`, LIVE — feeds `leaders_scan`/`leaders_top_picks`, the Leaders page):** **genuinely reads and uses `open`** in a 10-trading-day trailing-window volume-rejection check, guarded (`open_ is not None and close < open_` — a NULL day silently fails to qualify as a rejection, no crash). Real, narrow, disclosed effect: for any scan whose 10-day window falls inside the unfilled 2024-08-26→2026-07-06 range (for a symbol SQLite also lacks data for), a genuine rejection day could go undetected — a false negative, not a wrong-direction signal, and not a crash. **Not a live risk today:** every current/live scan's window sits well inside the now-fully-covered post-2026-07-08 range (10–30 trading days back from "today," 2026-08-27, reaches only to roughly mid-to-late July). **Would only matter for a historical/backtest re-run of `leaders_scan` against a date inside the unfilled window** — not scoped or executed in this entry.
+- **`apply_price_adjustments.py`:** uses `open` for the adjustment-factor multiplication (already known, working as designed — `NULL × factor = NULL`, doesn't propagate a wrong value, just stays NULL).
+- **`screener_signals.py`:** reads `open` with an **unguarded `float(c0["open"])` cast** — would raise `TypeError` on a NULL row. **Confirmed via a full-codebase import search: this module is not imported anywhere** (`dashboard.py`, `dashboard_pg.py`, `main.py`, `boring_signals.py`, `agent.py` all checked directly; a repo-wide grep for `import screener_signals`/`from screener_signals` returns zero matches). **Dead/unwired code — no current reachability, therefore no live risk** — flagged as a latent defect worth fixing if this module is ever wired in, not an active one.
+
+**Direct answer to the task's question:** no live dashboard page or currently-running screener computation is affected by the 63,616 remaining `open`-NULL rows today. One live function (`leaders_scan`'s rejection-flag check) has a real but narrow, non-crashing, currently-dormant exposure that would only activate for a historical re-scan inside the unfilled window.
+
+### 68.4 Status
+
+Items 1–2 of this task answered by direct code/data inspection, not inference. No repair performed (07-07 does not meet the fix-trigger condition; the `open` exposure findings are a report, not an authorization to backfill `leaders_scan`'s historical window, which was not asked for and is not done here). **Kiran remains NOT VERIFIED — DO NOT TRADE.** Step 2 (boring_signals rebuild) and the futures-cleanup task remain queued, untouched, in that order, per explicit instruction.
+
+**Date of this entry: 2026-08-27. Status: read-only investigation complete, documented. No repair authorized or performed.**
+
+---
+
+## 69. <span style="color:#16a34a;">● Coverage-sweep methodology gap closed, 2026-07-07 sanity-checked against both corruption signatures and backfilled into Postgres, sequenced before Step 2 (2026-08-27)</span>
+
+**WRITE ENTRY. Postgres `prices` and `prices_adjusted` were modified for one historical date (2026-07-07), backed up first, independently re-verified after.** Executed under explicit instruction, four items in strict order, before Step 2 (`boring_signals` rebuild) may begin. Scripts: `scratch_0707_backfill_20260827/01_coverage_sweep.py` through `05_reverify_backfill.py` (not committed — scratch).
+
+### 69.1 Item 1 — coverage sweep: closing the "common dates only" blind spot
+
+Every prior full-history sweep (§66's `12_external_sweep_2026.py`, §67's `13_external_sweep_full_history.py`) compared only dates present in **both** databases — structurally incapable of detecting a date where Postgres has zero rows at all, since there is nothing there to mismatch against. This is precisely how 07-07 escaped detection until §35.1 specifically went looking for it.
+
+`01_coverage_sweep.py` instead compares the two databases' **trading-date calendars directly**: every date SQLite holds a normal trading day's worth of `prices` rows (≥100-row floor, conservative — real days in-window run 500-640 rows) against Postgres's date list, restricted to 2024-08-26 onward (§67.1's confirmed floor of Postgres's actual data footprint — nothing exists before that to compare against, by any method). Result: **497 SQLite trading dates in window, 496 Postgres trading dates in window. Exactly one date — 2026-07-07 — where SQLite has a normal day (506 rows) and Postgres has zero.** No other date, at any row-count floor, showed this pattern. This is now an actual coverage check, not an inference from the common-dates method's blind spot — the claim "07-07 is the only fully-missing date in the checkable window" rests on evidence, not the absence of a prior finding.
+
+### 69.2 Item 2 — SQLite's 07-07 source data sanity-checked before use
+
+`02_sanity_check_0707.py` checked SQLite's `prices` rows for 2026-07-07 against the documented placeholder-zero artifact (open=high=low=0.00, real volume, nonzero close — previously found in `prices_adjusted`, not confined to old/delisted symbols) before trusting them as the backfill source. Also resolved a row-count discrepancy between the task's cited figure (502) and the live count, directly rather than assuming either was right.
+
+**Findings, all clean:**
+- **506 rows, 506 distinct symbols, zero duplicate (symbol, date) pairs** — the task's "502" figure was stale/approximate; 506 is confirmed correct and matches `prices_adjusted`'s own row count for the same date exactly.
+- **Zero rows match the placeholder-zero pattern** (open=high=low=0.00, volume>0, close≠0) — the specific artifact this check existed to catch.
+- **Zero rows with any OHLC field = 0** at all (broader scan, not just the exact 3-field pattern) — zero NULLs in any OHLCV field.
+- **No high<low rows, no close-out-of-range rows** (close outside [low, high]) — basic OHLC coherence holds for all 506 rows.
+- Value ranges sane (open 1.24–25,500; close 1.24–25,677.25; volume 1–2,375,015,000) — no obviously corrupted magnitudes.
+
+**Verdict: clean. SQLite's 07-07 data does not show the documented placeholder-zero artifact or any other internal-coherence defect — safe to use as the backfill source.**
+
+### 69.3 Item 3 — backfill executed, sequenced before Step 2
+
+Per explicit instruction, this backfill is sequenced **before** the Step 2 `boring_signals`/signal-table rebuild, not after — inserting a previously-missing calendar date changes row-position-based lookback windows (`_breakout_fires()`'s lookback is positional, not calendar-day, per §65a) the same way the original 5-date ghost-date fix did, so doing this after Step 2 would require Step 2 to re-run against the corrected calendar. Step 2 itself remains not started.
+
+**Backup (before any write):** `03_backup_before_backfill.py` — two-way backup (in-DB `CREATE TABLE AS SELECT` + CSV export) of both `prices` and `prices_adjusted` for 2026-07-07, same pattern as §66.5. Confirmed pre-state: **0 rows in both tables**, backup row counts verified to match (0=0) before proceeding. `prices_0707backfill_backup_20260827` / `prices_adjusted_0707backfill_backup_20260827` (in-DB) + matching CSVs.
+
+**Method — identical to §66.5's established approach:** for every symbol SQLite has a row for on 2026-07-07, `INSERT ... ON CONFLICT (symbol, date) DO UPDATE` (no `DELETE`) into Postgres `prices` and `prices_adjusted`. Unlike the 5-date fix, every row here is genuinely new (Postgres held zero rows for this date going in) — `ON CONFLICT` is a safety net for idempotency on a re-run, not the expected path.
+
+**Rows written (`04_execute_backfill.py`):**
+
+| Table | SQLite symbols | Written (new) | Already-matched |
+|---|---|---|---|
+| `prices` | 506 | 506 | 0 |
+| `prices_adjusted` | 506 | 506 | 0 |
+
+### 69.4 Item 3 continued — independent re-verification
+
+`05_reverify_backfill.py`, run after the write, fresh queries against live Postgres:
+
+- **Coverage:** both tables now show exactly 506 rows for 2026-07-07 (matches expected).
+- **Value-level, symbol-by-symbol, both tables:** 506 SQLite symbols vs. 506 Postgres symbols — **zero missing in Postgres, zero extra in Postgres with no SQLite source, zero value mismatches** (same tolerance as all prior sweeps: 0.005 on price fields, exact match on volume).
+- **Calendar context (07-01 through 07-16 re-queried):** 07-07 now shows 506 rows, consistent with (slightly lower than, but not anomalously so vs.) the surrounding days' 503–638-row range — no artifact introduced by the write itself.
+
+**Verdict: backfill complete and independently confirmed exact, zero discrepancies.**
+
+### 69.5 Item 4 — Trust Register updated, backfill documented as a distinct failure mode from the ghost-date bug
+
+`docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`: added new §4a, "Two distinct failure modes behind 'missing/wrong Postgres data' — not to be conflated," explicitly distinguishing Category 1 (the ghost-date corruption, TR-03/§51/§65/§66 — a real write landed but was mislabeled under the wrong date, leaving both tables non-empty-but-wrong, fixed by correcting values in place) from Category 2 (this entry — a dispatch outage that wrote nothing at all, leaving both tables completely empty, fixed by inserting the missing rows, a gap-fill not a correction). TR-13's evidence and required-proof cells updated to note the 07-07 gap itself is now closed, while flagging that the `rs_60_decile` mismatch this gap caused still needs re-verification once Step 2 runs — the underlying data problem being fixed is not the same claim as the downstream signal being re-verified correct.
+
+### 69.6 What this does and does NOT close
+
+**Closes:** the coverage-sweep methodology gap the task opened with (an actual "any other fully-missing dates?" check now exists and found none beyond 07-07, within the only window checkable); SQLite's 07-07 data confirmed clean against both known corruption signatures before use; the 2026-07-07 Postgres data gap itself, backfilled and independently re-verified exact; the Trust Register's categorical distinction between this fix and the ghost-date bug.
+
+**Does NOT close:** TR-13 itself (still AMBER — `boring_signals` untouched, Step 2 not started); the `rs_60_decile` mismatch's actual re-verification (depends on Step 2 running against the now-complete calendar); the pre-2024-08-26 Postgres history gap (structural, unrelated, out of scope); AKGL/DADX's residual from §66; the 63,616 genuinely-unfillable `open` NULLs from §67. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Not committed, not pushed.** All writes in this entry are live Postgres data changes only — nothing here touches `git`. Recoverable via the backup tables/CSVs named in §69.3. Scripts: `scratch_0707_backfill_20260827/01_coverage_sweep.py` through `05_reverify_backfill.py` — not committed, scratch.
+
+**Date of this entry: 2026-08-27. Status: coverage sweep, sanity check, backfill, and re-verification all executed and independently confirmed. Trust Register updated. Step 2 (`boring_signals` rebuild) and the futures-cleanup task remain queued, untouched, in that order, per explicit instruction.**
+
+---
+
+## 70. <span style="color:#16a34a;">● 502-vs-506 discrepancy for 2026-07-07 traced to source — a citation mislabeling in §67.1, not a data change or a missed-row count (2026-08-27)</span>
+
+**READ-ONLY. No writes, no schema change, no repair.** Raised directly by the user before authorizing Step 2, citing this project's history of small count mismatches turning out to be real findings (597-vs-611, the "clean" 07-16 that wasn't) — investigated with the same standard, not waved off.
+
+### 70.1 Question 1 — was 502 an earlier, less careful figure, and is 506 correct?
+
+**Yes to both, traced to a specific origin, not just asserted.** `psx_data.db`'s `prices` table for 2026-07-07 holds **506 rows** — confirmed independently three separate times: §35.1 (2026-08-21, root-causing the `rs_60_decile` mismatch, direct query), §69.2 (2026-08-27, this task's own sanity check, `02_sanity_check_0707.py`), and a fresh direct re-query just now for this clarification. All three agree exactly: 506.
+
+**The "502" figure's actual origin, found by direct search — not present in any script's output, only in prose:** §51.6 (2026-08-21, same session as §35.1) states SQLite's row counts for the six dates then under investigation (07-07, 07-08, 07-09, 07-10, 07-15, 07-16) fall in a **502–512 range**, as a general observation that SQLite showed no anomaly across the whole cluster — it does not attribute 502 specifically to 07-07. Checked directly just now: **2026-07-08 is the date that actually has 502 rows in SQLite** — the low end of §51.6's range. §67.1 (2026-08-27, the entry immediately preceding this task, written before this session started) restated the already-known 07-07 gap and described it as "SQLite has a normal 502-row day" — misattributing the range's low end (07-08's real count) to 07-07 specifically, apparently without re-querying or cross-checking against §35.1's own correct 506 figure sitting earlier in the same document. This task's own instructions inherited that "502" figure from §67.1, one step further removed from the original range statement. **Corrected in place, §67.1, this entry.**
+
+### 70.2 Question 2 — did the row count change, or did a re-query catch missed rows?
+
+**Neither — the count never changed.** 2026-07-07 is a closed historical date; nothing in this codebase's daily pipeline (Task Scheduler-driven, local, scrapes only the current trading day) writes to a date over a month in the past, and no ledger entry between §35.1 (2026-08-21) and now records any write touching that date prior to this task's own backfill (§69, which wrote to *Postgres*, not SQLite — SQLite was read-only source throughout). §35.1's 506 (2026-08-21) and this task's independently-run 506 (2026-08-27) are the same number from two different sessions six days apart, which is itself evidence against a silent interim change, not merely an assumption. The "502" was never a real count of 07-07's data at any point — it was always 07-08's count, misattributed by citation.
+
+### 70.3 Question 3 — name the 4 symbols; confirm no connection to the six already-fixed dates
+
+**There are no 4 symbols to name, because the premise doesn't hold.** 502 was never a genuine subset of 07-07's own 506 rows — it's a different date's independent total. Checked directly to be sure this wasn't coincidentally also a valid subset relationship: 07-08 (502 rows) and 07-07 (506 rows) do **not** have a simple 4-row difference at the symbol level — `07-08 has 3 symbols 07-07 lacks` (`AKGL`, `P01GHS100627`, `P01GIS230726`) and `07-07 has 7 symbols 07-08 lacks` (`GEMBCEM`, `GEMMEL`, `GEMPAPL`, and four `P0xFRR...` fixed-income codes) — two distinct, mostly non-overlapping symbol sets that happen to be similar in size, not one being a subset of the other.
+
+**Connection to the six already-fixed dates, checked directly:** 07-08 is one of the five ghost-date-corrupted dates already corrected in §66 — but that fix was about **`prices_adjusted` holding wrong copied values** for 07-08 (and `prices` for 12 of 502 symbols, §66.2), not about 07-08's raw row *count* being wrong — 502 has always been 07-08's correct row count, before and after the §66 fix (only values changed, no rows added/removed, consistent with the upsert-only method used throughout). So the citation slip and the already-fixed corruption are unrelated in substance: one is a documentation mislabeling of which date a number belongs to, the other is a real, separately-diagnosed and separately-fixed value defect on 07-08 itself. **No new connection found; nothing here reopens or touches the §66 fix.**
+
+**AKGL, notably,** is one of 07-08's 3 SQLite-absent symbols found here — the same symbol already flagged as an unresolved residual gap on a *different* date (07-16, §66.5, unverifiable due to no SQLite source that day either). Checked whether this is the same underlying issue: it isn't a new finding, just the same thin-volume symbol (AKGL) independently lacking SQLite coverage on two different dates for unrelated reasons (07-16's residual was already disclosed as unresolved; 07-08's absence here was not previously an open question since 07-08's fix never needed AKGL from SQLite — Postgres's own 07-08 AKGL row, if any, was left untouched per §66.5's "no SQLite source, left untouched" rule, same as every other such symbol).
+
+### 70.4 What this does and does NOT close
+
+**Closes:** the 502-vs-506 discrepancy, fully traced to a specific citation error (§67.1 misattributing §51.6's range low-end to the wrong date) rather than a real data question; §67.1 corrected in place; 506 reconfirmed as 07-07's true, stable, unchanged row count across three independent checks spanning two sessions. **Does NOT close, and does not need to — nothing here implicates it:** the backfill itself (§69, already independently re-verified exact, unaffected by this citation question since it always operated on a direct `WHERE date = '2026-07-07'` query, never on the erroneous "502" figure); TR-13; Step 2; the futures-cleanup task. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Not committed, not pushed.** Only change in this entry: a documentation correction to §67.1 (strikethrough + inline note, original text preserved per the standing rule) and this entry itself — no data, schema, or code touched.
+
+**Date of this entry: 2026-08-27. Status: clarification fully resolved — a documentation citation error, not a data-integrity finding. Everything reconciles cleanly. Step 2 and futures-cleanup remain queued, untouched.**
+
+---
+
+## 71. <span style="color:#16a34a;">● TR-13 fix plan Step 2 executed — full chronological rebuild against fully-corrected prices; decile mismatch closed 10/10; dedup-conflict split re-computed fresh (87/27, not 85/40); zero spurious signals remain; EV independently cross-confirmed via the real dashboard function; DBCI's contribution disclosed (2026-08-27)</span>
+
+**WRITE ENTRY. Postgres `boring_signals` was fully wiped and rebuilt from a full chronological replay, backed up first, independently re-verified after.** Executed under explicit authorization, now that all 6 known 2024-08-26-onward Postgres price gaps/corruptions (5 ghost-date corruptions §66, 1 outage-backfill §69) are corrected and cross-verified against SQLite. Scripts: `scratch_boring_rebuild_20260827/01_before_snapshot.py` through `07_independent_ev_recompute.py` (not committed — scratch).
+
+### 71.1 Item 1/2 — backup, then full wipe + chronological replay
+
+**Backup:** two-way (in-DB `boring_signals_backup_20260827`, 375 rows + matching CSV export), verified row-count-identical to live before the wipe, same convention as §63.1. Confirmed the 2026-07-07 backfill's own precondition (506 `prices_adjusted` rows) immediately before proceeding, twice (once in the backup script, once again immediately before the `DELETE`).
+
+**Method — identical to §63's original rebuild, same floor, same ordering:** floor date 2026-07-10 (unchanged, per explicit instruction, not re-derived); day-by-day chronological replay using only the real, unmodified `scan_boring_breakouts()` / `update_open_signal_statuses()` production functions, `update_open_signal_statuses()` called before `scan_boring_breakouts(date)` each date (the ordering-regression-test-proven-correct sequence). The 2026-07-07 backfill matters here even though it predates the floor: `_load_price_history_pg()` loads each symbol's full, unrestricted `prices_adjusted` history, so 07-07's now-populated row correctly participates in every downstream signal's positional (trading-row, not calendar-day) lookback window — this is the entire reason this rebuild was sequenced after the backfill, exactly as specified.
+
+**Result:** 32 trading dates replayed (2026-07-10 → 2026-08-25, same span as §63's original — no newer price data exists yet beyond 08-25), 678.5s runtime. Row count: 375 (pre-rebuild, carrying the old bounded-floor population) → **393** (post-rebuild, computed entirely from now-fully-corrected prices).
+
+### 71.2 Verification — the decile mismatch this whole chain traced back to is now closed, 10/10
+
+Re-checked the exact 10 `rs_60_decile` pairs §35.1 originally found disagreeing (`HBL`, `KAPCO`, `MACFL`, `MEBL`, `NRL`, `NRSL`, `PAKRI`, `POL`, `PPL`, `PREMA`) — every one of §63.2's original checks found 0/10 matching (root cause: the 2026-07-07 `prices_adjusted` gap, unaddressed at the time). **This session: 10/10 now match exactly.** Direct, causal confirmation that the 07-07 backfill (§69) was the correct fix for the specific defect §35.1 diagnosed — not inferred from the price fix alone, verified against the freshly rebuilt signal table itself. PRL coverage re-confirmed: 20 rows (10 signal dates × 2 lookbacks) spanning all 4 real historical incident dates, unchanged in kind from §63.2.
+
+### 71.3 Item 3 — dedup-conflict classification re-run fresh, split changed materially, not assumed to hold
+
+Per explicit instruction not to assume the prior 85/40 split still applies: re-ran the full orphan-vs-SQLite-organic-history classification (`03_orphan_conflict_check.py`, same method as §63.6's `04_orphan_conflict_check.py`) against the freshly rebuilt table.
+
+| | §63.6 (2026-08-26, old rebuild) | This entry (2026-08-27, new rebuild) |
+|---|---|---|
+| Postgres-only orphan rows | 222 | 210 |
+| Distinct (symbol, date) pairs | 125 | 114 |
+| CLEAN | 40 | **27** |
+| CONFLICTED | 85 | **87** |
+
+**The split changed in both directions, confirming this needed a fresh run rather than reuse of the old numbers** — a different, corrected price history produces a genuinely different set of fired signals (some previously-fired dates no longer fire at the old, corrupted price levels; some new ones fire at the corrected levels), which in turn changes which orphans exist and which of those the SQLite dedup-gate would have blocked. `dedup_conflict` flagged fresh: **165 rows / 87 distinct pairs**, verified by direct re-query after the write (`04_add_flag_and_write.py`, same backup-gated write pattern as §64.2). Confirmed 0 rows carried a stale `TRUE` value into the fresh table before this write (expected, since the table was fully wiped).
+
+### 71.4 Item 4 — spurious-signal check re-run: zero remain, more thoroughly checked than the original
+
+The original check (§65a.1, 2026-08-26) found 51 rows whose `breakout_level` would numerically differ under SQLite's true prices, 20 of which would not have fired at all — computed against the OLD, pre-correction prices and the OLD table. That exact comparison no longer applies now that the underlying prices are already corrected (there is no separate "true vs. corrupted" pair left to substitute) — so `05_spurious_signal_recheck.py` re-ran the same methodology as an independent validation instead: for every row in the freshly rebuilt table whose lookback window touches any of the 6 historically-affected dates, recompute `breakout_level` from SQLite's true values and confirm it now matches what Postgres actually stored.
+
+**Result: 337 rows touch a historically-affected date in their lookback window (far more thorough than the original 51-row scope, since this checked the entire fresh table, not just previously-known-corrupted symbols) — 0 of 337 show any remaining disagreement, and 0 would fail to fire under true data.** Zero spurious signals remain. This is a stronger, cross-database-verified result than "the price fix should have resolved this" — it is a direct re-measurement against the rebuilt table.
+
+### 71.5 Item 5 — regression suite: 182/182, after resolving 2 transient timeouts
+
+Full suite run: 180 passed, 2 failed (`test_page_renders[leaders]`, `test_page_renders[setup-history]`), both `RuntimeError: AppTest script run timed out after 300(s)`, total wall time an anomalous 26,733s (~7.4 hours) for 182 tests — consistent with resource contention from this session's own concurrent Postgres-hitting scripts (the EV computation's AppTest run, §71.6, executed in the same window) rather than a code defect, since these two pages have no dependency on `boring_signals` or any file this task touched. **Re-ran both in isolation to confirm, not assumed:** both passed cleanly in 83.76s combined. **182/182 passing**, confirmed clean.
+
+### 71.6 Item 6 — EV computed via the real dashboard function, independently cross-confirmed
+
+**First measurement — the actual `_render_boring_performance()` function, executed for real, not reimplemented:** `06_ev_via_dashboard_apptest.py` uses Streamlit's own `AppTest` harness (the same mechanism `tests/test_app_boot.py` uses for CI) to run `dashboard.py` end-to-end against live production Postgres, navigate to the Explorer page, enable the Boring Breakouts toggle, and read back the actual rendered `st.metric()` values — the real production code path, not a hand-copied formula.
+
+| View | Resolved trades | Win rate | EV/trade (gross) | EV/trade (net) |
+|---|---|---|---|---|
+| Strategy Confirmed (default) | 27 | 33.3% | **+4.43%** | **+3.59%** |
+| All fired signals | 134 | 31.3% | **+3.24%** | **+2.39%** |
+
+**Second measurement — independently coded, as planned:** `07_independent_ev_recompute.py` deliberately does not import `dashboard.py`, `boring_signals.py`, or use pandas `groupby`/`drop_duplicates` — raw SQL + a manual dict-based dedup, a genuinely separate code path. Verified the N=20/N=60 duplicate rows agree on every field the return calculation uses (0 disagreements found, confirming tie-break order can't bias the result) before computing. **Result: exact match on both views** — Strategy Confirmed n=27, EV gross +4.43%/net +3.59%; All fired n=134, EV gross +3.24%/net +2.39%, identical to the first measurement on every figure.
+
+### 71.7 DBCI's contribution — disclosed explicitly, a permanent footnote
+
+**DBCI's two resolved rows, confirmed present:** `2026-07-10, ret=+111.00%` (the ghost-date-corruption-recovered trade §65 first found missing) and `2026-07-29, ret=-6.71%`. The dashboard's own tail-dependence caption (computed by dropping the single highest-return row in the set, regardless of symbol) reports: Strategy Confirmed EV goes **+4.43% → +0.33%** dropping DBCI's 07-10 trade alone. A separate, DBCI-specific computation (dropping **both** of DBCI's rows, not just its best one) gives a related but distinct number: **+4.43% → +0.61% (n=25)** for Strategy Confirmed, and **+3.24% → +2.50% (n=132)** for All fired signals. **These two ex-DBCI figures differ from each other by construction** (one excludes DBCI's single best trade only, the other excludes both of DBCI's resolved trades) — both are reported here precisely, not conflated into one number.
+
+**This is disclosed as a permanent characteristic of this record, not a defect further correction will resolve.** DBCI's 07-10 signal is a real, price-verified breakout (independently confirmed in §65.1 against actual price action, not a data artifact) that happened to be the largest winner in the strategy's history to date — the fact that one trade this large sits inside a currently-small sample (27 resolved Strategy-Confirmed trades) is a property of trading an uncapped trend-following exit with limited history, not something to "fix." Every future report of this table's EV should carry this same disclosure until the sample is large enough that no single trade dominates it this way.
+
+### 71.8 Trust Register updated
+
+`docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`'s TR-13 row: evidence updated to record this session's rebuild — the 2026-07-07 gap that blocked the decile check is now closed (10/10 match, direct causal confirmation); the dedup-conflict split is re-stated as 87/27 (not 85/40), sourced to this entry; the spurious-signal check is now clean (0/337) against a materially larger check surface than before. **Status color unchanged — Postgres `boring_signals` remains 🟡 AMBER (B), not A/fully-proven** — the 15-trading-day silent-loss window (§35.5) is untouched by this entry (no code in `boring_signals.py`'s signal-firing logic was modified, per the task's explicit constraint), and that specific gap, not the price-completeness gap this session closed, is what still stands between B and A.
+
+### 71.9 What this does and does NOT close
+
+**Closes:** the 2026-07-07-caused decile mismatch (10/10 now match, direct proof); the dedup-conflict classification against the corrected table (87/27, freshly flagged and verified); the spurious-signal question against the corrected table (0/337 remain); the regression suite (182/182, after resolving a transient concurrency-caused timeout, not a real defect); a real-function-measured, independently-cross-confirmed EV number for both views, with DBCI's contribution disclosed precisely rather than glossed over.
+
+**Does NOT close:** TR-13 itself (still AMBER — the 15-day silent-loss window, §35.5, untouched); whether the 87 (now labeled, not removed) dedup-conflict rows should eventually be reconciled against a longer replay floor — still an open, undecided question, same as §64.6 left it; the futures-cleanup task, still queued and untouched per explicit instruction. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Not committed, not pushed.** The Postgres `boring_signals` wipe/rebuild and dedup-conflict flagging are real, live writes (not reversible by a git operation — recoverable only via `boring_signals_backup_20260827` and its CSV export). `boring_signals.py`/`dashboard.py`'s own working-tree diffs (§64's already-existing, already-audited `dedup_conflict` schema/UI changes) were not modified further in this entry — this entry only ran them, per the task's explicit "no change to `boring_signals.py`" constraint.
+
+**Date of this entry: 2026-08-27. Status: Step 2 of the TR-13 fix plan executed and independently verified end-to-end. Futures-cleanup remains queued, untouched.**
+
+---
+
+## 72. Three post-Step-2 clarifications resolved: the dedup-conflict pair count fully traced (mechanism confirmed, arithmetic corrected), the regression timeout confirmed as pure resource contention with a clean 182/182 re-run, and the standalone local-vs-cloud reconciliation tool built, debugged through 3 real false-positive rounds, and run clean (2026-08-27)
+
+**READ-ONLY for clarifications 1-2. One new file added for clarification 3 (`local_cloud_price_reconciliation.py`, a standalone diagnostic script — not wired into Task Scheduler, GitHub Actions, or the dashboard).** No Postgres write, no SQLite write, no schema change.
+
+### 72.1 Clarification 1 — the 125→114 pair count traced, not just attributed
+
+**Arithmetic correction first:** the prior report's "reduction of 12 pairs" was imprecise — 125→114 is a reduction of **11 pairs** (222→210 rows is the actual 12-row reduction; the two deltas don't have to match 1:1, since some pairs gain/lose only one of their two lookback-N rows without leaving the pair set, and this case's own numbers don't happen to). Corrected here rather than left standing.
+
+**Direct diff, not inference:** comparing the exact (symbol, date) key sets from both sessions' `orphan_conflict_report.csv` files found **17 pairs left** the orphan set and **6 pairs entered** it (17 − 6 = 11, matching the corrected arithmetic). Every one of the 23 was individually checked against live data, not assumed:
+
+- **14 of the 17 "gone" pairs (Hypothesis A, confirmed):** the pair's symbol now has a signal at the TRUE corrupted date that matches SQLite exactly — i.e., it stopped being an orphan because it is no longer wrong. Concrete examples: `DBCI`/`LOTCHEM`/`LPL`/`PICT`/`SNBL` all previously orphaned at **2026-07-13** (a wrong, later date — the true 07-10 breakout was suppressed by the corrupted price) now fire correctly at **2026-07-10** and match SQLite there directly. `TPLI` previously orphaned at 07-17 now matches SQLite at 07-10 (and 07-22). This is the exact mechanism ledger §65.1 already named for DBCI specifically ("Postgres's replay later picks up... days later at a materially higher price") — this entry confirms it held for 13 more symbols too, by direct query, not by analogy.
+- **3 of the 17 "gone" pairs (Hypothesis B, confirmed):** `BWHL`/`EPCL`/`JSBL` no longer produce ANY row at all in the rebuilt table at their old date — these were lookback-contamination artifacts (§65a.1's "20 rows would not have fired at all under true data" finding), and now that the underlying prices are corrected throughout, they correctly don't fire, full stop. Not moved anywhere — removed.
+- **All 6 "added" pairs (Hypothesis C, confirmed) are on 2026-07-16** — the 5th corrupted date (found and fixed in §66.4/§66.5). `DBCI`, `KHYT`, `OML`, `SARC`, `SHNI`, `STML` each now fire a genuinely new, real breakout on 07-16 for the first time (structurally impossible before the fix, since 07-16 held stale copied data), correctly classified `CONFLICTED` because SQLite already had a real, still-open position for each of these symbols from an earlier true date (`DBCI` from 07-10, resolution 07-23; `KHYT` from 07-14; `OML`/`SARC`/`STML` from 07-15; `SHNI` from 07-10) — the exact same bounded-floor-vs-continuous-history mechanism §63.6 already established, now shown to apply to a third corrected date, not just the original four.
+
+**A genuinely new mechanism surfaced while verifying Hypothesis C, worth recording precisely:** `DBCI` shows a NEW signal_date row for every single trading day from 07-10 through 07-22 (07-10/13/14/15/16/17/20/21/22), all sharing the identical `resolution_date=2026-07-23` and `current_stop=22.26`. Read `_update_open_signal_statuses_pg()` directly (boring_signals.py:900-956) to understand why: its trailing-stop walk (`for d in range(t+1, n): ...`) uses `n = len(dates)` — the FULL length of currently-loaded price history, not "history through the replay's current day." Because a rebuild/replay iterates historical dates against a database that already contains the full future price history (through 08-25), the very first time `update_open_signal_statuses()` touches an open position, it computes that position's ENTIRE life-cycle outcome immediately (using real future prices a live daily run would not yet have), flipping it straight from `Pending` to its final `Stopped` state in one call — which frees the symbol from the `WHERE status IN ('Pending','Executed')` dedup gate for the very next day's scan, letting it "re-fire" on each subsequent day it clears a fresh, higher breakout level. **This is not a defect introduced by this session** — the same per-date log shape (a burst of `status_updates` immediately following a burst of `new_signals`) is present identically in the original §63 rebuild's own log (`scratch_boring_rebuild_20260826/rebuild_per_date_log.csv`), confirmed by direct comparison. It is an inherent property of re-using these exact, unmodified production functions for a backward-looking bulk replay rather than true day-by-day live production (where future prices genuinely don't exist yet) — and it is the same underlying mechanism §63.6's AKGL example ("fired on Postgres five separate times... while SQLite's real position was still open") was already showing, just not previously named this precisely. Recorded here so a future reader doesn't mistake "the same symbol has 9 signal_date rows in a row" for a bug.
+
+**Verdict: the population-shift explanation holds, fully traced, no unexplained residual.** 14 + 3 = 17 gone (both hypotheses fully accounted for, no third mechanism needed); 6 + 0 = 6 added (single mechanism, confirmed for all 6). Nothing "vanished" without a traceable cause.
+
+### 72.2 Clarification 2 — the regression timeout confirmed unrelated, plus a genuinely clean re-run obtained
+
+**Checked directly, not assumed:** grepped both `test_page_renders[leaders]`'s and `test_page_renders[setup-history]`'s full dashboard.py code blocks (PAGES[12]/PAGES[13], lines 7026-7682 and 7682-onward) for any reference to `boring`. **Zero matches in either block.** Neither page imports `boring_signals`, reads `dedup_conflict`, or touches any table this session's rebuild wrote to. **Confirmed unrelated to the rebuild, stated plainly, per the task's own branching instruction — no re-run was strictly required on this basis alone.**
+
+**Obtained anyway, for full rigor:** re-ran the entire 182-test suite once more with zero concurrent scripts running. Result: **182 passed, 0 failed, in 732.44s (12m12s) — a single, genuinely clean pass**, not stitched together from two separate runs. This is also the real baseline runtime for this suite (vs. the prior run's anomalous 26,733s/7.4 hours) — confirming the earlier 2 timeouts were exactly what they looked like: this session's own concurrent Postgres-hitting AppTest script competing for machine resources, not a defect surfaced by the rebuilt table.
+
+### 72.3 Clarification 3 — `local_cloud_price_reconciliation.py` built, and its own first-run false positives caught and fixed before calling it clean
+
+Built per the task's own proposed split from the prior session: the 5-check design (coverage, value agreement, copy-of-neighbor, zero-raw-with-stale-adjusted, full-history spike) as a **standalone script, not wired into Task Scheduler, GitHub Actions, or the dashboard's data-health banner** — those integration decisions remain separately deferred, per instruction.
+
+**The task asked to "confirm it runs cleanly once... and report its first real output" — the honest first real output was NOT clean, and is recorded rather than silently fixed and presented as if it had been right the first time:**
+
+1. **First run:** Check 3 (copy-of-neighbor) flagged 136 dates, Check 5 (spike) flagged 2 dates. Investigated before accepting either: Check 3's 136 were almost entirely legitimate circuit-locked/thinly-traded PSX stocks genuinely repeating the same OHLC for consecutive real trading days — the script's first draft compared `prices_adjusted` to itself only, missing the "cross-check against raw `prices`" step ledger §65.2's original methodology already used. Check 5's fixed 50-symbol threshold (borrowed from a specific 2026-08-26 measurement) doesn't account for `prices_adjusted` legitimately diverging further from raw `prices` over time as more corporate actions accumulate for an aging historical date — a static threshold decays and will eventually false-positive on ordinary adjustments.
+2. **Second run** (after adding the raw-price cross-check to Check 3, and rebasing Check 5 against SQLite's own per-date baseline instead of a fixed number): down to 218 pairs on 2 dates for Check 3, but Check 5 now clean. Investigated the 218: every one was a `-JUL`-suffixed futures contract — real Postgres data, but explicitly outside Kiran's trading universe (`scraper.py`'s `_is_futures_symbol()` already excludes this exact pattern everywhere else in this project) and never present in SQLite at all. Comparing futures contracts against a SQLite "ground truth" that never covers them isn't a finding, it's a category error.
+3. **Third run** (after filtering both tables to `_is_futures_symbol()`-excluded symbols before comparing): down to 19 pairs. Investigated again rather than declared clean: all 19 were `-JULB`-suffixed (a 4-letter rolling lot/series variant `_is_futures_symbol()`'s 3-letter regex doesn't catch) that SQLite genuinely does carry — but only for a narrow, unrelated date window (e.g. `AKBL-JULB`: SQLite has rows for 2026-07-24 → 07-31 only, nowhere near the flagged 07-10/07-16). A symbol-level "does SQLite ever carry this ticker" filter was still too coarse.
+4. **Fourth run, the actual fix:** scoped Check 3 to symbol+DATE, not symbol alone — only compare a (symbol, date) pair if SQLite has an actual row for that *exact* date. This is immune to every naming-convention and contract-rollover gap at once, rather than chasing suffix patterns one at a time. **Result: 0 findings across all 5 checks, exit code 0** — the first genuinely clean run.
+
+All four rounds and their fixes are recorded permanently in the script's own docstring (not just here), specifically so a future reader who sees this script fire a "finding" on a futures-contract or circuit-locked symbol doesn't have to rediscover this same investigation from scratch.
+
+**First real, clean output (2026-08-27):**
+```
+Postgres retention floor (MIN(date) in prices): 2024-08-26
+[1/5] Coverage (full calendar)           CLEAN  497 SQLite dates, 497 Postgres dates from 2024-08-26 -- no fully-missing date found.
+[2/5] Value agreement (common dates)     CLEAN  497 common dates checked. Dates with any mismatch: 0 -- all clean.
+[3/5] Copy-of-neighbor (ghost-date)      CLEAN  0 rows found after cross-checking 607 raw copy-of-neighbor candidates against raw prices -- no ghost-date signature anywhere in the checked window.
+[4/5] Zero-raw-with-stale-adjusted       CLEAN  0 dates found -- prices_adjusted never has data for a date prices lacks entirely.
+[5/5] Full-history spike (vs. SQLite's own baseline) CLEAN  455 dates with any disagreement checked against SQLite's own baseline -- none exceed SQLite's own count by more than 15, no spike found.
+CLEAN -- all 5 checks passed, nothing found.
+```
+
+This is also, incidentally, a second independent confirmation of §67's full-history sweep result (zero mismatches in the checkable window) and of §69's specific 07-07 fix — obtained via a differently-built, from-scratch tool, not a re-run of the original sweep scripts.
+
+### 72.4 What this does and does NOT close
+
+**Closes:** the dedup-conflict pair-count reconciliation (fully traced, both directions, no unexplained residual); the regression-timeout question (confirmed unrelated by code inspection, AND a genuinely clean single-pass 182/182 obtained); the standalone reconciliation tool (built, debugged, first real clean run obtained and reported honestly, including the false positives found along the way).
+
+**Does NOT close:** whether/how to wire this tool into Task Scheduler or the dashboard's data-health banner (explicitly deferred, per instruction, pending separate sign-off); the `-JULB`/futures-cleanup task itself (still queued, untouched — this entry's Check 3 fix works around the naming gap for diagnostic purposes only, it does not fix `scraper.py`'s own filter, which was not authorized to change here); TR-13 (unaffected by this entry — no boring_signals write occurred). **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Not committed, not pushed.** `local_cloud_price_reconciliation.py` is a new, uncommitted file in the working tree — a diagnostic tool, not a production code change; committing it is a separate decision.
+
+**Date of this entry: 2026-08-27. Status: all three clarifications resolved with direct evidence. Futures-cleanup remains queued, untouched, unaffected by this entry.**
+
+
+---
+
+## 73. <span style="color:#16a34a;">● Pass 1 — sector-mapping fix (7 symbols) + non-equity ingestion purge (futures / govt paper / 786) executed end-to-end on both backends, backup-first, verified (2026-08-27)</span>
+
+**WRITE ENTRY. This is the queued "futures-cleanup" / asset-type-filtering task §67-§72 kept deferring, executed together with a pre-agreed batch of sector-mapping corrections.** Scope was fixed with the user in a read-only checkpoint *before* any write: the exact purge predicate (concrete symbol lists + row counts) and the full code diff were shown and confirmed first. Scripts: `scratch_sector_purge_20260827/01_backup.py` … `06_post_verify.py` (not committed — scratch). Supabase PITR is OFF (free plan), so the manual backup below is the only rollback net — treated as mandatory, not optional, for this pass.
+
+### 73.1 Code — new branch off the deployed commit, arc parked and restored byte-intact
+
+The undeployed reliability arc (this whole program's uncommitted working tree — ledger, Trust Register, the TR-13 `boring_signals`/`dedup_conflict` diffs, `local_cloud_price_reconciliation.py`, the scratch dirs) was `git stash --include-untracked`-parked so the fix could be committed clean, then restored exactly. Verified after restore: `git status --porcelain` byte-identical to the pre-stash baseline; `git diff` empty against `feat/tr05-freshness-gates` HEAD (`eeba202`); the 2 pre-existing unrelated stashes untouched.
+
+New branch `fix/sector-mapping-and-nonequity-ingestion` cut from `d4e3e4c` (`origin/main`, the actually-deployed commit), **commit `1326b19`, NOT pushed** — 4 files + 2 new test files:
+
+- **`config.py`** — `SECTOR_OVERRIDES` gains `SYM→TECHNOLOGY & COMMUNICATION`, `BML→COMMERCIAL BANKS`, `FCL`/`WAVESAPP→CABLE & ELECTRICAL GOODS`, `MSOT`/`INKL`/`IMAGE→APPAREL` (APPAREL is a deliberate new *local* sector — not a ksestocks.com label, so the overrides are load-bearing with no fallback). New `UNIVERSE_WHITELIST = {SYM, BML, FCL, WAVESAPP}` (hard-include list). New `is_non_equity_symbol()` = `FUTURES_SYMBOL_RE` (`^[A-Z0-9]+-C?(JAN…DEC)[A-Z]?$` — covers bare `-MON`, parallel-series `-MONB/C/D`, cash-settled `-CMON`) ∪ `GOVT_PAPER_SYMBOL_RE` (`^P\d{2}[A-Z]{3}\d{6}$`) ∪ `{786, 786R}`.
+- **`scraper.py`** — `parse_market_summary()` now calls `is_non_equity_symbol()` *before* a row is appended to `sector_rows`/`price_rows`, so these never re-enter `prices`, `prices_adjusted`, **or `sectors`** on any future scrape. The old filter only matched bare `SYMBOL-MON` (3-letter month, exact) and leaked everything else.
+- **`build_stock_metadata.py`** — reworked from `DROP TABLE` + full re-insert to an idempotent `INSERT … ON CONFLICT DO UPDATE`. Never drops, never deletes. On UPDATE it refreshes only source-derived columns (`sector`, `company_name`, `in_kse100`, `listing_date`); **`is_active`, `delisting_date`, `notes` are manual-curation columns, set on INSERT only.** A first cut of this script recomputed `is_active` unconditionally and flipped **9 hand-flagged delisted symbols** (`GEMUNSL`, `AEL`, `JOPP`, `PSMC`, `PIAB`, `PIAA`, `META`, `HSPI`, `FFBL` — all delisted *during* 2024, so their stale price rows fall after the `2024-01-01` `ACTIVE_CUTOFF`) back to active. Caught in post-write verification against the backup, `stock_metadata` restored from the backup DB, script fixed, re-run clean. `STOCK_METADATA_DB` env var added so the test suite runs it against an isolated copy.
+- **`leaders_scan.py`** — the hard-coded `"sector N/23"` text in `_compute_penalty()` / `_build_key_reason()` is now a live `n_sectors` count from `sector_signals` for the scan date (23 on Postgres today, 34 on SQLite; tracks APPAREL automatically). Threaded through all 4 call sites (`_append_leaders_scan_pg`, `append_leaders_scan`, `_save_top_picks_pg`, `save_top_picks`).
+- **Tests** — `tests/test_non_equity_symbol_filter.py` (predicate: futures all series, ETF-futures vs bare ETFs kept, P-equities vs govt paper, junk); `tests/test_build_stock_metadata_idempotent.py` (twice-run no-op, manual row survival, `notes` + `is_active=0` + `delisting_date` preserved on UPDATE, whitelist override sector, excluded-sector symbol not added). **Full suite green on the branch: 210 passed.**
+
+### 73.2 Backup — CSV export of all 55 Postgres tables + 3 snapshot tables + full SQLite file copy
+
+`01_backup.py` (resumable, per-table `.done` markers): every public Postgres table → `pg_csv_export_20260827/<table>.csv` via `COPY … WITH CSV HEADER`, with a manifest recording per-table row count. For the three tables this pass writes: **`prices_pre_sector_20260827` (297,339)**, **`prices_adjusted_pre_sector_20260827` (297,539)**, **`sectors_pre_sector_20260827` (2,511)** created as `CREATE TABLE … AS SELECT *`, row-count-verified against source. SQLite: consistent snapshot via the `sqlite3` online backup API → **`backups/psx_data_pre_sector_20260827.db`** (882,016,256 bytes, `PRAGMA integrity_check` → `ok`, sha256 `7aadf290bece631a7b6886832bddc9e1d94238fa5107d99160571fb51e60a037`).
+
+### 73.3 Mandatory pre-delete verification — `04_pre_delete_verification.py`
+
+All checks passed before any `DELETE`:
+
+- **Export completeness** — Postgres `prices` / `prices_adjusted` / `sectors`: live count == CSV data-row count (proper `csv` parse, handles quoted newlines) == snapshot-table count == manifest count, all exact (297,339 / 297,539 / 2,511).
+- **SQLite backup coverage** — `prices` / `prices_adjusted` live == backup (1,764,688 each); `sectors` row count unchanged; `stock_metadata` == backup + 4.
+- **Predicate still matches the confirmed checkpoint numbers exactly** — Postgres 1,794 symbols / 65,343 (`prices`) + 65,543 (`prices_adjusted`); SQLite 133 symbols / 7,770 + 7,770.
+- **Per-category spot check, byte-identical to backup** — `OGDC-DEC` (strict future), `AKBL-AUGB` (parallel series), `PPL-CJAN` (cash-settled), `P01GIS200826` (govt paper), `786` (misc): every live row identical to its CSV-export / backup-DB copy.
+- **No concurrent writes** — `MAX(date)` unchanged vs snapshot/backup on both backends; `pipeline_runs` unchanged (Postgres last run 09:59 UTC, SQLite 2026-08-25); the only tables changed since backup are the ones step 3 wrote.
+
+### 73.4 DB writes (backup-first, both backends)
+
+**Sector labels** (`03_sector_label_writes.py`, dry-run-then-`--apply`, aborts if any symbol is not at its expected prior value; one transaction per backend, post-update verified before commit):
+
+| symbol | was | now (both `sectors` tables) |
+|---|---|---|
+| SYM | Unknown Sector | TECHNOLOGY & COMMUNICATION |
+| BML | Unknown Sector | COMMERCIAL BANKS |
+| FCL | Unknown Sector | CABLE & ELECTRICAL GOODS |
+| WAVESAPP | Unknown Sector | CABLE & ELECTRICAL GOODS |
+| MSOT | TEXTILE COMPOSITE | APPAREL |
+| INKL | TEXTILE COMPOSITE | APPAREL |
+| IMAGE | SYNTHETIC & RAYON | APPAREL |
+
+**SQLite `stock_metadata` rebuild** via the new idempotent script (Postgres `stock_metadata` deliberately **not** touched — it is the stale 314-row pre-expansion copy, a separate known issue, explicitly out of scope for this pass). Result: **465 → 468** rows (+4: `BML`/`FCL`/`SYM`/`WAVESAPP`; −1: the `786` orphan removed in the purge below). Zero rows deleted by the rebuild itself. Verified against the backup: `is_active` flips **NONE** (all 9 delisted preserved with their `delisting_date` + `notes`), `notes` changes **NONE**, sector changes **exactly 3** (`IMAGE`/`INKL`/`MSOT` → APPAREL), `in_kse100` / `company_name` changes 0. "Full wiring into the signal tables" for the 4 new symbols is **forward-only** by explicit decision — `stock_signals` appends new dates from the next pipeline run; no historical `stock_signals` backfill in this pass.
+
+### 73.5 The purge — irreversible, `05_purge.py --apply`, one transaction per backend
+
+| backend / table | rows deleted | count after |
+|---|---:|---:|
+| Postgres `prices` | 65,343 | 231,996 |
+| Postgres `prices_adjusted` | 65,543 | 231,996 |
+| Postgres `sectors` | 1,922 | 589 |
+| Postgres `corporate_action_suspects` | 3 | 10 |
+| SQLite `prices` | 7,770 | 1,756,918 |
+| SQLite `prices_adjusted` | 7,770 | 1,756,918 |
+| SQLite `sectors` | 1,919 | 589 |
+| SQLite `stock_metadata` (`786`) | 1 | 468 |
+| SQLite `stock_signals` (`786`) | 16 | — |
+| SQLite `setup_log` (`786`) | 3 | — |
+| SQLite `corporate_action_suspects` | 3 | 3 |
+
+`corporate_action_suspects` rows removed (both backends): `GATM-AUG`, `MLCF-AUG`, `UNITY-JUL` — all `suspect_date` 2026-06-11, contract-rollover false positives, not real corporate actions. `786`/`786R` was wired as a tracked equity **only in SQLite** (`stock_metadata` + 16 `stock_signals` + 3 `setup_log`); Postgres never had it in those tables, so the orphan cleanup is SQLite-only. In-transaction post-delete verification (predicate now selects 0; expected row counts; the 7 sector-fix symbols still present; SQLite `PRAGMA integrity_check` → `ok`; Postgres snapshot tables unchanged) passed on both backends before commit.
+
+### 73.6 Post-purge verification — `06_post_verify.py` + `local_cloud_price_reconciliation.py`
+
+- **Predicate now selects 0 non-equity rows** in `prices` / `prices_adjusted` / `sectors` on both backends.
+- **No orphan non-equity symbols remain in any derived table** — checked `stock_signals`, `setup_log`, `leaders_scan`, `boring_signals`, `symbol_active_dates`, `stock_market_cap`, `stock_metadata` (SQLite): all clean.
+- Both `sectors` tables are now **589 rows and identical in scope**; both `prices`/`prices_adjusted` on Postgres are 231,996 (equal); the 6 whitelist ETFs untouched (5 have price rows: `JSGBETF`/`JSMFETF`/`MZNPETF`/`NBPGETF`/`NITGETF`); snapshot/backup tables intact.
+- **`local_cloud_price_reconciliation.py` (the §72 tool): CLEAN on all 5 checks** — 497 SQLite dates == 497 Postgres dates from 2024-08-26, 0 value mismatches on 497 common dates, 0 ghost-date signatures, 0 zero-raw-with-stale-adjusted, no full-history spike.
+
+### 73.7 ETF-list note (disclosed, no action)
+
+The user's ETF keep-list named `UPLPETF`; the databases actually hold **`UBLPETF`** (plus `ACIETF`, `HBLTETF`, `MIIETF` — 9 bare ETF tickers, not 6). The purge predicate matches no bare `*ETF` symbol, so this is cosmetic — nothing was deleted or kept wrongly. ETF *futures* (`MZNPETF-AUGB`, `JSMFETF-APR`, `NBPGETF-JAN`, `NITGETF-FEB`, `UBLPETF-FEB`, …) **were** purged, correctly — they are derivative contracts, not the ETF.
+
+### 73.8 What this does and does NOT close
+
+**Closes:** the futures/asset-type ingestion gap for the cloud scraper — `scraper.py` now filters all futures series + govt paper + 786 at ingestion, matching (exceeding) what local had; the historical backlog of those instruments removed from `prices`/`prices_adjusted`/`sectors` on both backends (Postgres held ~65k such rows from its migration/BI-history seed; SQLite ~7.8k that leaked past the old too-strict filter); the 7 sector misclassifications; the `786` orphan; the `build_stock_metadata.py` drop-and-rebuild data-loss risk; the stale `/23` sector-count constant.
+
+**Does NOT close:** Postgres `stock_metadata` (still the 314-row pre-expansion copy — a separate task); historical `stock_signals`/`setup_log`/`sector_signals` for `SYM`/`BML`/`FCL`/`WAVESAPP` (forward-only by decision — no APPAREL `sector_signals` row exists until the next pipeline run computes one); whether APPAREL's 3-member thinness distorts `RS_LEADER_SECTOR` / the `sec_global_rank ≤ 8` gate (explicitly left alone per the user's own later plans); TR-13 (untouched — no `boring_signals` write). The branch commit `1326b19` is **not pushed** — merging it to `origin/main` (which is what Streamlit Cloud deploys) is a separate decision. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Not committed to the arc, not pushed.** The DB writes (both backends) are real and live — recoverable only via `backups/psx_data_pre_sector_20260827.db`, the `*_pre_sector_20260827` Postgres snapshot tables, and the `pg_csv_export_20260827/` CSVs, all retained as evidence. The sector-fix code lives only on the unpushed `fix/sector-mapping-and-nonequity-ingestion` branch.
+
+**Date of this entry: 2026-08-27. Status: Pass 1 (sector-mapping + non-equity purge) executed and verified end-to-end on both backends. Branch `1326b19` unpushed. Postgres `stock_metadata` and the forward-only signal-table backfill remain as follow-ups.**
+
+
+---
+
+## 74. <span style="color:#16a34a;">● §73's sector-mapping + non-equity-ingestion fix DEPLOYED — merged to `origin/main` (PR #20) and cherry-picked into the local runtime; both scrape paths now run the corrected `scraper.py` (2026-08-27)</span>
+
+**WRITE ENTRY (git + deploy only — no DB writes in this entry).** §73 committed the fix as `1326b19` on a branch but left it undeployed: `daily_scraper.yml` (Cloud) checks out `main` = `d4e3e4c` with no `ref:`, and `run_update.bat` (local) runs `main.py --all` from the working tree on `feat/tr05-freshness-gates` — **both still the old `scraper.py`**, so every scheduled scrape would re-introduce the ~1,800 non-equity tickers §73 purged. This entry closes that gap on both paths.
+
+### 74.1 Pre-flight (read-only) — zero re-pollution had occurred
+
+Confirmed at ~2026-08-27 11:20 UTC (≈1 hr after §73's purge): both backends still **exactly** at §73's post-purge counts — PG `prices`/`prices_adjusted` 231,996 / `sectors` 589; SQLite 1,756,918 / 1,756,918 / 589 — **0 non-equity rows** anywhere, `MAX(date)` still 2026-08-25. Last Cloud `daily_scraper` run: `33002924669`, 2026-08-26 19:01 UTC, headSha `d4e3e4c`. Last local run: 2026-08-26 ~03:54 UTC (`pipeline_runs` id 57). **No scrape ran between §73's purge and this deployment.** The Thursday 2026-08-27 17:00 UTC Cloud cron had not yet fired (it was ~5.5 h in the future, not overdue — an earlier misread of the machine's mislabeled local clock).
+
+### 74.2 Cloud — PR #20, merged (real merge commit, not squash)
+
+`1326b19` is a clean 1-commit fast-forward on `d4e3e4c` (its parent *is* `d4e3e4c`), so zero conflict risk. Dry-run first: local `--no-ff` merge of `1326b19` into a throwaway branch at `origin/main`, **full suite 210 passed**. Then: pushed `fix/sector-mapping-and-nonequity-ingestion`, opened **PR [#20](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/20)** → `main`, all **3 required CI checks green** (Clean install / Unit tests / App boot smoke — 30s / 1m17s / 51s) → `gh pr merge 20 --merge --delete-branch`. **`origin/main`: `d4e3e4c` → `5c42049`** (merge commit, parents `d4e3e4c` + `1326b19`; `1326b19` preserved as a distinct commit). Verified post-merge: `origin/main:scraper.py` contains `is_non_equity_symbol`; `range-diff` confirms nothing changed vs the tested branch. `daily_scraper.yml` confirmed **not** triggered by the merge push (it is `schedule`/`workflow_dispatch`-only; only `ci.yml` runs on push). `--delete-branch` removed both the remote and the local `fix/…` branch — harmless, `1326b19` is permanently reachable as `5c42049`'s parent.
+
+### 74.3 Local — cherry-pick onto `feat/tr05-freshness-gates`, underneath the arc
+
+The local Task Scheduler runs from the working tree, which carries yesterday's uncommitted "arc" (the TR-13 `boring_signals`/`dashboard.py` diffs, `local_cloud_price_reconciliation.py`, the scratch dirs, this ledger) — and that arc's edits to `boring_signals.py`/`apply_price_adjustments.py`/`data_health.py` are part of what the nightly run executes, so it must stay. The arc touches **none** of the 6 files in `1326b19`. Sequence: stash the arc → `git cherry-pick 1326b19` onto `feat/tr05-freshness-gates` (was `eeba202`) → new commit **`758f866`** (6 files, `range-diff` ≡ `1326b19`) → `git stash pop` → arc restored, `git status --porcelain` byte-identical to the pre-stash baseline, `git diff` shows only the 14 arc files (none of the 6). Runtime sanity (no scrape): `config.is_non_equity_symbol()` returns `True` for `OGDC-DEC`/`AKBL-AUGB`/`PPL-CJAN`/`P01GIS200826`/`786`, `False` for `HBL`/`MSOT`/`JSGBETF`; `SECTOR_OVERRIDES['SYM']`/`['MSOT']` and `UNIVERSE_WHITELIST` correct; `scraper.py` imports clean. The 2 new test files: **59 passed** against the live working tree. Nothing pushed or deleted on `feat/tr05-freshness-gates` (it stays local-only, now 2 commits ahead of its origin: `eeba202` + `758f866`). `758f866` is patch-identical to `1326b19`/`5c42049` — git's patch-id dedup handles the duplicate if `feat/tr05` is ever merged to `main`, same as the `07044d5`↔`ffdccf9` precedent (§58).
+
+### 74.4 Post-deploy verification — still 0 re-pollution
+
+`05_purge.py` dry-run (2026-08-27, post-deploy): **0 rows to delete on every table, both backends** — no scrape ran during the deploy window either. `06_post_verify.py`: **ALL CHECKS PASSED** — 0 non-equity rows in `prices`/`prices_adjusted`/`sectors` on both backends; 0 orphan non-equity symbols in any derived table; 7/7 sector-fix symbols correct in `sectors` and (SQLite) `stock_metadata`; 3 APPAREL members; 9 delisted flags preserved; snapshot/backup tables intact; `stock_metadata` 468 rows. (Fixed one stale hard-coded `469` assertion in `06_post_verify.py` to `468` — the correct post-§73 count.)
+
+### 74.5 Effect
+
+- **Cloud:** the next `daily_scraper.yml` run (Fri 2026-08-28 17:00 UTC, or a late-firing Thu run) checks out `origin/main` = `5c42049` = corrected `scraper.py`. Non-equity rows are dropped at ingestion.
+- **Local:** the next `run_update.bat` (Windows logon) runs `main.py --all` from the working tree = `758f866` + arc = corrected `scraper.py`. Same.
+- The one-time purge (§73) will now hold — nothing re-populates it.
+
+### 74.6 What this does and does NOT change
+
+**Changes:** the deployment gap §73 flagged is closed on both scrape paths; `origin/main` now carries the sector-mapping + non-equity-ingestion fix.
+
+**Does NOT change:** the sector-fix code is the same code verified in §73 — no new logic. No DB write in this entry. Postgres `stock_metadata` is still the stale 314-row copy (separate task). Forward-only signal-table wiring for SYM/BML/FCL/WAVESAPP is unchanged (an APPAREL `sector_signals` row appears only once the next pipeline run computes one). The arc (`feat/tr05-freshness-gates` + its uncommitted working tree) is untouched and still unmerged. **Kiran remains NOT VERIFIED — DO NOT TRADE** — this is deployment hygiene for one ingestion filter, it moves no Trust Register row and authorizes no trading.
+
+**Committed / pushed:** `origin/main` = `5c42049` (PR #20, merged). Local `feat/tr05-freshness-gates` = `758f866` (cherry-pick, **not pushed**). This ledger entry and the RESEARCH_LOG update remain uncommitted in the arc, per program practice.
+
+**Date of this entry: 2026-08-27. Status: §73's fix deployed to both scrape paths. Purge holds. Verified 0 re-pollution.**
+
+
+---
+
+## 75. <span style="color:#16a34a;">● TR-11 Step 2 — Group A: the two orphaned error-handling regression-test files committed to `origin/main` (PR #21) (2026-08-27)</span>
+
+**WRITE ENTRY (git only — no DB writes, no production-code change).** First concrete progress on TR-11 ("deployed code = reviewed, verified code") since §62. TR-11's acceptance criterion requires classifying the uncommitted working-tree diff into reviewed units and committing them one at a time; this is the smallest such unit — "Group A" from the 2026-08-26 disposition audit (memory `kiran-production-integrity-program`).
+
+### 75.1 What was committed
+
+Two test-only files, +297 lines, nothing else:
+
+- `tests/test_boring_signals_pending_error_handling.py` (3 tests) — locks in `scan_boring_breakouts_pending()`'s §44 exception-handling contract: an unexpected error **raises** (not swallowed → `total=0` → reported as a clean "no new signals" via `_record_hook`), a transient `sqlite3.OperationalError` breaks the loop without raising so a later run's bounded `max_lookback` window can still reach the date.
+- `tests/test_setup_log_backfill_error_handling.py` (4 tests) — same two-tier contract for `append_setup_log_today()`'s SQLite path; specifically proves a mid-loop failure does **not** advance the `MAX(setup_date)` high-water mark past the failed date (the six-week `setup_log`-freeze bug class, §24/§25/§28).
+
+The source these cover (`boring_signals.py` / `backfill_setup_log.py`, §44's `except Exception` → raise/break fix) was **already merged via `1c7c4a7`**, a confirmed ancestor of `origin/main`. These files were pure missing-test-coverage-for-already-live-code — zero entanglement with the rest of the arc.
+
+### 75.2 Provenance / mechanics
+
+The files existed as commit `eeba202` ("test: preserve error handling regression coverage", 2026-08-26) on the local-only branch `feat/tr05-freshness-gates` — parent `4919fac`, itself an ancestor of `origin/main`. `git diff origin/main 758f866` was **exactly** those 2 new files (the `758f866` sector-fix commit nets to zero against `origin/main` since §74's PR #20 carried the same patch). So `eeba202` was the only reviewed-and-ready content separating the local branch from `origin/main`.
+
+Executed entirely in an **isolated `git worktree`** cut from `origin/main` (`5c42049`) so the main checkout's uncommitted arc was never touched, stashed, or checked out against:
+
+1. `git worktree add -b test/preserve-error-handling-regression-coverage <scratch> origin/main` → `git cherry-pick eeba202` → clean, zero conflict → `e116ebf`.
+2. Targeted run of both files: **7/7 pass**. Full suite in the worktree: **216 pass, 1 fail** — the 1 failure is `test_serving_revision.py::test_default_repo_dir_finds_this_actual_checkout`, a **worktree artifact** (`serving_revision.py` line 39 does `os.path.join(repo_dir, ".git")` expecting a directory; a worktree's `.git` is a *file* pointing at the real gitdir, so `get_serving_revision()` returns `None`). Confirmed not a regression: `pytest tests/test_serving_revision.py` in the normal main checkout = **12/12 pass**; the test is pre-existing on `origin/main` and passed PR #20's CI on a normal (clone) checkout. Not caused by this change (adds 2 unrelated files). Effective normal-checkout result: 217 pass.
+3. `git push origin HEAD:refs/heads/test/preserve-error-handling-regression-coverage` (explicit refspec — the worktree branch tracked `origin/main`, so a bare `git push` was avoided).
+4. PR [#21](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/21) → `main`. All **3 required CI checks green** (Clean install 28s / Unit tests 1m5s / App boot smoke 1m3s). `mergeStateStatus: CLEAN`.
+5. `gh pr merge 21 --merge --delete-branch` → **`origin/main`: `5c42049` → `24c774b`** (merge commit; parent `e116ebf`). Both files verified present on `origin/main`. `--delete-branch` removed the local + remote `test/…` branch.
+
+### 75.3 Side effect (benign): stale local `main` fast-forwarded
+
+`gh pr merge` fast-forwarded the **local `main` branch pointer** from its long-stale `98e2b80` (it had been "behind 9" since the TR-05 arc, §55/§95-era note) to `24c774b` = `origin/main`. No working tree anywhere changed — nobody has `main` checked out; the real repo stayed on `feat/tr05-freshness-gates`. This is pure hygiene (local `main` is now current for the first time in ~2 weeks), not a risk.
+
+### 75.4 State after this entry — verified
+
+- **`origin/main` = `24c774b`.** Carries Group A. This is what Streamlit Cloud deploys; the redeploy runs byte-identical application code (test files are never imported by the app).
+- **The arc is byte-for-byte untouched.** Main repo still on `feat/tr05-freshness-gates` @ `758f866`; `git status --porcelain` = the identical 14 modified + 14 untracked entries as before this task. Nothing stashed. The disposable worktree was removed (`git worktree list` clean).
+- **`feat/tr05-freshness-gates` still contains the original `eeba202`.** Now patch-redundant with `e116ebf` on `main`; git's patch-id dedup handles it when the arc is eventually merged, same precedent as `07044d5`↔`ffdccf9` (§58) and `758f866`↔`5c42049` (§74).
+
+### 75.5 What this does and does NOT close
+
+**Does:** removes the 2 Group A files from the uncommitted-arc pile; establishes the worktree-based "commit one reviewed unit without disturbing the arc" pattern for the remaining groups.
+
+**Does NOT:** move TR-11 off 🔴 RED. Groups B (the verified `apply_price_adjustments.py` SQLite-quarantine repair + its 2 tests), C (generated artifacts — exclude / `.gitignore`), D (`CLAUDE.md`), and the entire §63–74 body of work (ledger, Trust Register, TR-13 `boring_signals.py`/`dashboard.py` diffs, `local_cloud_price_reconciliation.py`, the scratch dirs) are all still unclassified-for-commit in the working tree. The natural next step is a full classification pass on the arc, presented group-by-group for authorization. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Committed / pushed:** `origin/main` = `24c774b` (PR #21, merged). This ledger entry and the RESEARCH_LOG update remain uncommitted in the arc, per program practice.
+
+**Date of this entry: 2026-08-27. Status: TR-11 Group A committed to `origin/main`. Arc verified untouched. TR-11 still RED.**
+
+
+---
+
+## 76. <span style="color:#16a34a;">● TR-11 arc classification — groups 1 & 2 committed (PR #22 safety fix, PR #23 hygiene); groups 3–5 pending (2026-08-27)</span>
+
+**WRITE ENTRY (git only — no DB writes).** Continues §75. Full read-only classification of the entire uncommitted working tree (28 items: 14 modified + 14 untracked) into risk/readiness groups, then the two lowest-risk groups committed via the §75 worktree method. Baseline: full suite on the working tree = **241 passed, 0 failed** before starting.
+
+### 76.1 The classification (all 28 items)
+
+| Group | Items | Disposition |
+|---|---|---|
+| **1 — Production-DB safety fix** | `data_health.py` (`_env_pg_url()` presence-not-truthiness) + `tests/test_data_health.py` (+3) + `tests/test_tr05_freshness_gate.py` (+psycopg2 guard, +1 test) | ✅ **PR #22, merged** |
+| **2 — Repo hygiene** | `.gitignore` += `scratch_*/`, `backups/`, `market_breadth_oscillator.png`, `twitter_output/`, `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`; `git rm --cached` the PNG + `twitter_output/*` | ✅ **PR #23, merged** |
+| **3 — Circuit-flag / quarantine repair (§41–49)** | `apply_price_adjustments.py` (~280 lines) + `tests/test_apply_price_adjustments_quarantine.py` + `tests/test_circuit_flags_backfill_repair.py` | ⏳ pending — **cross-backend safety review required first** (this code runs in BOTH pipelines once on `main`; Postgres `prices_adjusted` has none of the circuit columns — must confirm it no-ops safely there, per §50) |
+| **4 — TR-13 dashboard display (§63–74)** | `boring_signals.py` (`dedup_conflict` DDL) + `dashboard.py` (perf-panel exclusion, "Recorded" freshness col, "Data Flag" tag) + `tests/test_boring_signals_catchup_ordering_regression.py` | ⏳ pending — **CI fixture (`tests/fixtures/psx_fixture.db`) lacks the `dedup_conflict` column**; regenerate it or make `dashboard.py` column-tolerant before this passes app-boot |
+| **5 — Documentation** | `docs/KIRAN_CLEANUP_AUDIT.md` (§33–76) + `docs/KIRAN_CLOUD_RELIABILITY_AUDIT.md` + `docs/KIRAN_SQLITE_ONLY_SCOPING.md` + `CLAUDE.md` (+69) | ⏳ pending — **user disclosure decision** (see §76.3) |
+| **Exclude entirely** | `local_cloud_price_reconciliation.py` (read-only diagnostic — confirmed only SELECTs; user's call whether to commit as a tool), `breadth_data.csv` (tracked, `dashboard.py:472` reads it at runtime — its large pending diff is a separate data-correctness question, NOT hygiene), the 5 `scratch_*/` dirs + `backups/*.sha256` (now gitignored via PR #23) | n/a |
+
+### 76.2 PR #22 + #23 mechanics
+
+Both via `git worktree add … origin/main` → build in isolation → PR → 3 CI checks green → `gh pr merge --merge --delete-branch`. **`origin/main`: `24c774b` → `9ca208f` (PR #22) → `a917fc9` (PR #23).** After each, verified in the real repo: still on `feat/tr05-freshness-gates` @ `758f866`, `git status --porcelain` still the identical 28 entries — **arc byte-for-byte untouched** (the merged files still show as modified in the arc because `feat/tr05` has not been reconciled with `main`; their patch-ids will match and drop out at final reconciliation, §75.4 precedent). `gh pr merge` fast-forwarded local `main` each time (benign, §75.3).
+
+- **PR #22 safety rationale:** the only production-code change is `_env_pg_url()` switching from `os.environ.get(A) or os.environ.get(B)` to an `in os.environ` presence check. Real prod paths unaffected — GitHub Actions sets a real `DATABASE_URL` (non-empty → unchanged); local runs leave both unset (→ still falls through to `.env`). Only an explicit `""` (tests only) changes behavior. 39/39 in the two affected test files; PR CI 3/3 green.
+- **PR #23 safety rationale:** no code. `breadth_data.csv` explicitly kept tracked (runtime dependency). `market_breadth_oscillator.png` + `twitter_output/*` confirmed read by nothing in `dashboard.py`; app-boot smoke test (all 15 pages) green with them untracked. Working copies remain on disk (`git rm --cached`, not `rm`).
+
+### 76.3 Group 5 (docs) — secrets scan result + the open disclosure decision
+
+**Automated + manual scan of all 4 doc files for credentials / PII / financial-account data: CLEAN.** No API keys, tokens, passwords, DB connection strings, bank/account numbers, emails, or IPs. Every regex hit on those patterns was prose (e.g. the word "authorization:", or text *describing* that a fixture scan for `gsk_`/`sk-`/`postgres://` found nothing).
+
+**What the scan *did* surface — three publish-or-not judgement calls, escalated to the user, not resolved unilaterally:**
+1. **The PRL incident loss narrative.** §33+ and `KIRAN_CLOUD_RELIABILITY_AUDIT.md` describe the real personal trade with exact numeric detail (fill price, exit price, precise realized-loss %). The *existence* of the incident and a "filled worse" outcome is already public in the committed `CLAUDE.md`; what §33+ adds is the precise personal P&L.
+2. **`CLAUDE.md`** would publicly carry a personal characterization of the project owner and the committed `CLAUDE.md` already carries a known-wrong "~9% worse" figure.
+3. **`KIRAN_CLOUD_RELIABILITY_AUDIT.md`** and `KIRAN_SQLITE_ONLY_SCOPING.md` are written as private advice ("if it were my capital, I'd…") — memo tone, not neutral docs.
+
+**Decision (2026-08-27, user): Option B.**
+- The two scoping docs stay **local** (added to `.gitignore` in PR #24).
+- The ledger **is committed**, with the exact PRL fill/exit/P&L figures **genericized in place** (qualitative language retained: "materially worse than ~9%", "substantial realized loss") — precise figures held only in local notes (`KIRAN_CLOUD_RELIABILITY_AUDIT.md`, session memory). The *finding* (the doc's ~9% was wrong; reality was materially worse; a real loss occurred) is fully preserved.
+- **`CLAUDE.md` softened:** the new "operational workflow" section describes roles functionally ("the project owner" as the sole authorization boundary) without the personal characterization; the pre-existing "~9% worse" in the Known Gaps section corrected to "materially worse" (a known-wrong number removed, not a new one added); local-only docs referenced as "internal / kept local", not as repo paths.
+
+### 76.4 State
+
+- **`origin/main` = `a917fc9`.** Groups 1 & 2 in. App code byte-identical (Group 1 is a test-isolation fix + one env-var check; Group 2 is `.gitignore` + untracking).
+- Arc: **28 items, byte-for-byte the pre-session set.** Real repo on `feat/tr05-freshness-gates` @ `758f866`.
+- TR-11 still 🔴 RED. Groups 3, 4, 5 pending — each blocked on a specific named prerequisite (cross-backend review / fixture regen / disclosure decision), not on more investigation.
+- **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Committed / pushed:** `origin/main` = `a917fc9` (PRs #22, #23). This entry + RESEARCH_LOG update remain uncommitted in the arc, per program practice.
+
+**Date of this entry: 2026-08-27. Status: TR-11 arc groups 1–2 committed; 3–5 pending named prerequisites. Arc verified untouched. TR-11 still RED.**
