@@ -142,6 +142,8 @@ def test_cmd_update_dispatch_preserves_bootstrap_none(monkeypatch):
 import shutil
 import sqlite3
 
+import psycopg2
+
 import config
 import database
 
@@ -186,6 +188,29 @@ def isolated_pipeline_db(tmp_path, monkeypatch):
         return _real_connect(db_arg, *args, **kwargs)
 
     monkeypatch.setattr(sqlite3, "connect", _guarded_connect)
+
+    # 2026-08-26 incident: clearing DATABASE_URL/SUPABASE_DB_URL above is not
+    # sufficient on its own -- data_health._env_pg_url() (used by the
+    # boring_signals hook's mirror_to_postgres=True path) fell back to
+    # reading the real .env file whenever those vars were merely falsy, not
+    # genuinely absent, and reached real production Supabase. That fallback
+    # is now fixed at the source (_env_pg_url() itself), but this fixture
+    # has no legitimate reason to ever open a real Postgres connection --
+    # this isolated test exercises only main.cmd_update()'s SQLite path,
+    # never Postgres -- so an unconditional guard here is the correct
+    # belt-and-suspenders backstop, independent of whether the fix above (or
+    # any future code with a similar gap) is correct: it blocks the
+    # connection attempt itself, not just the credential lookup that feeds
+    # it, exactly mirroring the sqlite3.connect guard's own rationale.
+    def _guarded_pg_connect(*args, **kwargs):
+        raise RuntimeError(
+            "BLOCKED: attempted a real PostgreSQL connection during an "
+            "isolated test -- this fixture never legitimately needs one; "
+            "isolation guard tripped, refusing the connection rather than "
+            "risk repeating the 2026-08-26 incident."
+        )
+
+    monkeypatch.setattr(psycopg2, "connect", _guarded_pg_connect)
 
     yield temp_db
 
@@ -275,3 +300,15 @@ def test_tail_path_invokes_gate(
 
     assert calls == [1], "run_freshness_gate() was not invoked on the tail path"
     assert result is True
+
+
+def test_isolated_pipeline_db_blocks_real_postgres_connection(isolated_pipeline_db):
+    """Direct proof the guard itself fails loudly, independent of whether
+    any real code path happens to reach it this run (with _env_pg_url()
+    fixed, the boring_signals mirror path no longer even attempts a
+    connection when isolated -- see test_data_health.py's coverage of that).
+    This test calls psycopg2.connect() itself to prove the backstop is live
+    regardless: a future regression anywhere upstream would still be caught
+    here, not silently succeed against production."""
+    with pytest.raises(RuntimeError, match="BLOCKED.*PostgreSQL"):
+        psycopg2.connect("postgresql://irrelevant/anything")

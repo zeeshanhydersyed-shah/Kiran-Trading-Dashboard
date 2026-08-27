@@ -237,6 +237,59 @@ def test_record_run_never_raises(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# _env_pg_url() isolation boundary (2026-08-26 incident regression).
+#
+# A test that explicitly clears DATABASE_URL/SUPABASE_DB_URL via
+# monkeypatch.setenv(key, "") must never have that overridden by a real
+# .env file on disk. The prior implementation checked truthiness
+# (`os.environ.get(...) or ...`), so an explicitly-empty string fell through
+# to the file read exactly like a genuinely-unset variable -- this let a
+# test's boring_signals mirror_to_postgres=True call reach real production
+# Supabase. Presence (`in os.environ`) is now checked instead of truthiness.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def fake_env_file(tmp_path, monkeypatch):
+    """A real .env file with a real-looking (fake) Postgres URL, so these
+    tests prove the fallback is actually skipped -- not merely that no file
+    happens to exist."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        'SUPABASE_DB_URL="postgresql://fake_user:fake_pass@fake-host:5432/postgres"\n'
+    )
+    monkeypatch.setattr(dh, "_PROJECT_DIR", tmp_path)
+    return env_file
+
+
+def test_env_pg_url_explicitly_empty_vars_never_fall_through_to_env_file(
+    fake_env_file, monkeypatch,
+):
+    """The exact 2026-08-26 incident shape: both vars explicitly cleared to
+    "" (present, not absent) -- must return None, never the .env file's URL."""
+    monkeypatch.setenv("DATABASE_URL", "")
+    monkeypatch.setenv("SUPABASE_DB_URL", "")
+    assert dh._env_pg_url() is None
+
+
+def test_env_pg_url_falls_through_to_env_file_only_when_genuinely_absent(
+    fake_env_file, monkeypatch,
+):
+    """Legitimate local-invocation behavior (main.py --all via Task
+    Scheduler) must be preserved: when the vars are truly unset -- not just
+    empty -- the .env file is still consulted."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_DB_URL", raising=False)
+    assert dh._env_pg_url() == "postgresql://fake_user:fake_pass@fake-host:5432/postgres"
+
+
+def test_env_pg_url_prefers_real_env_var_when_actually_set(fake_env_file, monkeypatch):
+    """A genuinely-set env var still wins over .env, unchanged from before."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://real-env-var-wins/db")
+    monkeypatch.delenv("SUPABASE_DB_URL", raising=False)
+    assert dh._env_pg_url() == "postgresql://real-env-var-wins/db"
+
+
+# ---------------------------------------------------------------------------
 # _record_pg diagnostic instrumentation (docs/KIRAN_CLEANUP_AUDIT.md 57,
 # Hidden Risk 1 diagnostic) -- no real Postgres connection is made in any of
 # these; psycopg2.connect and database_pg._parse_pg_url are both faked.
