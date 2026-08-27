@@ -74,3 +74,22 @@ support_signals_20260521_130920.csv
 # Large regenerable data exports — exceed/near GitHub's per-file size limits
 open_acquisition_output/open_prices_stocks.csv
 boring_study/boring_donchian_mechanism_dataset.csv
+
+# Scratch/working dirs from audit & repair sessions — never commit
+# (some contain full DB exports, incl. personal trade data)
+scratch_*/
+
+# Local backup artifacts (the .db files are already covered by *.db above;
+# this also covers checksums and manifests alongside them)
+backups/
+
+# Generated locally, not read by the deployed dashboard:
+#   market_breadth_oscillator.png — written by market_breadth_oscillator.py, displayed nowhere
+#   twitter_output/*               — written by content_generator.py (local social tool)
+# NOTE: breadth_data.csv is deliberately NOT ignored — dashboard.py reads it at runtime.
+market_breadth_oscillator.png
+twitter_output/
+
+# Internal production-trust control document — kept local by standing decision.
+# Never been in the repo. To publish it is a separate, deliberate call (use `git add -f`).
+docs/KIRAN_BORING_STATE_TRUST_REGISTER.md
