@@ -93,3 +93,7 @@ twitter_output/
 # Internal production-trust control document — kept local by standing decision.
 # Never been in the repo. To publish it is a separate, deliberate call (use `git add -f`).
 docs/KIRAN_BORING_STATE_TRUST_REGISTER.md
+
+# Internal scoping/advice notes — kept local (memo tone, personal advice), like the Trust Register above.
+docs/KIRAN_CLOUD_RELIABILITY_AUDIT.md
+docs/KIRAN_SQLITE_ONLY_SCOPING.md

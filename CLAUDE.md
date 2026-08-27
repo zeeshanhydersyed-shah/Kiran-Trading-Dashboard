@@ -1,5 +1,75 @@
 # Kiran PSX Trading Dashboard — Project Reference
 
+## ⚠ Production architecture — FINAL DECISION (2026-08-26): Postgres/Supabase is authoritative
+
+**This supersedes every earlier note in this file suggesting the architecture was undecided,
+SQLite-only, or "design only, not yet authorized."** As of 2026-08-26, the decision is made:
+**Postgres/Supabase is the long-term authoritative production backend.** Local SQLite is being
+transitioned to a **read-only, one-way-fed mirror** — it no longer independently computes
+production signals once this transition is complete (TR-01; the Trust Gap Register is kept in
+local project notes, not in this repo). This is a decision, not yet a completed migration — the
+internal cloud-reliability scoping notes (local) hold the realistic effort estimate, and
+`docs/KIRAN_CLEANUP_AUDIT.md` §63+ covers repair work already executed under this direction (the
+TR-13 `boring_signals` rebuild).
+
+**Background, unchanged from the original finding:** `docs/KIRAN_CLEANUP_AUDIT.md` §33-40
+documents the forensic + architecture review (2026-08-21) that led to this decision. Headline
+finding: Kiran ran as two fully independent production pipelines — local Task Scheduler (SQLite)
+and GitHub Actions cron (Postgres) — computing nearly every signal table twice with no
+reconciliation, causing confirmed real incidents (the PRL signal never reaching production, a
+`prices_adjusted` gap on each backend independently, signal disagreements between backends).
+Full reliability contract (MANDATORY-vs-degraded tables, a `production_state` publication marker,
+freshness rules, watchdog/alerting design) is in §39; the 8-phase migration + exact go/no-go
+cutover criteria + rollback plan is in §40. **The decision to proceed with this direction has been
+made; most of §39-40's implementation has NOT been executed yet** — check the internal Trust Gap
+Register (local project notes) for exactly what's closed vs. still open before assuming any
+specific reliability guarantee already holds.
+
+**Before writing any new hook, backfill script, or `_pg`-suffixed function:** check whether it
+duplicates something already flagged in §37.B's table, and whether it needs its own `__main__`
+CLI entry at all — §40.1 catalogued ~60 directly-runnable scripts in this repo, including four
+full stale backup copies of `main.py` itself (`main_backup_e8*.py`) that can still write straight
+to production tables outside any pipeline path.
+
+## Operational workflow — three roles, do not blur them
+
+This project runs across three distinct roles. Keep to your own role; don't assume another's job:
+
+- **Claude Code (this role) — system builder and technical investigator.** Does the actual work:
+  writes and edits code, investigates the codebase and live data directly, executes
+  explicitly-authorized changes (including production writes, per this project's
+  backup-before-write discipline), and reports findings with real evidence.
+- **The project owner — sole authorization boundary.** The only party who approves or authorizes
+  changes; every change requires explicit owner sign-off. **Communications to the owner stay in
+  plain English — no jargon, no file/line-level detail — unless the owner specifically asks for
+  the technical detail.** Technical citations belong in an appendix or a doc file, not the main
+  message.
+- **Claude Chat — independent auditor and reasoning layer.** Reviews reports for evidence, not
+  just claims, before the owner authorizes next steps. Has no direct repo or database access —
+  works only from what Claude Code reports. Write reports assuming they may be independently
+  checked for whether the evidence actually supports the claim, not just whether the claim reads
+  confidently.
+
+## Standing rule — verify against real documents, don't guess
+
+When uncertain about the current state of the code, the data, or a prior decision: **verify it
+against the actual project documents** (this file, `docs/KIRAN_CLEANUP_AUDIT.md`, the internal
+Trust Gap Register kept in local notes, `git log`/commit history) **before answering** — do not guess or
+assume based on what a task description says. A concrete example of what this rule exists to
+prevent: an earlier session's task description described `boring_signals.py` as still
+hard-blocked from running on Postgres; direct verification showed that block had already been
+removed and merged five days earlier — the task description was stale. **If verification isn't
+possible from the available documents, say so explicitly rather than filling the gap with an
+assumption.**
+
+## Standing rule — silent failure and data-integrity gaps come first
+
+When multiple things need doing, address the most urgent/highest-risk item first. Silent failure
+modes and data-integrity gaps (e.g. TR-13's `boring_signals` trustworthiness, the missing-alert
+gap) take priority over convenience features or polish, **regardless of the order they were
+requested in.** A bug that fails silently and could already be affecting a live decision outranks
+a nicer UI, a new report, or a requested-but-lower-stakes feature.
+
 ## Deployment
 - **GitHub:** zeeshanhydersyed-shah/Kiran-Trading-Dashboard (branch: `main`)
 - **Live app:** kiran-trading-dashboard-g9dfmiwilzbuef2vzlktwh.streamlit.app (Streamlit Cloud)
@@ -205,8 +275,9 @@ because they affect live trading-signal correctness on Cloud.
 `st.error(...)` before ever importing the module). This gap sat on the
 critical path for real trading capital -- PRL's real breakout fired
 2026-08-13, the local-only scan didn't run that day, and the signal wasn't
-caught until the user was already filled ~9% worse (docs/KIRAN_CLEANUP_AUDIT.md
-§33). Live sizing confirmed the CLAUDE.md claim below was stale: `stock_metadata`
+caught until the fill was already materially worse than the signal price, on a
+trade that closed at a real loss (docs/KIRAN_CLEANUP_AUDIT.md §33 — the "~9%"
+figure previously stated here did not check out). Live sizing confirmed the CLAUDE.md claim below was stale: `stock_metadata`
 (305 active rows) / `sectors` (2,504 rows) / `prices_adjusted` / `index_prices`
 already existed in Supabase, fully populated -- only `boring_signals` itself
 was missing, a single new table, not a dependency chain.
