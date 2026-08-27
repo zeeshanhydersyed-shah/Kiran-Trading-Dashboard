@@ -70,6 +70,25 @@ gap) take priority over convenience features or polish, **regardless of the orde
 requested in.** A bug that fails silently and could already be affecting a live decision outranks
 a nicer UI, a new report, or a requested-but-lower-stakes feature.
 
+## Standing rule — log routine maintenance as it happens
+
+Ongoing operational work is recorded the same day it happens, in one of two places:
+
+- **Code / data-pipeline changes** → **one Pull Request per task**, however small. The PR
+  description is the log; no separate note is needed.
+- **Everything else** (manual DB backfills, Supabase console changes, one-off scraper runs,
+  config/dependency changes, restarts) → a short entry in **`docs/MAINTENANCE_LOG.md`**:
+  date · what · why · any DB write and where its backup is · how it was verified.
+
+**At the start of any Kiran session, read the recent (~2 weeks) `docs/MAINTENANCE_LOG.md`
+entries** as operational context, the same way the persistent memory is read. On request
+("review my maintenance since `<date>`"), cross-check the log against `git log` for that
+window and flag anything that looks unbacked, unverified, or inconsistent.
+
+**Pending / not-yet-done items** live in the Open Items Ledger (§0a) of
+`docs/KIRAN_BORING_STATE_TRUST_REGISTER.md` (kept local) — `MAINTENANCE_LOG.md` is
+completed work only.
+
 ## Deployment
 - **GitHub:** zeeshanhydersyed-shah/Kiran-Trading-Dashboard (branch: `main`)
 - **Live app:** kiran-trading-dashboard-g9dfmiwilzbuef2vzlktwh.streamlit.app (Streamlit Cloud)
