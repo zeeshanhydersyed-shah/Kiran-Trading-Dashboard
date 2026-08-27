@@ -35,11 +35,68 @@ import argparse
 from collections import defaultdict
 from datetime import datetime
 
+import numpy as np
+import pandas as pd
+
 BASE    = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE, "psx_data.db")
 CSV_PATH = os.path.join(BASE, "corporate_action_suspects_clean.csv")
 
 AUTO_CONFIRM_CATS = {"DROP_50", "DROP_33", "DROP_25"}
+
+# Quarantined columns -- see docs/KIRAN_CLEANUP_AUDIT.md §41-42. These hold
+# real historical data (2005 -> 2026-07-31) whose producer was never found
+# anywhere in this repository's git history (273 revisions, all branches,
+# searched). Classification: B -- semantics strongly inferred (hit_circuit_up/
+# hit_circuit_down track ~5%/7.5%/10% price-band moves; thin_trading_flag is a
+# zero-exception match to high=low), producer unconfirmed. Disposition:
+# PRESERVE / QUARANTINE -- do not reconstruct, backfill, or drop. A full
+# rebuild (this file's DROP TABLE + CREATE TABLE AS SELECT * FROM prices) was
+# empirically confirmed (§42.6, disposable-DB test) to silently destroy these
+# columns with no error. The functions below only carry existing values
+# forward across a rebuild -- they never compute, infer, or invent one.
+QUARANTINED_COLUMNS = ["hit_circuit_up", "hit_circuit_down", "thin_trading_flag"]
+
+
+def snapshot_quarantined_columns(con) -> tuple[list[str], list[tuple]]:
+    """Read whichever of QUARANTINED_COLUMNS currently exist on
+    prices_adjusted, keyed by (symbol, date), before a rebuild would
+    otherwise destroy them. Returns ([], []) if prices_adjusted doesn't exist
+    yet or has none of these columns -- never invents a column that wasn't
+    already there."""
+    cur = con.cursor()
+    has_table = cur.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prices_adjusted'"
+    ).fetchone()
+    if not has_table:
+        return [], []
+    existing = {row[1] for row in cur.execute("PRAGMA table_info(prices_adjusted)")}
+    present = [c for c in QUARANTINED_COLUMNS if c in existing]
+    if not present:
+        return [], []
+    cols_sql = ", ".join(present)
+    rows = cur.execute(f"SELECT symbol, date, {cols_sql} FROM prices_adjusted").fetchall()
+    return present, rows
+
+
+def restore_quarantined_columns(con, present: list[str], rows: list[tuple]) -> int:
+    """Re-adds whichever quarantined columns were present before the rebuild
+    and restores their exact prior values by (symbol, date) -- a byte-for-byte
+    carry-forward, not a recomputation. Rows with no snapshot match (e.g. a
+    brand-new date the daily append hook already wrote as 0) are left at the
+    column's own NOT NULL DEFAULT 0, unchanged from today's behaviour."""
+    if not present:
+        return 0
+    cur = con.cursor()
+    for col in present:
+        cur.execute(f"ALTER TABLE prices_adjusted ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
+    set_clause = ", ".join(f"{c} = ?" for c in present)
+    cur.executemany(
+        f"UPDATE prices_adjusted SET {set_clause} WHERE symbol = ? AND date = ?",
+        [(*row[2:], row[0], row[1]) for row in rows],
+    )
+    con.commit()
+    return len(rows)
 
 
 def load_events(apply_all: bool) -> list[dict]:
@@ -114,6 +171,10 @@ def load_events(apply_all: bool) -> list[dict]:
 def build_adjusted_prices(con, events: list[dict]) -> None:
     cur = con.cursor()
 
+    # ── preserve any quarantined columns before the rebuild destroys them ───
+    # See docs/KIRAN_CLEANUP_AUDIT.md §41-42 and QUARANTINED_COLUMNS above.
+    q_cols, q_rows = snapshot_quarantined_columns(con)
+
     # ── create prices_adjusted as a copy of prices ───────────────────────────
     print("Creating prices_adjusted table …")
     cur.execute("DROP TABLE IF EXISTS prices_adjusted")
@@ -124,6 +185,12 @@ def build_adjusted_prices(con, events: list[dict]) -> None:
     cur.execute("CREATE INDEX IF NOT EXISTS idx_pa_sym_date ON prices_adjusted(symbol, date)")
     con.commit()
     print(f"  Copied {cur.execute('SELECT COUNT(*) FROM prices_adjusted').fetchone()[0]:,} rows")
+
+    restored = restore_quarantined_columns(con, q_cols, q_rows)
+    if q_cols:
+        print(f"  Restored quarantined columns {q_cols} for {restored:,} rows "
+              f"(provenance UNRESOLVED, preserved as-is -- see "
+              f"docs/KIRAN_CLEANUP_AUDIT.md §41-42)")
 
     # ── group events by symbol, sorted chronologically ───────────────────────
     by_symbol = defaultdict(list)
@@ -268,10 +335,155 @@ def ensure_suspects_table(con) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Circuit-flag producer, ported from the confirmed source of truth:
+# the ml_feature_study project's scripts/compute_circuit_flags.py (a separate
+# local research repo, not part of this codebase).
+#
+# This is a verbatim transcription of that script's band schedule and
+# hit_up/hit_down/thin_trading classification formula -- see
+# docs/KIRAN_CLEANUP_AUDIT.md §43/§45 for the audited reproduction against
+# 1,752,550 historical rows (zero mismatches) that established this formula
+# as the confirmed producer. Do NOT edit this formula independently of that
+# script; if the producer's schedule ever changes, port the change here too.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def circuit_band_pct(date_str: str) -> float:
+    """PSX circuit-band schedule by date (regulatory phase-in, researched
+    2026-08-03). See the module docstring above for provenance."""
+    if date_str < '2020-01-20': return 0.05
+    if date_str < '2020-02-04': return 0.055
+    if date_str < '2020-02-19': return 0.06
+    if date_str < '2020-03-05': return 0.065
+    if date_str < '2020-03-20': return 0.07
+    if date_str < '2024-05-27': return 0.075
+    if date_str < '2024-06-10': return 0.08
+    if date_str < '2024-06-24': return 0.085
+    if date_str < '2024-07-08': return 0.09
+    if date_str < '2024-07-22': return 0.095
+    return 0.10
+
+
+def compute_circuit_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """Computes hit_circuit_up / hit_circuit_down / thin_trading_flag for
+    every row in df, which must have columns: symbol, date, close, volume,
+    high, low, open. df should include one row of lookback per symbol (the
+    trading day immediately before the population actually being scored) so
+    prior_close is correct for the first in-scope row of each symbol -- the
+    caller is responsible for trimming the lookback rows back out of the
+    result afterward (see _circuit_flags_for_new_rows below).
+
+    Returns a copy of df with the three flag columns added (0/1 ints).
+    Raises if df is missing a required column -- never silently degrades to
+    a zeroed result.
+    """
+    required = {"symbol", "date", "close", "volume", "high", "low", "open"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"compute_circuit_flags: missing required column(s) {missing}")
+
+    df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
+    df["prior_close"] = df.groupby("symbol")["close"].shift(1)
+    df["band_pct"] = df["date"].map(circuit_band_pct)
+
+    frozen = (df["high"] == df["low"]) & (df["low"] == df["close"]) & (df["volume"] > 0)
+    has_prior = df["prior_close"].notna() & (df["prior_close"] > 0)
+    band_amt = np.maximum(df["prior_close"] * df["band_pct"], 1.0)
+    tolerance = np.maximum(0.05, 0.005 * df["prior_close"])
+    move = df["close"] - df["prior_close"]
+
+    hit_up = frozen & has_prior & (move >= (band_amt - tolerance))
+    hit_down = frozen & has_prior & (-move >= (band_amt - tolerance))
+    conflict = hit_up & hit_down
+    if conflict.sum() > 0:
+        hit_down = hit_down & ~conflict
+    thin_trading = frozen & ~(hit_up | hit_down)
+
+    df["hit_circuit_up"] = hit_up.astype(int)
+    df["hit_circuit_down"] = hit_down.astype(int)
+    df["thin_trading_flag"] = thin_trading.astype(int)
+    return df
+
+
+def _circuit_flags_for_new_rows(con, symbols: list, min_date: str, expected_count: int) -> pd.DataFrame:
+    """Computes circuit flags for the prices_adjusted rows with date >=
+    min_date that were just inserted (within the still-open transaction on
+    `con`), for exactly the given symbols.
+
+    Pulls one lookback row per symbol (the last close strictly before
+    min_date) so prior_close is correct for each symbol's first new row,
+    then runs the confirmed producer formula, then trims the lookback rows
+    back out. Raises RuntimeError if the result doesn't cover exactly the
+    expected population -- callers must not catch this broadly and must not
+    commit on failure (fail closed, not a silent zero-fill).
+    """
+    if not symbols:
+        return pd.DataFrame(columns=["symbol", "date", "hit_circuit_up", "hit_circuit_down", "thin_trading_flag"])
+
+    placeholders = ",".join("?" * len(symbols))
+
+    lookback = pd.read_sql_query(
+        f"""
+        SELECT pa.symbol, pa.date, pa.close, pa.volume, pa.high, pa.low, pa.open
+        FROM prices_adjusted pa
+        JOIN (
+            SELECT symbol, MAX(date) AS date
+            FROM prices_adjusted
+            WHERE symbol IN ({placeholders}) AND date < ?
+            GROUP BY symbol
+        ) latest ON pa.symbol = latest.symbol AND pa.date = latest.date
+        """,
+        con, params=[*symbols, min_date],
+    )
+
+    new_rows = pd.read_sql_query(
+        f"""
+        SELECT symbol, date, close, volume, high, low, open
+        FROM prices_adjusted
+        WHERE symbol IN ({placeholders}) AND date >= ?
+        """,
+        con, params=[*symbols, min_date],
+    )
+
+    if len(new_rows) != expected_count:
+        raise RuntimeError(
+            f"circuit-flag computation: expected {expected_count} newly-appended "
+            f"rows for the given symbols, found {len(new_rows)} -- refusing to compute"
+        )
+
+    combined = pd.concat([lookback, new_rows], ignore_index=True, sort=False)
+    scored = compute_circuit_flags(combined)
+
+    result = scored[scored["date"] >= min_date][
+        ["symbol", "date", "hit_circuit_up", "hit_circuit_down", "thin_trading_flag"]
+    ].reset_index(drop=True)
+
+    if len(result) != expected_count:
+        raise RuntimeError(
+            f"circuit-flag computation row-count mismatch after scoring: expected "
+            f"{expected_count}, got {len(result)} -- refusing to publish"
+        )
+
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # FUNCTION 2
 # ─────────────────────────────────────────────────────────────────────────────
 def append_new_prices_adjusted(con) -> int:
-    """Copies new raw rows from prices into prices_adjusted. No adjustments applied."""
+    """Copies new raw rows from prices into prices_adjusted, explicitly by
+    column name (never SELECT *), and computes hit_circuit_up /
+    hit_circuit_down / thin_trading_flag for those rows using the confirmed
+    producer formula (see compute_circuit_flags above) instead of leaving
+    them at the column default of 0.
+
+    The row insert and the flag computation/write happen inside one
+    transaction. If the flag computation raises for any reason, nothing in
+    this call is committed -- the raw rows are not appended either, so a
+    calculation failure can never leave newly-appended rows silently
+    defaulted to 0/0/0 that look like a valid, computed result. The next
+    run will simply see the same last-appended date and retry the whole
+    range. See docs/KIRAN_CLEANUP_AUDIT.md for the defect this replaces.
+    """
     cur = con.cursor()
 
     last_adjusted = cur.execute(
@@ -291,14 +503,70 @@ def append_new_prices_adjusted(con) -> int:
     ).fetchone()
     min_date, max_date = row
 
-    cur.execute(
-        """INSERT INTO prices_adjusted (symbol, date, close, volume, high, low, open)
-           SELECT symbol, date, close, volume, high, low, open FROM prices WHERE date > ?""",
-        (last_adjusted,)
-    )
+    symbols = [r[0] for r in cur.execute(
+        "SELECT DISTINCT symbol FROM prices WHERE date > ?", (last_adjusted,)
+    ).fetchall()]
+
+    try:
+        cur.execute(
+            """INSERT INTO prices_adjusted (symbol, date, close, volume, high, low, open)
+               SELECT symbol, date, close, volume, high, low, open FROM prices WHERE date > ?""",
+            (last_adjusted,)
+        )
+
+        flags = _circuit_flags_for_new_rows(con, symbols, min_date, count)
+
+        cur.executemany(
+            "UPDATE prices_adjusted SET hit_circuit_up=?, hit_circuit_down=?, "
+            "thin_trading_flag=? WHERE symbol=? AND date=?",
+            [
+                (int(hu), int(hd), int(tt), str(sym), str(dt))
+                for sym, dt, hu, hd, tt in flags[
+                    ["symbol", "date", "hit_circuit_up", "hit_circuit_down", "thin_trading_flag"]
+                ].itertuples(index=False, name=None)
+            ],
+        )
+
+        # In-transaction verification before commit, same discipline as the
+        # §47 historical repair: re-read every newly-written row and confirm
+        # it exactly matches what was computed, before publishing it.
+        check_df = pd.read_sql_query(
+            "SELECT symbol, date, hit_circuit_up, hit_circuit_down, thin_trading_flag "
+            "FROM prices_adjusted WHERE date > ?",
+            con, params=(last_adjusted,),
+        )
+        if len(check_df) != count:
+            raise RuntimeError(
+                f"post-write row count ({len(check_df)}) does not match expected ({count}) -- refusing to commit"
+            )
+        merged = flags.merge(check_df, on=["symbol", "date"], suffixes=("_expected", "_actual"))
+        if len(merged) != count:
+            raise RuntimeError(
+                f"post-write verification join produced {len(merged)} rows, expected {count} "
+                f"-- symbol/date mismatch between computed and written rows, refusing to commit"
+            )
+        mismatched = merged[
+            (merged["hit_circuit_up_expected"] != merged["hit_circuit_up_actual"])
+            | (merged["hit_circuit_down_expected"] != merged["hit_circuit_down_actual"])
+            | (merged["thin_trading_flag_expected"] != merged["thin_trading_flag_actual"])
+        ]
+        if len(mismatched) != 0:
+            raise RuntimeError(
+                f"{len(mismatched)} newly-written row(s) do not match their computed circuit-flag "
+                f"values -- refusing to commit"
+            )
+    except Exception:
+        con.rollback()
+        raise
+
     con.commit()
 
-    print(f"Appended {count:,} rows for dates {min_date} to {max_date}")
+    print(
+        f"Appended {count:,} rows for dates {min_date} to {max_date} "
+        f"(circuit flags: up={int(flags['hit_circuit_up'].sum())}, "
+        f"down={int(flags['hit_circuit_down'].sum())}, "
+        f"thin={int(flags['thin_trading_flag'].sum())})"
+    )
     return count
 
 
