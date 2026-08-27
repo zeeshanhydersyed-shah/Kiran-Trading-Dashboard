@@ -36,24 +36,16 @@ from config import (
     CALENDAR_DAYS_BACK,
     SECTOR_OVERRIDES,
     EXCLUDED_SECTORS,
+    is_non_equity_symbol,
 )
 
 logger = logging.getLogger(__name__)
 
 
-# PSX futures naming pattern: SYMBOL-MONTH where MONTH is JAN/FEB/.../DEC
-_FUTURES_PATTERN = re.compile(r'^[A-Z0-9]+-[A-Z]{3}$')
-_VALID_MONTHS = {'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'}
-
-def _is_futures_symbol(symbol: str) -> bool:
-    """Check if symbol matches PSX futures naming pattern (SYMBOL-MONTH)."""
-    if not symbol or '-' not in symbol:
-        return False
-    match = _FUTURES_PATTERN.match(symbol)
-    if match:
-        month = symbol.split('-')[1]
-        return month in _VALID_MONTHS
-    return False
+# Back-compat alias. The old name only covered bare SYMBOL-MONTH futures;
+# is_non_equity_symbol() also catches the -MONB/-MONC/-CMON variants plus
+# government paper (P0x) and 786/786R. See config.py.
+_is_futures_symbol = is_non_equity_symbol
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +358,16 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
             if symbol in INDEX_SYMBOLS or not symbol:
                 continue
 
+            # Skip non-equity instruments: futures (all series -- SYMBOL-MON,
+            # SYMBOL-MONB/C/D, SYMBOL-CMON), government paper (P0x), and
+            # 786/786R. Done here, before the row is added to sector_rows /
+            # price_rows, so these never enter `prices`, `prices_adjusted`, or
+            # the `sectors` table. The historical filter only caught bare
+            # SYMBOL-MON and let every other variant through.
+            if is_non_equity_symbol(symbol):
+                logger.debug("Skipping non-equity symbol %s on %s", symbol, date_str)
+                continue
+
             try:
                 close = float(close_text)
             except ValueError:
@@ -398,12 +400,6 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
                 volume = int(float(vol_text)) if vol_text else 0
             except (ValueError, OverflowError):
                 volume = 0
-
-            # Skip futures symbols (SYMBOL-MONTH pattern like HBL-JAN, UBL-DEC, etc.)
-            # These are derivatives/contracts and not used in current trading strategies
-            if _is_futures_symbol(symbol):
-                logger.debug("Skipping futures symbol %s on %s", symbol, date_str)
-                continue
 
             sector_rows.append((symbol, current_sector))
             price_rows.append((symbol, date_str, high, low, close, volume, open_))

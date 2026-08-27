@@ -297,10 +297,14 @@ def _raw_score(rs_rank, avg_vol_10d, sector_composite):
     return s
 
 
-def _compute_penalty(row_dict, setup_type):
+def _compute_penalty(row_dict, setup_type, n_sectors=23):
     """
     Penalty system (Option 3). Subtracts from raw_score; negatives = bonus.
     Returns (penalty_int, flag_str_or_None).
+
+    n_sectors is the count of sectors ranked by sector_signals for the scan
+    date -- the live denominator for the "sector N/M" flag text. Defaults to
+    23 (the long-standing hard-coded value) only when a caller can't supply it.
 
     Rules:
       -3  sector rank > 12 (bottom half of all sectors)
@@ -324,7 +328,7 @@ def _compute_penalty(row_dict, setup_type):
 
     if sector_rank and sector_rank > 12:
         penalty += 3
-        flags.append(f"sector {sector_rank}/23")
+        flags.append(f"sector {sector_rank}/{n_sectors}")
 
     if vol_rejection:
         penalty += 4
@@ -353,12 +357,16 @@ def _compute_penalty(row_dict, setup_type):
     return penalty, flag_str
 
 
-def _build_key_reason(row_dict, setup_type):
-    """One-line human-readable reason why this pick was selected."""
+def _build_key_reason(row_dict, setup_type, n_sectors=23):
+    """One-line human-readable reason why this pick was selected.
+
+    n_sectors: count of sectors ranked by sector_signals for the scan date
+    (see _compute_penalty). Defaults to 23 only when unavailable.
+    """
     parts = []
 
     if row_dict.get('rs_inflection'):
-        parts.append(f"sector inflecting (rank {row_dict.get('sector_rank')}/23)")
+        parts.append(f"sector inflecting (rank {row_dict.get('sector_rank')}/{n_sectors})")
 
     rs20 = row_dict.get('rs_score_20')
     if rs20 is not None:
@@ -480,6 +488,7 @@ def _append_leaders_scan_pg(scan_date=None) -> None:
         sec_composite  = {r["sector"]: r["composite_score"] for r in sec_rows}
         sec_inflection = {r["sector"]: r["rs_inflection"] for r in sec_rows}
         sec_rank_today = {r["sector"]: r["sector_rank_today"] for r in sec_rows}
+        n_sectors = len(sec_rank_today) or 23
 
         cur.execute("SELECT symbol, close FROM prices WHERE date = %s", (scan_date,))
         closes = {r["symbol"]: r["close"] for r in cur.fetchall()}
@@ -555,7 +564,7 @@ def _append_leaders_scan_pg(scan_date=None) -> None:
                     "rs_inflection":        s_infl,
                     "vol_ratio_today":      vol_ratio,
                 }
-                penalty, flag_str = _compute_penalty(pen_dict, setup_type)
+                penalty, flag_str = _compute_penalty(pen_dict, setup_type, n_sectors=n_sectors)
                 final_score = raw - penalty
 
                 rs_rank_val  = int(r["rs_rank"]) if r["rs_rank"] is not None else None
@@ -649,6 +658,7 @@ def append_leaders_scan(db_path=None, scan_date=None):
     sec_composite  = dict(zip(sec_df['sector'], sec_df['composite_score']))
     sec_inflection = dict(zip(sec_df['sector'], sec_df['rs_inflection']))
     sec_rank_today = dict(zip(sec_df['sector'], sec_df['sector_rank_today']))
+    n_sectors = len(sec_rank_today) or 23
 
     # Today's close prices (needed for breakout entry trigger)
     closes = dict(con.execute(
@@ -727,7 +737,7 @@ def append_leaders_scan(db_path=None, scan_date=None):
                 'rs_inflection':       s_infl,
                 'vol_ratio_today':     vol_ratio,
             }
-            penalty, flag_str = _compute_penalty(pen_dict, setup_type)
+            penalty, flag_str = _compute_penalty(pen_dict, setup_type, n_sectors=n_sectors)
             final_score = raw - penalty
 
             rs_rank_val    = int(r['rs_rank'])    if pd.notna(r['rs_rank'])    else None
@@ -786,6 +796,11 @@ def _save_top_picks_pg() -> None:
 
         cur.execute("DELETE FROM leaders_top_picks WHERE scan_date = %s", (scan_date,))
 
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM sector_signals WHERE date = %s", (scan_date,)
+        )
+        n_sectors = (cur.fetchone()["n"] or 0) or 23
+
         for setup_type in ("PRE_BREAKOUT", "BREAKOUT"):
             cur.execute("""
                 SELECT * FROM leaders_scan
@@ -795,7 +810,7 @@ def _save_top_picks_pg() -> None:
             """, (scan_date, setup_type, MIN_PICK_SCORE))
 
             for rank_idx, r in enumerate(cur.fetchall(), start=1):
-                key_reason = _build_key_reason(dict(r), setup_type)
+                key_reason = _build_key_reason(dict(r), setup_type, n_sectors=n_sectors)
 
                 triggered    = 1 if setup_type == "BREAKOUT" else None
                 trigger_date = scan_date if setup_type == "BREAKOUT" else None
@@ -849,6 +864,10 @@ def save_top_picks(db_path=None):
     con.execute("DELETE FROM leaders_top_picks WHERE scan_date = ?", (scan_date,))
     con.commit()
 
+    n_sectors = con.execute(
+        "SELECT COUNT(*) FROM sector_signals WHERE date = ?", (scan_date,)
+    ).fetchone()[0] or 23
+
     for setup_type in ('PRE_BREAKOUT', 'BREAKOUT'):
         df = pd.read_sql_query("""
             SELECT * FROM leaders_scan
@@ -859,7 +878,7 @@ def save_top_picks(db_path=None):
 
         for rank_idx, (_, row) in enumerate(df.iterrows(), start=1):
             r = row.to_dict()
-            key_reason = _build_key_reason(r, setup_type)
+            key_reason = _build_key_reason(r, setup_type, n_sectors=n_sectors)
 
             # Breakouts are already triggered on scan day
             triggered    = 1 if setup_type == 'BREAKOUT' else None
