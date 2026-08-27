@@ -1,4 +1,5 @@
 import os
+import re
 
 BASE_URL = "https://www.ksestocks.com"
 MARKET_SUMMARY_URL = f"{BASE_URL}/MarketSummary"
@@ -103,9 +104,61 @@ DFC_SYMBOLS = {
 # Symbols whose sector is wrong on ksestocks.com and must be overridden.
 # GAL (Ghandhara Automobiles) lands in the site's "Unknown Sector" bucket
 # even though PSX officially classifies it as an Automobile Assembler.
+#
+# 2026-08-27 sector-mapping fix: ksestocks.com misclassifies the symbols below
+# into "Unknown Sector" or a stale label. Corrected here so the scraper writes
+# the right sector into the `sectors` table, and so they flow into
+# stock_metadata / the signal tables. APPAREL is a deliberate new local sector
+# (not a ksestocks.com label), so these overrides are load-bearing — there is
+# no scraped value to fall back to.
 SECTOR_OVERRIDES = {
-    "GAL": "AUTOMOBILE ASSEMBLER",
+    "GAL":      "AUTOMOBILE ASSEMBLER",
+    "SYM":      "TECHNOLOGY & COMMUNICATION",
+    "BML":      "COMMERCIAL BANKS",
+    "FCL":      "CABLE & ELECTRICAL GOODS",
+    "WAVESAPP": "CABLE & ELECTRICAL GOODS",
+    "MSOT":     "APPAREL",   # was TEXTILE COMPOSITE
+    "INKL":     "APPAREL",   # was TEXTILE COMPOSITE
+    "IMAGE":    "APPAREL",   # was SYNTHETIC & RAYON (stale label)
 }
+
+# Symbols the ksestocks.com feed drops into "Unknown Sector" (or an excluded
+# sector) that we nonetheless track and wire fully into stock_metadata + the
+# signal tables. Their real sector comes from SECTOR_OVERRIDES above. This is a
+# hard include-list: build_stock_metadata.py adds these regardless of what the
+# scraped `sectors` row currently says.
+UNIVERSE_WHITELIST = {"SYM", "BML", "FCL", "WAVESAPP"}
+
+# ---------------------------------------------------------------------------
+# Non-equity instruments — must never enter prices / prices_adjusted.
+# ---------------------------------------------------------------------------
+# PSX single-stock & index futures: BASE-MON, BASE-MONB/C/D (parallel series),
+# BASE-CMON (cash-settled / hand-delivery series). The historical filter only
+# caught the bare BASE-MON form and leaked every suffixed variant into both
+# `prices` and the `sectors` table.
+_FUT_MONTHS = "JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC"
+FUTURES_SYMBOL_RE = re.compile(rf"^[A-Z0-9]+-C?(?:{_FUT_MONTHS})[A-Z]?$")
+
+# Government debt paper listed on PSX: P<tenor:2d><type:3a><maturity:6d>,
+# e.g. P01GIS200826, P05FRR300530, P10FRZ220136. Filtered only downstream in
+# the screener today, never at ingestion.
+GOVT_PAPER_SYMBOL_RE = re.compile(r"^P\d{2}[A-Z]{3}\d{6}$")
+
+# Other non-equity tickers seen in the feed.
+NON_EQUITY_SYMBOLS = {"786", "786R"}
+
+
+def is_non_equity_symbol(symbol: str) -> bool:
+    """True for PSX futures (all series), government paper, and misc non-equity
+    tickers that must never enter prices / prices_adjusted."""
+    s = (symbol or "").strip().upper()
+    if not s:
+        return False
+    return (
+        s in NON_EQUITY_SYMBOLS
+        or bool(GOVT_PAPER_SYMBOL_RE.match(s))
+        or bool(FUTURES_SYMBOL_RE.match(s))
+    )
 
 # ---------------------------------------------------------------------------
 # Agent preferences — edit these to match your personal trading style
