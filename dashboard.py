@@ -2242,7 +2242,15 @@ def _render_boring_performance(_bo_df, confirmed_only: bool):
     the record rests on a single trade (EV ex-best), and how concentrated the
     symbols are. Both were live, unresolved caveats as of the first month.
     """
-    _perf_src = _bo_df[_bo_df["strategy_confirmed"] == 1] if confirmed_only else _bo_df
+    # Exclude known dedup-conflict rows (docs/KIRAN_CLEANUP_AUDIT.md §63.6/§64) --
+    # these fired while the same symbol had a real open position that should
+    # have blocked them, so they are not valid strategy outcomes and must not
+    # count toward win rate / EV / any other performance number. They remain
+    # visible (tagged) in the per-row tables above; only aggregate stats
+    # exclude them.
+    _perf_src = _bo_df[_bo_df["dedup_conflict"] != 1]
+    if confirmed_only:
+        _perf_src = _perf_src[_perf_src["strategy_confirmed"] == 1]
     _perf = _perf_src.drop_duplicates(subset=["symbol", "signal_date"]).copy()
 
     _label = "Strategy Confirmed" if confirmed_only else "all fired signals"
@@ -2407,7 +2415,41 @@ def _render_boring_breakouts_section():
                 trigger_price=("trigger_price", "first"),
                 current_stop=("current_stop", "first"),
                 status=("status", "first"),
+                created_at=("created_at", "first"),
+                dedup_conflict=("dedup_conflict", "max"),
             )
+        )
+
+        # Freshness indicator (audit finding, docs/KIRAN_CLOUD_RELIABILITY_AUDIT.md
+        # §1 / KIRAN_CLEANUP_AUDIT.md §34.5): before this column existed, a
+        # signal written today for a signal_date days in the past (a delayed
+        # catch-up run, e.g. the PRL incident) was visually identical to a
+        # same-day organic signal -- created_at was tracked in the database
+        # but never shown. This makes that gap visible per row, right in the
+        # table, rather than requiring a user to already know to suspect it.
+        def _bo_freshness(row):
+            try:
+                sig_d = pd.to_datetime(row["signal_date"]).normalize()
+                rec_d = pd.to_datetime(row["created_at"]).normalize()
+            except (TypeError, ValueError):
+                return "Unknown"
+            gap = (rec_d - sig_d).days
+            if gap <= 0:
+                return "Same day"
+            if gap == 1:
+                return "1 day late"
+            return f"{gap} days late"
+
+        _bo_grouped["freshness_display"] = _bo_grouped.apply(_bo_freshness, axis=1)
+
+        # Known-conflict tag (docs/KIRAN_CLEANUP_AUDIT.md §63.6/§64): this
+        # symbol had a real open position elsewhere in the table's history
+        # that the dedup gate should have blocked this signal against. A
+        # label on known-bad history, not a hidden row -- still shown, still
+        # actionable if you choose to Mark Executed, but flagged so it isn't
+        # mistaken for a clean signal.
+        _bo_grouped["conflict_tag"] = _bo_grouped["dedup_conflict"].apply(
+            lambda v: "⚠️ Known conflict" if v == 1 else ""
         )
 
         # current_stop is NULL until update_open_signal_statuses() has
@@ -2422,11 +2464,13 @@ def _render_boring_breakouts_section():
 
         _bo_editor_cols = [
             "symbol", "signal_date", "lookback_n", "rs_60_decile", "confirmed_badge",
-            "breakout_level", "trigger_price", "stop_display", "status",
+            "breakout_level", "trigger_price", "stop_display", "status", "freshness_display",
+            "conflict_tag",
         ]
         _bo_editor_names = [
             "Ticker", "Fire Date", "N", "RS_60 Decile", "Strategy Fit",
-            "Breakout Level", "Entry Price", "Stop (trailing)", "Status",
+            "Breakout Level", "Entry Price", "Stop (trailing)", "Status", "Recorded",
+            "Data Flag",
         ]
         _bo_disp = _bo_grouped[_bo_editor_cols].copy()
         _bo_disp.columns = _bo_editor_names
@@ -2448,9 +2492,25 @@ def _render_boring_breakouts_section():
                 "Mark Executed": st.column_config.CheckboxColumn(
                     help="Check and press Execute Marked below to record this trade as taken."
                 ),
+                "Recorded": st.column_config.TextColumn(
+                    help="'Same day' means this signal was written to the database on its own "
+                         "Fire Date, same as a normal live scan. A 'days late' value means it was "
+                         "only written during a later catch-up run (e.g. after a missed day) -- "
+                         "treat a late-recorded signal with extra caution, since the price may "
+                         "have already moved well past the entry shown by the time it appeared."
+                ),
+                "Data Flag": st.column_config.TextColumn(
+                    help="'Known conflict' means this symbol had a real open position elsewhere "
+                         "in this table's history that should have blocked this signal from ever "
+                         "firing, per the strategy's own rule (found during the 2026-08-26 "
+                         "Postgres rebuild -- see the Data Health page or KIRAN_CLEANUP_AUDIT.md "
+                         "§63.6/§64). Still shown, not deleted -- treat as known-bad history, not "
+                         "a valid independent signal. Excluded automatically from the performance "
+                         "panel below."
+                ),
             },
             disabled=["Ticker", "Fire Date", "N", "RS_60 Decile", "Strategy Fit", "Breakout Level",
-                      "Entry Price", "Stop (trailing)", "Status"],
+                      "Entry Price", "Stop (trailing)", "Status", "Recorded", "Data Flag"],
             hide_index=True, use_container_width=True, height=360, key="boring_editor",
         )
 
@@ -2489,6 +2549,7 @@ def _render_boring_breakouts_section():
                     current_stop=("current_stop", "first"),
                     status=("status", "first"),
                     resolution_date=("resolution_date", "first"),
+                    dedup_conflict=("dedup_conflict", "max"),
                 )
                 # groupby re-sorts by the group keys -- re-apply the "most recent
                 # fire date first" order the underlying query already had before
@@ -2507,13 +2568,23 @@ def _render_boring_breakouts_section():
             _bo_stopped_grouped["outcome"] = _bo_stopped_grouped["gain_pct"].apply(
                 lambda v: "✅ Win" if v > 0 else "❌ Loss"
             )
+            _bo_stopped_grouped["conflict_tag"] = _bo_stopped_grouped["dedup_conflict"].apply(
+                lambda v: "⚠️ Known conflict" if v == 1 else ""
+            )
 
             _res_cols = ["symbol", "signal_date", "lookback_n", "trigger_price",
-                         "current_stop", "outcome", "gain_pct", "status", "resolution_date"]
+                         "current_stop", "outcome", "gain_pct", "status", "resolution_date",
+                         "conflict_tag"]
             _res_names = ["Ticker", "Fire Date", "N", "Entry Price",
-                          "Stop (final)", "Outcome", "% Gain/Loss", "Status", "Resolution Date"]
+                          "Stop (final)", "Outcome", "% Gain/Loss", "Status", "Resolution Date",
+                          "Data Flag"]
             _res_disp = _bo_stopped_grouped[_res_cols].copy()
             _res_disp.columns = _res_names
+            st.caption(
+                "⚠️ Known conflict rows fired while the same symbol had a real open position "
+                "that should have blocked them (2026-08-26 Postgres rebuild finding) -- shown "
+                "for the record, excluded automatically from the performance panel above."
+            )
             st.dataframe(
                 _res_disp, hide_index=True, use_container_width=True,
                 column_config={

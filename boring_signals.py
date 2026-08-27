@@ -108,6 +108,12 @@ def ensure_boring_signals_table(conn: sqlite3.Connection) -> None:
             resolution_type    TEXT,                -- TARGET | STOP | EXPIRED_90D
             days_open          INTEGER,
             created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+            dedup_conflict     INTEGER NOT NULL DEFAULT 0,
+                               -- 1 iff this row is known to have fired while the same symbol
+                               -- had a real open position elsewhere in this table's history
+                               -- that the dedup gate should have blocked it against (see
+                               -- docs/KIRAN_CLEANUP_AUDIT.md §63.6/§64) -- a label on known
+                               -- history, never used to delete or alter any other field.
             UNIQUE(symbol, signal_date, lookback_n)
         );
         CREATE INDEX IF NOT EXISTS idx_boring_signals_status ON boring_signals(status);
@@ -130,6 +136,10 @@ def ensure_boring_signals_table(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE boring_signals ADD COLUMN current_stop REAL")
         logger.info("boring_signals: added current_stop column (NULL until update_open_signal_statuses() runs; "
                      "holds the live HYBRID trailing-stop level -- not the legacy fixed stop_price column).")
+    if "dedup_conflict" not in existing_cols:
+        conn.execute("ALTER TABLE boring_signals ADD COLUMN dedup_conflict INTEGER NOT NULL DEFAULT 0")
+        logger.info("boring_signals: added dedup_conflict column (default 0 -- a manual data-quality "
+                     "label, not auto-computed; see docs/KIRAN_CLEANUP_AUDIT.md §63.6/§64).")
 
 
 def ensure_boring_signals_table_pg() -> None:
@@ -188,12 +198,17 @@ def ensure_boring_signals_table_pg() -> None:
                 days_open          INTEGER,
                 current_stop       DOUBLE PRECISION,
                 created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+                dedup_conflict     BOOLEAN NOT NULL DEFAULT FALSE,
                 UNIQUE(symbol, signal_date, lookback_n)
             );
             CREATE INDEX IF NOT EXISTS idx_boring_signals_status_pg ON boring_signals(status);
             CREATE INDEX IF NOT EXISTS idx_boring_signals_date_pg   ON boring_signals(signal_date);
             CREATE INDEX IF NOT EXISTS idx_boring_signals_symbol_pg ON boring_signals(symbol);
         """)
+        # Migration: CREATE TABLE IF NOT EXISTS won't retrofit dedup_conflict onto
+        # an already-existing table -- same idempotent pattern as the SQLite
+        # function's breakout_level/current_stop migration above.
+        cur.execute("ALTER TABLE boring_signals ADD COLUMN IF NOT EXISTS dedup_conflict BOOLEAN NOT NULL DEFAULT FALSE")
         logger.info("boring_signals (pg): table ensured.")
 
 
@@ -1024,7 +1039,7 @@ def _normalize_boring_signals_rows(rows) -> pd.DataFrame:
             # Python None" -- silently swaps a real None for float('nan')
             # instead of preserving it. .apply() sidesteps that gotcha.
             df[col] = df[col].apply(lambda v: None if v is None else str(v))
-    for col in ("liquidity_pass", "strategy_confirmed", "executed"):
+    for col in ("liquidity_pass", "strategy_confirmed", "executed", "dedup_conflict"):
         if col in df.columns:
             df[col] = df[col].astype(int)
     return df
