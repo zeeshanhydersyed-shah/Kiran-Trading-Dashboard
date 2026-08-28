@@ -29,26 +29,25 @@ available in `prices_adjusted` by the time the pass runs) has already
 resolved is still treated as "open" and blocked from firing a new,
 independently-qualifying signal until the whole pass finishes.
 
-This module proves that invariant two ways, using the REAL, unmodified
-production functions (`scan_boring_breakouts`, `update_open_signal_
-statuses`) against an isolated, synthetic, non-production SQLite database --
-no monkeypatching of the scan/status logic itself, no reliance on real
-Local/Cloud data, no network, no Postgres:
+The fix landed with the TR-13/OI-6 scan-progress-marker rewrite (Trust
+Register §0a.1.7, docs/KIRAN_CLEANUP_AUDIT.md §77):
+`scan_boring_breakouts_pending()` now calls `update_open_signal_statuses()`
+BEFORE each pending date's scan, not once after the whole pass.
 
-  1. test_defective_ordering_suppresses_the_resolved_and_requalified_signal
-     -- calls the two real functions in the EXACT sequence production uses
-     today (scan date 1, scan date 2, resolve statuses once at the end --
-     the same shape `scan_boring_breakouts_pending()` + main.py's hook
-     produce) and asserts the historical failure reproduces: the fresh
-     signal on the resolution date is silently absent.
+This module proves the fixed behaviour two ways, using the REAL, unmodified
+scan/status functions against an isolated, synthetic, non-production SQLite
+database -- no monkeypatching of the scan/status logic itself, no reliance
+on real Local/Cloud data, no network, no Postgres:
+
+  1. test_pending_scan_resolves_before_each_date_so_requalified_signal_fires
+     -- drives the real `scan_boring_breakouts_pending()` over the fixture
+     (entry date already seeded) and asserts the MACFL-shaped fresh signal
+     on the resolution date IS recorded and the prior position resolved.
 
   2. test_corrected_ordering_would_have_permitted_the_legitimate_signal
-     -- a test-level orchestration of the ordering the (not-yet-authorized)
-     production fix would produce: resolve statuses BEFORE evaluating the
-     next date, not after. Same real functions, same fixture, statuses
-     resolved between the two scan calls instead of after both. Asserts the
-     fresh signal IS recorded, proving the invariant is achievable without
-     any change to `boring_signals.py` itself.
+     -- a lower-level proof: resolve statuses BEFORE the next date's direct
+     `scan_boring_breakouts()` call and the fresh signal is permitted. Kept
+     as an independent, function-level check of the same invariant.
 
 Neither test modifies boring_signals.py or any other production file.
 """
@@ -163,6 +162,8 @@ def isolated_boring_signals_db(tmp_path, monkeypatch):
 
     monkeypatch.setattr(bs, "DB_PATH", db_path)
     monkeypatch.setattr(bs, "_PG_URL", None)
+    # synthetic history starts in 2020; drop the 2026-07-10 go-live floor
+    monkeypatch.setattr(bs, "BORING_SIGNALS_FLOOR_DATE", "2000-01-01")
 
     _real_connect = sqlite3.connect
 
@@ -197,58 +198,61 @@ def _fetch_macfl_row(db_path, signal_date, lookback_n=20):
         con.close()
 
 
-def test_defective_ordering_suppresses_the_resolved_and_requalified_signal(
+def test_pending_scan_resolves_before_each_date_so_requalified_signal_fires(
     isolated_boring_signals_db,
 ):
-    """Reproduces the historical MACFL failure using the REAL production
-    call sequence: scan(D1) then scan(D2), with update_open_signal_
-    statuses() called only once at the end -- exactly what
-    scan_boring_breakouts_pending() + main.py's hook do today. This is the
-    exact ordering that let the real 2026-08-19 signal go silently missing.
+    """The fixed behaviour: the real scan_boring_breakouts_pending() resolves
+    open positions BEFORE each pending date's scan, so MACFL's position
+    (entry -> stopped on D1_DATE) no longer blocks the fresh, independently
+    qualifying D1_DATE breakout from being recorded. This is the exact
+    2026-08-19 signal that used to go silently missing.
     """
     db_path = isolated_boring_signals_db
 
+    # Seed the entry-day position, exactly as an earlier day's scan would.
     inserted_entry = bs.scan_boring_breakouts(ENTRY_DATE)
     assert inserted_entry >= 1, "fixture is wrong -- the entry-day breakout must fire"
-    entry_row = _fetch_macfl_row(db_path, ENTRY_DATE)
-    assert entry_row is not None and entry_row[0] == "Pending"
+    assert _fetch_macfl_row(db_path, ENTRY_DATE)[0] == "Pending"
 
-    # Production ordering: both pending dates are scanned before ANY status
-    # resolution happens (mirrors _scan_boring_breakouts_pending_sqlite()'s
-    # per-date loop, which never calls update_open_signal_statuses()).
-    bs.scan_boring_breakouts(D1_DATE)
-    bs.scan_boring_breakouts(D2_DATE)
+    # The real pending scan: D1_DATE and D2_DATE are pending (no marker rows);
+    # update_open_signal_statuses() runs before each, so the entry position is
+    # already Stopped by the time D1_DATE's dedup gate is checked.
+    total, eligible, processed = bs.scan_boring_breakouts_pending(return_coverage=True)
+    assert processed == eligible  # no transient break
 
-    # THE DEFECT: no fresh signal was recorded for D1_DATE, even though
-    # MACFL genuinely re-qualified that day.
-    suppressed_row = _fetch_macfl_row(db_path, D1_DATE)
-    assert suppressed_row is None, (
-        "expected the historical suppression to reproduce (no boring_signals "
-        "row for MACFL/D1_DATE) -- if this fails, the defect this test "
-        "protects against may already be fixed, or the fixture no longer "
-        "reproduces it; do not weaken this assertion without re-verifying "
-        "against the real MACFL/2026-08-19 facts in the module docstring."
+    fresh_row = _fetch_macfl_row(db_path, D1_DATE)
+    assert fresh_row is not None, (
+        "under the fixed ordering, MACFL's independently-qualifying D1_DATE "
+        "breakout must be recorded -- its prior position was already resolved "
+        "before this date's dedup check ran"
     )
+    assert fresh_row[0] == "Pending"
+    assert fresh_row[3] == pytest.approx(93.0)
 
-    # Only NOW does status resolution run -- proving the suppression wasn't
-    # because MACFL never actually resolved; ground truth (via the real,
-    # unmodified update_open_signal_statuses()) confirms it resolved
-    # exactly on D1_DATE, the same date its fresh signal was silently lost.
-    bs.update_open_signal_statuses()
     resolved_entry_row = _fetch_macfl_row(db_path, ENTRY_DATE)
     assert resolved_entry_row[0] == "Stopped"
     assert resolved_entry_row[1] == D1_DATE
     assert resolved_entry_row[2] == "STOP"
 
+    # And the date is now recorded in the scan-progress marker.
+    con = sqlite3.connect(db_path)
+    try:
+        marked = con.execute(
+            "SELECT COUNT(*) FROM boring_signals_scanned WHERE scan_date IN (?, ?)",
+            (D1_DATE, D2_DATE),
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert marked == 2
+
 
 def test_corrected_ordering_would_have_permitted_the_legitimate_signal(
     isolated_boring_signals_db,
 ):
-    """Test-level orchestration of the (not-yet-authorized) production fix:
-    resolve statuses BEFORE evaluating the next pending date, rather than
+    """Function-level proof of the same invariant the pending scan now
+    enforces: resolve statuses BEFORE evaluating the next date, rather than
     after the whole pass. Same real functions, same fixture, only the call
-    order changes -- proving the invariant is achievable with zero change
-    to boring_signals.py's own code.
+    order changes.
     """
     db_path = isolated_boring_signals_db
 

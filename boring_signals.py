@@ -35,6 +35,7 @@ breakout condition is evaluated. See _rs60_and_liquidity_asof().
 import os
 import sqlite3
 import logging
+import statistics
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -77,6 +78,36 @@ LIQUIDITY_THRESHOLD = 200_000
 TOP_DECILE = 9
 LOOKBACK_NS = (20, 60)   # both validated definitions; stored, not merged
 HYBRID_FLOOR_PCT = -0.08   # HYBRID exit floor: stop never sits looser than Entry x (1 + this), validated rounds 5-8
+
+# ── Scan-progress marker (TR-13 / OI-6, Trust Register §0a.1) ─────────────────
+# `scan_boring_breakouts_pending()` used to resume from a bounded 15-trading-day
+# window because `boring_signals` only gets a row when a signal fires, so an
+# empty stretch is indistinguishable from an unscanned one. A gap longer than
+# that window silently, permanently dropped the un-scanned dates
+# (docs/KIRAN_CLEANUP_AUDIT.md §35.5 / §77). The `boring_signals_scanned` table
+# below is the explicit scan-progress marker that replaces the window: one row
+# per trading date actually scanned, so resume is a pure set-difference with no
+# lower bound. Same proven pattern as backtest.py's `screened_dates`.
+# Feature go-live floor. `boring_signals` started on 2026-07-10 (first
+# signal_date, both backends; the Postgres rebuild used the same floor --
+# docs/KIRAN_CLEANUP_AUDIT.md §63). The pending scan never looks earlier than
+# this: prices_adjusted goes back to 2005, but this table is not, and was
+# never meant to be, a 19-year historical signal set. Without this floor the
+# first run against an empty marker table would try to scan ~5,300 dates.
+BORING_SIGNALS_FLOOR_DATE = "2026-07-10"
+LONG_GAP_ALERT_DAYS = 15      # a pending list longer than this is a real event, not routine
+MIN_UNIVERSE_ABS = 50        # absolute floor: fewer priced symbols than this = partial scrape (mirrors cleanup_ghost_dates())
+REL_COVERAGE_FLOOR = 0.85    # relative floor: symbols_priced must be >= this * median(trailing complete scans)
+COVERAGE_MEDIAN_WINDOW = 20  # how many prior complete scans the relative floor's median is taken over
+# Bulk-backfill guard: a large pending list is fine on an ESTABLISHED marker
+# table (a genuine multi-week outage -- the positions from back then are
+# already correctly resolved in boring_signals, and as_of_date replay handles
+# the rest). But a large pending list with an almost-empty marker table means
+# either an un-seeded first run or the marker was lost -- replaying weeks of
+# scans over a table whose 100s of rows carry real-time-baked `Stopped`
+# statuses produces backdated dedup artifacts (proven by the OI-6 smoke test).
+# Refuse that case; the operator seeds the audited window or does a wipe+replay.
+MIN_MARKER_ROWS_FOR_LARGE_CATCHUP = 20
 
 
 def ensure_boring_signals_table(conn: sqlite3.Connection) -> None:
@@ -140,6 +171,33 @@ def ensure_boring_signals_table(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE boring_signals ADD COLUMN dedup_conflict INTEGER NOT NULL DEFAULT 0")
         logger.info("boring_signals: added dedup_conflict column (default 0 -- a manual data-quality "
                      "label, not auto-computed; see docs/KIRAN_CLEANUP_AUDIT.md §63.6/§64).")
+    # The scan-progress marker (TR-13/OI-6). Created alongside boring_signals
+    # itself so every existing call site that ensures the signals table also
+    # gets the marker -- unlike the Postgres side, SQLite has no separate
+    # sign-off ceremony for a local CREATE TABLE IF NOT EXISTS, and this table
+    # carries no signal data, only per-date scan bookkeeping.
+    ensure_boring_signals_scanned_table(conn)
+
+
+def ensure_boring_signals_scanned_table(conn: sqlite3.Connection) -> None:
+    """SQLite DDL for `boring_signals_scanned` -- the explicit scan-progress
+    marker that replaces `scan_boring_breakouts_pending()`'s old bounded
+    15-trading-day resume window (TR-13/OI-6, Trust Register §0a.1;
+    docs/KIRAN_CLEANUP_AUDIT.md §77). One row per trading date actually
+    scanned. `complete` distinguishes a date scanned against full data (safe
+    to treat as done) from one scanned opportunistically against a partial
+    scrape (must be re-scanned by a later, fuller run). Idempotent."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS boring_signals_scanned (
+            scan_date        TEXT PRIMARY KEY,   -- trading date scanned (ISO)
+            scanned_at       TEXT NOT NULL DEFAULT (datetime('now')),
+            universe_size    INTEGER NOT NULL,   -- len(eligible universe) at scan time
+            symbols_priced   INTEGER NOT NULL,   -- universe symbols with a prices_adjusted row for scan_date
+            complete         INTEGER NOT NULL DEFAULT 1,  -- 1 = passed the completeness gate; 0 = re-scan required
+            run_id           TEXT,               -- cmd_update() run identity (TR-08 groundwork), nullable
+            code_version     TEXT                -- git SHA if resolvable, nullable (TR-11/TR-16 groundwork)
+        );
+    """)
 
 
 def ensure_boring_signals_table_pg() -> None:
@@ -210,6 +268,47 @@ def ensure_boring_signals_table_pg() -> None:
         # function's breakout_level/current_stop migration above.
         cur.execute("ALTER TABLE boring_signals ADD COLUMN IF NOT EXISTS dedup_conflict BOOLEAN NOT NULL DEFAULT FALSE")
         logger.info("boring_signals (pg): table ensured.")
+
+
+def ensure_boring_signals_scanned_table_pg() -> None:
+    """One-time DDL for `boring_signals_scanned` on Postgres/Supabase
+    (TR-13/OI-6, Trust Register §0a.1; docs/KIRAN_CLEANUP_AUDIT.md §77).
+
+    NOT called implicitly by any scan function -- same "assumes the table
+    already exists" contract as ensure_boring_signals_table_pg() and
+    leaders_scan.py's _pg functions. Run this once, explicitly, with the
+    project's standing sign-off-before-first-write discipline (Trust
+    Register §0a.1.8 step 3), BEFORE the daily hook's Postgres pending-scan
+    path is exercised for real. The Postgres pending scan fails loud (does
+    not auto-create) if this has not been run -- a deploy-order slip is
+    surfaced as a visible hook error, never a silent fallback.
+
+    scan_date / scanned_at are native DATE / TIMESTAMP (a brand-new table
+    has no TEXT-migration baggage; TEXT-vs-DATE mismatches caused roughly
+    half of this project's production incidents). complete is BOOLEAN, not
+    INTEGER 0/1 -- Postgres convention throughout this codebase; query it
+    with IS TRUE / IS FALSE.
+
+    Per-backend by design: this marker records only what THIS backend has
+    scanned. It is NOT part of migrate_to_supabase.py -- SQLite's marker
+    rows are not copied here, for the same reason boring_signals itself is
+    not migrated (different histories, different go-live dates).
+    """
+    from database_pg import get_conn
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS boring_signals_scanned (
+                scan_date        DATE PRIMARY KEY,
+                scanned_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+                universe_size    INTEGER NOT NULL,
+                symbols_priced   INTEGER NOT NULL,
+                complete         BOOLEAN NOT NULL DEFAULT TRUE,
+                run_id           TEXT,
+                code_version     TEXT
+            );
+        """)
+        logger.info("boring_signals_scanned (pg): table ensured.")
 
 
 def _backfill_breakout_levels(conn: sqlite3.Connection) -> int:
@@ -659,94 +758,308 @@ def _scan_boring_breakouts_pg(date: str | None = None) -> int:
         return inserted
 
 
-def scan_boring_breakouts_pending(max_lookback: int = 15, return_coverage: bool = False):
-    """Scan every trading date that may not have been scanned yet, not just
-    the newest one.
+# ── Scan-progress marker helpers (TR-13 / OI-6, Trust Register §0a.1) ─────────
 
-    `scan_boring_breakouts()` defaults to `all_dates[-1]` -- the newest date
-    only. Called once a day from main.py's hook, that meant any day the hook
-    missed was never scanned again: the next run just looked at the new
-    newest date. Same single-date defect as the market_regime/sector_signals
-    loss and setup_log's (docs/KIRAN_CLEANUP_AUDIT.md §21, §24, §25).
+def _current_code_version() -> str | None:
+    """Best-effort git SHA of the running checkout, for the marker's
+    code_version column (TR-11/TR-16 groundwork). Never raises, never
+    guesses -- returns None if it can't be read."""
+    try:
+        from serving_revision import get_serving_revision
+        return get_serving_revision()
+    except Exception:
+        return None
 
-    Deciding *where* to resume is the wrinkle here, and it is why this is a
-    bounded window rather than a true high-water mark: `boring_signals` only
-    gets a row when a signal actually fires, so an empty stretch is
-    indistinguishable from an unscanned one -- the table cannot tell you what
-    has been scanned. So resume from whichever is later:
 
-      * the most recent `signal_date` already recorded, or
-      * `max_lookback` trading dates back from the newest date.
+def _symbols_priced_by_date(by_symbol: dict) -> "dict":
+    """symbols_priced[date] = number of eligible-universe symbols with a
+    prices_adjusted row for that date. Feeds the completeness gate."""
+    from collections import Counter
+    counts: Counter = Counter()
+    for pf in by_symbol.values():
+        counts.update(set(list(pf["dates"])))
+    return counts
 
-    That converts permanent silent loss into self-healing within
-    `max_lookback` days, the same bounded-window compromise
-    `auto_detect_suspects()` already makes in this codebase. A gap longer
-    than the window would still be missed; closing that properly needs an
-    explicit scan-progress marker, which is a schema change and is not worth
-    it for a watch-only, SQLite-only feature. Re-scanning is cheap and safe:
-    the per-date work is small next to the one-off universe/price load, and
-    UNIQUE(symbol, signal_date, lookback_n) + INSERT OR IGNORE makes a
-    repeat scan a no-op.
 
-    Returns total new rows inserted across all dates scanned.
+def _completeness_ok(symbols_priced: int, prior_complete_counts: list) -> bool:
+    """Interim data-completeness gate (Trust Register §0a.1.5): a date passes
+    iff it has at least MIN_UNIVERSE_ABS priced symbols AND (once at least
+    COVERAGE_MEDIAN_WINDOW prior complete scans exist) at least
+    REL_COVERAGE_FLOOR x the median of those. A failing date is still
+    scanned -- a real breakout that is visible should not be withheld -- but
+    its marker is written complete=0 so a later, fuller run re-scans it.
+    Replaced by a check against an authoritative point-in-time universe once
+    TR-14 delivers one."""
+    if symbols_priced < MIN_UNIVERSE_ABS:
+        return False
+    if len(prior_complete_counts) >= COVERAGE_MEDIAN_WINDOW:
+        med = statistics.median(prior_complete_counts)
+        if med > 0 and symbols_priced < REL_COVERAGE_FLOOR * med:
+            return False
+    return True
 
-    return_coverage: TR-06 Tier 2 (2026-08-24) -- when True, returns
-    (total, dates_eligible, dates_processed) instead of the bare int.
-    dates_eligible is len(pending) (the dates this run needed to scan);
-    dates_processed is how many were actually completed before any early
-    `break` (a transient-failure break, see the per-date handling above,
-    returns normally without raising -- exactly the "ran without exception
-    but did less than expected" shape a coverage assertion exists to catch).
-    Defaults to False so every pre-existing caller (main.py before this
-    change, the existing regression tests) keeps its exact prior contract
-    unchanged.
+
+def _pending_dates(all_dates, already_done) -> list:
+    """The resume computation, shared by both backends so they cannot drift:
+    every trading date from BORING_SIGNALS_FLOOR_DATE onward that is present
+    in prices_adjusted and has no complete marker row, in chronological
+    order. No *upper* bound on age within the feature's lifetime -- an
+    arbitrarily old un-scanned in-window date is still returned (TR-13/OI-6);
+    the floor only excludes pre-go-live history this table never covered."""
+    done = set(already_done)
+    return [d for d in all_dates
+            if d >= BORING_SIGNALS_FLOOR_DATE and d not in done]
+
+
+def _guard_bulk_backfill(pending: list, n_marker_rows: int, n_signal_rows: int,
+                         max_existing_sigdate: str | None, tag: str) -> None:
+    """Refuse ONE specific dangerous shape: a large catch-up that would
+    re-scan already-covered history while the marker table is near-empty --
+    an un-seeded first run, or a lost boring_signals_scanned table. Replaying
+    weeks of scans over a boring_signals table whose rows already carry
+    real-time-resolved `Stopped` statuses frees symbols the dedup gate should
+    still block, producing backdated artifact signals (proven by the OI-6
+    smoke test: +113 rows, incl. on §36-verified no-signal dates).
+
+    Explicitly ALLOWED through (not this shape):
+      * routine catch-up (pending <= LONG_GAP_ALERT_DAYS)
+      * a genuine long outage on an ESTABLISHED marker table
+      * a clean wipe + chronological replay (boring_signals empty, so no
+        already-covered history to corrupt -- the §71 method)
+      * a first run on a genuinely new/small table
+    """
+    if (len(pending) > LONG_GAP_ALERT_DAYS
+            and n_marker_rows < MIN_MARKER_ROWS_FOR_LARGE_CATCHUP
+            and n_signal_rows >= MIN_MARKER_ROWS_FOR_LARGE_CATCHUP
+            and max_existing_sigdate is not None
+            and pending[0] <= max_existing_sigdate):
+        raise RuntimeError(
+            f"boring_signals{tag}: refusing to auto-backfill {len(pending)} pending "
+            f"date(s) ({pending[0]} .. {pending[-1]}) -- this would re-scan "
+            f"already-covered history (existing signals through {max_existing_sigdate}) "
+            f"with only {n_marker_rows} scan-progress marker row(s) against "
+            f"{n_signal_rows} existing boring_signals rows. Replaying over "
+            f"real-time-resolved rows produces backdated dedup artifacts (OI-6 "
+            f"smoke test). Seed the audit-verified window "
+            f"(`python boring_signals.py seed-verified <through-date>`), or do a "
+            f"full wipe + chronological replay, then re-run. See Trust Register "
+            f"section 0a.1."
+        )
+
+
+def _log_pending(pending: list, tag: str) -> None:
+    prefix = f"boring_signals{tag}:"
+    if len(pending) > LONG_GAP_ALERT_DAYS:
+        logger.warning(
+            "%s LONG SCAN GAP -- %d trading date(s) pending (%s .. %s); "
+            "investigate before trusting this table (TR-13/OI-6, "
+            "docs/KIRAN_CLEANUP_AUDIT.md §77)",
+            prefix, len(pending), pending[0], pending[-1],
+        )
+    elif len(pending) > 1:
+        logger.warning("%s scanning %d date(s), %s -> %s.",
+                       prefix, len(pending), pending[0], pending[-1])
+
+
+def _mark_scanned(scan_date, universe_size, symbols_priced, complete,
+                  run_id=None, code_version=None) -> None:
+    """Upsert one boring_signals_scanned row. Branches on _PG_URL."""
+    if _PG_URL:
+        _mark_scanned_pg(scan_date, universe_size, symbols_priced, complete,
+                         run_id, code_version)
+        return
+    with sqlite3.connect(DB_PATH) as conn:
+        ensure_boring_signals_scanned_table(conn)
+        conn.execute(
+            """INSERT INTO boring_signals_scanned
+                   (scan_date, scanned_at, universe_size, symbols_priced,
+                    complete, run_id, code_version)
+               VALUES (?, datetime('now'), ?, ?, ?, ?, ?)
+               ON CONFLICT(scan_date) DO UPDATE SET
+                   scanned_at     = excluded.scanned_at,
+                   universe_size  = excluded.universe_size,
+                   symbols_priced = excluded.symbols_priced,
+                   complete       = excluded.complete,
+                   run_id         = excluded.run_id,
+                   code_version   = excluded.code_version""",
+            (scan_date, universe_size, symbols_priced, 1 if complete else 0,
+             run_id, code_version),
+        )
+        conn.commit()
+
+
+def _mark_scanned_pg(scan_date, universe_size, symbols_priced, complete,
+                     run_id=None, code_version=None) -> None:
+    from database_pg import get_conn
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO boring_signals_scanned
+                   (scan_date, scanned_at, universe_size, symbols_priced,
+                    complete, run_id, code_version)
+               VALUES (%s, NOW(), %s, %s, %s, %s, %s)
+               ON CONFLICT (scan_date) DO UPDATE SET
+                   scanned_at     = EXCLUDED.scanned_at,
+                   universe_size  = EXCLUDED.universe_size,
+                   symbols_priced = EXCLUDED.symbols_priced,
+                   complete       = EXCLUDED.complete,
+                   run_id         = EXCLUDED.run_id,
+                   code_version   = EXCLUDED.code_version""",
+            (scan_date, universe_size, symbols_priced, bool(complete),
+             run_id, code_version),
+        )
+
+
+def invalidate_scanned_from(from_date: str) -> int:
+    """Delete scan-progress markers on or after `from_date` so those trading
+    dates are re-scanned on the next `scan_boring_breakouts_pending()` run.
+
+    Call after `prices_adjusted` has been retro-corrected for a historical
+    window -- a corporate-action confirmation
+    (apply_price_adjustments.rebuild_symbol_adjusted), or a ghost-date
+    cleanup. A corporate-action rescale multiplies every pre-event row by
+    one uniform factor, so a fully-pre-event breakout decision and its RS_60
+    are invariant under it (both sides of `close > 1.01 x prior_high` scale
+    together; RS_60 is a ratio of the same symbol's own closes). The signals
+    whose inputs actually change are the ones whose lookback window straddles
+    the ex-date -- i.e. dates >= ex_date. Hence `>= from_date`, forward.
+
+    Does NOT touch `boring_signals` rows -- re-scan appends only genuinely
+    missing (symbol, signal_date, lookback_n) rows via the table's existing
+    UNIQUE-constraint idempotency. Returns the number of marker rows removed.
+    See Trust Register §0a.1.6 for the known residual (a dedup-gate ordering
+    artifact on re-scan of a corrected historical window; the heavy fix is a
+    full chronological replay, out of scope here).
     """
     if _PG_URL:
-        total, elig, proc = _scan_boring_breakouts_pending_pg(max_lookback)
+        return _invalidate_scanned_from_pg(from_date)
+    with sqlite3.connect(DB_PATH) as conn:
+        ensure_boring_signals_scanned_table(conn)
+        n = conn.execute(
+            "DELETE FROM boring_signals_scanned WHERE scan_date >= ?", (from_date,)
+        ).rowcount
+        conn.commit()
+    logger.info("boring_signals: invalidated %d scan-progress marker(s) from %s "
+                "onward -- will be re-scanned next run", n, from_date)
+    return n
+
+
+def _invalidate_scanned_from_pg(from_date: str) -> int:
+    from database_pg import get_conn
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM boring_signals_scanned WHERE scan_date >= %s", (from_date,))
+        n = cur.rowcount
+    logger.info("boring_signals (pg): invalidated %d scan-progress marker(s) from "
+                "%s onward -- will be re-scanned next run", n, from_date)
+    return n
+
+
+def scan_boring_breakouts_pending(return_coverage: bool = False,
+                                  run_id: str | None = None):
+    """Scan every trading date not yet recorded complete in
+    `boring_signals_scanned`, oldest first -- not just the newest date.
+
+    `scan_boring_breakouts()` on its own scans `all_dates[-1]` only, so any
+    day the daily hook missed would never be scanned again -- the same
+    single-date defect as the market_regime / sector_signals / setup_log
+    losses (docs/KIRAN_CLEANUP_AUDIT.md §21, §24, §25).
+
+    Resume policy (TR-13 / OI-6, Trust Register §0a.1;
+    docs/KIRAN_CLEANUP_AUDIT.md §35.5 / §77): a trading date is "done" only
+    once `boring_signals_scanned` holds a `complete` row for it. `pending`
+    is every date present in `prices_adjusted` (for the eligible universe)
+    with no such row -- a pure set-difference, NO lower bound. This replaces
+    the old bounded 15-trading-day window, which silently and permanently
+    dropped every un-scanned date once a gap exceeded it. A date not yet in
+    `prices_adjusted` is simply not a candidate -- a holiday and
+    not-yet-published data are treated identically (do nothing).
+
+    Before each date's scan, `update_open_signal_statuses(as_of_date=D)`
+    runs -- a TRUE chronological replay: a position that only stops out
+    after D stays open, so the dedup gate blocks exactly the symbols
+    genuinely open on D. This is both the MACFL / 2026-08-19 catch-up
+    ordering fix (a same-day resolve+requalify is permitted) and what keeps
+    an arbitrarily long catch-up correct rather than firing backdated
+    signals a real-time scan never would (Trust Register §0a.1.7).
+
+    A `pending` list longer than LONG_GAP_ALERT_DAYS is logged as a WARNING
+    (previously this was entirely silent) and surfaces through main.py's
+    hook as coverage_status = INSUFFICIENT.
+
+    return_coverage: TR-06 Tier 2 -- when True, returns
+    (total, dates_eligible, dates_processed). dates_eligible is len(pending);
+    dates_processed is how many dates the scan call completed before any
+    transient-failure break. Defaults to False (bare int) so every
+    pre-existing caller keeps its prior contract.
+
+    run_id: cmd_update()'s per-invocation identity, recorded on each marker
+    row (TR-08 groundwork); optional.
+    """
+    if _PG_URL:
+        total, elig, proc = _scan_boring_breakouts_pending_pg(run_id)
     else:
-        total, elig, proc = _scan_boring_breakouts_pending_sqlite(max_lookback)
+        total, elig, proc = _scan_boring_breakouts_pending_sqlite(run_id)
     return (total, elig, proc) if return_coverage else total
 
 
-def _scan_boring_breakouts_pending_sqlite(max_lookback: int = 15) -> tuple[int, int, int]:
+def _scan_boring_breakouts_pending_sqlite(run_id: str | None = None) -> tuple[int, int, int]:
     with sqlite3.connect(DB_PATH) as conn:
-        ensure_boring_signals_table(conn)
+        ensure_boring_signals_table(conn)   # also ensures boring_signals_scanned
         universe = _eligible_universe(conn)
         by_symbol = _load_price_history(conn, universe)
         all_dates = sorted({d for pf in by_symbol.values() for d in pf["dates"]})
         if not all_dates:
             logger.warning("boring_signals: no price history found for eligible universe")
             return (0, 0, 0)
-        last_signal = conn.execute(
-            "SELECT MAX(signal_date) FROM boring_signals"
-        ).fetchone()[0]
+        already_done = {
+            r[0] for r in conn.execute(
+                "SELECT scan_date FROM boring_signals_scanned WHERE complete = 1"
+            ).fetchall()
+        }
+        n_marker_rows = conn.execute(
+            "SELECT COUNT(*) FROM boring_signals_scanned").fetchone()[0]
+        n_signal_rows = conn.execute("SELECT COUNT(*) FROM boring_signals").fetchone()[0]
+        max_existing_sigdate = conn.execute(
+            "SELECT MAX(signal_date) FROM boring_signals").fetchone()[0]
+        prior_complete_counts = [
+            r[0] for r in conn.execute(
+                "SELECT symbols_priced FROM boring_signals_scanned "
+                "WHERE complete = 1 ORDER BY scan_date DESC LIMIT ?",
+                (COVERAGE_MEDIAN_WINDOW,),
+            ).fetchall()
+        ]
 
-    window_start = all_dates[-max_lookback] if len(all_dates) > max_lookback else all_dates[0]
-    resume_from = max(window_start, last_signal) if last_signal else window_start
-    pending = [d for d in all_dates if d >= resume_from]
+    pending = _pending_dates(all_dates, already_done)
+    if not pending:
+        return (0, 0, 0)
 
-    if len(pending) > 1:
-        logger.warning("boring_signals: scanning %d date(s), %s -> %s.",
-                       len(pending), pending[0], pending[-1])
+    _guard_bulk_backfill(pending, n_marker_rows, n_signal_rows, max_existing_sigdate, "")
+    _log_pending(pending, "")
+    priced_by_date = _symbols_priced_by_date(by_symbol)
+    universe_size = len(universe)
+    code_version = _current_code_version()
+
     total = 0
     dates_processed = 0
     for scan_date in pending:
-        # Two-tier handling (docs/KIRAN_CLEANUP_AUDIT.md §44, mirroring the
-        # already-fixed setup_log pattern, §28/§44): a transient blip is
-        # tolerated for this date -- the bounded max_lookback window means a
-        # later run's resume_from can still reach it. A real bug must raise,
-        # not be logged as a WARNING and reported as a clean scan that
-        # simply found nothing -- boring_signals feeds real trading capital
-        # (the PRL incident, §33), and "0 new signals" must mean that, not
-        # "the scanner silently failed on every pending date."
+        # MACFL fold-in + the per-date scan, under one two-tier handler
+        # (docs/KIRAN_CLEANUP_AUDIT.md §44): a transient blip is tolerated --
+        # the scan-progress marker means a later run still reaches this date;
+        # a real bug must raise, not be logged and reported as a clean scan
+        # that found nothing (boring_signals feeds real capital, §33).
+        # as_of_date=scan_date makes this a TRUE chronological replay -- a
+        # position that only stops out after scan_date stays open, so the
+        # dedup gate blocks exactly the symbols genuinely open on scan_date,
+        # not ones that resolved later (Trust Register §0a.1.7).
         try:
-            total += scan_boring_breakouts(scan_date)
-            dates_processed += 1
+            update_open_signal_statuses(as_of_date=scan_date)
+            n_new = scan_boring_breakouts(scan_date)
         except _SQLITE_TRANSIENT_ERRORS as exc:
             logger.warning(
-                "boring_signals: transient failure scanning %s -- stopping "
-                "here, a later run's bounded lookback window can still "
-                "reach it: %s", scan_date, exc,
+                "boring_signals: transient failure at %s -- stopping here, a "
+                "later run reaches it via the scan-progress marker: %s",
+                scan_date, exc,
             )
             break
         except Exception:
@@ -755,13 +1068,40 @@ def _scan_boring_breakouts_pending_sqlite(max_lookback: int = 15) -> tuple[int, 
                 "failing the run", scan_date,
             )
             raise
+        total += n_new
+        dates_processed += 1
+
+        priced = int(priced_by_date.get(scan_date, 0))
+        complete = _completeness_ok(priced, prior_complete_counts)
+        try:
+            _mark_scanned(scan_date, universe_size, priced, complete, run_id, code_version)
+        except Exception:
+            logger.exception(
+                "boring_signals: failed to record scan-progress marker for %s "
+                "-- the scan itself succeeded; this date will be re-scanned "
+                "next run", scan_date,
+            )
+        else:
+            if not complete:
+                logger.warning(
+                    "boring_signals: %s scanned against a thin/partial universe "
+                    "(%d symbols priced) -- marked incomplete, will be "
+                    "re-scanned when fuller data lands", scan_date, priced,
+                )
+            else:
+                prior_complete_counts = ([priced] + prior_complete_counts)[:COVERAGE_MEDIAN_WINDOW]
     return (total, len(pending), dates_processed)
 
 
-def _scan_boring_breakouts_pending_pg(max_lookback: int = 15) -> tuple[int, int, int]:
+def _scan_boring_breakouts_pending_pg(run_id: str | None = None) -> tuple[int, int, int]:
     """PG twin of _scan_boring_breakouts_pending_sqlite() -- identical
-    bounded-window resume policy (see that function's docstring for the
-    full rationale; unchanged by the port)."""
+    set-difference resume policy against boring_signals_scanned (see that
+    function and Trust Register §0a.1).
+
+    Fails loud if boring_signals_scanned does not exist yet:
+    ensure_boring_signals_scanned_table_pg() is a separate signed-off step
+    (§0a.1.8 step 3), never auto-created here, and this path must never
+    silently fall back to the old bounded window."""
     import psycopg2.extras
     from database_pg import get_conn
 
@@ -773,42 +1113,133 @@ def _scan_boring_breakouts_pending_pg(max_lookback: int = 15) -> tuple[int, int,
         if not all_dates:
             logger.warning("boring_signals (pg): no price history found for eligible universe")
             return (0, 0, 0)
-        cur.execute("SELECT MAX(signal_date)::text AS d FROM boring_signals")
-        last_signal = cur.fetchone()["d"]
+        try:
+            cur.execute("SELECT scan_date::text AS d FROM boring_signals_scanned WHERE complete IS TRUE")
+            already_done = {r["d"] for r in cur.fetchall()}
+            cur.execute(
+                "SELECT symbols_priced FROM boring_signals_scanned "
+                "WHERE complete IS TRUE ORDER BY scan_date DESC LIMIT %s",
+                (COVERAGE_MEDIAN_WINDOW,),
+            )
+            prior_complete_counts = [r["symbols_priced"] for r in cur.fetchall()]
+            cur.execute("SELECT COUNT(*) FROM boring_signals_scanned")
+            n_marker_rows = cur.fetchone()["count"]
+            cur.execute("SELECT COUNT(*) AS c, MAX(signal_date)::text AS m FROM boring_signals")
+            _bs_stats = cur.fetchone()
+            n_signal_rows, max_existing_sigdate = _bs_stats["c"], _bs_stats["m"]
+        except Exception as exc:
+            if getattr(exc, "pgcode", None) == "42P01":  # undefined_table
+                raise RuntimeError(
+                    "boring_signals_scanned does not exist on Postgres -- run "
+                    "boring_signals.ensure_boring_signals_scanned_table_pg() "
+                    "once with sign-off (Trust Register §0a.1.8 step 3) before "
+                    "the Postgres pending-scan path runs. Refusing to "
+                    "auto-create or fall back to the old bounded window."
+                ) from exc
+            raise
 
-    window_start = all_dates[-max_lookback] if len(all_dates) > max_lookback else all_dates[0]
-    resume_from = max(window_start, last_signal) if last_signal else window_start
-    pending = [d for d in all_dates if d >= resume_from]
+    pending = _pending_dates(all_dates, already_done)
+    if not pending:
+        return (0, 0, 0)
 
-    if len(pending) > 1:
-        logger.warning("boring_signals (pg): scanning %d date(s), %s -> %s.",
-                       len(pending), pending[0], pending[-1])
+    _guard_bulk_backfill(pending, n_marker_rows, n_signal_rows, max_existing_sigdate, " (pg)")
+    _log_pending(pending, " (pg)")
+    priced_by_date = _symbols_priced_by_date(by_symbol)
+    universe_size = len(universe)
+    code_version = _current_code_version()
     _pg_transient = _pg_transient_errors()
+
     total = 0
     dates_processed = 0
     for scan_date in pending:
-        # Same two-tier handling as the SQLite path above -- see its comment
-        # and docs/KIRAN_CLEANUP_AUDIT.md §44.
         try:
-            total += _scan_boring_breakouts_pg(scan_date)
-            dates_processed += 1
+            update_open_signal_statuses(as_of_date=scan_date)   # true chronological replay, §0a.1.7
+            n_new = _scan_boring_breakouts_pg(scan_date)
         except _pg_transient as exc:
             logger.warning(
-                "boring_signals (pg): transient failure scanning %s -- "
-                "stopping here, a later run's bounded lookback window can "
-                "still reach it: %s", scan_date, exc,
+                "boring_signals (pg): transient failure at %s -- stopping "
+                "here, a later run reaches it via the scan-progress marker: %s",
+                scan_date, exc,
             )
             break
         except Exception:
             logger.exception(
-                "boring_signals (pg): scan FAILED for %s -- unexpected "
-                "error, failing the run", scan_date,
+                "boring_signals (pg): scan FAILED for %s -- unexpected error, "
+                "failing the run", scan_date,
             )
             raise
+        total += n_new
+        dates_processed += 1
+
+        priced = int(priced_by_date.get(scan_date, 0))
+        complete = _completeness_ok(priced, prior_complete_counts)
+        try:
+            _mark_scanned(scan_date, universe_size, priced, complete, run_id, code_version)
+        except Exception:
+            logger.exception(
+                "boring_signals (pg): failed to record scan-progress marker "
+                "for %s -- the scan succeeded; this date will be re-scanned "
+                "next run", scan_date,
+            )
+        else:
+            if not complete:
+                logger.warning(
+                    "boring_signals (pg): %s scanned against a thin/partial "
+                    "universe (%d symbols priced) -- marked incomplete, will "
+                    "be re-scanned when fuller data lands", scan_date, priced,
+                )
+            else:
+                prior_complete_counts = ([priced] + prior_complete_counts)[:COVERAGE_MEDIAN_WINDOW]
     return (total, len(pending), dates_processed)
 
 
-def update_open_signal_statuses() -> int:
+def seed_scanned_window(through_date: str, run_id: str = "SEED-audit") -> int:
+    """One-time transition helper (TR-13/OI-6, Trust Register §0a.1.8 step 2):
+    mark every trading date from BORING_SIGNALS_FLOOR_DATE through
+    `through_date` as `complete` in boring_signals_scanned WITHOUT scanning
+    them. Use this when `boring_signals` already holds the pre-marker
+    operating history and that window has been independently verified intact
+    (audit §36) -- re-scanning it instead produces backdated dedup artifacts
+    (the un-empty-table problem, §0a.1 amendment). After seeding, the next
+    pending scan only genuinely processes dates AFTER `through_date`.
+
+    Records real universe_size / symbols_priced per date. Idempotent (ON
+    CONFLICT updates). Returns the number of dates seeded. Branches on
+    _PG_URL; the Postgres table must already exist.
+    """
+    if _PG_URL:
+        import psycopg2.extras
+        from database_pg import get_conn
+        with get_conn() as conn:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            universe = _eligible_universe_pg(cur)
+            by_symbol = _load_price_history_pg(cur, universe)
+    else:
+        with sqlite3.connect(DB_PATH) as conn:
+            ensure_boring_signals_table(conn)
+            universe = _eligible_universe(conn)
+            by_symbol = _load_price_history(conn, universe)
+
+    all_dates = sorted({d for pf in by_symbol.values() for d in pf["dates"]})
+    window = [d for d in all_dates
+              if BORING_SIGNALS_FLOOR_DATE <= d <= through_date]
+    if not window:
+        logger.warning("seed_scanned_window: no trading dates in [%s, %s]",
+                       BORING_SIGNALS_FLOOR_DATE, through_date)
+        return 0
+    priced_by_date = _symbols_priced_by_date(by_symbol)
+    universe_size = len(universe)
+    code_version = _current_code_version()
+    for d in window:
+        _mark_scanned(d, universe_size, int(priced_by_date.get(d, 0)),
+                      complete=True, run_id=run_id, code_version=code_version)
+    logger.info("seed_scanned_window: seeded %d date(s) complete, %s .. %s "
+                "(no scan performed -- audit §36-verified window)",
+                len(window), window[0], window[-1])
+    return len(window)
+
+
+def update_open_signal_statuses(as_of_date: str | None = None) -> int:
     """
     Advances status for every row not yet in a terminal state (Stopped).
 
@@ -840,13 +1271,32 @@ def update_open_signal_statuses() -> int:
     behavior, unchanged from before this rewrite) -- only Pending rows get
     days_open bumped while still open with no exit yet (existing asymmetry,
     preserved as-is, not introduced by this change).
+
+    as_of_date (TR-13/OI-6, Trust Register §0a.1.7): when given, the forward
+    trailing-stop walk stops at as_of_date -- a position that only stops out
+    *after* as_of_date stays Pending. This makes a multi-date catch-up in
+    scan_boring_breakouts_pending() a TRUE chronological replay: when the
+    loop scans date D it resolves positions using only data through D, so
+    the dedup gate blocks exactly the symbols that were genuinely still open
+    on D -- not ones that resolved weeks later. Default None = resolve
+    through all available history (the daily / standalone contract, unchanged
+    for every existing caller).
     """
     if _PG_URL:
-        return _update_open_signal_statuses_pg()
-    return _update_open_signal_statuses_sqlite()
+        return _update_open_signal_statuses_pg(as_of_date)
+    return _update_open_signal_statuses_sqlite(as_of_date)
 
 
-def _update_open_signal_statuses_sqlite() -> int:
+def _walk_end_index(dates, as_of_date) -> int:
+    """Index one past the last row at/at-or-before as_of_date -- the exclusive
+    upper bound for the trailing-stop walk. len(dates) when as_of_date is
+    None (walk everything)."""
+    if as_of_date is None:
+        return len(dates)
+    return int(np.searchsorted(dates, as_of_date, side="right"))
+
+
+def _update_open_signal_statuses_sqlite(as_of_date: str | None = None) -> int:
     with sqlite3.connect(DB_PATH) as conn:
         ensure_boring_signals_table(conn)
         open_rows = pd.read_sql_query(
@@ -867,7 +1317,9 @@ def _update_open_signal_statuses_sqlite() -> int:
             t = int(np.searchsorted(dates, row["signal_date"]))
             if t >= len(dates) or dates[t] != row["signal_date"]:
                 continue
-            n = len(dates)
+            n = _walk_end_index(dates, as_of_date)
+            if t >= n:
+                continue  # signal not yet active as of as_of_date -- leave untouched
             entry = row["trigger_price"]
             floor_level = entry * (1 + HYBRID_FLOOR_PCT)
 
@@ -897,10 +1349,10 @@ def _update_open_signal_statuses_sqlite() -> int:
         return updated
 
 
-def _update_open_signal_statuses_pg() -> int:
+def _update_open_signal_statuses_pg(as_of_date: str | None = None) -> int:
     """PG twin of _update_open_signal_statuses_sqlite() -- identical HYBRID
-    trailing-stop walk (see update_open_signal_statuses()'s docstring for
-    the full exit-logic rationale; unchanged by the port)."""
+    trailing-stop walk and identical as_of_date semantics (see
+    update_open_signal_statuses()'s docstring; unchanged by the port)."""
     import psycopg2.extras
     from database_pg import get_conn
 
@@ -926,7 +1378,9 @@ def _update_open_signal_statuses_pg() -> int:
             t = int(np.searchsorted(dates, sig_date))
             if t >= len(dates) or dates[t] != sig_date:
                 continue
-            n = len(dates)
+            n = _walk_end_index(dates, as_of_date)
+            if t >= n:
+                continue  # signal not yet active as of as_of_date -- leave untouched
             entry = float(row["trigger_price"])
             floor_level = entry * (1 + HYBRID_FLOOR_PCT)
 
@@ -1043,3 +1497,48 @@ def _normalize_boring_signals_rows(rows) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].astype(int)
     return df
+
+
+if __name__ == "__main__":
+    # Minimal admin CLI. The daily scan runs from main.py's hook, not here.
+    import argparse
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    _ap = argparse.ArgumentParser(description="boring_signals admin operations")
+    _sub = _ap.add_subparsers(dest="cmd", required=True)
+
+    _inv = _sub.add_parser(
+        "invalidate-from",
+        help="Delete scan-progress markers on/after DATE so those trading "
+             "dates are re-scanned next run (use after a ghost-date cleanup "
+             "or a corporate-action correction to prices_adjusted).",
+    )
+    _inv.add_argument("date", help="ISO date, e.g. 2026-07-08")
+
+    _scan = _sub.add_parser(
+        "scan-pending",
+        help="Run the pending scan once against the active backend "
+             "(SQLite unless DATABASE_URL/SUPABASE_DB_URL is set).",
+    )
+
+    _seed = _sub.add_parser(
+        "seed-verified",
+        help="One-time: mark every trading date from the go-live floor "
+             "through THROUGH_DATE as complete WITHOUT scanning (use when "
+             "boring_signals already holds that window and it is audit-verified "
+             "intact -- Trust Register 0a.1).",
+    )
+    _seed.add_argument("through_date", help="ISO date, inclusive, e.g. 2026-08-20")
+
+    _args = _ap.parse_args()
+    if _args.cmd == "invalidate-from":
+        _n = invalidate_scanned_from(_args.date)
+        print(f"invalidated {_n} marker row(s) from {_args.date} onward")
+    elif _args.cmd == "seed-verified":
+        _n = seed_scanned_window(_args.through_date)
+        print(f"seeded {_n} date(s) complete through {_args.through_date} (no scan)")
+    elif _args.cmd == "scan-pending":
+        _t, _e, _p = scan_boring_breakouts_pending(return_coverage=True)
+        _u = update_open_signal_statuses()   # mirror main.py's hook: resolve after the scan too
+        print(f"scan-pending: {_t} new signal(s); {_p}/{_e} pending date(s) processed; "
+              f"{_u} status update(s)")

@@ -5457,3 +5457,200 @@ Ran under explicit user authorization, with the §76.7 plan (adjusted to a full 
 **The "8+4 unclassified working-tree diff" that has blocked TR-11 since §55 is CLOSED.** TR-11 stays 🔴 RED pending a colour re-assessment — the remaining open pieces are the *standing/repeatable* deployed-SHA verification (vs. §62's one-time proof) and deployed-*behavior* confirmation for the #21–#28 commits. Trust Register TR-11 + Open Items Ledger OI-1 updated (local, uncommitted).
 
 **Date of this entry: 2026-08-27. Status: TR-11 arc fully classified + committed (8 PRs, #21–#28) and the working branch reconciled to `main`. `origin/main` = `d800a4d`. Local repo on `main`, `git status` clean but for 2 named deferred items. TR-11 still RED (colour re-assessment pending — the diff-classification blocker is now closed). Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+
+---
+
+## 77. <span style="color:#eab308;">◐ TR-13 / OI-6 — pre-registered implementation spec written for the `boring_signals` 15-trading-day silent-loss window (2026-08-27)</span>
+
+**DESIGN ENTRY — no code, no DB write, no git action.** Records that a full pre-registered implementation specification for OI-6 (the §35.5 silent, permanent, unalarmed data-loss mechanism in `scan_boring_breakouts_pending()`'s bounded 15-trading-day catch-up window) has been written and now lives in `docs/KIRAN_BORING_STATE_TRUST_REGISTER.md` **§0a.1** (local, uncommitted, per program practice for the Trust Register). This is the single most load-bearing discrete task on TR-13's path from AMBER/"B" to "A".
+
+### 77.1 Why now / how it was scoped
+
+Requested by the user after a plain-English explanation of the mechanism (that exchange: the window is a design trade-off, documented in `boring_signals.py`'s own docstring, that silently drops every un-scanned trading date older than 15 sessions on the next run once a gap exceeds the window — no exception, `pipeline_runs.status='ok'`, dashboard healthy; §36 confirmed it has never actually fired, largest real gap 7 days, but "hasn't happened yet" ≠ "safe"). The user explicitly asked for the higher-standard bar because `boring_signals` is on the capital-at-risk path (PRL, §33): backup-first, dry-run-then-apply, independent re-verification, both backends in lockstep, a regression test exercising the real functions against the exact failure mode.
+
+### 77.2 The spec, in one paragraph (full text: Trust Register §0a.1)
+
+Replace the bounded window with an explicit scan-progress marker — a new `boring_signals_scanned` table (one row per trading date, both backends, same `screened_dates`/`backtest.py` pattern already proven in this repo) carrying `universe_size` / `symbols_priced` / a `complete` flag / nullable `run_id` + `code_version`. Resume logic in **both** `_scan_boring_breakouts_pending_sqlite()` and `_scan_boring_breakouts_pending_pg()` becomes pure set-difference (`all_dates` present in `prices_adjusted` MINUS dates already marked `complete`) with **no lower bound** — a 3-week-old un-scanned date is scanned exactly like a 1-day-old one. `max_lookback` / `window_start` / the `MAX(signal_date)` resume read are deleted. An interim completeness gate (absolute floor of 50 priced symbols + relative floor at 85% of the trailing-20 median, until TR-14's authoritative universe source exists) decides `complete`; a partial-scrape day is scanned opportunistically but left `complete=0` for a later re-scan. An `invalidate_scanned_from(from_date)` path (wired to the corporate-action confirm path) deletes marker rows from a retro-corrected date forward so they re-scan — first concrete TR-04 credit for this table. The known-adjacent MACFL/2026-08-19 catch-up ordering defect (`tests/test_boring_signals_catchup_ordering_regression.py`, "corrected ordering" test already green) is folded in since the pending loop is being rewritten anyway. A long `pending` list is now an observable event (WARNING + heartbeat `coverage_status=INSUFFICIENT` + `detail`) instead of silent — partial TR-07/TR-18 credit. 9-test matrix (all isolated synthetic DB / faked psycopg2, no real DB, no network). Rollout: one code PR → SQLite backup + dry-run + real → Postgres DDL with explicit separate sign-off → Postgres first populated run → migration/fixture updates → merge.
+
+### 77.3 The two design questions the user raised, answered in the spec
+
+1. **Both backends; cloud as single source of truth?** Both — the 15-day bug is byte-identical in the SQLite and `_pg` pending-scan functions, and both pipelines run the hook independently. The marker table is created on both. "Cloud is authoritative" is the *declared* architecture (2026-08-26) but **not yet enforced** (TR-01 RED) — this change does not itself make cloud authoritative; it gives each backend its own honest scan ledger. Written so that when local becomes a true one-way-fed mirror, the local compute path is *deleted*, not reworked (the marker replicates from PG alongside `boring_signals` rows). Marker is deliberately per-backend (different histories / go-live dates / universes).
+2. **Three missing-data scenarios:**
+   - *Genuine holiday/weekend* — already handled, nothing new: "`prices` IS the trading calendar" (`data_health._sessions_between`), a non-trading day is never a `prices_adjusted` date so it never enters `all_dates` and is never pending or expected in the marker.
+   - *Scraper failure / DB duplication* — the completeness gate (don't mark `complete` on a partial day) + the invalidation path (`cleanup_ghost_dates()` only touches `prices`, not `prices_adjusted`, and corporate actions retro-correct `prices_adjusted` — so a marked date can go stale; invalidation re-opens it). Residual: re-scan applies the current dedup-gate state — a full chronological replay is the heavy tool for a real corruption event, out of v1 scope.
+   - *Delayed source release (long weekend published late)* — handled for **any** delay length by the set-difference marker: the late date, once it lands in `prices_adjusted`, is simply "not in the done-set → scan it", even though newer dates are already done. Until it lands it is treated exactly like a holiday (do nothing). Strictly better than both the 15-day window and a naive `MAX(signal_date)` high-water mark.
+
+### 77.4 Status (spec-writing entry)
+
+**DESIGNED, NOT EXECUTED.** Trust Register §0a.1 + the OI-6 row + the TR-13 row all updated (local, uncommitted). RESEARCH_LOG "Kiran Production Integrity Program" row updated + CSV re-synced. Awaiting explicit user authorization to implement. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Date of this entry: 2026-08-27. Status: OI-6 pre-registered spec complete (Trust Register §0a.1). No code, no DB write, no git action. Awaiting authorization.**
+
+---
+
+### 77.5 Implementation — Phase 1 (code + tests) EXECUTED under authorization (2026-08-27)
+
+User authorized execution per the pre-registered spec, with "standard safety protocols and rigorous code quality enforced throughout." Phase 1 (Trust Register §0a.1.8 step 1 — code + full test matrix, **no DB write, not committed, not pushed**) is done. The remaining steps (SQLite backup + dry-run + real first run; Postgres DDL under **separate explicit sign-off**; Postgres first run; migration/fixture; merge) are held at their spec-defined gates.
+
+**Code changes (working tree only, on `main`):**
+
+- **`boring_signals.py`:**
+  - `LONG_GAP_ALERT_DAYS=15`, `MIN_UNIVERSE_ABS=50`, `REL_COVERAGE_FLOOR=0.85`, `COVERAGE_MEDIAN_WINDOW=20` constants.
+  - `ensure_boring_signals_scanned_table(conn)` (SQLite DDL) — **called from within `ensure_boring_signals_table()`** so every existing SQLite call site that ensures the signals table also gets the marker. `scan_date TEXT PRIMARY KEY, scanned_at, universe_size, symbols_priced, complete INTEGER DEFAULT 1, run_id, code_version`.
+  - `ensure_boring_signals_scanned_table_pg()` — **NOT auto-called** (separate signed-off step, §0a.1.8 step 3), native `DATE`/`TIMESTAMP`, `complete BOOLEAN`.
+  - `_pending_dates(all_dates, already_done)` — the shared resume computation (pure set-difference, no lower bound), called by **both** backends so they cannot drift.
+  - `_symbols_priced_by_date()`, `_completeness_ok()` (absolute + relative-median floor, relative skipped until 20 prior complete scans), `_current_code_version()` (best-effort git SHA via `serving_revision`), `_log_pending()` (long-gap WARNING), `_mark_scanned()`/`_mark_scanned_pg()` (upsert), `invalidate_scanned_from()`/`_invalidate_scanned_from_pg()`.
+  - `scan_boring_breakouts_pending()` — **`max_lookback` parameter deleted**; new optional `run_id`. Resume is now `_pending_dates()`. Per-date loop: `update_open_signal_statuses()` **before** each scan (MACFL/2026-08-19 fold-in, §0a.1.7), then `scan_boring_breakouts(date)`, then the completeness gate + marker upsert. Two-tier transient/bug handling unchanged (§44). `dates_processed` semantics unchanged (dates the scan call completed before any transient break) so the TR-06 coverage tuple and its tests are unaffected. A marker-write failure is logged, **not** fatal — the scan succeeded, the date just re-scans next run (fail-safe direction).
+  - Postgres pending scan **fails loud** (`RuntimeError`, SQLSTATE `42P01` check) if `boring_signals_scanned` is missing — never auto-creates, never falls back to the old window.
+  - `__main__` admin CLI: `invalidate-from <DATE>` and `scan-pending`.
+- **`main.py`:** boring hook threads `run_id` into `scan_boring_breakouts_pending()`; coverage now `INSUFFICIENT` (with a `detail` string) when `dates_processed < dates_eligible` **or** `dates_eligible > LONG_GAP_ALERT_DAYS` (a long catch-up / first-ever run is surfaced, not silent — self-resolves once the backlog clears).
+- **`dashboard.py`:** the SQLite corporate-action Confirm path calls `invalidate_scanned_from(ex_date)` after `recompute_symbol_signals()` (best-effort; a failure warns with the manual CLI command, does not undo the confirm). Forward `>=` is correct: a uniform pre-event rescale leaves a fully-pre-event breakout decision and RS_60 invariant; only lookback windows straddling the ex-date change.
+- **CI fixture `tests/fixtures/psx_fixture.db`:** surgical `CREATE TABLE boring_signals_scanned` (schema-only, 0 rows, 50→51 tables — no data churn, per the §76 group-4 lesson that a full regen breaks date-sensitive tests). NOT added to `migrate_to_supabase.py`'s `MIGRATION_ORDER` — deviation from §0a.1.8 step 5, deliberate: the marker is per-backend and starts clean on each, exactly as `boring_signals` itself is not migrated. §0a.1 amended to record this.
+
+**Tests (all isolated synthetic SQLite / faked psycopg2 — no real DB, no network):**
+
+- `tests/test_boring_signals_scan_progress_marker.py` (NEW, 10 tests): the >15-trading-day gap is fully scanned (the headline TR-13 acceptance test); non-trading days never pending/marked; a late-arriving out-of-order date is still scanned; a partial-scrape day is marked `complete=0` and re-scanned when full; `invalidate_scanned_from()` reopens dates without touching `boring_signals` rows; a second run with no new data is a no-op; `_pending_dates()` shared set-difference (SQLite/PG parity); first-ever run scans all history once; the completeness gate's absolute + relative floors.
+- `tests/test_boring_signals_catchup_ordering_regression.py` (UPDATED): the old "reproduces the defect" test rewritten to drive the real `scan_boring_breakouts_pending()` and assert the fixed behaviour (fresh MACFL-shaped signal IS recorded, prior position resolved, dates marked). The function-level "corrected ordering" proof kept.
+- `tests/test_boring_signals_pg.py` (UPDATED): +1 test — the Postgres pending scan raises a clear `RuntimeError` naming `ensure_boring_signals_scanned_table_pg()` when the marker table is missing.
+- `tests/test_boring_signals_pending_error_handling.py`, `tests/test_tr06_coverage_fields.py` (UPDATED): `max_lookback=15` call-site removed (6 sites); error-handling semantics assertions unchanged and passing.
+- Targeted subset (5 boring/tr06 files): **42 passed**. Full suite (this phase): **253 passed** → later **259** after the §77.6 corrections.
+
+**Spec refinement found by the dry-run gate — a go-live floor:** the first dry-run (read-only, against the real local `psx_data.db`) showed the eligible-universe price history reaches back to **2005-01-03** — 5,351 trading dates. With an empty marker table the set-difference `pending` would have been *all 5,351*, i.e. the first run would try to generate ~19 years of historical `boring_signals` this table was never meant to hold (both backends started at `signal_date` 2026-07-10; the Postgres rebuild used the same floor, §63), and would take hours (each per-date `scan_boring_breakouts()` reloads full price history, measured ~17.7 s). **Fix:** new constant `BORING_SIGNALS_FLOOR_DATE = "2026-07-10"`, applied in `_pending_dates()` (the one shared resume computation). This is a genuine gap in §0a.1 as written — the spec's "every date present in prices_adjusted" needed the go-live qualifier the prose implied but never stated. §0a.1 amended. New test `test_pending_dates_never_returns_anything_before_the_go_live_floor`. Re-dry-run: `pending` = **32 dates (2026-07-10 → 2026-08-25)**, all would mark `complete` (recent PSX days carry 200-300+ priced symbols), 9 of the 32 currently have no `boring_signals` row (genuine no-breakout days or missed scans — the re-scan resolves which). Est. first-run cost ~10-12 min added to one nightly `run_update.bat`, one time; daily thereafter ~20 s (1 pending date).
+
+**Backup taken (before tonight's nightly run executes the new code from the working tree):** `backups/psx_data_pre_boring_scanned_20260827.db` — SQLite online-backup API, 882,016,256 bytes, `PRAGMA integrity_check` → `ok`, sha256 `328e15a17376b65a0cb2fdcd07efff67bda6b63ab9c9b35677b871a2a46bda9d`. Dry-run script: `scratch_boring_scanned_20260827/dry_run_preview.py` (read-only, writes nothing).
+
+**Held at the gates:** no `psx_data.db` write, no Supabase write, no `ensure_boring_signals_scanned_table_pg()` call, no commit, no push. Next: (1) the real SQLite first run (~10-12 min, run manually + observed rather than left to the unattended nightly), verify `boring_signals_scanned` has 32 rows and `boring_signals` gained only plausible rows; (2) the Postgres DDL under its own explicit sign-off (§0a.1.8 step 3); (3) Postgres first populated run; (4) merge.
+
+**Date of this entry: 2026-08-27. Status: Phase 1 (code + tests, full suite green) executed under authorization; go-live floor added after the dry-run gate flagged the 2005-history problem. Backup taken. No DB write, not committed. Held at the SQLite-first-run / Postgres-DDL-sign-off gates. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+### 77.6 SQLite first-run attempt → aborted → two design corrections → smoke-tested (2026-08-28)
+
+**The observed first run (`scan-pending` on the real local DB, backup in place) was ABORTED after 8 dates and cleanly restored.** It surfaced a real defect the written spec's own first-run expectation ("very few or zero new rows — §36 found no historical loss") had masked.
+
+**Defect 1 — `update_open_signal_statuses()` resolved through *all* history, not "through `scan_date`".** The spec §0a.1.7 says "resolve-open-positions-through-`scan_date`"; the implementation called the unmodified resolver, which walks the trailing stop to the end of price history. On a 1-3 day daily catch-up that is negligible (and arguably correct). On a 32-day backfill it resolves *weeks* of future data, flipping positions to `Stopped` that were genuinely open at `scan_date`, which un-blocks the dedup gate → **backdated artifact signals**. The aborted run added 89 rows in 8 dates, including 14 on 2026-07-13 and 22 on 2026-07-20 — both §36-verified no-signal dates. **Fix:** new `as_of_date` parameter on `update_open_signal_statuses()` / both privates (`_walk_end_index()` caps the forward walk at `as_of_date`; a position that only stops out *after* it stays `Pending`). The pending loop passes `as_of_date=scan_date` → a **true chronological replay**. Default `None` = unchanged for every existing caller. +2 tests (`test_walk_end_index_caps_the_forward_walk`, `test_as_of_date_does_not_resolve_a_position_that_stops_out_later`).
+
+**Defect 2 — even with `as_of_date`, a large replay over a *populated* `boring_signals` table still corrupts.** Smoke test #1 (`smoke_test.py`, full 32-date `scan-pending` against a copy of the backup) still produced **+113 rows across 25 dates**, incl. all 6 §36 no-signal dates. Root cause: the 167 pre-existing `Stopped` rows carry real-time-resolved statuses. `update_open_signal_statuses(as_of_date=D)` only governs the ~16 currently-`Pending` rows — it cannot *un*-resolve the 167 that a true empty-table replay would have had as `Pending` on date D. **A true chronological replay requires an empty table (a wipe), exactly as §71 did for Postgres — which v1 explicitly excludes.** Confirmed: identity columns (id/symbol/signal_date/lookback_n/trigger_price/breakout_level/rs_60/target_price/stop_price) were **0 mutated / 0 dropped** in both smoke tests — the corruption is *added artifact rows*, never mutation of existing ones.
+
+**Resolution — seed the audit-verified window, genuinely scan only the tail:**
+- New `seed_scanned_window(through_date)` + CLI `seed-verified <date>`: marks every trading date from the go-live floor through `through_date` `complete` **without scanning** — for the case where `boring_signals` already holds that window and §36 verified it intact. Records real `universe_size`/`symbols_priced` per date, `run_id="SEED-audit"`. Idempotent.
+- New `_guard_bulk_backfill()`: the pending scan **refuses** exactly one shape — `pending` > `LONG_GAP_ALERT_DAYS` **and** marker table near-empty (< 20 rows) **and** `boring_signals` populated (≥ 20 rows) **and** `pending[0]` ≤ `MAX(signal_date)` (i.e. would re-scan already-covered history). Explicitly *allows*: routine catch-up, a long outage on an established marker table, a clean wipe+replay (empty `boring_signals`), a genuinely new small table. This stops an un-seeded first run (or a lost marker table) from silently doing the destructive thing — including tonight's unattended nightly if the code ships un-seeded. +3 guard tests + 1 seed test.
+
+**Smoke test #2 (`smoke_test2.py`) — the actual proposed first run, against a fresh copy of the backup: VERDICT PASS.**
+- `seed_scanned_window("2026-08-20")` → 29 dates seeded `complete`, zero scan, 23 s.
+- `scan_boring_breakouts_pending()` → scanned **exactly** the 3-date tail (2026-08-21/24/25), **+16 new signals** (6/3/7).
+- 32 marker rows, all `complete` (29 `SEED-audit` + 3 the scan).
+- **0 identity columns mutated, 0 dropped. 0 change to any date ≤ 2026-08-20** — the §36-verified window is byte-untouched.
+- The 16 tail signals are genuine recovered breakouts — the boring hook's 2026-08-21 cloud run scanned only through 08-20 (ran before 08-21 EOD data existed), so these were real misses, exactly what OI-6 exists to catch. Minimal lookahead (the tail is the newest data).
+
+**Full suite: 259 passed, 0 failed.** Live `psx_data.db` re-verified pristine after the abort+restore (183 rows, fingerprint `ae957411de0b7f73`, no marker table). Backup unchanged (`328e15a1…`).
+
+**§0a.1 amendments (recorded there too):** (a) the "every date present in `prices_adjusted`" resume principle needs both the go-live floor (§77.5) *and* the recognition that it is only a clean *chronological replay* against an **empty** table — against a populated table use `seed_scanned_window` for the verified span; (b) `update_open_signal_statuses` gains `as_of_date` and the pending loop uses it; (c) the bulk-backfill guard is added to the contract.
+
+### 77.7 SQLite first run — EXECUTED on the live local `psx_data.db`, observed (2026-08-28)
+
+Ran under explicit user go-ahead, backup in place (`328e15a1…`), observed step by step.
+
+- **Pre-state:** 183 `boring_signals` rows, fingerprint `ae957411de0b7f73`, 16 Pending / 167 Stopped, 23 distinct signal_dates (max 2026-08-20), no marker table, `integrity_check ok`. Full 9-column identity snapshot of all 183 rows saved before touching anything.
+- **Step 1 — `python boring_signals.py seed-verified 2026-08-20`** (19 s): 29 dates seeded `complete` (2026-07-10 .. 2026-08-20), `run_id="SEED-audit"`, real `symbols_priced` 292–301 / `universe_size` 310. **`boring_signals` byte-unchanged — fingerprint still `ae957411de0b7f73`.** Not-seeded = exactly the 3 tail dates.
+- **Step 2 — `python boring_signals.py scan-pending`** (52 s): scanned exactly `2026-08-21` (+6), `2026-08-24` (+3), `2026-08-25` (+7) = **+16 new signals**, matching smoke test #2 exactly.
+- **Post-verify:**
+  - **Identity integrity: 0 of 183 original rows mutated, 0 dropped** (full 9-column diff against the pre-snapshot).
+  - `boring_signals` 183 → 199; all 16 new rows on the 3 tail dates; status 16P/167S → 19P/180S (the 16 new + routine status maintenance on the tail scan via `as_of_date` resolution).
+  - `boring_signals_scanned`: **32 rows, all `complete`**, covering every in-window trading date (07-10 .. 08-25); 29 `SEED-audit` + 3 from the scan.
+  - `PRAGMA integrity_check` → `ok`.
+  - **Idempotency confirmed:** an immediate second `scan-pending` → `0 new signal(s); 0/0 pending`. WAL checkpointed (TRUNCATE); single clean DB file.
+- The 16 tail signals are genuine recovered breakouts: the 2026-08-21 cloud boring run scanned only through 08-20 (it ran before 08-21 EOD data existed), and local hadn't run since. Exactly the miss OI-6 exists to catch.
+- **Next nightly `run_update.bat`:** with 32 marker rows present, `pending` = only genuinely-new dates (e.g. `[2026-08-27]` once scraped), guard never trips, coverage = EXPECTED. Normal operation from here.
+
+**Still held:** no Supabase write, no `ensure_boring_signals_scanned_table_pg()`, no commit, no push. Postgres remains on the old bounded-window code until: (1) its DDL is run under separate explicit sign-off (§0a.1.8 step 3), (2) the same seed+scan is done on Postgres — its verified-through date TBD against live PG state (PG `boring_signals` was rebuilt via true chronological replay §71, so its window is trustworthy; PG is currently at signal_date 2026-08-27), (3) merge.
+
+**Date of this entry: 2026-08-28. Status: SQLite first run EXECUTED and verified on the live local DB — seed 29 + scan 3-date tail, +16 genuine signals, 0 identity mutation, 32 marker rows, idempotent. Postgres side held for separate DDL sign-off. Not committed. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 78. <span style="color:#dc2626;">🔴 TR-11 — the live Streamlit Cloud app is serving `dashboard.py` from BEFORE PR #25; the Boring Breakouts performance panel shows the pre-correction (dedup-conflict-included) numbers (2026-08-28)</span>
+
+**Read-only investigation, triggered by a user question:** the cloud app's Boring Breakouts panel shows **"54 resolved trades"** for Strategy Confirmed, while ledger §71 (verified two independent ways, 2026-08-27) recorded **n=27, EV +4.43% gross / +3.59% net**.
+
+**Root cause — CONFIRMED by exact reproduction.** Computing the panel's own logic against **live Postgres** `boring_signals` (400 rows) today:
+
+| `dashboard.py` version | dedup-conflict rows | Strategy Confirmed resolved | EV gross |
+|---|---|---|---|
+| **current (`origin/main`, incl. PR #25 `ef295ee`)** | **excluded** (`_perf_src = _bo_df[_bo_df["dedup_conflict"] != 1]`) | **27** | **+4.43%** ✓ matches §71 |
+| **pre-PR #25** | not excluded | **54** | **+7.94%** ← what the user sees |
+
+PR #25 (`ef295ee`, "surface dedup-conflict … on Boring Breakouts", merged **2026-08-27 19:42 PKT / 14:42 UTC**) added the perf-panel exclusion of the 87 dedup-conflict signal pairs (165 rows) that §64/§71 established are not valid strategy outcomes. The cloud serving process is running `dashboard.py` from **before** that merge, so its "silently overstated performance number" (the exact risk §64 was built to close) is live again on Cloud.
+
+**This is the §62 finding recurring:** a Streamlit Cloud in-place redeploy ("Updated app!") does **not** recycle the serving process — only a full reboot does. PRs #21–#29 all merged 2026-08-27; `origin/main` = `11a9c4e`; the daily_scraper deploys don't reboot Streamlit. The serving process has evidently not rebooted since before `ef295ee`.
+
+**What is and isn't wrong:**
+- **Postgres data: correct and current** (MAX date 2026-08-27, all health checks passed on the 2026-08-28 run — ledger §77-adjacent / MAINTENANCE_LOG).
+- **Cloud rendering code: ~1 day stale** — showing the pre-#25 (overstated) Boring Breakouts performance panel, and missing the dedup-conflict tags + "Recorded" freshness column. Any other 2026-08-27 dashboard change (there were several across #21–#29) is equally not-yet-serving.
+- **The correct current number** for the cloud's Postgres `boring_signals`: **27 Strategy-Confirmed resolved trades, EV +4.43% gross / +3.59% net** — and even that carries the §71 disclosure (heavily tail-dependent on DBCI's +111.0%; drop it → +0.33%).
+
+**Fix:** a Streamlit Cloud **reboot** (not a redeploy) to pick up `11a9c4e`. That is a Streamlit-console action — the user's, per the standing deploy boundary. `serving_revision.py` (§62) on the Data Health page reports the actually-served SHA and can confirm before/after.
+
+**Not caused by the OI-6 SQLite work (§77.7):** that added 16 rows to **local SQLite** only; the cloud app reads Postgres and is untouched by it. The local vs cloud Boring-Breakouts numbers also genuinely differ (SQLite SC = 22 trades / +6.18% vs Postgres 27 / +4.43%) — the long-standing TR-13 backend divergence (§34/§63/§71), not new.
+
+**Date of this entry: 2026-08-28. Status: cloud Streamlit serving stale `dashboard.py` (pre-PR #25) — Boring Breakouts panel shows pre-correction numbers (54 / +7.94% vs the correct 27 / +4.43%). Data is fine; a Cloud reboot is needed. TR-11 evidence. No change made. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+
+---
+
+## 79. <span style="color:#16a34a;">● TR-13 / OI-6 — Postgres side executed: `boring_signals_scanned` DDL + 33-date verified-window seed on live Supabase; `boring_signals` byte-identical, zero mutation (2026-08-28)</span>
+
+**WRITE ENTRY (Supabase DDL + 33 INSERTs into a brand-new table — zero writes to any existing table).** Completes the Postgres half of OI-6; the SQLite half was done §77.7. Executed under explicit user authorization for spec §0a.1.8 steps 3–5, with four conditions the user attached: strict CSV backup first, verify DB read-write status, post-seed full identity diff, halt on any deviation from zero-mutation. All four honoured; nothing deviated.
+
+### 79.1 Read-only prep — live Postgres state established first
+
+- `boring_signals_scanned` did **not** exist on Postgres (expected).
+- `boring_signals`: **400 rows**, `signal_date` 2026-07-10 → 2026-08-27, 33 distinct dates, 20 Pending / 380 Stopped, 165 `dedup_conflict` rows.
+- `prices_adjusted` trading calendar since the go-live floor 2026-07-10: **exactly 33 trading dates** (2026-07-10 → 2026-08-27), every date 480–496 symbols priced. 2026-08-26 was a PSX holiday — correctly absent.
+- Every one of the 33 dates already carries ≥ 1 `boring_signals` row; `pipeline_runs` shows the boring hook ran and returned `COMPLETED` / `EXPECTED` for each recent date including the 2026-08-27 scan (id 54). The PG table was rebuilt by true chronological replay §71 and the daily hook has kept it current.
+- **Conclusion:** unlike SQLite (where local had genuinely missed 08-21/24/25), the Postgres window has **no missed tail** — the entire 2026-07-10 → 2026-08-27 span is verified-complete. Seed the full window; scan nothing.
+
+### 79.2 Step 1 — backup (`scratch_boring_scanned_20260828/`)
+
+- `SHOW transaction_read_only` = `off`, `default_transaction_read_only` = `off`, `pg_is_in_recovery()` = false — DB confirmed read-write.
+- `boring_signals_pre_seed.csv` — full 400-row export, all 23 columns.
+- `boring_signals_identity_pre.json` — per-row canonical snapshot of all 23 columns; row-set **sha256 `9698229e9821a51ebff283713c63271ac964e59e4c8a8dc6619e17b36b85115d`**.
+- `schema_snapshot_pre.json`, `backup_meta.json`. (Supabase PITR is OFF on the free plan — this manual backup is the only rollback net.)
+
+### 79.3 Step 2 — DDL dry-run
+
+`CREATE TABLE IF NOT EXISTS boring_signals_scanned (…)` executed inside a transaction, the 7 resulting columns inspected, then `ROLLBACK`. `to_regclass` → `None` after rollback. Nothing persisted. (An earlier read-only probe had left a pooled Supabase backend stuck in `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`; the runner scripts now defensively issue `… READ WRITE` before any write. Root cause understood, not a permissions issue — `current_user` is `postgres`.)
+
+### 79.4 Step 3 — DDL for real
+
+`boring_signals.ensure_boring_signals_scanned_table_pg()` — the repo's own function, `get_conn()` commit. Verified: table exists; 7 columns exactly per spec §0a.1.3 (`scan_date DATE PK`, `scanned_at TIMESTAMP DEFAULT now()`, `universe_size INT NOT NULL`, `symbols_priced INT NOT NULL`, `complete BOOLEAN NOT NULL DEFAULT true`, `run_id TEXT`, `code_version TEXT`); 0 rows; `boring_signals` rowcount unchanged at 400.
+
+### 79.5 Step 4 — seed the verified window
+
+`boring_signals.seed_scanned_window("2026-08-27")` → returned **33**. Result:
+
+- 33 marker rows, `scan_date` 2026-07-10 … 2026-08-27, **all `complete = TRUE`**, `run_id = 'SEED-audit'`, `code_version = 11a9c4e` (current `origin/main` HEAD).
+- `universe_size` 305 (eligible boring-breakout universe), `symbols_priced` 287–297 per date — the eligible-universe subset, as the completeness gate reads it (not the ~490 all-listed count).
+- Marker `scan_date` list is **exactly equal** to the 33-date `prices_adjusted` trading calendar since the floor.
+- **No scan performed, no `boring_signals` write** — `seed_scanned_window` forces `complete=True` without calling the scanner (spec §0a.1 amendment 2: a chronological replay is only clean against an empty table; this window is audit-§36-verified intact, so it is seeded, not replayed).
+
+### 79.6 Step 5 — verification (the user's four conditions)
+
+- **DB read-write:** re-confirmed on a fresh connection before writing.
+- **Full identity diff, all 23 columns, pre vs post:** **0 added / 0 dropped / 0 changed.** Post-write row-set sha256 = `9698229e…` — **identical** to the pre-write hash. `boring_signals` is byte-for-byte what it was.
+- **Zero-mutation on existing tables:** `boring_signals` still 400 rows; only the new `boring_signals_scanned` table was written.
+- **Idempotency:** `scan_boring_breakouts_pending(return_coverage=True)` on the Postgres backend → `(0, 0, 0)` — a pure no-op (every date is now in the done-set), 0 new signals, marker unchanged at 33. The `_guard_bulk_backfill` shape is not triggered (no pending dates).
+- Result JSON: `scratch_boring_scanned_20260828/step3_5_result.json`.
+
+### 79.7 State + what's next
+
+- **Live Supabase now has:** `boring_signals_scanned` (33 rows, all complete, 2026-07-10 → 2026-08-27). `boring_signals` unchanged (400 rows).
+- **Code still NOT merged.** The OI-6 working-tree changes (`boring_signals.py`, `main.py`, `dashboard.py`, 5 test files, schema-only fixture ALTER) are on `main` uncommitted. The Postgres pending-scan path **fails loud** (`RuntimeError`, SQLSTATE `42P01`) if the marker table is missing — but the table now exists, so the deploy-order hazard is cleared: the code can be merged safely and the next `daily_scraper.yml` run will scan only genuinely-new dates (e.g. `[2026-08-28]`) via pure set-difference.
+- **Next:** one PR for all the OI-6 code (CI green → merge). Then ledger + Trust Register OI-6 row → done; RESEARCH_LOG updated + CSV re-synced this turn.
+- **Backups retained:** `scratch_boring_scanned_20260828/` (PG CSV + snapshots) and `backups/psx_data_pre_boring_scanned_20260827.db` (SQLite, sha256 `328e15a1…`).
+
+**Does NOT close:** TR-13 → A (still open: §35.1 authoritative-universe completeness needs TR-14; OI-7 the 87 `dedup_conflict` pairs; the SQLite/PG parity integration test). OI-6 itself — the silent-loss mechanism — is closed on both backends once the code merges. **Kiran remains NOT VERIFIED — DO NOT TRADE** — this authorizes no trading and moves no blocking Trust Register row off RED/AMBER.
+
+**Date of this entry: 2026-08-28. Status: OI-6 Postgres side EXECUTED — `boring_signals_scanned` created + 33-date verified window seeded on live Supabase; `boring_signals` byte-identical (0/0/0), pending scan a no-op. Code not yet merged. Kiran remains NOT VERIFIED — DO NOT TRADE.**

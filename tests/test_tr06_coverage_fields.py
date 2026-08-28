@@ -176,7 +176,7 @@ def test_default_return_is_unchanged_bare_int(temp_boring_db, monkeypatch):
     """Backward compatibility: every pre-existing caller (main.py before
     this change, other tests) must keep getting a bare int."""
     monkeypatch.setattr(bs, "scan_boring_breakouts", lambda d: 0)
-    total = bs.scan_boring_breakouts_pending(max_lookback=15)
+    total = bs.scan_boring_breakouts_pending()
     assert total == 0
     assert isinstance(total, int)
 
@@ -184,7 +184,7 @@ def test_default_return_is_unchanged_bare_int(temp_boring_db, monkeypatch):
 def test_return_coverage_reports_full_completion(temp_boring_db, monkeypatch):
     monkeypatch.setattr(bs, "scan_boring_breakouts", lambda d: 1 if d == DATES[-1] else 0)
     total, eligible, processed = bs.scan_boring_breakouts_pending(
-        max_lookback=15, return_coverage=True
+        return_coverage=True
     )
     assert total == 1
     assert eligible == len(DATES)
@@ -203,7 +203,7 @@ def test_return_coverage_reports_partial_completion_on_transient_break(temp_bori
 
     monkeypatch.setattr(bs, "scan_boring_breakouts", _locked)
     total, eligible, processed = bs.scan_boring_breakouts_pending(
-        max_lookback=15, return_coverage=True
+        return_coverage=True
     )
     assert eligible == len(DATES)
     assert processed == 2  # DATES[0], DATES[1] completed before the break
