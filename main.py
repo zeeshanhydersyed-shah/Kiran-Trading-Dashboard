@@ -485,23 +485,38 @@ def cmd_update():
     try:
         # scan_boring_breakouts_pending(), not scan_boring_breakouts(): the
         # latter scans the newest date only, so any day this hook missed was
-        # never scanned again (audit §25).
-        from boring_signals import scan_boring_breakouts_pending, update_open_signal_statuses
-        n_new, _bs_eligible, _bs_processed = scan_boring_breakouts_pending(return_coverage=True)
+        # never scanned again (audit §25). Resume is now a pure set-difference
+        # against boring_signals_scanned -- no bounded window, no silent loss
+        # past 15 days (TR-13/OI-6, audit §77).
+        from boring_signals import (scan_boring_breakouts_pending,
+                                    update_open_signal_statuses,
+                                    LONG_GAP_ALERT_DAYS)
+        n_new, _bs_eligible, _bs_processed = scan_boring_breakouts_pending(
+            return_coverage=True, run_id=run_id)
         n_updated = update_open_signal_statuses()
         logger.info("Boring Breakouts: %d new signal(s), %d status update(s).", n_new, n_updated)
         # mirror_to_postgres: kept as a heartbeat even now that boring_signals
         # itself writes to Supabase directly -- lets the Cloud banner
         # distinguish "hook ran, zero signals fired" from "hook didn't run".
-        # Coverage: dates_eligible/dates_processed (from the bounded
-        # max_lookback resume window) distinguish "scanned every pending
-        # date" from "stopped early on a transient failure" -- a real,
-        # currently-invisible partial-completion state this hook's own
-        # per-date break can reach without raising. n_new (signals found) is
-        # NOT used as the coverage numerator -- it is legitimately volatile
-        # business output, per this hook's own docstring.
-        _bs_coverage = "EXPECTED" if _bs_processed == _bs_eligible else "INSUFFICIENT"
-        _record_hook("boring_signals", _session_date, rows_written=n_new,
+        # Coverage:
+        #   * dates_processed < dates_eligible  -> stopped early on a transient
+        #     failure (a real, otherwise-invisible partial-completion state).
+        #   * dates_eligible > LONG_GAP_ALERT_DAYS -> a long catch-up: >15
+        #     trading dates were pending in one run (an extended outage, or the
+        #     very first run after this marker was introduced). Surfaced as
+        #     INSUFFICIENT so it is visible, not silent -- self-resolves once
+        #     the backlog is scanned and daily eligible drops back to ~1.
+        # n_new (signals found) is NOT the coverage numerator -- it is
+        # legitimately volatile business output, per this hook's own docstring.
+        if _bs_processed != _bs_eligible:
+            _bs_coverage, _bs_detail = "INSUFFICIENT", (
+                f"stopped early: {_bs_processed}/{_bs_eligible} pending dates scanned")
+        elif _bs_eligible > LONG_GAP_ALERT_DAYS:
+            _bs_coverage, _bs_detail = "INSUFFICIENT", (
+                f"long scan gap: {_bs_eligible} trading dates were pending in one run")
+        else:
+            _bs_coverage, _bs_detail = "EXPECTED", None
+        _record_hook("boring_signals", _session_date, rows_written=n_new, detail=_bs_detail,
                      mirror_to_postgres=True, run_id=run_id, execution_status="COMPLETED",
                      coverage_status=_bs_coverage,
                      eligible_count=_bs_eligible, processed_count=_bs_processed)

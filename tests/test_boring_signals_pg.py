@@ -198,3 +198,45 @@ def test_mark_executed_dispatches_on_pg_url(monkeypatch):
                          lambda signal_id, executed_price=None: called.setdefault("pg", (signal_id, executed_price)))
     boring_signals.mark_executed(42, 13.5)
     assert called == {"pg": (42, 13.5)}
+
+
+# ---------------------------------------------------------------------------
+# TR-13 / OI-6 -- Postgres pending-scan fails loud if boring_signals_scanned
+# has not been created yet (ensure_boring_signals_scanned_table_pg() is a
+# separate signed-off step -- Trust Register §0a.1.8 step 3).
+# ---------------------------------------------------------------------------
+
+def test_pending_pg_raises_clear_error_when_marker_table_missing(monkeypatch):
+    import contextlib
+
+    class _UndefinedTable(Exception):
+        pgcode = "42P01"
+
+    class _Cur:
+        def __init__(self):
+            self._n = 0
+
+        def execute(self, sql, params=None):
+            # universe query, exclusion query, price-history query all fine;
+            # the first hit on boring_signals_scanned raises undefined_table.
+            if "boring_signals_scanned" in sql:
+                raise _UndefinedTable("relation \"boring_signals_scanned\" does not exist")
+            self._last = sql
+
+        def fetchall(self):
+            return []  # empty universe / empty price history
+
+    @contextlib.contextmanager
+    def _fake_get_conn():
+        yield type("C", (), {"cursor": lambda self, **kw: _Cur()})()
+
+    monkeypatch.setattr(boring_signals, "_PG_URL", "postgres://fake")
+    monkeypatch.setattr(boring_signals, "_eligible_universe_pg", lambda cur: {"AAA"})
+    monkeypatch.setattr(boring_signals, "_load_price_history_pg",
+                         lambda cur, syms: {"AAA": {"dates": ["2026-08-17", "2026-08-18"]}})
+    import database_pg
+    monkeypatch.setattr(database_pg, "get_conn", _fake_get_conn)
+
+    import pytest
+    with pytest.raises(RuntimeError, match="ensure_boring_signals_scanned_table_pg"):
+        boring_signals._scan_boring_breakouts_pending_pg()

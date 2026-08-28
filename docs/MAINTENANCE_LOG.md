@@ -29,6 +29,83 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-08-28 — TR-13/OI-6: created `boring_signals_scanned` + seeded the verified window (live Supabase / Postgres)
+- **What:** The Postgres half of the OI-6 scan-progress marker (spec §0a.1.8 steps 3–5; SQLite half was 2026-08-28 earlier, above). `ensure_boring_signals_scanned_table_pg()` created the new empty table, then `seed_scanned_window("2026-08-27")` marked all 33 trading dates from the 2026-07-10 go-live floor through 2026-08-27 `complete` **without scanning** (the PG `boring_signals` table was rebuilt by chronological replay §71 and the daily hook has kept it current through 08-27 — no missed tail, unlike SQLite).
+- **Why seed vs scan:** a replay over a populated `boring_signals` table produces backdated dedup artifacts (spec §0a.1 amendment 2). The window is audit-§36-verified intact, so it is seeded, not re-scanned.
+- **DB writes:** live Supabase only. New table `boring_signals_scanned` (33 rows, all `complete=TRUE`, `run_id='SEED-audit'`). **Zero writes to `boring_signals` or any other existing table** — full 23-column identity diff pre vs post = 0 added / 0 dropped / 0 changed; row-set sha256 `9698229e9821a51ebff283713c63271ac964e59e4c8a8dc6619e17b36b85115d` unchanged. Backup first: `scratch_boring_scanned_20260828/boring_signals_pre_seed.csv` (400 rows) + identity + schema snapshots. (Supabase PITR is OFF — this CSV is the only rollback net; rollback = re-import + `DROP TABLE boring_signals_scanned`.)
+- **Verification:** DB read-write status confirmed (`transaction_read_only=off`, not in recovery) before writing; DDL dry-run (rolled back) first; post-seed identity diff 0/0/0; marker dates exactly match the 33-date `prices_adjusted` calendar since the floor; `scan_boring_breakouts_pending()` on the PG backend returns `(0,0,0)` — a pure no-op.
+- **Not done:** the OI-6 code is still uncommitted in the working tree — one PR (`boring_signals.py`, `main.py`, `dashboard.py`, 5 test files, schema-only fixture ALTER) is the last step. The PG marker table now exists, so merging is safe (the pending-scan path fails loud with SQLSTATE 42P01 only if the table is absent).
+- **By:** Claude Code, under explicit user authorization for spec steps 3–5 with four stated conditions (strict CSV backup, verify read-write, post-seed full identity diff, halt on any deviation) — all honoured. Full detail: audit ledger §79.
+
+### 2026-08-28 — Cloud Streamlit app found serving stale `dashboard.py` (pre-PR #25)
+- **What:** User asked why the cloud Boring Breakouts panel shows "54 resolved
+  trades" vs the ledger §71 figure of 27. Read-only investigation: reproduced
+  **exactly** — computing the panel logic against live Postgres, the current
+  code (with PR #25's dedup-conflict exclusion) gives 27 / EV +4.43%; the
+  pre-#25 code gives **54 / EV +7.94%**. PR #25 (`ef295ee`) merged 2026-08-27
+  19:42 PKT; the Streamlit serving process has not rebooted since, so it runs
+  pre-#25 `dashboard.py` (the §62 "in-place redeploy doesn't recycle" issue).
+- **Impact:** Postgres **data is correct and current** (MAX date 2026-08-27);
+  only the **rendering code** is ~1 day stale. The cloud panel is showing the
+  pre-correction (overstated, dedup-included) Boring Breakouts numbers, and is
+  missing the dedup-conflict tags + "Recorded" freshness column. The correct
+  current number is 27 Strategy-Confirmed resolved trades, EV +4.43% gross /
+  +3.59% net (§71 disclosure still applies — DBCI tail dependence).
+- **DB writes:** none — read-only.
+- **Action needed:** a Streamlit Cloud **reboot** (not redeploy) to pick up
+  `origin/main` (`11a9c4e`). Streamlit-console action → user's, per the deploy
+  boundary. `serving_revision.py` on the Data Health page shows the served SHA.
+- **By:** Claude Code. Full detail: audit ledger §78. (TR-11 evidence.)
+
+### 2026-08-28 — TR-13/OI-6: seeded `boring_signals_scanned` + scanned the tail (local SQLite)
+- **What:** One-time transition for the new scan-progress marker (OI-6 code,
+  not yet merged — in the working tree). `python boring_signals.py seed-verified
+  2026-08-20` (marked the 29 audit-§36-verified operating-window trading dates
+  `complete` in the new `boring_signals_scanned` table, **no scan**), then
+  `python boring_signals.py scan-pending` (genuinely scanned the 3 un-covered
+  tail dates 2026-08-21/24/25).
+- **Why:** A plain `scan-pending` first run would replay 6 weeks over the
+  already-populated `boring_signals` table and add ~113 backdated dedup-artifact
+  signals (proven by smoke tests). Seeding the verified span and scanning only
+  the genuine tail avoids that.
+- **DB writes:** local `psx_data.db` only. New table `boring_signals_scanned`
+  (32 rows). `boring_signals` 183 → 199 (+16 real recovered breakouts on the 3
+  tail dates; **0 existing rows mutated or deleted** — full 9-column identity
+  diff). Backup: `backups/psx_data_pre_boring_scanned_20260827.db` (sha256
+  `328e15a17376b65a0cb2fdcd07efff67bda6b63ab9c9b35677b871a2a46bda9d`,
+  `integrity_check ok`).
+- **Verification:** pre/post identity snapshot diff (0/0), `PRAGMA
+  integrity_check ok`, marker covers all 32 in-window trading dates, a second
+  `scan-pending` is a 0-row no-op (idempotent), WAL checkpointed.
+- **Postgres:** NOT touched — still on the old bounded-window code, held for a
+  separate DDL sign-off.
+- **By:** Claude Code, observed, under explicit user go-ahead. Full detail:
+  audit ledger §77.7.
+
+### 2026-08-28 — Investigated a reported cloud data lag / "date rolled back 26→25"
+- **What:** User reported the Streamlit app (Aug 27 ~22:20) hadn't caught up
+  despite source data being available, and that the shown latest date flipped
+  from Aug 26 (daytime) to Aug 25 (night). Read-only investigation against live
+  Postgres + GitHub Actions logs.
+- **Findings:** (1) **2026-08-26 (Wed) was a PSX holiday** — the scraper logged
+  `No trading data for 2026-08-26 (holiday or weekend)` on the Aug 28 catch-up
+  run; ksestocks.com has no Aug 26 data; PG date sequence is 08-24, 08-25,
+  **08-27** with no gap to fill. (2) The **Aug 27 17:00 UTC scheduled scrape did
+  not fire** — GitHub Actions delayed/dropped it ~8 h; it ran Aug 28 01:16 UTC
+  and caught up cleanly (skipped the holiday, scraped real Aug 27). (3) The
+  26→25 flip the user saw was the sidebar's **live "ksestocks: <date>"
+  indicator** (`dashboard.py` ~L1141, 30-min TTL, scraped off the source
+  banner), not stored data — the DB's data date was Aug 25 throughout. Aug 27
+  verified a genuine distinct session (0/488 symbols match Aug 25).
+- **Current status:** Cloud/Postgres **current and correct** — MAX date
+  2026-08-27 across all tables, all 5 health checks passed on the Aug 28 run.
+  Local SQLite behind at 2026-08-25 (local nightly hasn't run; will catch up).
+- **DB writes:** none — read-only.
+- **Verification:** direct Postgres queries + `gh run view` logs for the Aug 26
+  and Aug 28 daily_scraper runs.
+- **By:** Claude Code. (Related standing gap: TR-18 — no independent watchdog
+  for a missed/delayed scheduled run; it self-recovered here via `dates_since`.)
+
 ### 2026-08-27 — Working branch `feat/tr05-freshness-gates` reconciled to `main`
 - **What:** The local repo had sat on a 2-week-old working branch while 8 PRs
   (#21–#28) merged all this session's work into `main`. Reconciled the branch:

@@ -13,8 +13,9 @@ no new signals. boring_signals feeds real trading capital (the PRL incident,
 
 Mirrors the fix already proven for backfill_setup_log.py's SQLite path
 (tests/test_setup_log_backfill_error_handling.py): a transient error
-(sqlite3.OperationalError) breaks the loop so a later run's bounded
-max_lookback window can still reach the date; anything else raises.
+(sqlite3.OperationalError) breaks the loop so a later run can still reach
+the date via the boring_signals_scanned marker (TR-13/OI-6); anything else
+raises.
 
 Uses minimal monkeypatching of the module's own helpers rather than a full
 universe/price-history fixture -- this test targets the loop's failure
@@ -71,7 +72,7 @@ def test_unexpected_error_raises_instead_of_silently_continuing(temp_db, monkeyp
     monkeypatch.setattr(bs, "scan_boring_breakouts", _boom)
 
     with pytest.raises(ValueError, match="simulated unexpected bug"):
-        bs.scan_boring_breakouts_pending(max_lookback=15)
+        bs.scan_boring_breakouts_pending()
 
     # The loop must not have continued past the failure to later dates.
     assert DATES[3] not in calls
@@ -90,7 +91,7 @@ def test_transient_error_breaks_without_raising(temp_db, monkeypatch):
     monkeypatch.setattr(bs, "scan_boring_breakouts", _locked)
 
     # Must NOT raise -- a transient blip is tolerated, not fatal.
-    total = bs.scan_boring_breakouts_pending(max_lookback=15)
+    total = bs.scan_boring_breakouts_pending()
 
     assert total == 0
     assert DATES[3] not in calls
@@ -106,7 +107,7 @@ def test_clean_run_with_no_errors_scans_every_pending_date(temp_db, monkeypatch)
 
     monkeypatch.setattr(bs, "scan_boring_breakouts", _clean)
 
-    total = bs.scan_boring_breakouts_pending(max_lookback=15)
+    total = bs.scan_boring_breakouts_pending()
 
     assert calls == DATES
     assert total == 1

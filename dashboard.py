@@ -8044,6 +8044,24 @@ elif cur == PAGES[14]:  # Data Health
                                     _dh_adj_con.commit()
                                     _dh_adj_con.close()
                                     recompute_symbol_signals(_dh_sym)
+                                    # prices_adjusted was just retro-corrected for
+                                    # this symbol's pre-ex-date history -- drop the
+                                    # boring_signals scan-progress markers from the
+                                    # ex-date forward so those dates are re-scanned
+                                    # against the corrected prices (TR-13/OI-6,
+                                    # Trust Register §0a.1.6). Best-effort: a
+                                    # failure here must not undo the confirmation.
+                                    try:
+                                        from boring_signals import invalidate_scanned_from
+                                        invalidate_scanned_from(_dh_date)
+                                    except Exception as _dh_inv_e:
+                                        st.warning(
+                                            f"{_dh_sym} adjusted, but the boring_signals "
+                                            f"scan-progress markers from {_dh_date} could "
+                                            f"not be invalidated ({_dh_inv_e}). Run "
+                                            f"`python boring_signals.py invalidate-from "
+                                            f"{_dh_date}` manually."
+                                        )
                                     st.success(f"{_dh_sym} adjusted and signals recomputed.")
                                     st.rerun()
                                 except Exception as _dh_e:
