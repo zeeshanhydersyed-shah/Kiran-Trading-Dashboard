@@ -7,6 +7,8 @@
 
 **Terminal program review:** `boring_study_final_assessment_2026-07-11.md` — the full research-program assessment (established facts vs. causal interpretations vs. speculation; every falsified claim with its evidence; the identification frontier adversarially re-checked; remaining uncertainty classified by what it would take to resolve; a publication-quality conclusion; and the final recommendation). **Read this file, in full, before doing anything else with this thread.** Bottom line: the mechanism-discrimination question is closed; one single well-defined replication experiment (distance-from-prior-high) remains before the broader program itself is fully exhausted.
 
+**EXECUTION-VIABILITY FOLLOW-UP (2026-08-30) — CONCLUDED NEGATIVE.** A separate thread tested whether the system survives *real execution* (the `Close(t)` entry the backtest assumes is not achievable — signals fire EOD and the stock gaps up next open). Full archive: [`overnight_gap_execution_2026-08/`](overnight_gap_execution_2026-08/FINDINGS.md). Result: 65-70 % of signals gap up (81 % for Strategy Confirmed); entering at the real open drops net EV from +0.5-1.8 % to ≈0/negative; a working limit at the signal price wins only ~19 %; the one positive sub-rule is indistinguishable from a matched random-day control; and the Strategy-Confirmed edge fails an era split even at the ideal entry. **As an executable mechanical rule the system has no demonstrable edge.** This does not overturn the raw breakout-vs-control finding at `Close(t)` entry (never claimed executable) and is not a verdict on discretionary use.
+
 ---
 
 ## What "boring study" is
@@ -81,8 +83,9 @@ An informal, deliberately-simple research thread inside the Kiran PSX project (`
 - `boring_study_separability_analysis_2026-07-11.md` — the DAG projection proving Structure/Flow observational equivalence.
 - `boring_study_identification_limits_2026-07-11.md` — **capstone result of the mechanism-discrimination phase.** Read this one first if you only read one.
 - `dow_weekly_explore.py` — dormant Dow-theory sub-thread.
+- `overnight_gap_execution_2026-08/` — the execution-viability follow-up (2026-08-30). Its own `README.md` + `FINDINGS.md`; `scripts/s0..s6`; `data/`; `reports/00..03`. Read-only; reuses this thread's panels, does not regenerate signals.
 
-All read-only against `psx_data.db`. No production writes anywhere in this entire thread.
+All read-only against `psx_data.db` / the cloud Postgres. No production writes anywhere in this entire thread.
 
 ---
 
@@ -107,3 +110,5 @@ Two open threads worth picking up next, neither obligatory, both real findings i
 2. **Investigate the wide-consolidation finding** — it's real and replicates, but wasn't predicted by any of the three mechanism classes and has no explanation yet. Worth a DAG pass before building any test around it, same as every other stage in this thread.
 
 The weekly-Dow-swing sub-thread also remains available to pick back up. Do not skip the DAG-scrutiny step on either new thread; it caught real, non-obvious errors on four separate occasions now (the "immediate failure" post-treatment trap, the day-to-target mediator-vs-mechanical-confound issue in the Crowding test, the pre-entry-only proxy-window discipline in the Structure/Flow test, and the mechanism-level observational-equivalence proof itself).
+
+**Execution viability is CLOSED (2026-08-30, negative)** — see `overnight_gap_execution_2026-08/`. Do not re-open "can we trade the raw breakout on the RS-conditioned rule" without a genuinely new idea; the mechanical rule was tested at every reachable entry (close / open / working-limit / gap-capped) across 2005-2026 and a matched-control test on clean 2020-2026 data. The one lead the salvage tests surfaced was killed by that control. Any revisit needs either verified pre-2020 `open` data (currently unverified backfill) or a discretionary-execution framing the backtest can't represent.
