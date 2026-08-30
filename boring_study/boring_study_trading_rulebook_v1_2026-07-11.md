@@ -47,6 +47,20 @@ Top-decile RS winners resolve to target **faster in absolute terms** than bottom
 3. **The specific bug this guards against:** computing `RS_60` with a window that includes day `t`'s own return would make "RS is high" partly a *consequence* of "today was a big up-day," creating a tautological breakout↔RS relationship — the same class of endogeneity trap (a variable contaminated by the very event it's supposed to predict) this project's DAG-scrutiny step has caught twice before at the mechanism level. Locking the RS window to `t−1` and earlier is the entry-level version of that same discipline.
 4. **Entry price = `Close(t)`** — this is what the backtest actually measured (the race begins at `t+1`'s high/low against this entry). If same-day at-the-close execution isn't reliably achievable on PSX, using `Open(t+1)` instead is a small, *untested* deviation from what was validated — worth tracking separately (slippage vs. the backtested entry) rather than assuming it's equivalent.
 
+> **UPDATE (2026-08-30) — this deviation was tested and it is not a small one.** Full study:
+> [`overnight_gap_execution_2026-08/`](overnight_gap_execution_2026-08/FINDINGS.md). Across
+> 2005-2026, both lookbacks: **65-70 % of signals gap up** at `Open(t+1)` (81 % for
+> Strategy Confirmed), mean +0.9-3.2 %. Entering at the real open instead of `Close(t)`
+> drops net-of-cost EV from +0.5-1.8 % to **≈0 or negative** — the friction is roughly the
+> size of the whole edge. A working limit at `Close(t)` fills ~74 % of the time but those
+> fills win only ~19 % (net EV −1.3 to −2.1 %). The one positive-looking sub-rule (take
+> only signals that open ≤ prior close, enter at the discounted open) is **not
+> distinguishable from a matched random-day control** on clean 2020-2026 data. Separately,
+> the Strategy-Confirmed filter's edge fails an era split even at the ideal `Close(t)`
+> entry (negative pre-2010, concentrated in 2020-2026). **Verdict: as an executable
+> mechanical rule this system has no demonstrable edge; the backtested edge lived in the
+> `Close(t)` fill assumption.** Not a verdict on discretionary intraday execution.
+
 ---
 
 ## 3. Exit & Capital Allocation
