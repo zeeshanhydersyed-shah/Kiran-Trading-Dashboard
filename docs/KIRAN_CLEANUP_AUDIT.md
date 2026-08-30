@@ -5780,3 +5780,70 @@ The user's requirement: a clean, architectural fix compliant with the §39 desig
 **Does NOT close TR-13 → A:** still open — §35.1 completeness against an *authoritative* universe (needs TR-14) and the §35.3 SQLite↔PG parity integration test (which will absorb the `CLVL`/08-24-class per-row divergence noted in §0a.2.5). **Rollback window:** retain the CSV + `boring_signals_pre_oi7_20260830` snapshot until the next successful `daily_scraper.yml` run confirms the table is healthy. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
 
 **Date of this entry: 2026-08-30. Status: OI-7 EXECUTED + verified on live Supabase — 165 conflict rows removed, `BUXL`/08-21 restored, 235/235 pre-existing rows byte-identical, perf panel unchanged (27 / +4.43%). OI-7 CLOSED. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+
+---
+
+## 84. <span style="color:#eab308;">◐ TR-05 — full state reconstruction: both gates deployed + tested (43/43) + each half now has a real production observation; formal register status still AMBER pending three named items (2026-08-30)</span>
+
+**READ ENTRY. No code change, no DB write, no commit in this entry.** Purpose: establish TR-05's actual current state from source, tests, logs and one authenticated read-only observation of the live cloud dashboard — because the TR-05 implementation arc (PR #18, merged `09cdfdb`, 2026-08-25) was **never logged to this ledger** (that arc was explicitly scoped to exclude ledger writes — see the 2026-08-25 memory note and §62.7), and the Trust Register's TR-05 row still reads "🟡 AMBER (Postgres only, execution-time only)", which predates PR #18 entirely. §62 added partial evidence but explicitly did not change register status (§62.6/§62.7). This entry is the missing reconstruction. Method: read-only `git show`/`git log`, isolated test run, `psx_scheduler.log` analysis, live cloud read via the authenticated Chrome path (2026-08-26 memory discovery). All three roles' standing constraints observed — no manufactured staleness, no production job re-run, no secret exposed.
+
+### 84.1 Code — both gates are built, merged, and live on `origin/main` (`c2d4546`)
+
+Confirmed via `git show origin/main:<file>`:
+
+- **Execution-time gate** — `main.run_freshness_gate()` (`main.py` ~L640). Called from `cmd_update()` at **both** meaningful completion points: the normal tail (`return run_freshness_gate()`, ~L637) and the "already up to date" early-return branch (~L273, the §62-era correction — that branch previously did a bare `return` and bypassed the gate). Reuses `data_health.check_all()` (the same verdict logic the dashboard's serving banner uses) + `scraper.get_source_date()` (the same live-source fetch `refresh_manager.py` uses) — no new freshness policy, no duplicated thresholds. Fail-closed: any failure to even compute a verdict returns `False`; `CANNOT_VERIFY` never becomes `VERIFIED`. `main()`'s `--update`/`--all` dispatch calls `sys.exit(1)` when `cmd_update()` returns `False`.
+- **Serving-time gate** — `data_health.publication_status()` (`data_health.py` L178) → `dashboard.py`'s `_pub_ok` (computed once per render, L1033), gating: the `PAGES[...]` dispatch (`if not _pub_ok and cur != PAGES[14]: st.stop()`, ~L2605), Kiran's Voice (~L1074), the main-area Regime+Kelly header (~L1292), the sidebar Live Regime widget (~L1416). Data Health page (`PAGES[14]`) is the sole deliberate exemption.
+- **Serving-revision observability** — `serving_revision.py` (PR #19, `d4e3e4c`), Data Health page only.
+
+All present at `origin/main` HEAD. `daily_scraper.yml` runs `python main.py --update` (→ `run_freshness_gate()` at the tail) then `python health_check.py` (E9's 5 checks) — both gates in the Postgres/Actions path.
+
+### 84.2 Tests — 43/43 pass (re-run 2026-08-30, isolated, ~149s)
+
+| File | Tests | What it proves | On `origin/main`? |
+|---|---|---|---|
+| `tests/test_tr05_freshness_gate.py` | 15 | `run_freshness_gate()`: green→pass; stale/cannot-verify→fail; `check_all` or source-fetch raising→fail-closed; `main()` dispatch exit-code propagation (1 on fail, 0 on pass, no-exit on bootstrap `None`); the **real** `cmd_update()` reaches the real gate on **both** paths and propagates its result; the §82 no-data-day path reaches the gate instead of crashing | yes |
+| `tests/test_tr05_serving_gate.py` | 16 | red/amber verdict → every actionable surface withheld + "NOT VERIFIED — DO NOT TRADE" shown; green → renders normally; Kiran's Voice cannot bypass; Data Health stays accessible; the always-on Regime/Kelly header + sidebar widget are gated | yes |
+| `tests/test_tr05_serving_boundary_integration.py` | 2 | a **genuinely stale temp DB → real un-mocked `check_all()` → real `dashboard.py` via AppTest → every actionable surface withheld**, page-dispatch `st.stop()` fired, Data Health still accessible | yes |
+| `tests/test_serving_revision.py` | 12 | `serving_revision.py` edge cases; never substitutes `origin/main` for a divergent local `HEAD`; read error → `None`, not a crash or a wrong value | yes |
+
+**`test_tr05_serving_boundary_integration.py` is the forced-stale serving-boundary proof that §62.6 said "remains untested"** — it was written 2026-08-27 (one day after §62) and committed via PR #28. §62.6's statement is now stale as to the test harness; it remains accurate that no *production* observation of the serving gate in its blocking state has been independently captured by this program (see §84.3 item 3 and §84.4(e)).
+
+### 84.3 Production evidence — CONFIRMED for each half
+
+1. **Execution gate, Postgres, success path — CONFIRMED (reconfirmed).** GH Actions scheduled run `32878324230` (2026-08-25, `headSha=09cdfdb`): `run_freshness_gate()` ran against live Postgres, logged `"Freshness gate passed -- state verified fresh as of 2026-08-25."`, job passed; `health_check.py`'s 5 E9 checks all passed the same run (§62.1).
+2. **Execution gate, local/SQLite, FAILURE path — CONFIRMED (NEW — §62.7 recorded this as "UNRESOLVED — untested by any production observation").** `psx_scheduler.log`, 2026-08-26 08:54:40:
+   ```
+   ERROR FRESHNESS GATE FAILED (STALE) -- local production update did not reach a
+   verified-fresh state. expected=2026-08-25 | recovery_signals: stale (2026-08-20, 3 sessions behind)
+   ```
+   This is the real, unmodified local `python main.py --all` run (Task Scheduler → `run_update.bat`). The gate computed a real STALE verdict via the real `check_all()` + real `get_source_date()`, correctly caught a genuine derived-state staleness (local `recovery_signals.as_of_date` MAX = 2026-08-20, verified this session — 63 rows, 3 sessions behind the 08-25 reference), and `cmd_update()` returned `False`. This is the fail-closed path firing correctly in production, on a real incoherence — exactly the TR-04 failure class the gate exists to backstop. **Root cause of that staleness is a separate bug — see §84.5.**
+   - Minor wrinkle observed in the same run: for `--all`, `main()` runs `ok = cmd_update(); cmd_report(); if ok is False: sys.exit(1)` — so `cmd_report()` executed after the failed gate (and then hit a pre-existing, unrelated `UnicodeEncodeError` on a `\U0001f534` glyph under cp1252, which itself forced a non-zero exit). `cmd_report()` is a terminal print, not a publication surface — **not a safety hole** — but the ordering means a failed local run still prints a sector report to the console. Noted, not a blocker. Classification: CONFIRMED (behaviour), LOW severity.
+3. **Serving gate — CONFIRMED operating (VERIFIED state) in production; blocking state NOT independently observed.** Authenticated read of the live cloud app 2026-08-30 (Data Health page):
+   - **Serving Revision: `c2d454695cac01fac45ea2f88222a9b3ef86e6ad`** = `origin/main` HEAD exactly (verified `git rev-parse`). The §78 stale-serving-code condition is not present now — the cloud is running current `main`.
+   - Sidebar: **"DATA CURRENT — 2026-08-28"**, "ksestocks: 28/08/26 · DB up to date", Stocks/Index latest 28/08/26. Actionable content (Market Gates, Regime/Kelly header) rendering normally — `_pub_ok` True.
+   - 2026-08-28 was the last PSX trading day (08-29 Sat, 08-30 Sun), so VERIFIED is the correct verdict; the serving gate is live and passing correctly on genuinely-fresh data.
+   - The serving gate in its **blocking** state was reported by the user on the cloud app in the §78 era ("Data Stale" — 2026-08-30 memory note: "the freshness gate correctly flagging stale DATA"), but that is user-reported, not a first-party capture by this program.
+4. **§82 (2026-08-30):** the execution gate is now genuinely *reachable* on an upstream-outage day — the `parse_market_summary` return-arity crash that used to abort `cmd_update()` before the gate ran is fixed; traced + integration-tested (`test_upstream_no_data_day_reaches_gate_instead_of_crashing`).
+
+### 84.4 What still stands between TR-05 and GREEN
+
+- **(a) TR-01 dependency — UNRESOLVED.** TR-05's acceptance criterion is explicitly *"for whichever backend is authoritative"*. TR-01 is RED (authority decided in policy 2026-08-26 = Postgres, but not enforced in code — both pipelines still compute independently). "The authoritative backend runs the gate before publication" is not fully provable while there is no single enforced authoritative backend. Mitigant: the gate exists on **both** served surfaces today, which is arguably *more* than the criterion strictly requires — a documented decision that "both served surfaces are gated, and that satisfies TR-05 independently of TR-01's timeline" would close this sub-item without waiting for TR-01.
+- **(b) Local execution gate never observed PASSING — UNRESOLVED.** Every production observation of the local gate to date is the single 2026-08-26 failure. It cannot pass while local `recovery_signals` stays frozen (§84.5). The local pipeline has not run since 2026-08-26 (`psx_scheduler.log` ends there) and would exit non-zero on every run until §84.5 is fixed — fail-closed behaving correctly, but it means the local nightly is effectively down with no alert (TR-07).
+- **(c) `check_all()` vs `health_check.py` coverage delta — INFERRED, needs a decision.** `run_freshness_gate()` uses `check_all()` (uniform-behind check vs live source + all `EVERY_SESSION` tables + `HEARTBEAT` items). `health_check.py` (the Postgres execution gate) has 5 checks including **flows T+2** and **rolling-trim sanity** that `check_all()` does not. The TR-05 row asked for "health_check.py's checks (**or equivalent**)"; `check_all()` is an equivalent for *freshness* and is broader on derived-table coverage, but narrower on those two specific checks. Either accept this explicitly in the row, or add the two missing checks to the local path.
+- **(d) `cmd_report()`-after-failed-gate wrinkle** (§84.3 item 2) — cosmetic, terminal-only, noted for completeness.
+- **(e) No first-party observation of the serving gate blocking** — test-harness proven + user-reported only. Could be captured opportunistically the next time cloud data is genuinely stale (do not manufacture it).
+
+### 84.5 The `signal_engine.py` local-DB-routing bug — NOT TR-05, routed separately
+
+The staleness the local gate caught on 2026-08-26 is caused by `signal_engine.py` calling `load_dotenv()` at import (~L11 pre-fix), which populates `os.environ` for the whole process, so a plain local `python main.py --all` ends up with `_PG_URL` set → `run_recovery_signals()` / `run_portfolio_signals()` take their `if _PG_URL:` branch and write to **Postgres**, not local SQLite → local `recovery_signals` frozen (MAX `as_of_date` 2026-08-20, confirmed this session). This is a **derived-state-coherence defect (TR-04 family)**, not TR-05, and pre-dates the freshness gate. A fix branch exists and is unmerged: **`fix/signal-engine-local-db-routing` (`7f4c7e4`, `origin/`-pushed, 1 commit, +17/−8 in `signal_engine.py`)** — removes `load_dotenv()` with a documented rationale ("confirmed live 2026-08-21: a plain local run read prices from Supabase while writing results to local SQLite"). It has **not** been independently re-reviewed by this program and is **not** authorized here. Added to the Open Items Ledger (§0a) as OI-8. It gets its own scoped review + authorization + PR — it must not be bundled into TR-05 closure (scope-contract rule; TR-11-arc entanglement precedent).
+
+### 84.6 Status classification
+
+- **TR-05 execution-time gate — code: CONFIRMED deployed. Success path: CONFIRMED in production (Postgres). Failure path: CONFIRMED in production (local, 2026-08-26).**
+- **TR-05 serving-time gate — code: CONFIRMED deployed. VERIFIED (pass) state: CONFIRMED in production (cloud, 2026-08-30). Blocking state: CONFIRMED by test harness (`test_tr05_serving_boundary_integration.py`) + user-reported in production; not first-party-captured.**
+- **TR-05 formal register status: 🟡 AMBER — implementation complete, both halves production-observed; blocked from GREEN by §84.4 (a) TR-01, (b) local gate never observed passing (depends on OI-8), (c) the `check_all`/`health_check.py` coverage-equivalence decision.** This is a genuine advance on the pre-existing "AMBER (Postgres only, execution-time only)" — that row text is now rewritten in the Trust Register to match this reconstruction (local edit, uncommitted; the Trust Register remains untracked).
+- **TR-05 overall: IMPLEMENTED — NOT CLOSED.**
+- **Kiran: NOT VERIFIED — DO NOT TRADE.** Nothing in this entry authorizes trading or moves a blocking row off RED/AMBER.
+
+**Date of this entry: 2026-08-30. Status: TR-05 state reconstructed — both gates deployed + 43/43 tested + each half production-observed; register row rewritten AMBER→AMBER with the three named blockers to GREEN made explicit. New: OI-8 (`signal_engine.py` routing fix) logged. No code change, no DB write, no commit in this entry.**
