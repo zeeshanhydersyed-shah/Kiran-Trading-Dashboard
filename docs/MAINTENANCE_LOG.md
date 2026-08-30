@@ -29,6 +29,14 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-08-30 — TR-13/OI-7: removed the 87 `dedup_conflict` pairs from Postgres `boring_signals` (direct sync)
+- **What:** Reconciled the 165 rows / 87 (symbol,date) pairs in PG `boring_signals` that violated the table's own dedup rule — an artefact of the 2026-07-10-floored rebuild having no memory of pre-floor open positions (ledger §63.6/§71.3). Pre-registered spec Trust Register §0a.2; user chose Option B (remove, not label-forever) 2026-08-28; executed under sign-off on the dry-run.
+- **Method:** direct sync, not a replay. `DELETE FROM boring_signals WHERE dedup_conflict IS TRUE` (165) + `INSERT` `BUXL`/2026-08-21 (2 rows, from SQLite — the one legitimate signal the conflicts had suppressed) + `update_open_signal_statuses()` (PG).
+- **DB writes:** live Supabase `boring_signals` only. 400 → 237 rows. `dedup_conflict` count 165 → 0. `update_open_signal_statuses()` resolved the 2 new `BUXL` rows `Pending→Stopped` (marginal signal, already stopped out) and touched nothing else. Backup first: `scratch_boring_reconcile_20260828/boring_signals_pre_oi7_FULL.csv` (400 rows) + PG snapshot table `boring_signals_pre_oi7_20260830` (400 rows, verified). Supabase PITR OFF — these are the rollback net. Rollback: `TRUNCATE boring_signals; INSERT ... SELECT * FROM boring_signals_pre_oi7_20260830`.
+- **Verification:** dry-run (txn + ROLLBACK) PASS first; post-write full 23-column diff of all 235 pre-existing non-flagged rows = **0 identity changes, 0 status/display changes, 0 missing**; Strategy-Confirmed perf panel **27 / +4.43% unchanged** (independent raw recompute, matches ledger §71.6); `scope.py` re-run → 0 flagged, 0 SQLite-only. 31 CLEAN PG-only orphan rows deliberately retained (§0a.2.5).
+- **Retention:** keep the CSV + snapshot table until the next successful `daily_scraper.yml` run confirms the table is healthy.
+- **By:** Claude Code, dry-run shown and signed off. Full detail: audit ledger §83 + Trust Register §0a.2. OI-7 CLOSED; TR-13 → A still needs TR-14 + the §35.3 parity test.
+
 ### 2026-08-30 — Cloud daily scraper found DOWN since 2026-08-28 (`parse_market_summary` return-arity bug)
 - **What:** During the OI-7 re-scope, noticed PG data frozen at 2026-08-27. The `daily_scraper.yml` run 2026-08-29 00:52 UTC failed; none since. Root cause: `scraper.py` `parse_market_summary()` returned `[], []` (2 values) on its "no table found in HTML" path while every caller unpacks 3 → `ValueError` → the whole `cmd_update()` aborted before any hook ran. Triggered because ksestocks served no parseable table for 2026-08-28 (holidays / long weekends / brief source outages).
 - **Impact:** cloud Postgres and all cloud signal tables stuck at 2026-08-27 from Fri 08-28. Not caused by the OI-6 merge — a latent bug. Not silent (GitHub Actions failure + email).

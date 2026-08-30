@@ -5741,3 +5741,42 @@ The user's requirement: a clean, architectural fix compliant with the §39 desig
 - **Not blocking OI-7:** the reconcile scoping numbers (§81) are unchanged by the frozen data (re-scoped 2026-08-30: still 165/87, BUXL/08-21 the only recoverable pair, buckets a/c = 0).
 
 **Date of this entry: 2026-08-30. Status: 3-part `scraper.py` resilience fix implemented + tested (its own PR); a genuinely-missed session is now a visible failed run, not a pipeline crash. Catch-up scrape pending the next `daily_scraper.yml` run. TR-18 unchanged (RED). Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 83. <span style="color:#16a34a;">● OI-7 EXECUTED — the 87 `dedup_conflict` pairs removed from Postgres `boring_signals` by direct sync; `BUXL`/08-21 restored; perf panel unchanged (2026-08-30)</span>
+
+**WRITE ENTRY (Supabase `boring_signals`: `DELETE` 165 + `INSERT` 2 — zero writes to any other table).** Executed the §0a.2 spec under explicit user sign-off on the dry-run output (§0a.2.7 step 5). Method: direct sync, not a replay (§81 / §0a.2.3). Scripts: `scratch_boring_reconcile_20260828/step_backup_and_dryrun.py`, `step_oi7_real_write.py`.
+
+### 83.1 Backup (§0a.2.6)
+
+- `scratch_boring_reconcile_20260828/boring_signals_pre_oi7_FULL.csv` — all 400 rows, 23 columns.
+- PG snapshot table **`boring_signals_pre_oi7_20260830`** — `CREATE TABLE AS SELECT *`, 400 rows, row-count-verified against live. Retained.
+- identity snapshot (sha256 `9698229e…`, unchanged since §79) + schema snapshot. Supabase PITR is OFF — the CSV + snapshot table are the only rollback net.
+
+### 83.2 Dry-run (§0a.2.7 step 3) — VERDICT PASS
+
+`DELETE ... WHERE dedup_conflict IS TRUE` + `INSERT` the 2 `BUXL`/08-21 rows inside one transaction, measured, `ROLLBACK`. deleted=165, inserted=2, post-total 237 (400−165+2), post-flagged 0, **235/235 non-flagged rows byte-identical**, Strategy-Confirmed raw resolved count invariant. Rollback restored 400/165.
+
+### 83.3 Real write (§0a.2.7 step 5)
+
+- Guards re-checked immediately before: total 400, flagged 165, **0 flagged rows `executed`**, backup table present (400).
+- `DELETE FROM boring_signals WHERE dedup_conflict IS TRUE` → **165 rows**. `INSERT` `BUXL`/2026-08-21 lb20 + lb60 (values from SQLite, `created_at` = write time, `dedup_conflict = FALSE`) → ids **884, 885**. In-transaction check (total 237, flagged 0, 235 non-flagged unchanged, 2 new ids) passed → **`COMMIT`**.
+- `boring_signals.update_open_signal_statuses()` (PG) → returned 2: **only** the 2 new `BUXL` rows changed, `Pending → Stopped` (`days_open` 3, `current_stop` 654.84 — the marginal signal had already stopped out; this is what a clean run would show). **0 changes to any of the 20 pre-existing non-terminal rows.**
+
+### 83.4 Verification (§0a.2.8) — all pass
+
+- `dedup_conflict` count: **0** (was 165). `boring_signals` total: **237** (was 400).
+- **All 235 pre-existing non-flagged rows: 0 identity-field changes, 0 status/display-field changes, 0 missing** (full 23-column diff against the pre-write snapshot).
+- `BUXL`/08-21 present (2 rows), values from SQLite, status refreshed.
+- **Dashboard perf panel unchanged:** Strategy-Confirmed resolved **n = 27, EV/trade gross +4.43%** — exact match to §71.6 (the 165 were already excluded by the panel's `dedup_conflict != 1` filter, so removing them from the table cannot move the number; confirmed via the same independent raw recompute §71.6 used). `BUXL` is not `strategy_confirmed` so it does not enter this view. (“All fired” n moved 134→138 / EV +3.24%→+3.50% — explained by normal daily progression since §71.6 plus `BUXL`'s one resolved pair, not by the reconcile.)
+- `scope.py` re-run: `pg_flagged_total` **0**, `sqlite_only_keys` **0** (`BUXL` restored → shared keys 197→199), buckets a/b/c all 0. The **31 CLEAN PG-only orphan rows (18 pairs) are retained** per the §0a.2.5 decision — genuine PG-caught signals, not dedup violations, already in the official n=27.
+- Backup `boring_signals_pre_oi7_20260830` intact (400 rows).
+
+### 83.5 What this closes
+
+**OI-7 CLOSED.** PG `boring_signals` no longer contains any signal its own dedup rule would forbid; no `dedup_conflict != 1` filter is needed by future raw consumers (the column stays, now always FALSE on both backends — a cheap guard, not dropped). Combined with **OI-6 (§79, closed)**, both discrete tasks on TR-13's §35.8 repair list are done.
+
+**Does NOT close TR-13 → A:** still open — §35.1 completeness against an *authoritative* universe (needs TR-14) and the §35.3 SQLite↔PG parity integration test (which will absorb the `CLVL`/08-24-class per-row divergence noted in §0a.2.5). **Rollback window:** retain the CSV + `boring_signals_pre_oi7_20260830` snapshot until the next successful `daily_scraper.yml` run confirms the table is healthy. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Date of this entry: 2026-08-30. Status: OI-7 EXECUTED + verified on live Supabase — 165 conflict rows removed, `BUXL`/08-21 restored, 235/235 pre-existing rows byte-identical, perf panel unchanged (27 / +4.43%). OI-7 CLOSED. Kiran remains NOT VERIFIED — DO NOT TRADE.**
