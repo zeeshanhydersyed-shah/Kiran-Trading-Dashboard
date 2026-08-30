@@ -302,6 +302,37 @@ def test_tail_path_invokes_gate(
     assert result is True
 
 
+def test_upstream_no_data_day_reaches_gate_instead_of_crashing(
+    isolated_pipeline_db, _no_network_or_subprocess, monkeypatch,
+):
+    """Part 3 of the §82 fix, end-to-end: when ksestocks serves a page with
+    no parseable table (holiday / long-weekend outage), the REAL
+    scraper.scrape_date_range must degrade to empty lists, cmd_update() must
+    run to completion WITHOUT raising, reach run_freshness_gate(), and
+    propagate that gate's failure as a return value of False -- a visible
+    red run, never a silent exit 0 and never the pre-fix ValueError crash
+    that skipped every hook.
+    """
+    import datetime as _dt
+    import scraper
+
+    # real scrape path, but the network fetch returns a table-less page
+    monkeypatch.setattr(main, "scrape_date_range", scraper.scrape_date_range)
+    monkeypatch.setattr(scraper, "_fetch_html",
+                        lambda td, s: "<html><body>no table here</body></html>")
+    monkeypatch.setattr(scraper.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(main, "dates_since", lambda latest_date: [_dt.date(2026, 8, 28)])
+
+    calls = []
+    monkeypatch.setattr(main, "run_freshness_gate",
+                        lambda: (calls.append(1), False)[1])
+
+    result = main.cmd_update()   # must not raise
+
+    assert calls == [1], "run_freshness_gate() was never reached -- scrape likely aborted the run"
+    assert result is False, "a missed session must propagate as a failed cmd_update()"
+
+
 def test_isolated_pipeline_db_blocks_real_postgres_connection(isolated_pipeline_db):
     """Direct proof the guard itself fails loudly, independent of whether
     any real code path happens to reach it this run (with _env_pg_url()

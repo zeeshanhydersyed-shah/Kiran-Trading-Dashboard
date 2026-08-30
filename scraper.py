@@ -263,11 +263,12 @@ def _fetch_html(target_date: date, session: requests.Session) -> str | None:
     return None
 
 
-def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
+def parse_market_summary(html: str, target_date: date) -> tuple[list, list, list]:
     """
     Parse Market Summary HTML.
 
-    Returns:
+    Returns a 3-tuple on EVERY path (never 2) -- callers unpack three values,
+    and an upstream no-data day must degrade to three empty lists, not raise:
         sector_rows : list of (symbol, sector)
         price_rows  : list of (symbol, date_str, high, low, close, volume, open)
         index_rows  : list of (symbol, date_str, high, low, close, open)
@@ -290,8 +291,14 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list]:
     # The main data table is the last (and largest) one
     data_table = tables[-1] if tables else None
     if not data_table:
-        logger.warning("No table found in HTML for %s", target_date)
-        return [], []
+        # ksestocks served a page with no parseable table -- common on / just
+        # before PSX holidays and long weekends, and during brief source
+        # outages. This is a no-data day, not an error: return three empty
+        # lists so scrape_date()/scrape_date_range() treat it exactly like a
+        # holiday. (Previously returned 2 values -> ValueError in the caller's
+        # 3-value unpack -> the whole pipeline aborted; audit ledger §82.)
+        logger.warning("No table found in HTML for %s -- treating as a no-data day", target_date)
+        return [], [], []
 
     rows = data_table.find_all("tr")
 
@@ -472,9 +479,26 @@ def scrape_date_range(
     prev_fp = _price_fingerprint(prev_prices) if prev_prices else None
 
     total = len(dates)
+    failed_dates: list[date] = []
     for idx, d in enumerate(dates, 1):
         logger.info("Scraping %s (%d/%d)...", d, idx, total)
-        s_rows, p_rows, i_rows = scrape_date(d, session)
+        try:
+            s_rows, p_rows, i_rows = scrape_date(d, session)
+        except Exception as exc:
+            # One date's scrape must never abort the whole batch (design:
+            # audit §39.19 "Ingestion ... logged, non-fatal"; §39.17 row 18;
+            # same per-date resilience as leaders_scan.run_all() / boring_signals).
+            # A genuinely-missed trading session is still caught downstream by
+            # main.run_freshness_gate() (TR-05), which fails the run when the
+            # DB has not reached the expected source session.
+            logger.warning(
+                "Scrape FAILED for %s -- skipping this date, continuing the batch: %s",
+                d, exc,
+            )
+            failed_dates.append(d)
+            if idx < total:
+                time.sleep(REQUEST_DELAY)
+            continue
 
         if p_rows:
             curr_fp = _price_fingerprint(p_rows)
@@ -503,4 +527,12 @@ def scrape_date_range(
         "Scraped %d dates -> %d sector mappings, %d price records, %d index records",
         total, len(sector_list), len(all_prices), len(all_indices),
     )
+    if failed_dates:
+        logger.warning(
+            "%d of %d date(s) could not be scraped and were skipped: %s. "
+            "The freshness gate will fail the run if an expected trading "
+            "session is still missing from the database.",
+            len(failed_dates), total,
+            ", ".join(d.strftime("%Y-%m-%d") for d in failed_dates),
+        )
     return sector_list, all_prices, all_indices

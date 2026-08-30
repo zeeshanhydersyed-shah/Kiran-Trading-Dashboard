@@ -29,6 +29,14 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-08-30 — Cloud daily scraper found DOWN since 2026-08-28 (`parse_market_summary` return-arity bug)
+- **What:** During the OI-7 re-scope, noticed PG data frozen at 2026-08-27. The `daily_scraper.yml` run 2026-08-29 00:52 UTC failed; none since. Root cause: `scraper.py` `parse_market_summary()` returned `[], []` (2 values) on its "no table found in HTML" path while every caller unpacks 3 → `ValueError` → the whole `cmd_update()` aborted before any hook ran. Triggered because ksestocks served no parseable table for 2026-08-28 (holidays / long weekends / brief source outages).
+- **Impact:** cloud Postgres and all cloud signal tables stuck at 2026-08-27 from Fri 08-28. Not caused by the OI-6 merge — a latent bug. Not silent (GitHub Actions failure + email).
+- **DB writes:** none. Read-only investigation + a code fix (below).
+- **Fix (PR — see the PR description for the log):** 3-part, design-compliant (audit ledger §39.17 row 18 / §39.19 "ingestion logged, non-fatal"; TR-05/TR-07): (1) `parse_market_summary()` returns a 3-tuple on every path; (2) `scrape_date_range()` isolates a single date's failure — logged, skipped, batch continues; (3) verified `main.run_freshness_gate()` still fails the run when an expected session is genuinely missing, so a real gap is a visible red run, not a silent exit 0. Tests: `tests/test_scraper_no_data_resilience.py` + a TR-05 integration test.
+- **Still to do after deploy:** a catch-up scrape for 2026-08-28 → present (the pipeline's own `dates_since` does this on the next good run; 08-28's trading-day status still to be confirmed).
+- **By:** Claude Code. Full detail: audit ledger §82.
+
 ### 2026-08-28 — TR-13/OI-6: created `boring_signals_scanned` + seeded the verified window (live Supabase / Postgres)
 - **What:** The Postgres half of the OI-6 scan-progress marker (spec §0a.1.8 steps 3–5; SQLite half was 2026-08-28 earlier, above). `ensure_boring_signals_scanned_table_pg()` created the new empty table, then `seed_scanned_window("2026-08-27")` marked all 33 trading dates from the 2026-07-10 go-live floor through 2026-08-27 `complete` **without scanning** (the PG `boring_signals` table was rebuilt by chronological replay §71 and the daily hook has kept it current through 08-27 — no missed tail, unlike SQLite).
 - **Why seed vs scan:** a replay over a populated `boring_signals` table produces backdated dedup artifacts (spec §0a.1 amendment 2). The window is audit-§36-verified intact, so it is seeded, not re-scanned.

@@ -5662,3 +5662,82 @@ The OI-6 working-tree code was committed (`c266f7e`) and merged to `origin/main`
 **OI-6 is now CLOSED** — the bounded 15-trading-day window is gone from both backends, resume is pure set-difference against `boring_signals_scanned`, the marker tables exist and are seeded on both live DBs, and a long gap is now an observable `coverage_status=INSUFFICIENT` event instead of silent. The next `daily_scraper.yml` run scans only genuinely-new dates via `_pending_dates()`; the next local `run_update.bat` does the same. **Does NOT close TR-13 → A** (still: TR-14 authoritative-universe completeness, OI-7 the 87 `dedup_conflict` pairs, the SQLite/PG parity integration test). Trust Register OI-6 row → ✅ DONE; RESEARCH_LOG updated + CSV re-synced. Separately still open: the cloud Streamlit **serving process** is pre-PR-#25 stale (§78) — needs a console reboot, the user's action. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
 
 **Date of this entry: 2026-08-28. Status: OI-6 code merged (PR #30, `origin/main` = `d13fff4`); OI-6 CLOSED on both backends. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 80. <span style="color:#eab308;">◐ OI-7 — decision recorded: the 87 `dedup_conflict` pairs will be reconciled/removed (Option B), as their own job (2026-08-28)</span>
+
+**DECISION ENTRY — no code, no DB write.** After OI-6 closed (§79), OI-7 (the disposition of the 87 `dedup_conflict`-labelled pairs / 165 rows in Postgres `boring_signals`, ledger §63.6/§64/§71.3) was the smallest remaining blocker on TR-13 → A. Trade-offs laid out for the user:
+
+- **Option A (leave permanently labelled):** ~zero cost; the misleading-aggregate risk is already closed (perf panel filters `dedup_conflict != TRUE`); but 165 rows that violate the table's own dedup rule stay as standing scar tissue every future *raw* consumer must remember to filter.
+- **Option B (reconcile/remove):** a full session — backup-first, production DELETE/rebuild on the capital-path table; every prior rebuild of this table surfaced something new (§65 a 5th ghost date, §71 a changed split); but the table ends genuinely clean, no filter needed.
+- **Option C (leave labelled now, fold the reconcile into TR-14):** one rebuild instead of two — but only bundles if the TR-14 rebuild is deliberately designed to seed pre-floor open positions, and it is a bet that TR-14 lands reasonably soon.
+
+**User chose Option B**, as its own job (not bundled). A clean table now over a coordination dependency.
+
+### 80.1 The crux the spec must resolve
+
+The 87 pairs exist because Postgres `boring_signals` was replayed from a **2026-07-10 floor** with no memory of positions SQLite still considers open from before that date, so SQLite's dedup gate (“don't fire while a position is open”) could not suppress them on the PG side. **A plain `DELETE WHERE dedup_conflict IS TRUE` followed by a re-scan does NOT fix this** — the re-scan's dedup gate reads PG's own `boring_signals`, which still has no pre-floor memory, so the same conflicts re-fire. And a plain delete *without* a re-scan can leave gaps: a spurious PG signal that was itself “open” may have blocked a *legitimate* later PG signal that SQLite did fire. The reconcile therefore has to either (a) seed PG with SQLite's pre-floor open positions then replay, or (b) sync PG `boring_signals` over the go-live window to SQLite's trusted copy directly (delete PG-only spurious rows, insert legit rows PG is missing) — with an explicit decision on the 27 “CLEAN” PG-only orphans (genuine catches SQLite missed, §63.6) which a naive sync-to-SQLite would also drop.
+
+### 80.2 Status
+
+**DECIDED, NOT SPEC'D, NOT EXECUTED.** Next: a pre-registered spec (Trust Register §0a.2, same shape as §0a.1 for OI-6) — read-only scoping analysis first (which 165 rows exactly; for each conflicted symbol, does removing it leave a legit SQLite signal unrepresented on PG), then the method decision, backup plan, verification, both-backends handling, test matrix — then explicit sign-off, then execution. Trust Register OI-7 row updated. RESEARCH_LOG updated + CSV synced. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Date of this entry: 2026-08-28. Status: OI-7 decision recorded (Option B — reconcile as its own job). Spec + execution pending. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 81. <span style="color:#eab308;">◐ OI-7 — scoped + pre-registered spec written (Trust Register §0a.2); DIRECT-SYNC method chosen; awaiting sign-off (2026-08-28)</span>
+
+**SCOPING + DESIGN ENTRY — read-only analysis, no code, no DB write.** Follows the §80 decision (Option B). Full spec: Trust Register **§0a.2**. Scoping script: `scratch_boring_reconcile_20260828/scope.py` (+ 5 bucket CSVs + `scope_summary.json`).
+
+### 81.1 Scoping results (PG vs SQLite `boring_signals`, window 2026-07-10 .. 2026-08-25)
+
+| Bucket | Rows | Pairs | strat-conf | status |
+|---|---|---|---|---|
+| PG `dedup_conflict = TRUE` (the target) | **165** | **87** | 53 | all `Stopped`, **0 executed** |
+| PG-only, unflagged (“CLEAN orphans”) | 31 | 18 | 10 | all `Stopped`, 0 executed |
+| SQLite-only, symbol not in PG universe | 0 | 0 | — | — |
+| SQLite-only, **recoverable** (a PG conflict row was open across the date) | 2 | **1** | 0 | `Pending` |
+| SQLite-only, genuine unexplained divergence | **0** | 0 | — | — |
+
+**Why this is low-risk:** all 165 are resolved history, none executed, none a live `strategy_confirmed` signal — removing them changes no actionable state. The “does a delete strand a legit signal” worry resolves to **exactly one pair** (`BUXL` / 2026-08-21, `Pending`, not strategy-confirmed), restored by copying SQLite's 2 rows. Zero genuine divergence, zero universe-mismatch.
+
+### 81.2 Method: DIRECT SYNC (not a replay)
+
+`DELETE FROM boring_signals WHERE dedup_conflict IS TRUE` (=165, aborts if ≠165 or if any row is `executed`), `INSERT` the 2 `BUXL`/08-21 rows from SQLite, `update_open_signal_statuses()` (PG). No wipe, no replay, no re-scan → the 197 already-correct shared rows are untouched and there is no conflict-re-fire risk (a plain re-scan *would* re-fire them — PG's dedup gate still has no pre-floor memory). A full seeded replay was considered and rejected as disproportionate given only 1 legit row-pair to restore.
+
+### 81.3 The 31 CLEAN orphans — KEEP
+
+Not dedup violations — genuine PG-caught signals SQLite lacks, mostly on 07-20/21/29 (dates SQLite's OI-6 seed marked complete without re-scanning, so their absence is partly the *old* local silent-miss OI-6 fixed). One (`CLVL`/08-24) is a real per-row backend divergence on a date SQLite *did* re-scan — logged as a follow-up for the §35.3 SQLite↔PG parity test, not fixed here. Deleting genuine signal history for strict parity with a table that has its own gaps is the wrong trade; they are also already in the “official” n=27 perf number.
+
+### 81.4 Status
+
+**SCOPED + SPEC'D, NOT EXECUTED, NOT AUTHORIZED.** Backup plan: PG CSV + `boring_signals_pre_oi7_20260828` snapshot table (Supabase PITR OFF). Rollout §0a.2.7: re-run scoping → backup → dry-run (txn + ROLLBACK) → **sign-off gate** → real write → independent verification → one PR. 5-test matrix (§0a.2.9). Trust Register OI-7 row + §0a.2 written. RESEARCH_LOG updated + CSV synced. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Date of this entry: 2026-08-28. Status: OI-7 scoped, spec at §0a.2, direct-sync method chosen, awaiting sign-off. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+---
+
+## 82. <span style="color:#dc2626;">🔴 Cloud daily scraper DOWN since 2026-08-28 — `parse_market_summary()` returns 2 values on the “no table” path, caller unpacks 3, whole pipeline crashes (found 2026-08-30)</span>
+
+**READ-ONLY finding, surfaced during the OI-7 re-scope (§0a.2.7 step 1).** Not caused by the OI-6 merge — a latent `scraper.py` bug.
+
+- **Symptom:** PG `prices` / `prices_adjusted` / all signal tables frozen at **2026-08-27**. Last `pipeline_runs` row 2026-08-28 01:28 UTC (run_date 08-27). The `daily_scraper.yml` run on **2026-08-29 00:52 UTC** (the delayed 08-28 cron) **FAILED**; no run since.
+- **Root cause (from the failed run log):** `scraper.py:416` — `scrape_date()` does `sector_rows, price_rows, index_rows = parse_market_summary(html, target_date)` (expects 3). `parse_market_summary()`'s normal path returns a 3-tuple (`scraper.py:407`), but its **“no table found in HTML” path returns `[], []`** (`scraper.py:29`, 2 values; the function's own type annotation `-> tuple[list, list]` is also stale). For 2026-08-28 ksestocks returned a page with no parseable table → `ValueError: not enough values to unpack (expected 3, got 2)` → `cmd_update()` raises → `main()` exits 1 → **the entire pipeline aborts** (no regime / sector / stock / boring / setup_log hook runs). `scrape_date()` at line 418-419 clearly *intends* to handle an empty result gracefully (“No trading data for %s (holiday or weekend)”) — the 2-value return defeats that.
+- **Open question:** was 2026-08-28 a genuine PSX non-trading day, or a transient ksestocks fetch that a retry would resolve? Either way the fix is the same — the “no table” path must return `[], [], []` so a no-data day is skipped, not fatal.
+### 82.1 Fix — 3-part, design-compliant (implemented 2026-08-30, its own PR)
+
+The user's requirement: a clean, architectural fix compliant with the §39 design, not a one-off patch. The relevant design is already written: **§39.17 failure-matrix row 18** ("Unexpected upstream (ksestocks) outage → previous verified state remains → user sees STALE / NOT VERIFIED → no manual intervention unless prolonged") and **§39.19** ("Ingestion (`scraper.py`): Logged, **non-fatal**; downstream MANDATORY checks catch resulting incompleteness"). The code violated both. The fix brings `scraper.py` into compliance — no new mechanism.
+
+1. **`parse_market_summary()` returns a 3-tuple on EVERY path.** The "no table found" path now returns `[], [], []` (was `[], []`); the stale `-> tuple[list, list]` annotation is corrected to `tuple[list, list, list]`. Removes the arity fragility, not just this instance.
+2. **`scrape_date_range()` isolates a single date's failure.** The per-date `scrape_date()` call is wrapped: any exception (no table, HTTP 5xx, malformed HTML) is logged at WARNING, the date is appended to `failed_dates`, and the batch **continues** — same per-date resilience pattern as `leaders_scan.run_all()` (TR-06 Tier 2) and `boring_signals`. A closing summary WARNING names every skipped date. This is the system-level part: ingestion is now robust to *any* single-date upstream problem.
+3. **Verified the miss still surfaces loudly.** With ingestion non-fatal, `cmd_update()` runs to its tail and calls `run_freshness_gate()` (TR-05, already deployed). Traced + tested: `get_source_date()` → `data_health.check_all(expected_session=…)` distinguishes the three cases correctly — **holiday** (source date hasn't advanced → DB level with source → VERIFIED → exit 0, correct per §39.17 row 16); **genuine gap** (source advanced, DB behind → STALE → gate returns False → `main()` exits non-zero → red run + failure email); **source down** (`expected_session` None → CANNOT_VERIFY → gate returns False → exit non-zero). So a real missed session is a *visible red run*, never a silent exit 0 and never the pre-fix `ValueError` crash.
+
+**Tests:** `tests/test_scraper_no_data_resilience.py` (11 tests — the no-table 3-tuple contract, the exact `a, b, c =` unpack that used to raise, per-date failure isolation, all-dates-fail returns empties-not-raise) + `tests/test_tr05_freshness_gate.py::test_upstream_no_data_day_reaches_gate_instead_of_crashing` (end-to-end: real `scrape_date_range` on a table-less page → `cmd_update()` completes without raising, reaches the gate, propagates `False`). Targeted regression subset (scraper / tr05 / tr06 / data_health / phase2 / app_boot): **102 passed**.
+
+- **Open question (unchanged):** whether 2026-08-28 was a genuine PSX non-trading day or a transient fetch. The fix behaves correctly either way; a catch-up scrape for 2026-08-28 → present runs automatically on the next successful `daily_scraper.yml` (`dates_since` includes the gap).
+- **Does NOT fully close TR-18:** a true *independent* missed-run watchdog (a separate process that detects the pipeline never starting) is still absent — this fix makes a run that *does* start fail visibly on a data gap, and relies on GitHub's native failure email for the alert. TR-18 stays 🔴 RED. TR-05 / TR-07 get evidence (execution-time gate now genuinely reachable on the outage path).
+- **Not blocking OI-7:** the reconcile scoping numbers (§81) are unchanged by the frozen data (re-scoped 2026-08-30: still 165/87, BUXL/08-21 the only recoverable pair, buckets a/c = 0).
+
+**Date of this entry: 2026-08-30. Status: 3-part `scraper.py` resilience fix implemented + tested (its own PR); a genuinely-missed session is now a visible failed run, not a pipeline crash. Catch-up scrape pending the next `daily_scraper.yml` run. TR-18 unchanged (RED). Kiran remains NOT VERIFIED — DO NOT TRADE.**
