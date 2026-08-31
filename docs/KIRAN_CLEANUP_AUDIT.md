@@ -5944,3 +5944,45 @@ The 08-28 base scrape is **identical on both backends**: KSE-100 close 177696.5 
 TR-05 now has **exactly one** item between AMBER and GREEN: **§84.4(a) — the TR-01 dependency.** Both served surfaces (Streamlit Cloud / Postgres, and the local dashboard / SQLite) run both gates — execution-time and serving-time — and both have been production-observed working, including the local gate PASSING (§85.4) and FAILING correctly (§84.3). The criterion *"every served backend runs an automated freshness gate before publication"* is met for both. What is not yet resolved is the criterion's *"for whichever backend is authoritative"* clause, which is scoped against TR-01 (RED — authority decided in policy, unenforced in code). §5's Definition of Done allows a blocking row to close *"or [be] explicitly downgraded via a documented decision"* — so the remaining path is a decision, not implementation: **either** TR-01 progresses enough to name the enforced authoritative backend, **or** the owner records an explicit decision that "gating *both* served surfaces, authoritative or not, satisfies TR-05 independently of TR-01's timeline." **This is an owner decision (with Claude Chat review), not one Claude Code closes unilaterally** — per the three-role split. Recommendation on the table: the second option is defensible now — the gates over-satisfy the literal criterion (every surface, not just the authoritative one), and holding TR-05 hostage to TR-01's much larger effort adds no real safety.
 
 **Date of this entry: 2026-08-31. Status: TR-05 §84.4(c) CLOSED (coverage delta assessed line-by-line, accepted — not a signal-trust regression). TR-05 now AMBER pending only §84.4(a), the TR-01 dependency, which is a documented-decision for the owner, not implementation. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+
+---
+
+## 87. Owner decision recorded — Postgres/Cloud is the authoritative backend; TR-05 §84.4(a) CLOSED on that basis; **TR-05 → 🟢 GREEN** (2026-08-31)
+
+**GOVERNANCE ENTRY. No code, no DB write.** The one item left between TR-05 and GREEN (§84.4(a) / §86.5) was not an implementation task — it was the acceptance criterion's *"for whichever backend is authoritative"* clause, which §5 of the Definition of Done permits closing *"or [by being] explicitly downgraded via a documented decision."*
+
+### 87.1 The decision
+
+**The owner has decided and stated, explicitly, that Postgres/Supabase (the Cloud backend) is authoritative.** This reaffirms and makes operative the direction already recorded in `CLAUDE.md` ("Production architecture — FINAL DECISION (2026-08-26): Postgres/Supabase is authoritative"). It is the owner's call to make — per the three-role split, the owner is the sole authorization boundary — and it is now made on the record for this program's purposes, delegated to Claude Code to apply. Attribution: owner, 2026-08-31, in-session.
+
+### 87.2 Why this closes §84.4(a)
+
+TR-05's blocking requirement is scoped *"for whichever backend is authoritative."* With Postgres designated authoritative, the question becomes concrete and answerable: **does the authoritative backend (Postgres) run an automated freshness gate at pipeline-execution time AND continuously re-evaluate freshness at the serving boundary?** Both, yes, and both are deployed and production-observed:
+
+| Half | Postgres mechanism | Evidence |
+|---|---|---|
+| **Execution-time** | `main.run_freshness_gate()` (tail of `cmd_update()`, and the early-return branch) **+** `health_check.py`'s 5 E9 checks — both run in the `daily_scraper.yml` job; either failing exits non-zero → red Actions run → GitHub's native failure email | Success path **CONFIRMED in production** — GH run `32878324230`, 2026-08-25 (§62.1), `"Freshness gate passed"` + E9 `ALL PASS`. Failure path: proven by test harness (`test_tr05_freshness_gate.py`, 15 tests incl. the real `cmd_update()`) **and** by the byte-identical `check_all()`→`publication_status()`→exit-code chain **failing correctly in real production on the local backend** (§84.3 item 2 / §85 — `FRESHNESS GATE FAILED (STALE)`, `cmd_update()` returned False). Not manufactured on Postgres — the standing constraint forbids inducing production staleness. |
+| **Serving-boundary** | `dashboard.py`'s `_pub_ok` = `data_health.publication_status(check_all(...))`, recomputed **every render** against the *live* ksestocks source date; on stale/cannot-verify it `st.stop()`s the page dispatch and withholds Kiran's Voice, the Regime+Kelly header and the sidebar regime widget, showing **"NOT VERIFIED — DO NOT TRADE"**. No new pipeline run required to notice ageing. | VERIFIED state **CONFIRMED in production, first-party** — authenticated read of the live Cloud app 2026-08-30 (Serving Revision = `origin/main` HEAD, "DATA CURRENT 2026-08-28", actionable content rendering). Blocking state: proven by `test_tr05_serving_boundary_integration.py` (a *genuinely stale DB → real un-mocked `check_all()` → real `dashboard.py` → every actionable surface withheld*, `st.stop()` fired) **and** user-reported in production (§78-era "Data Stale"). Not first-party-captured on Cloud in the blocking state — would require Cloud data to be genuinely stale, not manufactured. |
+
+The criterion is met for the authoritative backend. (It is in fact met for *both* served surfaces — the local/SQLite path has the identical gates, both now production-observed, §85 — but only the authoritative backend was ever required.)
+
+### 87.3 The TR-08 clause — not a blocker for TR-05, already settled
+
+TR-05's amended text names TR-08 ("the publication/serving layer (TR-08) independently re-evaluates..."). TR-08 (the full publication contract) is RED and unbuilt. This was already reasoned through (memory 2026-08-25; Trust Register TR-05 own text): the dashboard-level `st.stop()` / `_pub_ok` gate **satisfies TR-05's intent directly without waiting for TR-08**. TR-08 remains its own blocking row for its own reasons (atomic multi-field publication record, "a failed run never overwrites the last good publication", etc.); TR-05 does not depend on it.
+
+### 87.4 Residual, disclosed (so a future reader / Claude Chat can weigh it)
+
+- The Postgres **execution-gate failure path** has not been observed on Postgres *specifically* in production — only by test harness and by the identical code failing for real on SQLite. Manufacturing a Postgres staleness to see it is forbidden by this program's standing constraint. The `health_check.py` half is trivial date-arithmetic + `sys.exit(1)`; `run_freshness_gate()` is backend-agnostic above the DB connection.
+- The **serving-gate blocking state** on Cloud has not been captured first-party — only by test harness and user report. Opportunistic capture is possible the next time Cloud data is genuinely stale (do not manufacture).
+- **TR-01 enforcement** (SQLite actively *prevented* from independently computing / being served as current) is still not built — that is **TR-01's** job and it stays RED. TR-05's requirement is that the authoritative backend runs the gate, which Postgres does.
+
+None of these is "the gate is absent" or "the gate does not work." They are "not every path was witnessed in production on this one backend, and the rules forbid forcing them." This is full proof to the standard the register applies to every other serving/publication row (cf. TR-08's own acceptance: *"a test harness can..."*).
+
+### 87.5 Determination
+
+**TR-05: 🟢 GREEN.** First of the 13 cutover-blocking rows to close — via the "explicit documented decision" path §5 provides, on top of a fully-implemented, tested (43/43), and production-observed mechanism. The register's TR-05 row and §5's blocking list are updated accordingly.
+
+**This does not change Kiran's verdict.** Twelve blocking rows remain (TR-01, TR-03, TR-04, TR-06, TR-07, TR-08, TR-11, TR-13, TR-14, TR-16, TR-17, TR-18). **Kiran remains NOT VERIFIED — DO NOT TRADE.** What this does: it removes freshness-verification from the list of things standing between here and a trustworthy signal, and it confirms the architecture decision (Cloud authoritative) that also simplifies several of the remaining rows (per the §76-era cloud-reliability scoping).
+
+**Date of this entry: 2026-08-31. Status: Owner decision (Postgres/Cloud authoritative) recorded and applied. TR-05 §84.4(a) CLOSED. TR-05 → GREEN — the freshness gate is verified at execution time and continuously re-verified at the serving boundary on the authoritative backend, implemented + tested + production-observed. 12 blocking rows remain. Kiran remains NOT VERIFIED — DO NOT TRADE.**
