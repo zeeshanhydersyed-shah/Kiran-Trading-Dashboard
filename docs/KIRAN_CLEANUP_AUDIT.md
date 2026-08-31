@@ -6340,3 +6340,41 @@ The dry run (read-only replay of `save_top_picks`'s own selection query) enumera
 ### 91.6 Status
 
 **Item 1b-ii DONE, both backends.** Combined with 1b-i (PR #42), the `leaders_top_picks` latest-date-only defect is **closed** — a Phase 1 prerequisite of TR-01. Trust Register not touched. **Still open in Phase 1:** rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite↔PG `boring_signals` parity integration test (§35.3); TR-14 (authoritative universe). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**; TR-01 stays 🔴 RED. **Date of this section: 2026-08-31.**
+
+## 92. <span style="color:#16a34a;">● TR-01 Phase 1d — SQLite↔Postgres `boring_signals` parity integration test (2026-08-31)</span>
+
+Builds the test named in §34.9 item 5 / §35.8 item 4 / §40.7 and repeatedly deferred as a TR-13/TR-01 item (Trust Register §0a.2.5, §0a.1.11). **Test only — no code change, no DB write, no `MAINTENANCE_LOG` entry.** PR [#44](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/44). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**; TR-01 stays 🔴 RED.
+
+### 92.1 What it pins, and why it was needed
+
+§35.1: `_rs60_and_liquidity_asof()` (`boring_signals.py:463`) walks a **positional** 60-row lookback (`np.searchsorted` index arithmetic), not a calendar-date one. Postgres `prices_adjusted` was missing every row for 2026-07-07 (a table-wide gap SQLite did not have), so for every symbol whose 60-position window straddled that date, PG's window spanned 61 real sessions while SQLite's spanned 60 → `close_then` landed on a different calendar date → `rs_60` (and sometimes `rs_60_decile`) diverged between backends. **Nothing tested for it**; it was found only by a manual cross-backend forensic sweep (§35.1) after it had already shipped.
+
+`_rs60_and_liquidity_asof` / `_breakout_fires` / the `pd.qcut` decile+gating block are **backend-agnostic** — they take plain dicts. So a divergence can only come from:
+- **(a)** the per-backend loaders — `_load_price_history` vs `_load_price_history_pg`, `_eligible_universe` vs `_eligible_universe_pg`, `_load_kse100` vs `_load_kse100_pg` — handing the shared code **different data** from the same source (the §35.1 mechanism, and any future loader-shape drift: Decimal/date handling, row filtering, ordering);
+- **(b)** the hand-duplicated `_scan_boring_breakouts_sqlite` / `_scan_boring_breakouts_pg` glue drifting (§34.9 item 7 — `int` vs `bool` flags, `INSERT OR IGNORE` vs `ON CONFLICT DO NOTHING`, the `avg_vol_val` NaN guard, the decile block copied line-for-line into both).
+
+### 92.2 `tests/test_boring_signals_backend_parity.py` (new, 5 tests)
+
+**Infrastructure:** a compact `_PgLikeCursor` — a psycopg2 `RealDictCursor` emulator over a real `sqlite3` connection, translating only the fixed set of PG-isms these functions emit (`%s`→`?`, `col = ANY(%s)`→`col IN (?,…)` with list expansion, `::text` strip, `DOUBLE PRECISION`→`REAL`, `IS TRUE/FALSE`→`=1/=0`, `ON CONFLICT (…) DO NOTHING`→`INSERT OR IGNORE`). No live Supabase, no network. psycopg2's NUMERIC→Decimal / DATE→date decoding is already normalised away by the `_pg` loaders' own `CAST`/`::text` and is covered directly by `test_boring_signals_pg.py` — this module tests **logic** parity given normalised inputs.
+
+**Synthetic dataset:** 12 symbols × 90 gap-free sessions, each symbol growing monotonically at its own gentle rate (varied `rs_60` as of t-1 → a full decile spread), then +3.5 % on the scan date so a Donchian breakout fires for **both** lookbacks. Volumes straddle the 200 k liquidity line (SYM00/01 fail, rest pass). The gap-free scan produces **24 signals** spanning deciles −1…9, `liquidity_pass` ∈ {0,1}, `strategy_confirmed` on the decile-9 symbol — asserted, so a future fixture change that quietly makes the test vacuous fails.
+
+| Test | Asserts |
+|---|---|
+| `test_load_price_history_parity_gap_free` | `_load_price_history` and `_load_price_history_pg` over the **same** rows → byte-identical `by_symbol` dicts (arrays + float dtypes) |
+| `test_eligible_universe_parity` | `_eligible_universe` == `_eligible_universe_pg` |
+| `test_load_kse100_parity` | `_load_kse100` == `_load_kse100_pg` |
+| `test_scan_parity_gap_free` | `_scan_boring_breakouts_sqlite` vs `_scan_boring_breakouts_pg` over identical data → identical `boring_signals` rows on `(symbol, signal_date, lookback_n, rs_60, rs_60_decile, liquidity_pass≡, strategy_confirmed≡, breakout_level, trigger_price, target_price, stop_price)` — the end-to-end parity, covering the duplicated glue |
+| `test_scan_diverges_when_pg_history_has_a_gap` | **the §35.1 sensitivity proof** — a one-day table-wide `prices_adjusted` gap on the PG side only, placed *strictly inside* the 60-position RS window (a gap *before* `close_then` cancels — that is the subtle part of §35.1) → `rs_60` for shared signals **must differ**. If it ever stops differing, the parity check has gone blind to the exact failure that shipped. |
+
+### 92.3 Scope / what it does not do
+
+Does not touch the live Postgres table, and does not attempt to reconcile the two **production** backends' `boring_signals` against each other (that is TR-13→A + TR-14, and the §0a.2.5 `CLVL`/2026-08-24-class per-row divergence — this test would *flag* such a divergence if the two paths were run on the same data, but the production divergence is a *data* difference, not a code-path one). It closes §34.9 item 5 / §35.8 item 4 as a **standing regression guard**: the §35.1 class of bug can no longer reach production silently.
+
+### 92.4 Status
+
+Item 1d DONE. Local full run (pandas 3.0.2 / py3.14): **315 passed** (incl. app-boot). CI on the pinned stack: see §92.5. **Still open in Phase 1:** rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`) — item 1c; TR-14 (authoritative universe) — item 1e. **Date of this section: 2026-08-31.**
+
+### 92.5 CI outcome
+
+PR #44: <CI_RESULT>.
