@@ -6115,3 +6115,13 @@ Authorized (explicit, in-session). `§0a.3.7` step 3. **`ALTER TABLE pipeline_ru
 **Both backends now carry `pipeline_runs.code_version`.** SQLite has it + 3 stamped rows (§88.8); Postgres has it + 0 stamped rows (the next cloud run will be the first to stamp — that is rollout step 4, and it requires the merge first). **Held at:** merge (step 5) → observe the first post-merge `daily_scraper.yml` run stamps `code_version == GITHUB_SHA == origin/main HEAD` (step 4) → Cloud reboot → the Data Health drift panel shows ✅. Nothing committed. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
 
 **Date of this subsection: 2026-08-31. Status: OI-9 Postgres `code_version` column added under sign-off — dry-run + apply + independent verify, 0 rows changed, `ensure_ledger_pg()` confirmed a no-op. Both backends ready. Next gate: the OI-9 code PR + merge, then first cloud run observed.**
+
+### 88.10 Rollout step 5 — code merged (PR #40) (2026-08-31)
+
+Authorized. Branch `feat/oi9-deployment-identity` @ `db6c917` — 8 files (the 5 code modules + `tests/test_deployment_identity.py` + ledger §88 + `MAINTENANCE_LOG.md`; `breadth_data.csv`/OI-3 and `local_cloud_price_reconciliation.py`/OI-2 deliberately excluded; the local-only Trust Register not committed). All 3 CI checks green on the branch **and** re-run green on the merge commit (`clean-install` / `unit-tests` / `app-boot`).
+
+`gh pr merge 40 --merge --delete-branch` → **`origin/main`: `37705ad` → `c85838e`** (merge commit, parents `37705ad` + `db6c917`; `db6c917` preserved). Local `main` fast-forwarded to `c85838e`; runtime modules verified to carry the OI-9 code (`resolve_code_version` in `serving_revision.py`/`main.py`, `code_version` ×17 in `data_health.py`, `describe_drift` ×2 in `dashboard.py`); `git status` = only OI-2/OI-3. `daily_scraper.yml` confirmed **not** triggered by the merge push (schedule/`workflow_dispatch` only); `ci.yml` re-ran on the push and passed.
+
+**One gate left (step 4 — production observation):** the first cloud `daily_scraper.yml` run after this merge must be observed to (a) stamp `pipeline_runs.code_version` == that run's `GITHUB_SHA` == `origin/main` HEAD, and (b) after a Cloud reboot, the Data Health drift panel shows ✅ `match`. That run is the Mon 2026-09-01 17:00 UTC cron, or a manual `workflow_dispatch`. Until then TR-11 stays 🔴 RED. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Date of this subsection: 2026-08-31. Status: OI-9 code merged (PR #40, `origin/main` = `c85838e`), CI green on the merge commit, local `main` current. Both backends carry `pipeline_runs.code_version`. Awaiting the first post-merge cloud run to observe the SHA stamp + drift-panel ✅ (step 4), then TR-11 GREEN re-assessment.**
