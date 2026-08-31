@@ -29,6 +29,14 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-08-31 — OI-8: local SQLite pipeline caught up to 2026-08-28 after the routing fix
+- **What:** After OI-8 (`signal_engine.py` `load_dotenv()`, fixed in PR #36) had been misrouting local runs' signal-table writes to Postgres, the local SQLite copies of `recovery_signals`/`portfolio_signals`/`boring_signals`/`leaders_scan` were frozen at 2026-08-20/25 while everything else had reached 08-28. With the fix in the working tree, re-ran the affected hooks locally.
+- **Why:** User reported the local dashboard's "Refresh Data" wasn't working — it was the TR-05 freshness gate correctly failing STALE on the frozen `recovery_signals`. Local Task Scheduler pipeline effectively down since 2026-08-26.
+- **Method:** `scratch_oi8_catchup_20260830/catchup.py` — real production functions in `cmd_update()` tail order, with a hard `sys.exit()` guard that aborts if any Postgres URL is visible (it never tripped): `signal_engine.main()` → `scan_boring_breakouts_pending()` + `update_open_signal_statuses()` → `leaders_scan.run_all()` → `main.run_freshness_gate()`.
+- **DB writes:** local `psx_data.db` **only** (0 Postgres writes, independently verified). `recovery_signals` +5 @ 08-28, `portfolio_signals` +308 @ 08-28, `boring_signals` +13 (9 on 08-27, 4 on 08-28) + `boring_signals_scanned` markers, `leaders_scan` backfilled 08-21→08-28. Backup first: `backups/psx_data_pre_oi8_catchup_20260830.db` (`PRAGMA integrity_check` ok, sha256 `fd000f5a012fc1651cf83f74320e644f0f25bf8b0c9d2d64d10c18575296290c`, 882016256 bytes). Retain until the next clean nightly `run_update.bat`.
+- **Verification:** all local tables now MAX-date 2026-08-28; `PRAGMA integrity_check` → ok; `run_freshness_gate()` → **`Freshness gate passed -- state verified fresh as of 2026-08-28`** (first time the local gate has been observed passing — TR-05 §84.4(b)). PG's own 08-28 rows (written earlier by the OI-8 leak during the §82 cloud outage) cross-checked sound and kept — ledger §85.5.
+- **By:** Claude Code, under explicit user authorization. Full detail: ledger §85.
+
 ### 2026-08-30 — TR-13/OI-7: removed the 87 `dedup_conflict` pairs from Postgres `boring_signals` (direct sync)
 - **What:** Reconciled the 165 rows / 87 (symbol,date) pairs in PG `boring_signals` that violated the table's own dedup rule — an artefact of the 2026-07-10-floored rebuild having no memory of pre-floor open positions (ledger §63.6/§71.3). Pre-registered spec Trust Register §0a.2; user chose Option B (remove, not label-forever) 2026-08-28; executed under sign-off on the dry-run.
 - **Method:** direct sync, not a replay. `DELETE FROM boring_signals WHERE dedup_conflict IS TRUE` (165) + `INSERT` `BUXL`/2026-08-21 (2 rows, from SQLite — the one legitimate signal the conflicts had suppressed) + `update_open_signal_statuses()` (PG).
