@@ -5899,3 +5899,48 @@ The 08-28 base scrape is **identical on both backends**: KSE-100 close 177696.5 
 - **Kiran: NOT VERIFIED — DO NOT TRADE.**
 
 **Date of this entry: 2026-08-31. Status: OI-8 CLOSED (PR #36). Local pipeline caught up to 2026-08-28 and the local freshness gate observed PASSING — TR-05 §84.4(b) resolved, (a)+(c) remain. PG's 08-28 day was locally-authored (OI-8 × §82 outage), verified sound, kept. Structural write-surface gap (TR-01/TR-12) recorded, not closed. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+
+---
+
+## 86. TR-05 §84.4(c) — the `check_all()` vs `health_check.py` coverage delta, assessed line-by-line and ACCEPTED in writing; TR-05 now has exactly one item left, and it is a documented-decision (2026-08-31)
+
+**READ ENTRY. No code, no DB write.** §84.4(c) / the TR-05 register row's Required Proof asked: `run_freshness_gate()` (the local execution gate) reuses `data_health.check_all()`, whereas the Postgres execution gate is `health_check.py`'s 5 E9 checks — is `check_all()` a legitimate *"health_check.py's checks (or equivalent)"* for the local path (TR-05's own wording), or a coverage regression? Decided here by reading both.
+
+### 86.1 What each one checks (from source)
+
+**`health_check.py` (E9 — Postgres/GitHub-Actions execution gate), 5 checks:**
+1. **Connection-is-real** — actually opens a Postgres connection + `SELECT 1` (closes the `database.py` `if _PG_URL:`-truthiness-with-no-connection-test hole, run #46).
+2. **Relative staleness chain** — `MAX(date)` of `prices`/`prices_adjusted`/`stock_signals`/`sector_signals`/`market_regime`; each derived table ≤ 1 day behind its parent.
+3. **Absolute freshness floor** — `prices` `MAX(date)` ≤ 4 calendar days old.
+4. **Flows freshness (T+2)** — `market_flows` `MAX(date)` ≤ 6 calendar days old.
+5. **Rolling-trim sanity** — `MIN(date)` of `prices`/`prices_adjusted`/`stock_signals`/`setup_log`/`symbol_active_dates` not older than `today − 2y − 7d` (guards the Postgres-only E8.6a rolling trim).
+
+**`data_health.check_all()` (used by BOTH `run_freshness_gate()` and the serving-time `_pub_ok`):**
+- **Connection** — `_open()` connects (SQLite or PG per `_PG_URL`); failure → red `"cannot connect"`.
+- **Absolute, source-anchored** — `prices` `MAX(date)` vs `expected_session` (the *live* ksestocks source date). `prices_max < expected_session` → **stale**; source unreachable (`expected_session is None`) → **unknown/amber**. This is *tighter* than health_check #3's 4-calendar-day floor — it flags a single missed session immediately.
+- **EVERY_SESSION `MAX(date)`** — `prices`, `index_prices`, `prices_adjusted`, `stock_signals`, `sector_signals`, `market_regime`, `recovery_signals`, each vs the reference date.
+- **HEARTBEAT execution** — last `pipeline_runs` row for `setup_log`, `leaders_scan`, `boring_signals`, `corporate_action_append`, `corporate_action_suspects_scan`, `portfolio_signals`: `status` must be `ok` **and** recent.
+- Verdict: any stale → red; any unknown → amber; all ok → green.
+
+### 86.2 The delta
+
+**`check_all()` is BROADER** on: source-anchored freshness (vs a 4-day floor); `index_prices`; `recovery_signals`; and six per-hook execution heartbeats (`health_check.py` checks none of these hooks' execution at all).
+
+**`check_all()` is NARROWER** on exactly two things — check #4 (`market_flows` T+2) and check #5 (rolling-trim `MIN(date)`).
+
+### 86.3 Why both narrower items are acceptable — not a signal-trust regression
+
+- **#4 `market_flows` freshness — not on the signal path.** `data_health.py`'s own "deliberately NOT checked" comment says it: `market_flows` "feeds only the descriptive-only Flow column; the Big Fish study found the underlying data null (0/360)". The 📡 Flows page was retired 2026-07-29 (`CLAUDE.md`). No displayed *signal* depends on `market_flows` freshness. `health_check.py` still checking it is closer to vestigial than load-bearing. Missing it in the local gate changes nothing about whether a local signal is trustworthy.
+- **#5 rolling-trim sanity — inapplicable to the local path, and its dangerous half is already covered.** The rolling trim is **Postgres-only** (`main.py` L253/L620: `if _trim_pg_url: from database_pg import trim_old_rows_pg`) — the local SQLite pipeline runs no trim, so there is nothing for a local gate to sanity-check. And of the two failure modes check #5 guards: (a) trim stops firing → unbounded table growth = a Postgres *storage-cost* issue, not freshness or correctness (a 5-year table still has today's row); (b) trim runs too aggressively and deletes *recent* rows → `MAX(date)` drops → **`check_all()`'s own EVERY_SESSION `MAX(date)` checks catch it immediately**. Only the benign storage-growth mode is uncovered, and only on a backend that has no trim.
+- **#1 connection** — `check_all()` has an equivalent (`_open()` + a real query, red on failure). `health_check.py` #1's *specific* framing ("no silent fallback to ephemeral SQLite") is a Postgres-side concern; the local path uses the real `config.DB_PATH` and its accidental-Postgres failure mode was OI-8, now fixed.
+
+### 86.4 Decision
+
+**ACCEPTED.** `data_health.check_all()` is a legitimate *"equivalent"* (and on most axes a superset) of `health_check.py` for the local/SQLite execution-time freshness gate, per TR-05's own acceptance wording. The two checks it does not replicate — `market_flows` T+2 freshness and rolling-trim `MIN(date)` sanity — do not bear on trading-signal trust: the first feeds only a retired descriptive surface backed by null data, and the second guards a Postgres-only maintenance job whose only signal-relevant failure mode is already caught by `check_all()`'s `MAX(date)` checks. The Postgres execution path **keeps** `health_check.py`'s full 5 checks unchanged (this decision does not remove anything); the local path's use of `check_all()` is not a downgrade from a "proper port". No code change is warranted. **TR-05 §84.4(c): CLOSED.**
+
+### 86.5 TR-05 status after this entry
+
+TR-05 now has **exactly one** item between AMBER and GREEN: **§84.4(a) — the TR-01 dependency.** Both served surfaces (Streamlit Cloud / Postgres, and the local dashboard / SQLite) run both gates — execution-time and serving-time — and both have been production-observed working, including the local gate PASSING (§85.4) and FAILING correctly (§84.3). The criterion *"every served backend runs an automated freshness gate before publication"* is met for both. What is not yet resolved is the criterion's *"for whichever backend is authoritative"* clause, which is scoped against TR-01 (RED — authority decided in policy, unenforced in code). §5's Definition of Done allows a blocking row to close *"or [be] explicitly downgraded via a documented decision"* — so the remaining path is a decision, not implementation: **either** TR-01 progresses enough to name the enforced authoritative backend, **or** the owner records an explicit decision that "gating *both* served surfaces, authoritative or not, satisfies TR-05 independently of TR-01's timeline." **This is an owner decision (with Claude Chat review), not one Claude Code closes unilaterally** — per the three-role split. Recommendation on the table: the second option is defensible now — the gates over-satisfy the literal criterion (every surface, not just the authoritative one), and holding TR-05 hostage to TR-01's much larger effort adds no real safety.
+
+**Date of this entry: 2026-08-31. Status: TR-05 §84.4(c) CLOSED (coverage delta assessed line-by-line, accepted — not a signal-trust regression). TR-05 now AMBER pending only §84.4(a), the TR-01 dependency, which is a documented-decision for the owner, not implementation. Kiran remains NOT VERIFIED — DO NOT TRADE.**
