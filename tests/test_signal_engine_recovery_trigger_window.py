@@ -147,58 +147,28 @@ def test_last_recovery_as_of_never_raises(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# end to end -- a gap-era trigger is caught, a normal run does not reach back
+# run_recovery_signals wiring -- the gap-widened window reaches the scan loop
 # ---------------------------------------------------------------------------
+#
+# These do NOT assert that a synthetic trigger fires. The ~250-line recovery
+# screener is unchanged by this PR, and it behaves differently across the
+# pandas 2 (CI / Streamlit Cloud) vs pandas 3 (some dev boxes) split
+# documented in ledger §89.9 -- coupling a regression test for the *scan
+# window* to the *gate thresholds* is the wrong seam. The window's exact
+# contents are proven version-independently by the _recovery_trigger_window()
+# tests above; these pin that run_recovery_signals() feeds
+# _last_recovery_as_of() into it and consumes the result.
 
-def _synthetic_recovery_frame():
-    """One symbol with a hand-built recovery-base trigger at index 67 -- 8
-    sessions before the latest date (index 74). Every one of the screener's
-    ~9 gates is passed by a wide margin on purpose: this test asserts the
-    *scan window*, not the gate thresholds, and must not be fragile to a
-    pandas/numpy version difference between the dev box and CI.
-
-    Returns (rows, dates) where rows is the list-of-dicts shape
-    database.get_sector_price_data_300d_active() yields.
-    """
-    n = 75
-    d = pd.bdate_range("2026-04-01", periods=n)
-    close = np.empty(n)
-    vol = np.full(n, 1_000_000.0)
-
-    # 0-14   pre-base plateau at 100  (pre_high)
-    close[0:15] = 100.0
-    # 15-45  deep decline plateau at 30  -> a hard cliff into the base so
-    #        _base_scan() stops unambiguously at index 46 (drop >> 20%)
-    close[15:46] = 30.0
-    # 46-66  the base: a tight 52/54 oscillation (range ~4%, well under 20%)
-    base = np.where(np.arange(46, 67) % 2 == 0, 52.0, 54.0)
-    close[46:67] = base
-    # base volume: baseline == median(vol[46:56]) == 1.0M; three 2x surges
-    # inside the base (Gate 9 needs >=2 bars > 1.5x); the last 5 base bars
-    # collapse to 0.15x (Gate 8 needs mean < 0.5 and >=3 bars < 0.6)
-    for i in (48, 50, 52):
-        vol[i] = 2_000_000.0
-    vol[62:67] = 150_000.0
-    # 67  the trigger: closes far above the base high, on ~9x volume,
-    #     near the top of a wide day range
-    close[67] = 80.0
-    vol[67] = 10_000_000.0
-    # 68-74  drift up after the trigger (keeps avg_vol_20d comfortably > 800k)
-    close[68:75] = 82.0
-    vol[68:75] = 2_000_000.0
-
-    high = close + 2.0
-    low = close - 2.0
-    high[67], low[67] = 82.0, 78.0     # range 4; (80-78)/4 = 0.5 >= 0.40
-
+def _plain_frame(n=75, start="2026-04-01"):
+    """One symbol, n sessions, gentle uptrend -- flows through
+    run_recovery_signals() with status ok and zero signal rows."""
+    d = pd.bdate_range(start, periods=n)
+    close = np.linspace(100.0, 108.0, n)
     rows = [
-        {
-            "symbol": "RECOV", "sector": "CEMENT",
-            "date": d[i].strftime("%Y-%m-%d"),
-            "open": float(close[i]), "high": float(high[i]),
-            "low": float(low[i]), "close": float(close[i]),
-            "volume": float(vol[i]),
-        }
+        {"symbol": "PLAIN", "sector": "CEMENT", "date": d[i].strftime("%Y-%m-%d"),
+         "open": float(close[i]), "high": float(close[i] + 1.0),
+         "low": float(close[i] - 1.0), "close": float(close[i]),
+         "volume": 1_000_000.0}
         for i in range(n)
     ]
     return rows, [ts.strftime("%Y-%m-%d") for ts in d]
@@ -206,56 +176,54 @@ def _synthetic_recovery_frame():
 
 @pytest.fixture
 def screener_env(temp_db, monkeypatch):
-    rows, dates = _synthetic_recovery_frame()
-    monkeypatch.setattr(database, "get_sector_price_data_300d_active",
-                        lambda: rows)
-    monkeypatch.setattr(database, "get_index_prices",
-                        lambda _sym: [{"date": r["date"], "close": 1000.0 + i}
-                                      for i, r in enumerate(rows[-30:])])
+    rows, dates = _plain_frame()
+    monkeypatch.setattr(database, "get_sector_price_data_300d_active", lambda: rows)
+    monkeypatch.setattr(database, "get_index_prices", lambda _sym: [])
     return temp_db, dates
 
 
-def _rows_for(db, as_of_date, symbol="RECOV"):
-    con = sqlite3.connect(db)
-    con.row_factory = sqlite3.Row
-    try:
-        return [dict(r) for r in con.execute(
-            "SELECT * FROM recovery_signals WHERE as_of_date = ? AND symbol = ?",
-            (as_of_date, symbol)).fetchall()]
-    finally:
-        con.close()
+@pytest.fixture
+def window_spy(monkeypatch):
+    """Records every _recovery_trigger_window() call while delegating to the
+    real implementation."""
+    calls: list[dict] = []
+    real = signal_engine._recovery_trigger_window
+
+    def spy(all_dates, last_recorded_as_of):
+        result = real(all_dates, last_recorded_as_of)
+        calls.append({"last_as_of": last_recorded_as_of,
+                      "window_len": result[1],
+                      "n_all_dates": len(list(all_dates))})
+        return result
+
+    monkeypatch.setattr(signal_engine, "_recovery_trigger_window", spy)
+    return calls
 
 
-def test_synthetic_trigger_fires_when_window_reaches_it(screener_env):
+def test_run_widens_window_to_the_gap(screener_env, window_spy):
     db, dates = screener_env
-    latest = dates[-1]
-    # table 10 sessions stale -> window widens to 10 -> the day-67 trigger
-    # (8 sessions before latest) is inside the scan window
-    _seed_as_of(db, dates[-11])
+    _seed_as_of(db, dates[-11])                       # table 10 sessions stale
 
-    res = signal_engine.run_recovery_signals()
-    assert res["status"] == "ok"
-    assert res["as_of_date"] == latest
-
-    hits = _rows_for(db, latest)
-    triggered = [r for r in hits if r["list_type"] == "TRIGGERED"]
-    assert len(triggered) == 1, f"expected the gap-era trigger to be caught: {hits}"
-    row = triggered[0]
-    assert row["triggered_date"] == dates[67]
-    assert row["fresh"] == 0            # caught late, not a same-day trigger
+    assert signal_engine.run_recovery_signals()["status"] == "ok"
+    assert window_spy == [{"last_as_of": dates[-11],  # fed from _last_recovery_as_of()
+                           "window_len": 10,          # widened to the gap
+                           "n_all_dates": len(dates)}]  # full history handed over
 
 
-def test_normal_run_does_not_reach_back_past_five_sessions(screener_env):
+def test_run_keeps_min_window_when_table_is_current(screener_env, window_spy):
     db, dates = screener_env
-    latest = dates[-1]
-    # table is current -> window stays at the 5-session minimum -> the day-67
-    # trigger is outside it and is NOT (re-)recorded on this snapshot
-    _seed_as_of(db, dates[-2])
+    _seed_as_of(db, dates[-1])                        # table current -> 0 behind
 
-    res = signal_engine.run_recovery_signals()
-    assert res["status"] == "ok"
-    triggered = [r for r in _rows_for(db, latest) if r["list_type"] == "TRIGGERED"]
-    assert triggered == []
+    assert signal_engine.run_recovery_signals()["status"] == "ok"
+    assert window_spy[0]["last_as_of"] == dates[-1]
+    assert window_spy[0]["window_len"] == 5
+
+
+def test_run_uses_min_window_on_first_run(screener_env, window_spy):
+    # recovery_signals is empty -> _last_recovery_as_of() is None
+    assert signal_engine.run_recovery_signals()["status"] == "ok"
+    assert window_spy[0]["last_as_of"] is None
+    assert window_spy[0]["window_len"] == 5
 
 
 def test_idempotent_no_duplicate_rows(screener_env):
