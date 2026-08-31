@@ -6125,3 +6125,79 @@ Authorized. Branch `feat/oi9-deployment-identity` @ `db6c917` — 8 files (the 5
 **One gate left (step 4 — production observation):** the first cloud `daily_scraper.yml` run after this merge must be observed to (a) stamp `pipeline_runs.code_version` == that run's `GITHUB_SHA` == `origin/main` HEAD, and (b) after a Cloud reboot, the Data Health drift panel shows ✅ `match`. That run is the Mon 2026-09-01 17:00 UTC cron, or a manual `workflow_dispatch`. Until then TR-11 stays 🔴 RED. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
 
 **Date of this subsection: 2026-08-31. Status: OI-9 code merged (PR #40, `origin/main` = `c85838e`), CI green on the merge commit, local `main` current. Both backends carry `pipeline_runs.code_version`. Awaiting the first post-merge cloud run to observe the SHA stamp + drift-panel ✅ (step 4), then TR-11 GREEN re-assessment.**
+
+## 89. <span style="color:#16a34a;">● TR-01 Phase 1a — `recovery_signals` trigger-scan window widened to cover a pipeline gap; `portfolio_signals` monitoring confirmed already in place; the 37 historical missing snapshot rows accepted, not backfilled (2026-08-31)</span>
+
+First execution unit of the TR-01 enforcement arc (Trust Register §0a.4 / TR-01 "Required Proof"; migration plan §40.17 Phase 1). Owner-authorized after a read-only reconstruction pass revised the approach away from the spec's original one-paragraph sketch (the owner reviewed the revised 1a-i/ii/iii and approved it in session). **Code only — no DB write, no schema change, no `MAINTENANCE_LOG` entry (nothing operational).** PR [#41](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/41). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**; TR-01 stays 🔴 RED (this is one of several Phase 1 prerequisites).
+
+### 89.1 Read-only reconstruction — what `signal_engine.py` actually is
+
+`run_recovery_signals()` and `run_portfolio_signals()` are **DELETE-then-reINSERT single-snapshot writers**, not append-only event logs:
+
+- `run_recovery_signals()` — computes currently-qualifying recovery bases as of `MAX(price date)`; `DELETE FROM recovery_signals WHERE as_of_date = ?` then re-insert for that one date (`signal_engine.py` ~L806 SQLite / `database_pg.write_recovery_signals` PG). The **trigger scan was hard-coded to the last 5 trading sessions** (`all_dates[-5:]` + `range(max(1, n-5), n)`).
+- `run_portfolio_signals()` — reads `sector_signals` latest date, computes the Stage-2 portfolio screen, same DELETE+reINSERT keyed to `as_of_date`. **Pure snapshot — no trigger/event concept at all.**
+
+**No consumer reads historical (non-latest) `as_of_date` rows.** Confirmed by direct read:
+- `dashboard.py:5746` (recovery) / `:5984` (portfolio) — both `SELECT ... WHERE as_of_date = (SELECT MAX(as_of_date) ...)`.
+- `agent.py:1189` — `MAX(as_of_date) ... WHERE list_type='TRIGGERED'`.
+- `data_health.check_all()` — `recovery_signals` in `EVERY_SESSION` (checks `MAX(as_of_date)` freshness only); `portfolio_signals` in `HEARTBEAT`.
+No forward-return join, no backtest read, no historical-series consumer anywhere.
+
+### 89.2 Historical-coverage check (read-only, live local `psx_data.db`) — §40.8's open question answered
+
+`scratch phase1a_historical_gap_check.py`, `mode=ro` SELECT only. Trading calendar = 5353 distinct `prices` dates, 2005-01-03 .. 2026-08-28.
+
+| Table | distinct `as_of_date` | sessions in span | present | **missing** | current? |
+|---|---|---|---|---|---|
+| `recovery_signals` | 14 | 51 | 14 | **37** | MAX 2026-08-28, 0 behind |
+| `portfolio_signals` | 14 | 51 | 14 | **37** | MAX 2026-08-28, 0 behind |
+| `setup_log` (ref, fixed loop) | 2880 | 2881 | 2880 | 1 | — |
+| `leaders_scan` (ref, fixed loop) | 46 | 50 | 46 | 4 | — |
+
+**The 37 missing sessions are three explained runs**, not silent gaps from the latest-date-only defect itself:
+- `2026-07-02 → 2026-08-17` (32 sessions) — before `signal_engine.main()` had **any** automated caller. It was wired into `cmd_update()` on 2026-08-19 (§30 / CLAUDE.md); until then `recovery_signals` only updated when someone ran `python signal_engine.py` by hand (last such run 2026-07-01).
+- `2026-08-19` (1) and `2026-08-21 → 2026-08-27` (4) — the **OI-8** window: `signal_engine.py`'s `load_dotenv()` at import routed local runs' signal-table writes to Postgres, freezing local SQLite's copies. Fixed 2026-08-31 (PR #36); local caught up 2026-08-31 (§85).
+
+Both tables are current now (MAX `as_of_date` = 2026-08-28, 0 sessions behind).
+
+### 89.3 The one real defect, and the two non-defects
+
+- **REAL — `run_recovery_signals`'s hard-coded 5-session trigger window.** If the pipeline does not run for **>5 trading sessions**, any recovery-base **trigger** that fired in the gap is never scanned and is **silently, permanently dropped** — the same class of defect as `boring_signals`' old 15-day window (OI-6, §35.5), tighter (5 vs 15). The WATCHLIST rows are pure snapshot (recomputed every run — no loss).
+- **NOT a defect — `portfolio_signals`.** Pure point-in-time snapshot; a missed day just means no row for that historical `as_of_date`, and nothing reads historical rows. No event/trigger, no loss mechanism.
+- **NOT a defect — the 37 historical missing rows.** Explained provenance (89.2); zero consumer impact (89.1).
+
+### 89.4 Correction to the Phase 1a spec — item 1a-ii was based on a stale premise
+
+The pre-registered spec (§2.1) stated `portfolio_signals` was "absent from both `EVERY_SESSION` and `HEARTBEAT`" and proposed adding it to `EVERY_SESSION` (item 1a-ii). **That reading was wrong** — the spec's read of `data_health.py` was cut off before the end of the `HEARTBEAT` list. `portfolio_signals` **is** in `HEARTBEAT` (`data_health.py:93`), added under TR-06 Tier 2 (2026-08-24), with an explicit in-code rationale:
+
+> *"Heartbeat, not EVERY_SESSION: `run_portfolio_signals()` snapshots the latest `sector_signals` date rather than guaranteeing one row per trading session, so a `MAX(date)`-vs-expected-session check could false-positive the same way `leaders_top_picks` would if checked that way."*
+
+`main.py:533` writes the `portfolio_signals` heartbeat every `cmd_update()` (`status` = the sub-signal's own reported status; a stale `run_date` or `status='error'` is flagged). **Item 1a-ii → NO CHANGE.** Adding `portfolio_signals` to `EVERY_SESSION` would *regress* monitoring quality (spurious STALE → spurious NOT VERIFIED whenever `sector_signals` lags a day). Observation for TR-06, not acted on here: the `portfolio_signals` heartbeat carries `rows_written` but no `execution_status`/`coverage_status` pair.
+
+### 89.5 The fix (item 1a-i) — `signal_engine.py`
+
+New module-level constants + two helpers, immediately above `run_recovery_signals()`:
+
+- `_RECOVERY_TRIGGER_WINDOW_MIN = 5`, `_RECOVERY_TRIGGER_WINDOW_CAP = 30`.
+- `_recovery_trigger_window(all_dates, last_recorded_as_of) -> (set, int)` — **pure function.** Window length = `max(5, sessions strictly after last_recorded_as_of)`, clamped to `[5, 30]` and to `len(all_dates)`. `None` (first run / unreadable table) → the 5-session minimum.
+- `_last_recovery_as_of() -> str | None` — read-only `SELECT MAX(as_of_date) FROM recovery_signals`, branches on `_PG_URL` exactly like the write path, **never raises** (a missing table on a fresh DB or a transient error degrades to `None` = minimum window, never an exception that would abort the recovery hook).
+
+In `run_recovery_signals()`: the hard-coded `last_5_dates = set(all_dates[-5:])` is replaced by `trig_dates, trig_window = _recovery_trigger_window(all_dates, _last_recovery_as_of())` (logged: `"trigger scan window = N session(s)"`), and the per-symbol scan loop becomes `for t in range(max(1, n - trig_window), n): if dates[t] not in trig_dates: ...`. Nothing else in the ~250-line screener changes — no `as_of_date` threading, no replay, no new table. `vol_ma50[t]` stays valid for the widened `t` (per-symbol guard `if n < 60: continue` ⇒ `t ≥ 30`; `rolling(50, min_periods=30)` ⇒ index ≥ 29 non-NaN; plus the existing `if vol_ma50[t] <= 0: continue`).
+
+**Behavioural note (documented, accepted):** a gap-caught trigger surfaces on the recovery-day snapshot with its real `triggered_date` and `fresh = 0`. On subsequent **normal** runs the window returns to 5, so a late-caught trigger ages out of the scan faster than a same-day trigger would — but since no consumer reads historical snapshots, the practical effect is *"the trigger surfaces on the day the pipeline recovers, instead of never."* An outage longer than the 30-session cap still drops its oldest triggers — an accepted bound (such an outage is already loud in every other freshness gate; the whole dashboard is NOT VERIFIED).
+
+### 89.6 The 37 historical rows — accepted, not backfilled (item 1a-iii)
+
+Owner-approved (revised Phase 1a, sign-off 2026-08-31). Rationale: explained provenance (89.2), zero consumer impact (89.1), and a true *"as of past date"* replay would need `as_of_date` threaded through the 300-day-window screener math (KSE-100 regime check, 20/50-bar volume MAs, base scans — all currently assume "now"), reproducing the replay-over-populated-table artifact class already documented for OI-6 (§77.6) — disproportionate cost for rows nothing reads. If a future need to read historical recovery/portfolio snapshots arises, backfilling them is a separate, independently-signed-off task with that caveat attached.
+
+### 89.7 Tests — `tests/test_signal_engine_recovery_trigger_window.py` (new, 13 tests)
+
+- `_recovery_trigger_window` (pure): `None` → 5; current table → 5; 10-session gap → 10; cap binds at 30 over a 120-session history; clamps to a 3-session history; clamps to `len(all_dates)`.
+- `_last_recovery_as_of` (isolated SQLite): reads the real `MAX`; `None` on an empty table; `None` (never raises) on a DB file with no `recovery_signals` table.
+- End-to-end (isolated SQLite + a hand-built synthetic recovery-base trigger 8 sessions before the latest date, driven through all 9 screener gates): with the table 10 sessions stale the day-67 trigger **is caught** (one `TRIGGERED` row at the latest `as_of_date`, `fresh = 0`, `triggered_date` = day 67); on a **normal** run (table current, window 5) it is **not** re-recorded; running twice produces no duplicate rows; the widened window size is logged.
+
+Full unit suite: **305 passed** (7m20s). App-boot smoke test: **16 passed**.
+
+### 89.8 Status
+
+Item 1a-i implemented + tested; 1a-ii confirmed already satisfied (no change); 1a-iii owner-accepted. This closes the `recovery_signals` half of §40.8's Phase 1 prerequisite. **Still open in Phase 1:** `leaders_top_picks` latest-date-only (`leaders_scan.save_top_picks`, `leaders_scan.py:859`); rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite↔PG `boring_signals` parity integration test (§35.3); TR-14 (authoritative universe). **Date of this section: 2026-08-31.**

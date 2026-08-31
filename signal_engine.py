@@ -473,6 +473,75 @@ def _killed_stm_signals() -> dict:
 # SECTION 5: run_recovery_signals()
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Recovery-base trigger scan window (Trust Register TR-01 Phase 1a, audit
+# ledger §89). run_recovery_signals() writes a single snapshot keyed to the
+# latest price date; the trigger scan used to look only at the last 5 trading
+# sessions, so any recovery-base trigger that fired while the pipeline was not
+# running for >5 sessions was silently and permanently dropped (the same class
+# of defect as boring_signals' old 15-day window). The window is now widened to
+# cover any gap since recovery_signals was last written, capped so a first run
+# or a multi-week outage cannot become an unbounded scan. An outage longer than
+# the cap still drops its oldest triggers -- an accepted bound, because an
+# outage that long is already loud in every other freshness gate.
+_RECOVERY_TRIGGER_WINDOW_MIN = 5
+_RECOVERY_TRIGGER_WINDOW_CAP = 30
+
+
+def _recovery_trigger_window(all_dates, last_recorded_as_of):
+    """Recent trading dates to scan for fresh recovery-base triggers.
+
+    all_dates            -- ascending sequence of trading dates present in the
+                            screener price frame (numpy datetime64 / Timestamp).
+    last_recorded_as_of  -- MAX(as_of_date) already in recovery_signals
+                            ('YYYY-MM-DD' or a date), or None on a first run /
+                            unreadable table.
+
+    Returns (window_dates: set, window_len: int). window_len is
+    max(5, sessions strictly after last_recorded_as_of) clamped to
+    [5, 30] and to len(all_dates).
+    """
+    n = _RECOVERY_TRIGGER_WINDOW_MIN
+    if last_recorded_as_of:
+        cutoff = pd.Timestamp(last_recorded_as_of)
+        behind = sum(1 for d in all_dates if pd.Timestamp(d) > cutoff)
+        n = max(_RECOVERY_TRIGGER_WINDOW_MIN,
+                min(behind, _RECOVERY_TRIGGER_WINDOW_CAP))
+    n = min(n, len(all_dates))
+    return set(all_dates[-n:]), n
+
+
+def _last_recovery_as_of():
+    """MAX(as_of_date) in recovery_signals, or None. Read-only; never raises.
+
+    Branches on _PG_URL exactly like the write path below. A read failure
+    (missing table on a fresh DB, transient connection error) degrades to
+    None -- i.e. the minimum trigger window -- never to an exception that
+    would abort the whole recovery hook.
+    """
+    try:
+        if _PG_URL:
+            from database_pg import get_conn as _pg_get_conn
+            conn = _pg_get_conn()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT MAX(as_of_date) FROM recovery_signals")
+                    row = cur.fetchone()
+            finally:
+                conn.close()
+        else:
+            conn = get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT MAX(as_of_date) FROM recovery_signals").fetchone()
+            finally:
+                conn.close()
+        return row[0] if row and row[0] else None
+    except Exception as exc:
+        log.warning("_last_recovery_as_of: could not read recovery_signals "
+                    "(%s) -- using the minimum trigger window", exc)
+        return None
+
+
 def run_recovery_signals() -> dict:
     """
     Compute Recovery Bases signals and write to recovery_signals table.
@@ -535,9 +604,11 @@ def run_recovery_signals() -> dict:
                     "triggered": 0, "watchlist": 0}
 
         latest_date  = all_dates[-1]
-        last_5_dates = set(all_dates[-5:]) if len(
-            all_dates) >= 5 else set(all_dates)
+        trig_dates, trig_window = _recovery_trigger_window(
+            all_dates, _last_recovery_as_of())
         today_dt     = pd.Timestamp(latest_date).date()
+        log.info("run_recovery_signals: trigger scan window = %d session(s)",
+                 trig_window)
 
         def _base_scan(c, from_idx, thr=0.20, max_lb=90):
             hi = lo = c[from_idx]
@@ -582,8 +653,8 @@ def run_recovery_signals() -> dict:
                 continue
 
             trigger_hit = None
-            for t in range(max(1, n - 5), n):
-                if dates[t] not in last_5_dates:
+            for t in range(max(1, n - trig_window), n):
+                if dates[t] not in trig_dates:
                     continue
                 prev = t - 1
                 if prev < 15:
