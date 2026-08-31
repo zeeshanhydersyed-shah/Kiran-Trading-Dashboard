@@ -6273,8 +6273,70 @@ PR #42 also sweeps in **ledger §89.11** (the Phase 1a / PR #41 merge record), u
 
 ### 90.7 CI outcome
 
-PR #42: <CI_RESULT>.
+PR #42 (2 commits: the §89.11 sweep-in + the fix): all 3 checks green on the pinned stack — `clean-install` (Python 3.11), `unit-tests` **294 passed / 75.8s**, `app-boot` **16 passed**. **Merged 2026-08-31** under owner sign-off (`gh pr merge 42 --merge --delete-branch`) → **`origin/main`: `22d15ad` → `e8a4a87`** (merge commit); CI green on the merge commit; local `main` fast-forwarded; `leaders_scan.py` confirmed carrying `save_top_picks(..., scan_date=...)` / `_save_top_picks_pg(scan_date=...)` and the per-date `run_all()` loop; `daily_scraper.yml` **not** triggered by the merge (last run 2026-08-29).
 
 ### 90.8 Status
 
-Item 1b-i implemented + tested. **1b-ii (historical backfill) OPEN — awaiting owner decision.** After 1b-i + (if approved) 1b-ii, `leaders_top_picks` is closed for Phase 1. **Still open in Phase 1:** rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite↔PG `boring_signals` parity integration test (§35.3); TR-14 (authoritative universe). **Date of this section: 2026-08-31.**
+Item 1b-i implemented + tested + **merged**. Item **1b-ii (historical backfill) EXECUTED — see §91** (owner-authorized, both backends). Together they **close** the `leaders_top_picks` latest-date-only defect for Phase 1. **Still open in Phase 1:** rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite↔PG `boring_signals` parity integration test (§35.3); TR-14 (authoritative universe). **Date of this section: 2026-08-31.**
+
+## 91. <span style="color:#16a34a;">● TR-01 Phase 1b-ii — `leaders_top_picks` historical backfill EXECUTED, both backends (2026-08-31)</span>
+
+Owner-authorized follow-up to §90 (Phase 1b-i, PR #42 merged, `origin/main` = `e8a4a87`). Recovers the `leaders_top_picks` scan_dates that `save_top_picks()`'s latest-date-only defect skipped. The §0a mandate ("any designed-but-unexecuted DB write MUST appear here with its exact predicate and backup plan the moment it is designed"). **A DB write on both backends — held at the dry run below pending explicit sign-off on the real write.**
+
+### 91.1 Read-only state (both backends, 2026-08-31)
+
+| | SQLite `psx_data.db` | Postgres (live Supabase) |
+|---|---|---|
+| `leaders_scan` | 907 rows / **46** distinct scan_dates / 2026-06-16 → 2026-08-28 | 887 rows / **49** distinct scan_dates / 2026-06-16 → 2026-08-28 |
+| `leaders_top_picks` | 34 rows / 17 dates / MAX **2026-08-17** | 11 rows / 5 dates / MAX **2026-06-30** |
+| `leaders_scan` dates absent from `leaders_top_picks` | **29** | **44** |
+| — of those, dates that produce picks (`final_score ≥ 5`) | **8** | **17** |
+| — genuine zero-pick dates | 21 | 27 |
+| rows the backfill would INSERT | **+19** | **+34** |
+
+§40.4's "PG `leaders_top_picks` frozen at 2026-06-30" is **confirmed still true** (the `_save_top_picks_pg` MAX-only defect never advanced it); §40.4's "PG `leaders_scan` frozen at 2026-06-30" is **stale — PG `leaders_scan` is current** (49 dates through 08-28; the OI-8-era catch-up, §85). The SQLite↔PG per-date pick differences (e.g. 07-09: both 3 rows; 07-03: SQLite 4 / PG 0; 08-10: SQLite 3 / PG 1) are the **pre-existing** cross-backend `leaders_scan` divergence — each backend's picks derive from its own `leaders_scan`. 1b-ii makes **each backend internally consistent** (top_picks covers its own leaders_scan); it does **not** reconcile the two backends against each other (TR-13/TR-01 territory, out of scope).
+
+### 91.2 Exact predicate
+
+For each `scan_date` in `leaders_scan` **not present** in `leaders_top_picks`, invoke the (just-merged, §90) per-date writer:
+- **SQLite:** `leaders_scan.save_top_picks(psx_data.db_path, scan_date=d)` — 29 dates. Each: `DELETE FROM leaders_top_picks WHERE scan_date = d` (removes **0** rows, none exist) → `INSERT` ≤3 per setup_type with `final_score ≥ MIN_PICK_SCORE=5`. Expected net **+19 rows across 8 dates**; the 21 zero-pick dates are a no-op.
+- **Postgres:** `leaders_scan._save_top_picks_pg(scan_date=d)` (called directly, not via `save_top_picks`, so it reads the live env not the import-time `_PG_URL`) — 44 dates. Same shape, `ON CONFLICT (scan_date, setup_type, rank) DO UPDATE` (irrelevant here — no conflicts, the dates are new). Expected net **+34 rows across 17 dates**.
+
+**No `UPDATE` or `DELETE` of any existing `leaders_top_picks` row** (34 SQLite / 11 PG) — each backfilled date currently has zero rows. **No write to any other table.** Backfilled rows start `outcome_label='OPEN'`, `fwd_return_*` NULL; the next pipeline run's `fill_leaders_forward_returns()` (whole-table, idempotent, already in `run_all`) labels the closed-window ones — deferred to that run, not part of this backfill.
+
+The dry run (read-only replay of `save_top_picks`'s own selection query) enumerating every row to be inserted is in `scratch phase1b_ii_dryrun.py` output, reproduced in the session.
+
+### 91.3 Backup plan (mandatory — Supabase PITR is OFF)
+
+- **SQLite:** full online-backup file copy → `backups/psx_data_pre_leaders_toppicks_20260831.db`, `PRAGMA integrity_check`, sha256 recorded here. Retain until the next clean nightly.
+- **Postgres:** CSV export of all 11 `leaders_top_picks` rows + a snapshot table `leaders_top_picks_pre_1bii_20260831` (row-count-verified) → `scratch_leaders_toppicks_1bii_20260831/`. Rollback = `DELETE FROM leaders_top_picks WHERE scan_date NOT IN (<the 5 original dates>)` then re-`INSERT ... SELECT * FROM` the snapshot; or drop-and-reimport from CSV.
+
+### 91.4 Verification (independent, post-write, fresh connections)
+
+- SQLite: `integrity_check` ok; `leaders_top_picks` row count 34 → 53 (+19); the 34 pre-existing rows byte-identical (full-column diff); every `leaders_scan` scan_date now either present in `leaders_top_picks` or confirmed zero-pick by re-running the selection query; a second backfill pass is a 0-row no-op (idempotent).
+- Postgres: `leaders_top_picks` 11 → 45 (+34); the 11 pre-existing rows byte-identical; idempotent re-run 0 rows; `leaders_scan` untouched (887 rows).
+- Dashboard Leaders "audit" panel (`WHERE scan_date <= now-10d`) now shows the recovered dates.
+
+### 91.5 Executed (2026-08-31, under explicit owner sign-off)
+
+**Backups first:**
+- SQLite — online-backup copy `backups/psx_data_pre_leaders_toppicks_20260831.db`, `integrity_check` ok, sha256 `b7dc2b282d1498254651bec9c4b23b446c4a82c650b941dd7827e21feb0202b0`, 882016256 bytes, 34 `leaders_top_picks` rows.
+- Postgres — `scratch_leaders_toppicks_1bii_20260831/leaders_top_picks_pre_1bii.csv` (11 rows / 19 cols) + snapshot table `leaders_top_picks_pre_1bii_20260831` (11 rows, committed; `transaction_read_only=off` confirmed).
+
+**Backfill (two separate processes, SQLite one hard-guarded to abort on any PG env):**
+- SQLite (`scratch_.../backfill_sqlite.py`) — `save_top_picks(scan_date=d)` for all 29 missing dates. **34 → 53 rows (+19 across 8 dates)**; all 34 pre-existing rows **0 changed / 0 dropped**; `leaders_scan` unchanged (907); `integrity_check` ok; the 21 dates still without a row all re-confirmed genuine zero-pick.
+- Postgres (`scratch_.../backfill_pg.py`) — `_save_top_picks_pg(scan_date=d)` called directly (bypasses the import-time `_PG_URL`) for all 44 missing dates. **11 → 45 rows (+34 across 17 dates)**; all 11 pre-existing rows **0 changed / 0 dropped**; `leaders_scan` unchanged (887); 27 remaining dates all genuine zero-pick.
+
+**Independent re-verification (fresh connections, vs the backups):**
+- SQLite — `integrity_check` ok; all 34 backup rows present in live **and byte-identical** (full 19-column compare); `leaders_scan` 907 = 907; final 53 rows / 25 distinct scan_dates; re-deriving 3 already-done dates = **0 net change** (idempotent); the dashboard "audit" query (`scan_date <= date('now','-10 days')`) now returns 25 dates incl. the recovered 06-17 / 07-03 / 07-09 / 08-04…08-10.
+- Postgres — all 11 snapshot rows present + byte-identical; `leaders_scan` 887; final **45 rows / 22 distinct scan_dates**; re-deriving 3 already-done dates = 0 net change.
+
+**Forward returns:** the +19 / +34 rows carry `outcome_label='OPEN'`, `fwd_return_*` NULL — deliberately not filled here; the next pipeline run's `fill_leaders_forward_returns()` / `_fill_leaders_forward_returns_pg()` (whole-table, idempotent, already wired into `run_all`) labels the closed-window ones. Local: next `run_update.bat`. Cloud: the Mon 2026-09-01 `daily_scraper.yml` run.
+
+**Cross-backend note:** the two backends' backfilled sets differ (SQLite +19/8 dates vs PG +34/17 dates) because each derives from **its own** `leaders_scan`, which diverge (the pre-existing TR-13/TR-01 issue). 1b-ii makes each backend **internally** consistent; it does not and should not reconcile the two.
+
+**Retention:** keep both backups until a clean nightly on each backend confirms health. `MAINTENANCE_LOG.md` carries one entry per backend.
+
+### 91.6 Status
+
+**Item 1b-ii DONE, both backends.** Combined with 1b-i (PR #42), the `leaders_top_picks` latest-date-only defect is **closed** — a Phase 1 prerequisite of TR-01. Trust Register not touched. **Still open in Phase 1:** rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite↔PG `boring_signals` parity integration test (§35.3); TR-14 (authoritative universe). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**; TR-01 stays 🔴 RED. **Date of this section: 2026-08-31.**
