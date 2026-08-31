@@ -5847,3 +5847,55 @@ The staleness the local gate caught on 2026-08-26 is caused by `signal_engine.py
 - **Kiran: NOT VERIFIED — DO NOT TRADE.** Nothing in this entry authorizes trading or moves a blocking row off RED/AMBER.
 
 **Date of this entry: 2026-08-30. Status: TR-05 state reconstructed — both gates deployed + 43/43 tested + each half production-observed; register row rewritten AMBER→AMBER with the three named blockers to GREEN made explicit. New: OI-8 (`signal_engine.py` routing fix) logged. No code change, no DB write, no commit in this entry.**
+
+
+---
+
+## 85. <span style="color:#16a34a;">● OI-8 fixed (PR #36) + local pipeline caught up to 2026-08-28; freshness gate now observed PASSING locally; a local dashboard "Refresh Data" click had authored PG's entire 08-28 day (OI-8 × the §82 cloud outage) — verified sound, kept (2026-08-31)</span>
+
+**WRITE ENTRY** — code merge (PR #36, `origin/main` `a866d2f` → `f6fd399`) + local SQLite writes (`recovery_signals`, `portfolio_signals`, `boring_signals`, `boring_signals_scanned`, `leaders_scan`, all for 2026-08-28) + a forensic finding about PG writes that had already happened. Backup: `backups/psx_data_pre_oi8_catchup_20260830.db` (`PRAGMA integrity_check` → ok, sha256 `fd000f5a012fc1651cf83f74320e644f0f25bf8b0c9d2d64d10c18575296290c`, 882016256 bytes).
+
+### 85.1 Trigger
+
+The user opened the local Streamlit dashboard, clicked **"Refresh Data"** several times (2026-08-30), and reported it "didn't refresh." Investigation: local SQLite `prices`/`prices_adjusted`/`market_regime`/`sector_signals`/`stock_signals`/`setup_log` *had* reached 2026-08-28, but `recovery_signals`/`portfolio_signals` stayed at 2026-08-20, `boring_signals` at 08-25, `leaders_scan` at 08-20 — so `run_freshness_gate()` (TR-05) correctly failed STALE on every click. That fail-closed verdict *is* the "didn't work" the user saw.
+
+### 85.2 Root cause — OI-8, and the structural gap behind it
+
+**OI-8 mechanism:** `signal_engine.py` called `load_dotenv(override=False)` at import. That populates `os.environ` for the **whole process**, so a plain local `cmd_update()` (dashboard button or `main.py`) ends up with `SUPABASE_DB_URL` set → `database.py` and the `_pg`-branching hooks (`run_recovery_signals`, `run_portfolio_signals`, `scan_boring_breakouts_pending`, `leaders_scan.run_all`, and `upsert_prices` itself) all switch to Postgres. Every other module reads the env vars straight from the real process environment and never touches `.env`, precisely so an unset var falls through to SQLite locally.
+
+**Confirmed blast radius (larger than §84.5's first characterization):** PG `pipeline_runs` shows the *entire* 08-28 hook chain — `corporate_action_append`, `corporate_action_suspects_scan`, `regime`, `sector_signals`, `stock_signals`, `recovery_signals`, `portfolio_signals`, `setup_log`, `leaders_scan`, `support_reversal`, `boring_signals` — with `finished_at` 2026-08-30 16:53–17:49 UTC. **There is no GitHub Actions `daily_scraper` run on 2026-08-30** (the cloud cron has not succeeded since run `33132360891`, 2026-08-28 01:16, which scraped 08-27 — §82). So **PG's entire 2026-08-28 dataset was authored by the user's local dashboard**, via OI-8, filling the gap the §82 cloud outage left.
+
+**The structural gap (the user's own observation — "isn't this a flaw in itself"):** OI-8 is the proximate bug, but nothing *enforces* that a non-authoritative local process (a dashboard button, a hand-run script) cannot write to the authoritative Postgres backend. A single `load_dotenv()` was enough to turn the local dashboard into a production writer. This is **TR-01** (publication/consumer authority — decided in policy, unenforced in code) and **TR-12** (write-surface control — RED). OI-8's fix removes one path, not the class. Recorded against both rows.
+
+### 85.3 The fix — PR #36 (`f6fd399`)
+
+`signal_engine.py`: the `try: from dotenv import load_dotenv; load_dotenv(override=False)` block removed, replaced with a comment explaining why. Verified: `signal_engine.py` reads **only** `DATABASE_URL`/`SUPABASE_DB_URL` from the environment (grepped — nothing else); no other module in the local pipeline path calls `load_dotenv`; `.env` does not exist on Actions runners so `load_dotenv()` was already a no-op on the cloud path (unchanged). Cherry-picked the pre-existing `fix/signal-engine-local-db-routing` commit (`7f4c7e4`) onto current `origin/main` in an isolated worktree; range-diff identical. Tests: **267 passed**, 1 failure (`test_serving_revision.py::test_default_repo_dir_finds_this_actual_checkout`) is the known git-**worktree** artifact (`.git` is a file, not a dir — §75.3); CI on the PR ran on a clean checkout, **3/3 green**. Merged `--merge`; local `main` fast-forwarded; worktree removed.
+
+### 85.4 Local catch-up — `scratch_oi8_catchup_20260830/catchup.py`
+
+Backup first (§85 header). With OI-8 fixed in the working tree, ran the 3 hooks the `if not new_dates:` early-return branch skips (prices were already at 08-28 locally), in `cmd_update()` tail order, calling the real production functions, hard-guarded to `sys.exit()` if any PG URL is visible (belt-and-suspenders — the guard never tripped; **0 PG writes during the catch-up, independently verified**):
+
+| hook | result (SQLite) |
+|---|---|
+| `signal_engine.main()` | `recovery_signals` 5 rows @ 08-28 (triggered=0, watchlist=5); `portfolio_signals` 308 rows @ 08-28 |
+| `scan_boring_breakouts_pending()` + `update_open_signal_statuses()` | scanned 08-27 (+9: APL, BUXL, MSOT, POL, UPFL) and 08-28 (+4: HICL, PKGI); markers written; eligible=2 processed=2 |
+| `leaders_scan.run_all()` | backfilled 5 dates 08-21 → 08-28, 0 failed |
+| `main.run_freshness_gate()` | **`Freshness gate passed -- state verified fresh as of 2026-08-28.` → True** |
+
+Post: every local table at **2026-08-28** (`prices`, `prices_adjusted`, `market_regime`, `sector_signals`, `stock_signals`, `recovery_signals`, `portfolio_signals`, `boring_signals`, `boring_signals_scanned`, `leaders_scan`). `PRAGMA integrity_check` → **ok**. Local dashboard now fully current; the local freshness gate passes.
+
+### 85.5 Disposition of PG's 08-28 rows — KEEP, verified sound
+
+The 08-28 base scrape is **identical on both backends**: KSE-100 close 177696.5 == 177696.5; `prices` 08-28 n=489 / avg 284.80 == 489 / 284.80. The PG signal rows (`recovery_signals` 5, `portfolio_signals` 300, `leaders_scan` 15, `boring_signals` 6) were computed from that real scrape via the real `_pg` functions with the OI-6 marker updated. Cross-check against local's own 08-28 scan: `boring_signals` — PG's `HICL` and `PKGI` match local exactly; PG's third symbol `BUXL`/08-28 ≈ local's `BUXL`/**08-27** (local fired the BUXL breakout a day earlier and still holds it open, so local's dedup gate suppressed a fresh 08-28 signal; PG, rebuilt from a 2026-07-10 floor, resolved its restored `BUXL`/08-21 to `Stopped` (§83) and had no open position, so it fired on 08-28). Same breakout, different date attribution — the §0a.2.5 / §35.3 cross-backend parity-divergence class, already tracked.
+
+**Removal was considered and rejected:** `recovery_signals`/`portfolio_signals`/`leaders_scan` write current-date-only, so tonight's cloud cron (08-31, now that §82's fix is deployed) will **not** restore an 08-28 that was deleted — removal would leave PG permanently missing a valid trading day. `boring_signals` is append-only and its 08-28 marker is set; removal + reopening the marker just makes the next cloud run re-derive the same rows. Net of removal: a gap, or churn. **The rows stay.** This is an accepted small TR-01 violation (one pipeline authored the other's day, during the other's outage) that the root-cause fix (OI-8) plus §82 (cloud cron restored) prevents recurring.
+
+### 85.6 What this closes / does not
+
+- **OI-8: CLOSED** (PR #36 merged). Trust Register OI-8 → DONE.
+- **TR-05 §84.4 item (b) — RESOLVED.** The local execution-time freshness gate has now been observed **PASSING** in production (2026-08-31 09:42 PKT, post-catch-up) — the one thing §84 recorded as never having been seen. TR-05's remaining blockers to GREEN are now just (a) TR-01 and (c) the `check_all` / `health_check.py` coverage-equivalence decision.
+- **Local pipeline restored** — effectively down since 2026-08-26 (fail-closed on the stale `recovery_signals`); the next `run_update.bat` (Windows logon) now routes to SQLite correctly and the gate passes.
+- **NOT closed:** the structural write-surface gap — TR-01 (authority unenforced) / TR-12 (write-surface control, RED). Nothing yet *prevents* a local process from writing to authoritative Postgres; OI-8 removed one route into that, not the class.
+- **Kiran: NOT VERIFIED — DO NOT TRADE.**
+
+**Date of this entry: 2026-08-31. Status: OI-8 CLOSED (PR #36). Local pipeline caught up to 2026-08-28 and the local freshness gate observed PASSING — TR-05 §84.4(b) resolved, (a)+(c) remain. PG's 08-28 day was locally-authored (OI-8 × §82 outage), verified sound, kept. Structural write-surface gap (TR-01/TR-12) recorded, not closed. Kiran remains NOT VERIFIED — DO NOT TRADE.**
