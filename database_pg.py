@@ -2116,18 +2116,25 @@ def rebuild_symbol_adjusted_pg(symbol: str, ex_date: str, adjustment_factor: flo
 
 # ── ROLLING TRIM ───────────────────────────────────────────────────────────────
 
-# Confirmed date columns (verified against Supabase schema 2026-07-08):
+# Confirmed date columns (verified against Supabase schema 2026-07-08;
+# sector_signals verified 2026-08-31 -- native DATE column, TR-01 Phase 1c).
+# health_check.check_rolling_trim() carries a copy of this list -- keep the
+# two in lockstep (test_rolling_trim_coverage.py pins that they match).
+# index_prices is deliberately NOT trimmed: it is a small table (~2 MB, ~5
+# rows/session) and audit §40.14's retention design keeps small tables at
+# full history; regime / Weinstein index lookbacks can exceed 2 years.
 _TRIM_TABLES: list[tuple[str, str]] = [
     ("prices",              "date"),
     ("prices_adjusted",     "date"),
     ("stock_signals",       "date"),
+    ("sector_signals",      "date"),        # TR-01 Phase 1c / audit §38.1
     ("setup_log",           "setup_date"),
     ("symbol_active_dates", "date"),
 ]
 
 
 def trim_old_rows_pg() -> dict[str, int]:
-    """Delete rows older than 2 years from the five large Supabase tables.
+    """Delete rows older than 2 years from the six large Supabase tables.
 
     Uses CURRENT_DATE - INTERVAL '2 years' as the cutoff so the window
     rolls forward automatically each night.  Each table is trimmed in its

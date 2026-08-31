@@ -151,11 +151,13 @@ def check_flows_freshness(conn) -> bool:
 
 
 def check_rolling_trim(conn) -> bool:
-    """Check 5 -- rolling trim sanity (E8.6a regression guard). Same 5 tables as _TRIM_TABLES."""
+    """Check 5 -- rolling trim sanity (E8.6a regression guard). Same tables as
+    database_pg._TRIM_TABLES -- kept in lockstep, pinned by
+    tests/test_rolling_trim_coverage.py."""
     tables = [
         ("prices", "date"), ("prices_adjusted", "date"),
-        ("stock_signals", "date"), ("setup_log", "setup_date"),
-        ("symbol_active_dates", "date"),
+        ("stock_signals", "date"), ("sector_signals", "date"),
+        ("setup_log", "setup_date"), ("symbol_active_dates", "date"),
     ]
     cur = conn.cursor()
     cur.execute("SELECT CURRENT_DATE - INTERVAL '2 years' - INTERVAL '7 days'")
