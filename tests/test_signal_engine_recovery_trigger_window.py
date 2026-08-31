@@ -151,44 +151,45 @@ def test_last_recovery_as_of_never_raises(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def _synthetic_recovery_frame():
-    """One symbol with a hand-built recovery-base trigger 8 sessions before the
-    latest date. Returns (rows, dates) where rows is the list-of-dicts shape
-    database.get_sector_price_data_300d_active() yields."""
+    """One symbol with a hand-built recovery-base trigger at index 67 -- 8
+    sessions before the latest date (index 74). Every one of the screener's
+    ~9 gates is passed by a wide margin on purpose: this test asserts the
+    *scan window*, not the gate thresholds, and must not be fragile to a
+    pandas/numpy version difference between the dev box and CI.
+
+    Returns (rows, dates) where rows is the list-of-dicts shape
+    database.get_sector_price_data_300d_active() yields.
+    """
     n = 75
     d = pd.bdate_range("2026-04-01", periods=n)
-    close = np.zeros(n)
+    close = np.empty(n)
     vol = np.full(n, 1_000_000.0)
 
-    # 0-14  pre-base plateau at 100
+    # 0-14   pre-base plateau at 100  (pre_high)
     close[0:15] = 100.0
-    # 15-45 decline 100 -> 55
-    close[15:46] = np.linspace(99.0, 55.0, 31)
-    vol[15:46] = 1_100_000.0
-    # 46-51 bounce 55 -> 63 (base forms above the low)
-    close[46:52] = np.linspace(56.0, 63.0, 6)
-    # 52-66 the base, oscillating 61..66
-    base = np.array([64, 62, 65, 63, 66, 62, 64, 63, 65, 62, 64, 63, 65, 64, 65],
-                    dtype=float)
-    close[52:67] = base
-    # base volume: baseline ~1.0M over 46..55 with two >1.5x surges (Gate 9),
-    # then contraction over the last 5 base bars (Gate 8)
-    vol[46:56] = [1_000_000, 1_000_000, 2_100_000, 1_000_000, 2_100_000,
-                  1_000_000, 1_000_000, 1_000_000, 1_000_000, 1_000_000]
-    vol[56:62] = 750_000
-    vol[62:67] = 330_000          # last 5 base bars: 0.33x baseline
-    # 67 the trigger day: close breaks above base high on >=2.5x volume,
-    # closing in the top of a wide range
-    close[67] = 72.0
-    vol[67] = 2_700_000.0
-    # 68-74 drift up after the trigger (keeps avg_vol_20d healthy)
-    close[68:75] = np.linspace(72.5, 76.0, 7)
-    vol[68:75] = 1_400_000.0
+    # 15-45  deep decline plateau at 30  -> a hard cliff into the base so
+    #        _base_scan() stops unambiguously at index 46 (drop >> 20%)
+    close[15:46] = 30.0
+    # 46-66  the base: a tight 52/54 oscillation (range ~4%, well under 20%)
+    base = np.where(np.arange(46, 67) % 2 == 0, 52.0, 54.0)
+    close[46:67] = base
+    # base volume: baseline == median(vol[46:56]) == 1.0M; three 2x surges
+    # inside the base (Gate 9 needs >=2 bars > 1.5x); the last 5 base bars
+    # collapse to 0.15x (Gate 8 needs mean < 0.5 and >=3 bars < 0.6)
+    for i in (48, 50, 52):
+        vol[i] = 2_000_000.0
+    vol[62:67] = 150_000.0
+    # 67  the trigger: closes far above the base high, on ~9x volume,
+    #     near the top of a wide day range
+    close[67] = 80.0
+    vol[67] = 10_000_000.0
+    # 68-74  drift up after the trigger (keeps avg_vol_20d comfortably > 800k)
+    close[68:75] = 82.0
+    vol[68:75] = 2_000_000.0
 
-    high = close + 1.0
-    low = close - 1.0
-    # widen the trigger day's range and seat the close near its high
-    high[67] = 73.0
-    low[67] = 67.5
+    high = close + 2.0
+    low = close - 2.0
+    high[67], low[67] = 82.0, 78.0     # range 4; (80-78)/4 = 0.5 >= 0.40
 
     rows = [
         {
