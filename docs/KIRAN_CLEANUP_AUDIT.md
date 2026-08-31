@@ -6190,14 +6190,31 @@ In `run_recovery_signals()`: the hard-coded `last_5_dates = set(all_dates[-5:])`
 
 Owner-approved (revised Phase 1a, sign-off 2026-08-31). Rationale: explained provenance (89.2), zero consumer impact (89.1), and a true *"as of past date"* replay would need `as_of_date` threaded through the 300-day-window screener math (KSE-100 regime check, 20/50-bar volume MAs, base scans — all currently assume "now"), reproducing the replay-over-populated-table artifact class already documented for OI-6 (§77.6) — disproportionate cost for rows nothing reads. If a future need to read historical recovery/portfolio snapshots arises, backfilling them is a separate, independently-signed-off task with that caveat attached.
 
-### 89.7 Tests — `tests/test_signal_engine_recovery_trigger_window.py` (new, 13 tests)
+### 89.7 Tests — `tests/test_signal_engine_recovery_trigger_window.py` (new, 14 tests)
 
-- `_recovery_trigger_window` (pure): `None` → 5; current table → 5; 10-session gap → 10; cap binds at 30 over a 120-session history; clamps to a 3-session history; clamps to `len(all_dates)`.
-- `_last_recovery_as_of` (isolated SQLite): reads the real `MAX`; `None` on an empty table; `None` (never raises) on a DB file with no `recovery_signals` table.
-- End-to-end (isolated SQLite + a hand-built synthetic recovery-base trigger 8 sessions before the latest date, driven through all 9 screener gates): with the table 10 sessions stale the day-67 trigger **is caught** (one `TRIGGERED` row at the latest `as_of_date`, `fresh = 0`, `triggered_date` = day 67); on a **normal** run (table current, window 5) it is **not** re-recorded; running twice produces no duplicate rows; the widened window size is logged.
+- **`_recovery_trigger_window`** (pure function, version-independent): `None` → 5; current table → 5; 10-session gap → 10; cap binds at 30 over a 120-session history; clamps to a 3-session history; clamps to `len(all_dates)`.
+- **`_last_recovery_as_of`** (isolated SQLite): reads the real `MAX`; `None` on an empty table; `None` (never raises) on a DB file with no `recovery_signals` table.
+- **Wiring** (isolated SQLite, a `window_spy` fixture recording every `_recovery_trigger_window()` call `run_recovery_signals()` makes): a 10-session-stale table → the call receives that `as_of_date` + the full date history + returns `window_len = 10`; a current table → `window_len = 5`; a first run (empty table) → `last_as_of = None`, `window_len = 5`. Plus: two consecutive runs leave no duplicate rows; the widened window size is logged.
 
-Full unit suite: **305 passed** (7m20s). App-boot smoke test: **16 passed**.
+**No full-screener end-to-end test.** A first attempt drove a hand-built synthetic trigger through all ~9 screener gates and asserted it was caught; it passed locally (pandas 3.0.2) and **failed on CI** (pandas 2.3.3) even after the fixture was rebuilt with wide gate margins — the ~250-line screener produces a different outcome for identical synthetic OHLCV across that pandas major-version gap (§89.9). Coupling a regression test for the *scan window* to the screener's *gate thresholds* is the wrong seam: this change alters which dates the loop iterates, not the gate logic (unchanged). The window's exact contents are proven version-independently by the pure-function tests; the wiring tests prove `run_recovery_signals()` feeds `_last_recovery_as_of()` in and consumes the result; code review confirms the loop (`for t in range(max(1, n - trig_window), n): if dates[t] not in trig_dates`) uses it.
+
+Local (pandas 3.0.2 / py3.14): 14/14 in this file; the earlier full-suite run was **305 passed**. **Authoritative gate is CI** on the pinned stack — see §89.10.
 
 ### 89.8 Status
 
 Item 1a-i implemented + tested; 1a-ii confirmed already satisfied (no change); 1a-iii owner-accepted. This closes the `recovery_signals` half of §40.8's Phase 1 prerequisite. **Still open in Phase 1:** `leaders_top_picks` latest-date-only (`leaders_scan.save_top_picks`, `leaders_scan.py:859`); rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite↔PG `boring_signals` parity integration test (§35.3); TR-14 (authoritative universe). **Date of this section: 2026-08-31.**
+
+### 89.9 Finding surfaced during execution — the local dev/pipeline runtime is NOT the deployed runtime
+
+Discovered while diagnosing a CI-only test failure (§89.7): the end-to-end fixture cleared the screener's volume-ratio gate by only ~0.1x locally and **failed on CI** because the two run different numeric stacks.
+
+- **This dev box / the local pipeline:** global `C:\Python314\python.exe` — **Python 3.14, pandas 3.0.2, numpy 2.4.4**. There is no venv; `run_update.bat` runs `python main.py --all` against exactly this interpreter.
+- **CI (`ci.yml`) and Streamlit Cloud:** `requirements.txt` — **Python 3.11, pandas 2.3.3, numpy 1.26.4** (major versions behind on both).
+
+So the **local SQLite production pipeline computes every signal table on pandas 3 / numpy 2, while the cloud Postgres pipeline computes them on pandas 2 / numpy 1.** Rolling-window means, quantiles, and other dense numeric ops are not guaranteed bit-identical across those major versions — this is a real, previously-unrecorded axis on which the two production computations can diverge (relevant to **TR-01** computation-authority: the two pipelines are not even running the same maths) and to **TR-11** (a local checkout's runtime ≠ the reviewed/deployed runtime). It also means **local `pytest` is not a faithful pre-push gate** — the authoritative check is CI, on the pinned stack.
+
+Not fixed here (out of Phase 1a scope). Recorded for the Trust Register open-items ledger and for TR-01/TR-11 to pick up: either pin the local pipeline to the same interpreter+lockfile as deployment (a venv on Python 3.11 that `run_update.bat` activates), or — consistent with the migration's end state — accept it because the local pipeline is being retired to a non-computing mirror (Phase 4), at which point only the cloud stack computes and the divergence is moot. The interim risk stands until then.
+
+### 89.10 CI outcome
+
+PR #41 (`feat/tr01-phase1a-recovery-trigger-window`), 4 commits: (1) ledger §88.10 sweep-in, (2) the fix + tests + §89, (3) an abandoned fat-margin fixture attempt, (4) the test rework (§89.7). Two CI unit-test failures on commits 2–3, both the §89.9 pandas-version issue; commit 4 (`5e9488d`) green on the pinned stack — `clean-install` (Python 3.11) ✅, `unit-tests` **290 passed / 55.8s** ✅, `app-boot` **16 passed** ✅. **Merge held for owner sign-off** (project CLAUDE.md core rule 5 — hard stop before every merge). Trust Register not touched (§0a.4 placement + TR-01 row rewrite need their own fresh sign-off).
