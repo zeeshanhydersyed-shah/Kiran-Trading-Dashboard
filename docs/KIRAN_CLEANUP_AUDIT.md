@@ -6218,3 +6218,11 @@ Not fixed here (out of Phase 1a scope). Recorded for the Trust Register open-ite
 ### 89.10 CI outcome
 
 PR #41 (`feat/tr01-phase1a-recovery-trigger-window`), 4 commits: (1) ledger §88.10 sweep-in, (2) the fix + tests + §89, (3) an abandoned fat-margin fixture attempt, (4) the test rework (§89.7). Two CI unit-test failures on commits 2–3, both the §89.9 pandas-version issue; commit 4 (`5e9488d`) green on the pinned stack — `clean-install` (Python 3.11) ✅, `unit-tests` **290 passed / 55.8s** ✅, `app-boot` **16 passed** ✅. **Merge held for owner sign-off** (project CLAUDE.md core rule 5 — hard stop before every merge). Trust Register not touched (§0a.4 placement + TR-01 row rewrite need their own fresh sign-off).
+
+### 89.11 Merged (2026-08-31)
+
+PR #41 merged: `gh pr merge 41 --merge --delete-branch` -> **`origin/main`: `0b1f869` -> `350e220`** (merge commit `350e22088e6497a14fd9e5211f9242f7dada158e`). Local `main` fast-forwarded; `signal_engine.py` on `main` confirmed carrying `_recovery_trigger_window` / `_last_recovery_as_of` and the loop consuming `trig_dates` / `trig_window`. `git status` on `main` = only `breadth_data.csv` (OI-3) + `local_cloud_price_reconciliation.py` (OI-2); §88.10 is now committed (PR #41 commit 1). `daily_scraper.yml` NOT triggered by the merge (last run 2026-08-29 schedule; next scheduled is the Mon 2026-09-01 17:00 UTC cron = TR-11 step 4). CI re-run on the merge commit `350e220`: all 3 checks green (`clean-install` / `unit-tests` / `app-boot`; run 33394620931 conclusion success).
+
+**This subsection (§89.11) is uncommitted in the `main` working tree** -- swept into the next Phase 1 PR, same handling as §88.10 before it.
+
+**TR-01 Phase 1a is DONE.** Next Phase 1 items (owner picks): `leaders_top_picks` latest-date-only (`leaders_scan.save_top_picks`, `leaders_scan.py:859`); rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite<->PG `boring_signals` parity integration test (§35.3); TR-14. Kiran verdict unchanged: **NOT VERIFIED -- DO NOT TRADE**; TR-01 stays 🔴 RED.
