@@ -38,6 +38,7 @@ from scraper import (
     get_source_date,
 )
 from processor import run_analysis, print_sector_report
+from serving_revision import resolve_code_version
 import sector_signals
 import stock_signals
 
@@ -58,6 +59,58 @@ logging.basicConfig(
     handlers=_handlers,
 )
 logger = logging.getLogger(__name__)
+
+_PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+# ---------------------------------------------------------------------------
+# Deployment identity (OI-9 / TR-11 -- KIRAN_CLEANUP_AUDIT.md 88)
+# ---------------------------------------------------------------------------
+
+# Resolved once per cmd_update() invocation and threaded onto every heartbeat
+# that run writes, so every production row in pipeline_runs is permanently
+# traceable to the exact commit that produced it. A run_id sibling.
+_RUN_CODE_VERSION: str | None = None
+
+
+def _set_run_code_version(value: str | None) -> None:
+    global _RUN_CODE_VERSION
+    _RUN_CODE_VERSION = value
+
+
+def _working_tree_state():
+    """('clean' | 'dirty' | 'unknown', [modified tracked *.py files]).
+
+    Best-effort, never raises. 'dirty' counts only tracked non-test *.py files
+    modified vs HEAD -- untracked files, data files (breadth_data.csv), and
+    scratch dirs are deliberately ignored (they are expected to differ on a
+    working machine). 'unknown' when git is unavailable or errors -- an
+    Actions runner and Streamlit Cloud both have git, a locked-down box might
+    not, and either way this must not affect whether the pipeline runs.
+
+    OI-9 / TR-11: a local production write from a checkout that does not match
+    what was reviewed is the shape of the OI-8 incident (ledger 85). v1
+    records and warns; it does not block.
+    """
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["git", "-C", _PROJECT_DIR, "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode != 0:
+            return ("unknown", [])
+        dirty = []
+        for line in out.stdout.splitlines():
+            # porcelain v1: two status chars, a space, then the path
+            path = line[3:].strip().strip('"')
+            if " -> " in path:  # rename: keep the destination
+                path = path.split(" -> ", 1)[1]
+            if path.endswith(".py") and not path.startswith("tests/"):
+                dirty.append(path)
+        return ("dirty", dirty) if dirty else ("clean", [])
+    except Exception:
+        return ("unknown", [])
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +152,7 @@ def cmd_init(force: bool = False):
 def _record_hook(hook_name, run_date, status="ok", rows_written=None,
                  detail=None, mirror_to_postgres=False, run_id=None,
                  execution_status=None, coverage_status=None,
-                 eligible_count=None, processed_count=None):
+                 eligible_count=None, processed_count=None, code_version=None):
     """Write one pipeline_runs heartbeat. Never raises.
 
     Heartbeats answer "did this producer run?", which is the only honest
@@ -119,11 +172,17 @@ def _record_hook(hook_name, run_date, status="ok", rows_written=None,
     """
     try:
         from data_health import record_run
+        # OI-9 / TR-11: default to this run's resolved code version so every
+        # existing call site picks it up with no per-site change (same
+        # pattern the TR-06 Tier-2 kwargs use). An explicit code_version
+        # argument still wins if a caller passes one.
+        if code_version is None:
+            code_version = _RUN_CODE_VERSION
         record_run(hook_name, run_date, status=status, rows_written=rows_written,
                    detail=detail, mirror_to_postgres=mirror_to_postgres,
                    run_id=run_id, execution_status=execution_status,
                    coverage_status=coverage_status, eligible_count=eligible_count,
-                   processed_count=processed_count)
+                   processed_count=processed_count, code_version=code_version)
     except Exception as exc:  # telemetry must never break the pipeline
         logger.debug("Heartbeat write failed for %s: %s", hook_name, exc)
 
@@ -138,6 +197,35 @@ def cmd_update():
     # value threaded through only so future TR-08/TR-17 work has it without
     # another schema change.
     run_id = str(uuid.uuid4())
+
+    # OI-9 / TR-11 (KIRAN_CLEANUP_AUDIT.md 88): resolve the commit SHA
+    # producing this run once, stamp it on every heartbeat below, and record
+    # a deployment_identity marker carrying it plus the local working-tree
+    # state. $GITHUB_SHA on an Actions runner, else the checkout's .git/HEAD,
+    # else None -- never a guess. A dirty local tree is logged loudly but does
+    # NOT block the run in v1 (the local path is being deprecated to a mirror;
+    # the value here is the record, per the OI-9 spec).
+    code_version = resolve_code_version()
+    _set_run_code_version(code_version)
+    _tree_state, _tree_files = _working_tree_state()
+    logger.info("cmd_update run_id=%s code_version=%s working_tree=%s",
+                run_id, code_version or "unknown", _tree_state)
+    if _tree_state == "dirty":
+        logger.warning(
+            "LOCAL WORKING TREE DIRTY at production write -- code_version=%s, "
+            "modified tracked .py: %s. The running code does not match a "
+            "reviewed commit; see Trust Register OI-9.",
+            code_version or "unknown", ", ".join(_tree_files[:10]),
+        )
+    try:
+        from datetime import date as _date_cls_di
+        _di_detail = f"code_version={code_version or 'unknown'}; working_tree={_tree_state}"
+        if _tree_state == "dirty":
+            _di_detail += f" ({', '.join(_tree_files[:10])})"
+        _record_hook("deployment_identity", _date_cls_di.today().isoformat(),
+                     detail=_di_detail, run_id=run_id, code_version=code_version)
+    except Exception as exc:
+        logger.debug("deployment_identity heartbeat failed: %s", exc)
 
     # init_db()'s statements are all CREATE TABLE/INDEX IF NOT EXISTS --
     # idempotent no-ops once the schema exists, which it always does for a
