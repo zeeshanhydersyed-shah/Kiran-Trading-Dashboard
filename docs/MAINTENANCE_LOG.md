@@ -29,6 +29,14 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-08-31 — TR-01 Phase 1c: first rolling trim of `sector_signals` (Supabase Postgres)
+- **What:** `sector_signals` was added to `database_pg._TRIM_TABLES` (audit §38.1 — it was the one large PG table left growing unbounded). The first trim of a newly-covered table is a large irreversible `DELETE`, so it was run manually here rather than left for the next `daily_scraper.yml` cron. `DELETE FROM sector_signals WHERE date < CURRENT_DATE - INTERVAL '2 years'`.
+- **Why:** Ledger §93 / migration §40.14. `sector_signals` had 82 % of its rows older than the 2-year operational window; no PG consumer looks back more than 30 days (`get_sector_rs_history_pg` = 30 d; everything else `MAX(date)` / prior day). Local SQLite is the permanent full-history archive.
+- **DB writes:** Supabase `sector_signals` — **64,317 → 11,362 rows (−52,955)**. Range 2015-01-01…2026-08-28 → **2024-09-02…2026-08-28** (MAX unchanged). No other table touched. Method: `scratch_sector_signals_trim_20260831/backup_and_trim.py` — dry-run (txn + ROLLBACK, −52,955, verified restore) → real `DELETE` + commit. Backup first (Supabase PITR OFF): full CSV `scratch_sector_signals_trim_20260831/sector_signals_pre_trim.csv` (64,317 rows, 23 cols) + snapshot table `sector_signals_pre_trim_20260831` (64,317 rows, verified). Rollback: `TRUNCATE sector_signals; INSERT … SELECT * FROM sector_signals_pre_trim_20260831`.
+- **Verification:** independent fresh-connection re-query — 11,362 rows; MIN `2024-09-02` ≥ the `2024-08-31` cutoff; MAX `2026-08-28` unchanged; **0 of the 11,362 retained rows changed value** vs the snapshot (`rs_rank` + `composite_score` join-diff); snapshot intact at 64,317; `health_check.check_rolling_trim()` re-run against live PG with the new code → PASS. Local `psx_data.db` `sector_signals` **unchanged at 64,425 rows** (PG-only op).
+- **Retention:** keep the CSV + snapshot table until the next clean `daily_scraper.yml` run.
+- **By:** Claude Code, under explicit user authorization, dry run shown first. Full detail: ledger §93.
+
 ### 2026-08-31 — TR-01 Phase 1b-ii: `leaders_top_picks` historical backfill (Supabase Postgres)
 - **What:** Recovered the `leaders_top_picks` `scan_date`s that `_save_top_picks_pg()`'s latest-date-only defect skipped (frozen at 2026-06-30). Called the merged `leaders_scan._save_top_picks_pg(scan_date=d)` (directly, so it reads the live env not the import-time `_PG_URL`) for every `leaders_scan` `scan_date` absent from `leaders_top_picks` — 44 dates, of which 17 produce picks.
 - **Why:** Trust Register TR-01 Phase 1b, item 1b-ii (ledger §91). `leaders_top_picks` history is consumed (the Leaders "audit" panel; forward-return labeling), so unlike Phase 1a's accepted gap this was backfilled. Owner-authorized after the dry run.

@@ -6377,4 +6377,37 @@ Item 1d DONE. Local full run (pandas 3.0.2 / py3.14): **315 passed** (incl. app-
 
 ### 92.5 CI outcome
 
-PR #44: <CI_RESULT>.
+PR #44: all 3 checks green on the pinned stack -- clean-install (Python 3.11), unit-tests **299 passed** (all 5 parity tests green on pandas 2.3.3 -- version-robust, since it compares two code paths on the same data), app-boot **16 passed**. Merged 2026-08-31 under owner sign-off -> origin/main 64a8825 -> 73c9188 (merge commit); local main fast-forwarded; daily_scraper.yml not triggered.
+
+## 93. <span style="color:#16a34a;">● TR-01 Phase 1c — rolling trim extended to `sector_signals` (code) + first PG trim EXECUTED (2026-08-31)</span>
+
+Closes audit §38.1's "clearest gap" — `sector_signals` (4th-largest PG table, ~15 MB, ~23 rows/session) was omitted from `trim_old_rows_pg()` and left to grow unbounded. Migration plan §40.17 Phase 1 / §40.14 (retention design). PR [#45](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/45) (code) + a manual backup-first first trim (this section, §93.4).
+
+### 93.1 Scope decision — `sector_signals` only, NOT `index_prices`
+
+The Phase-1c spec line (Trust Register §4) proposed adding both `sector_signals` and `index_prices`. **Corrected to `sector_signals` only**, per audit §40.14's retention design: *"~700–730 calendar days for production computation on the large per-symbol-per-day tables (`prices`, `prices_adjusted`, `stock_signals`, `sector_signals`); full untrimmed current state for the small tables."* `index_prices` is small (2.1 MB, ~5 rows/session) and regime / Weinstein index lookbacks can legitimately exceed 2 years — trimming it risks a real consumer for a ~2 MB gain. `market_regime` (0.9 MB) is out for the same reason. Both are pinned as *deliberately untrimmed* by the new test so a future edit that adds them has to justify itself.
+
+### 93.2 Read-only — no PG `sector_signals` consumer needs >30 days
+
+Direct code read: `get_sector_rs_history_pg()` = a 30-day window; the Rotation Radar `rr_hist` query = `date >= latest - 30 days` (and is dead data, not displayed); `get_sector_signals_prev_ranks_sector_pg()` = the prior day; `run_portfolio_signals` / `leaders_scan` / the dashboard Market page = `MAX(date)` or a single named date. `sector_signals.py`'s own recompute reads `prices_adjusted` for its 70-session EMA warm-in, not `sector_signals` history. The longest rolling lookback anywhere in the codebase is `market_breadth_oscillator.py`'s ~700-day breadth calc against `prices` (§38.1), already inside the existing 2-year window. A 2-year `sector_signals` trim is safe.
+
+### 93.3 Code (item 1c-i) — `database_pg.py`, `health_check.py`, + a drift-guard test
+
+- `_TRIM_TABLES` gains `("sector_signals", "date")` (6 entries; docstring "five"→"six"). `sector_signals.date` re-verified 2026-08-31 as a native PG `DATE` column.
+- `health_check.check_rolling_trim()` carries its **own hand-copied** table list (it is a standalone regression guard) — `sector_signals` added there too, so Check 5 verifies the trim ran and does **not** red-flag the next `daily_scraper.yml` run.
+- `tests/test_rolling_trim_coverage.py` (new, 5 tests): `sector_signals` is trimmed; the original 5 still are; `index_prices` / `market_regime` are **not** (pinned); the two hand-maintained lists (`_TRIM_TABLES` vs `health_check`'s) **match** (drift guard); the trim SQL is one `DELETE ... WHERE <col> < CURRENT_DATE - INTERVAL '2 years'` per table. Full suite 320 passed.
+
+### 93.4 First PG trim — EXECUTED 2026-08-31 under explicit owner sign-off
+
+Because the first trim of a newly-covered table is a large irreversible `DELETE`, it was done **manually, backup-first, dry-run-then-apply**, rather than left for the next cron (same discipline as OI-9's PG `ALTER` and Phase 1b-ii's backfill). `scratch_sector_signals_trim_20260831/backup_and_trim.py`, own process.
+
+- **Dry run** (txn + `ROLLBACK` on live PG): `-52,955` rows, leaving 11,362; `ROLLBACK` verified 64,317 restored.
+- **Backup:** full CSV `scratch_sector_signals_trim_20260831/sector_signals_pre_trim.csv` (64,317 rows, 23 cols) + snapshot table `sector_signals_pre_trim_20260831` (64,317 rows, committed & verified). Supabase PITR is OFF — these are the rollback net. Rollback = `TRUNCATE sector_signals; INSERT ... SELECT * FROM sector_signals_pre_trim_20260831`.
+- **`DELETE FROM sector_signals WHERE date < CURRENT_DATE - INTERVAL '2 years'`** — committed, **`-52,955` rows** (exactly matched the dry run).
+- **Independent verify (fresh connection):** `sector_signals` **64,317 → 11,362 rows**, range **2024-09-02 → 2026-08-28** (MIN ≥ the 2024-08-31 cutoff; MAX **unchanged**); `transaction_read_only=off` confirmed before writing; **0 of the 11,362 retained rows changed value** vs the snapshot (full `rs_rank` + `composite_score` join-diff); snapshot table intact at 64,317; `health_check.check_rolling_trim()` re-run against live PG with the new code → **PASS** (`sector_signals=2024-09-02` ≥ cutoff `2024-08-24`).
+- **Local SQLite archive UNTOUCHED:** `psx_data.db` `sector_signals` still **64,425 rows / 2015-01-01 → 2026-08-28** (a PG-only operation; the archive invariant holds).
+- **Retention:** keep the CSV + snapshot table until the next clean `daily_scraper.yml` run confirms health. `MAINTENANCE_LOG.md` carries the entry.
+
+### 93.5 Status
+
+Item 1c DONE (code + first trim). Going forward the daily `trim_old_rows_pg()` deletes only the ~23 `sector_signals` rows/session that newly age past 2 years. **Phase 1 of the TR-01 arc now has one item left: 1e — TR-14 (authoritative point-in-time expected-universe source), the large sub-project.** Also fills the §92.5 CI-result placeholder (uncommitted since PR #44). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**; TR-01 stays 🔴 RED. **Date of this section: 2026-08-31.**
