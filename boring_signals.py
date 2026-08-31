@@ -763,10 +763,14 @@ def _scan_boring_breakouts_pg(date: str | None = None) -> int:
 def _current_code_version() -> str | None:
     """Best-effort git SHA of the running checkout, for the marker's
     code_version column (TR-11/TR-16 groundwork). Never raises, never
-    guesses -- returns None if it can't be read."""
+    guesses -- returns None if it can't be read.
+
+    Delegates to serving_revision.resolve_code_version() so this and
+    pipeline_runs.code_version (OI-9, ledger 88) share one resolver:
+    $GITHUB_SHA on an Actions runner, else the checkout's .git/HEAD."""
     try:
-        from serving_revision import get_serving_revision
-        return get_serving_revision()
+        from serving_revision import resolve_code_version
+        return resolve_code_version()
     except Exception:
         return None
 

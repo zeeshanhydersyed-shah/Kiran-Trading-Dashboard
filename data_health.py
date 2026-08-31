@@ -299,6 +299,13 @@ _NEW_COLUMNS: list[tuple[str, str, str]] = [
     ("coverage_status",   "TEXT",    "TEXT"),
     ("eligible_count",    "INTEGER", "INTEGER"),
     ("processed_count",   "INTEGER", "INTEGER"),
+    # OI-9 / TR-11 (2026-08-31): the commit SHA of the code that produced this
+    # run -- $GITHUB_SHA on an Actions runner, else the serving checkout's
+    # .git/HEAD (serving_revision.resolve_code_version()), else NULL. Additive
+    # and nullable like the rest: every pre-existing row and every caller that
+    # does not pass it stays valid with no backfill. Makes every production
+    # write permanently traceable to one commit (KIRAN_CLEANUP_AUDIT.md 88).
+    ("code_version",      "TEXT",    "TEXT"),
 ]
 
 
@@ -328,6 +335,7 @@ def record_run(
     coverage_status: str | None = None,
     eligible_count: int | None = None,
     processed_count: int | None = None,
+    code_version: str | None = None,
 ) -> None:
     """Record one hook execution. Never raises -- a telemetry write must not be
     able to break the pipeline it is measuring.
@@ -351,7 +359,8 @@ def record_run(
 
     if _PG_URL:
         _record_pg(_PG_URL, hook_name, run_date, finished_at, status, rows_written, detail,
-                   run_id, execution_status, coverage_status, eligible_count, processed_count)
+                   run_id, execution_status, coverage_status, eligible_count, processed_count,
+                   code_version)
         return
 
     try:
@@ -362,8 +371,9 @@ def record_run(
                 """
                 INSERT INTO pipeline_runs
                     (hook_name, run_date, finished_at, status, rows_written, detail,
-                     run_id, execution_status, coverage_status, eligible_count, processed_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     run_id, execution_status, coverage_status, eligible_count, processed_count,
+                     code_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(hook_name, run_date) DO UPDATE SET
                     finished_at      = excluded.finished_at,
                     status           = excluded.status,
@@ -373,10 +383,12 @@ def record_run(
                     execution_status = excluded.execution_status,
                     coverage_status  = excluded.coverage_status,
                     eligible_count   = excluded.eligible_count,
-                    processed_count  = excluded.processed_count
+                    processed_count  = excluded.processed_count,
+                    code_version     = excluded.code_version
                 """,
                 (hook_name, run_date, finished_at.isoformat(), status, rows_written, detail,
-                 run_id, execution_status, coverage_status, eligible_count, processed_count),
+                 run_id, execution_status, coverage_status, eligible_count, processed_count,
+                 code_version),
             )
             con.commit()
         finally:
@@ -388,12 +400,13 @@ def record_run(
         url = _env_pg_url()
         if url:
             _record_pg(url, hook_name, run_date, finished_at, status, rows_written, detail,
-                       run_id, execution_status, coverage_status, eligible_count, processed_count)
+                       run_id, execution_status, coverage_status, eligible_count, processed_count,
+                       code_version)
 
 
 def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, detail,
                 run_id=None, execution_status=None, coverage_status=None,
-                eligible_count=None, processed_count=None) -> None:
+                eligible_count=None, processed_count=None, code_version=None) -> None:
     """Ledger write against Postgres. Swallows everything by design -- a
     telemetry write must never break the pipeline it measures -- but now
     logs one safe line per attempt so a real run's outcome, and which stage
@@ -439,8 +452,9 @@ def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, deta
                     """
                     INSERT INTO pipeline_runs
                         (hook_name, run_date, finished_at, status, rows_written, detail,
-                         run_id, execution_status, coverage_status, eligible_count, processed_count)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         run_id, execution_status, coverage_status, eligible_count, processed_count,
+                         code_version)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (hook_name, run_date) DO UPDATE SET
                         finished_at      = EXCLUDED.finished_at,
                         status           = EXCLUDED.status,
@@ -450,10 +464,12 @@ def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, deta
                         execution_status = EXCLUDED.execution_status,
                         coverage_status  = EXCLUDED.coverage_status,
                         eligible_count   = EXCLUDED.eligible_count,
-                        processed_count  = EXCLUDED.processed_count
+                        processed_count  = EXCLUDED.processed_count,
+                        code_version     = EXCLUDED.code_version
                     """,
                     (hook_name, run_date, finished_at, status, rows_written, detail,
-                     run_id, execution_status, coverage_status, eligible_count, processed_count),
+                     run_id, execution_status, coverage_status, eligible_count, processed_count,
+                     code_version),
                 )
             except Exception as exc:
                 conn.rollback()
@@ -659,3 +675,38 @@ def _open():
         return con.execute(sql.replace("{p}", "?"), params).fetchone()
 
     return fetch_one, con.close
+
+
+def latest_pipeline_code_version() -> str | None:
+    """The code_version stamped by the most recently-finished successful
+    pipeline_runs row on the active backend, or None.
+
+    Returns None -- never raises, never guesses -- when: the ledger has no
+    such row yet, the code_version column predates this feature (a
+    pre-migration DB or the CI fixture), or the query fails for any reason.
+
+    Used by the Data Health page (via serving_revision.describe_drift) to
+    compare the code this dashboard process is serving against the code the
+    pipeline that produced the current data actually ran -- a mismatch on
+    Streamlit Cloud means a reboot is needed (KIRAN_CLEANUP_AUDIT.md 88,
+    Trust Register OI-9 / TR-11). Read-only.
+    """
+    try:
+        fetch_one, close = _open()
+    except Exception:
+        return None
+    try:
+        row = fetch_one(
+            "SELECT code_version FROM pipeline_runs "
+            "WHERE code_version IS NOT NULL AND status = {p} "
+            "ORDER BY finished_at DESC LIMIT 1",
+            ("ok",),
+        )
+        return row[0] if row and row[0] else None
+    except Exception:
+        return None
+    finally:
+        try:
+            close()
+        except Exception:
+            pass

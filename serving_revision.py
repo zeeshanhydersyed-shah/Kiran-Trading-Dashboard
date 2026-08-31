@@ -65,3 +65,74 @@ def get_serving_revision(repo_dir=None):
         return None
     except Exception:
         return None
+
+
+def _is_sha40(value) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(c in "0123456789abcdef" for c in value.lower())
+    )
+
+
+def resolve_code_version(repo_dir=None):
+    """The commit SHA of the code producing the current run, or None.
+
+    Order of preference, each an exact fact, never a guess:
+      1. $GITHUB_SHA -- set automatically on every GitHub Actions runner; the
+         canonical identity of the commit a `schedule` / `workflow_dispatch`
+         run checked out (always origin/main HEAD for those events, since the
+         workflows use a bare `actions/checkout@v4`).
+      2. get_serving_revision() -- the serving checkout's own .git/HEAD, for
+         the Streamlit Cloud / local processes that are not Actions runners.
+      3. None -- if neither is available. Never origin/main, never a cached
+         string, never a substitute (same contract as get_serving_revision).
+
+    Used to stamp pipeline_runs.code_version on every production run
+    (KIRAN_CLEANUP_AUDIT.md 88, Trust Register OI-9 / TR-11).
+    """
+    try:
+        sha = os.environ.get("GITHUB_SHA")
+        if sha:
+            sha = sha.strip().lower()
+            if _is_sha40(sha):
+                return sha
+    except Exception:
+        pass
+    return get_serving_revision(repo_dir=repo_dir)
+
+
+def describe_drift(serving_sha, pipeline_sha):
+    """(level, message) for the Data Health "is the served code current?" check.
+
+    Compares the code THIS dashboard process is serving (serving_sha, from
+    get_serving_revision()) against the code the pipeline that produced the
+    currently-displayed data actually ran (pipeline_sha, from
+    data_health.latest_pipeline_code_version()).
+
+    level is one of:
+      'unknown' -- serving revision could not be read at all
+      'pending' -- no pipeline run has recorded a code_version yet
+      'match'   -- the two agree; the dashboard is serving current code
+      'drift'   -- they differ; on Streamlit Cloud this means an in-place
+                   redeploy did not recycle the serving process
+                   (KIRAN_CLEANUP_AUDIT.md 62 / 78) and a full reboot is needed
+
+    Pure -- no I/O, unit-testable in isolation.
+    """
+    if not serving_sha:
+        return ("unknown",
+                "Serving revision UNKNOWN -- cannot verify the dashboard is "
+                "running current code.")
+    if not pipeline_sha:
+        return ("pending",
+                "The pipeline has not recorded a code version yet -- the "
+                "serving-vs-pipeline drift check becomes available after the "
+                "next production run.")
+    if serving_sha == pipeline_sha:
+        return ("match",
+                f"Serving code matches the pipeline ({serving_sha[:7]}).")
+    return ("drift",
+            f"The dashboard is serving {serving_sha[:7]} but the latest "
+            f"pipeline run used {pipeline_sha[:7]}. A Cloud reboot (not a "
+            f"redeploy) is needed to serve current code.")

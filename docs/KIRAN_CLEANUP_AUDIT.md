@@ -5986,3 +5986,132 @@ None of these is "the gate is absent" or "the gate does not work." They are "not
 **This does not change Kiran's verdict.** Twelve blocking rows remain (TR-01, TR-03, TR-04, TR-06, TR-07, TR-08, TR-11, TR-13, TR-14, TR-16, TR-17, TR-18). **Kiran remains NOT VERIFIED — DO NOT TRADE.** What this does: it removes freshness-verification from the list of things standing between here and a trustworthy signal, and it confirms the architecture decision (Cloud authoritative) that also simplifies several of the remaining rows (per the §76-era cloud-reliability scoping).
 
 **Date of this entry: 2026-08-31. Status: Owner decision (Postgres/Cloud authoritative) recorded and applied. TR-05 §84.4(a) CLOSED. TR-05 → GREEN — the freshness gate is verified at execution time and continuously re-verified at the serving boundary on the authoritative backend, implemented + tested + production-observed. 12 blocking rows remain. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+
+---
+
+## 88. <span style="color:#eab308;">◐ TR-11 — read-only current-state reconstruction + pre-registered spec for a standing deployment-identity mechanism (2026-08-31)</span>
+
+**DESIGN ENTRY — no code, no DB write, no git action.** TR-11 was chosen as the next blocking row to work (its own Risk column calls it *"arguably the most urgent item on this entire register"*, and §76.8 left it with a narrow, well-scoped remainder). This entry establishes TR-11's actual state from source — not from the ledger's own narrative — and records a pre-registered specification (Trust Register **§0a.3**, local, uncommitted) for the one mechanism the row still lacks: a *standing, repeatable* proof that the code running in each production surface is the reviewed code on `origin/main`, versus §62's single manual proof for one commit.
+
+### 88.1 Method
+
+Read-only. `git status` / `git log origin/main` / `gh run list` / `gh pr list` against the live repo and GitHub; direct reads of `serving_revision.py`, `data_health.py` (the `pipeline_runs` ledger DDL + `record_run()` / `_record_pg()`), `main.py` (`cmd_update()` / `run_freshness_gate()` / `main()` dispatch), `boring_signals.py` (`_current_code_version()` / the `boring_signals_scanned` schema), and all 8 `.github/workflows/*.yml`. No production system touched.
+
+### 88.2 What TR-11's acceptance criterion asks for (verbatim from the register)
+
+> `git status` is clean on `main`; the commit(s) that produced that state are traceable one-to-one to specific, already-verified ledger entries (no unreviewed diff rode along); CI is green; **the deployed commit SHA is read back from the live deployment and matches the pushed SHA exactly**; and the deployed dashboard/pipeline's observed behavior (not just its source) reflects the code this register cites as evidence.
+
+### 88.3 Current state, item by item
+
+| Clause | State | Evidence |
+|---|---|---|
+| `git status` clean on `main` | ✅ **met** | working tree = `M breadth_data.csv` (OI-3, deliberate) + `?? local_cloud_price_reconciliation.py` (OI-2, deliberate). Local `HEAD` == `origin/main` == **`37705ad`** (PR #39). Nothing else. |
+| commits trace one-to-one to verified ledger entries | ✅ **met** | `origin/main` since the arc reconciliation is PRs #20–#39, each a single-purpose merge whose title cites a ledger §, a TR-xx, or an OI-xx (e.g. #30 "TR-13/OI-6", #36 "OI-8", #39 "ledger §87"). No omnibus commits; the §76 classification pass is the audit trail for #20–#28, and #29–#39 are one-task-each. |
+| CI green | ✅ **met** | `gh run list --branch main`: run `33361378167` on `37705ad` = **success** (all of `clean-install` / `unit-tests` / `app-boot`). Every PR-merge push since #20 shows CI success. |
+| deployed SHA read back from live deployment == pushed SHA | ◐ **partial — the core gap** | **Streamlit Cloud:** `serving_revision.get_serving_revision()` reads the serving checkout's `.git/HEAD` live and surfaces it on the Data Health page (`dashboard.py:7868`). §62.4 proved it works *once* (`d4e3e4c`). But (a) it only *displays* the SHA — a human must eyeball it against `origin/main`; nothing computes or surfaces drift; (b) §62.4/§78 established Cloud needs a manual **reboot** to pick up a merge (an in-place "Updated app!" does not recycle the serving process), and nothing detects the interval where the dashboard is running behind. **GitHub Actions pipeline:** every workflow uses a bare `actions/checkout@v4` (no `ref:`), so a `schedule`/`workflow_dispatch` run *always* executes `origin/main` HEAD by construction, and `GITHUB_SHA` is set on the runner — but **nothing records which commit produced a given production run**: `pipeline_runs` has **no `code_version` column** (confirmed against `data_health.py`'s `_SQLITE_DDL` / `_PG_DDL` / `_NEW_COLUMNS` — the TR-06 Tier-2 additive set is `run_id`/`execution_status`/`coverage_status`/`eligible_count`/`processed_count`, no SHA). Only `boring_signals_scanned` carries `code_version` (populated via `_current_code_version()` → `get_serving_revision()`), and only for that one table. **Local pipeline** (`run_update.bat` → `main.py --all` from the working tree): nothing verifies the local checkout is clean and == `origin/main` before a production write — OI-8 (§85) is a concrete recent instance of local-runtime drift causing a real production incident. |
+| deployed *behavior* matches cited code | ◐ **ad hoc only** | proven per-PR in isolation (§62 serving-revision, §78 the dedup-conflict panel, §85 OI-8) but there is no standing check that ties "the behavior on screen / in the pipeline" to "the commit this register cites." |
+
+### 88.4 The gap, stated precisely
+
+Everything except the SHA-readback clause is **already met**. What TR-11 still lacks is a **standing, repeatable** deployment-identity check — §62 delivered a one-time manual proof for one commit via an ad-hoc authenticated console read + reboot; the acceptance criterion wants this to be a continuous property of the deployment, surfaced without a human comparing hex strings by eye, across all three surfaces that run production code (Streamlit Cloud serving, GitHub Actions pipeline, local pipeline).
+
+### 88.5 The spec (full text: Trust Register §0a.3 / OI-9)
+
+Three components, v1; a fourth named and deferred.
+
+- **Component A — `pipeline_runs.code_version` (additive column, both backends).** One nullable `TEXT` column added to `data_health.py`'s `_NEW_COLUMNS`; `record_run()` / `_record_hook()` / `_record_pg()` thread it; `cmd_update()` resolves it once (a `run_id` sibling) via a new `resolve_code_version()` — `GITHUB_SHA` env (canonical on an Actions runner) → `serving_revision.get_serving_revision()` (reads `.git/HEAD`) → `None`, never a guess. After this, **every production run's every hook row is permanently traceable to the exact commit that produced it** — the standing record TR-11 needs, and direct TR-16 ("code version" provenance field) groundwork.
+- **Component B — Data Health serving-drift panel.** Alongside the existing serving-SHA display: compare `get_serving_revision()` against the most recent successful `pipeline_runs.code_version` (Component A). Match → explicit ✅; mismatch → explicit **"⚠️ the dashboard is running code `abc123`, the pipeline that computed this data ran `def456` — a Cloud reboot is needed"**. Self-contained (the dashboard already reads Postgres), no new external call, no dashboard write, recomputed every render — closes "read back from the live deployment + surfaced, not eyeballed, repeatable."
+- **Component C — local pre-write identity record.** `cmd_update()` records the resolved `code_version` and detects a dirty working tree (tracked production files modified vs `HEAD`); a dirty tree logs a loud WARNING and is stored in the heartbeat `detail`. **v1 does NOT hard-block a dirty local run** (the local path is being deprecated to a mirror per TR-01, and a hard block risks breaking the nightly for a trivial reason) — flagged as an open design question for the owner.
+- **Component D — independent standing drift alert (deferred, named).** A check that runs independently of both the pipeline and the dashboard and *alerts* (not just displays) when a served surface is behind `origin/main` past a threshold. This overlaps TR-18's shape (independent watchdog) and TR-07 (alert channel); folded into that work rather than built here.
+
+**Schema/DB:** one additive nullable column on `pipeline_runs`, both backends. SQLite auto-migrates via `ensure_ledger_sqlite()`. Postgres via `ensure_ledger_pg()`'s `ADD COLUMN IF NOT EXISTS` — **held for explicit sign-off** as a separate step, per §0a.1.8-style discipline, even though it is additive and idempotent (§61 added 5 columns this exact way). No backfill of existing rows (nullable; populates going forward). Backup before the DDL: SQLite file copy + PG `pipeline_runs` CSV + schema snapshot.
+
+**Rollout:** one code PR (Components A–C + tests, no DB write) → SQLite backup + first local run observed → Postgres `ALTER TABLE` under explicit sign-off → first Actions run verified to stamp the SHA → merge. Test matrix: `resolve_code_version()` precedence (GITHUB_SHA / serving_revision / None); heartbeat round-trips the SHA on both backends (isolated synthetic DB / faked psycopg2); the drift panel renders match vs mismatch correctly; a dirty-tree local run warns and records but does not raise.
+
+### 88.6 What this does and does NOT close
+
+**Does not close TR-11** — this is the spec, not the implementation. Once Components A–C land and are production-observed (one real Actions run stamping its SHA; the drift panel showing ✅ against a rebooted Cloud), TR-11's SHA-readback clause is met as a *standing* property and the row is a candidate for GREEN pending a colour re-assessment. Components A–C do not touch TR-16/TR-17/TR-08 (they supply one field TR-16 will need).
+
+**Kiran remains NOT VERIFIED — DO NOT TRADE.** No code, no DB write, no git action in this entry. Trust Register §0a.3 + OI-9 row + TR-11 evidence amendment are local, uncommitted. RESEARCH_LOG updated + CSV re-synced this turn.
+
+**Date of this entry: 2026-08-31. Status: TR-11 current state reconstructed from source; spec for the standing deployment-identity mechanism written (Trust Register §0a.3). Awaiting authorization to implement Phase 1 (code + tests). Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+### 88.7 Phase 1 (code + tests) EXECUTED under authorization (2026-08-31)
+
+User authorized Phase 1 per the §0a.3 spec — "code + tests, no DB write, no merge." Done. Working tree only, on `main`. **No `psx_data.db` write, no Supabase write, no `ALTER TABLE` executed anywhere, nothing committed or pushed.**
+
+**Code (7 files):**
+
+- **`serving_revision.py`** — two pure additions beside `get_serving_revision()`:
+  - `resolve_code_version(repo_dir=None)` → `$GITHUB_SHA` (validated 40-hex, lowercased) → `get_serving_revision()` → `None`. Never a guess. `_is_sha40()` helper.
+  - `describe_drift(serving_sha, pipeline_sha)` → `(level, message)`, `level ∈ {unknown, pending, match, drift}` — the pure comparison the Data Health panel renders; no I/O.
+- **`data_health.py`**:
+  - `_NEW_COLUMNS` += `("code_version", "TEXT", "TEXT")` — auto-applied by the existing `ensure_ledger_sqlite()` / `ensure_ledger_pg()` (`ALTER TABLE ... ADD COLUMN [IF NOT EXISTS]`), no new migration code, nullable, no backfill.
+  - `record_run(..., code_version=None)` and `_record_pg(..., code_version=None)` — threaded into both the SQLite and Postgres `INSERT ... ON CONFLICT DO UPDATE` (column list, placeholder, and the `SET` clause).
+  - new `latest_pipeline_code_version() -> str | None` — most-recent-`finished_at` `status='ok'` row's `code_version` on the active backend; returns `None` (never raises) on no row / missing column (pre-migration DB or CI fixture) / any query error.
+- **`main.py`**:
+  - `from serving_revision import resolve_code_version`; `_PROJECT_DIR`.
+  - `_RUN_CODE_VERSION` module global + `_set_run_code_version()`; `_working_tree_state()` → `('clean'|'dirty'|'unknown', [modified tracked non-test .py files])` via a guarded `git status --porcelain --untracked-files=no` subprocess (10s timeout, `FileNotFoundError`/non-zero/any exception → `'unknown'`, never fatal).
+  - `_record_hook(..., code_version=None)` — defaults to `_RUN_CODE_VERSION` when a caller doesn't pass one, so **all ~20 existing call sites pick up the run's SHA with zero per-site edits** (same pattern the TR-06 Tier-2 kwargs use); an explicit arg still wins.
+  - `cmd_update()` — right after `run_id`: `code_version = resolve_code_version()`, `_set_run_code_version(...)`, `_working_tree_state()`, an INFO line, a loud WARNING if the local tree is dirty (**no hard block** — v1, per spec §0a.3.5), and a `deployment_identity` heartbeat (`run_date = date.today()`, detail = `code_version=… ; working_tree=…`). This block runs before `init_db()` and both branches of the "new dates / no new dates" split reach it.
+- **`boring_signals.py`** — `_current_code_version()` re-pointed from `get_serving_revision()` to `resolve_code_version()` so the pipeline and the `boring_signals_scanned` marker share one resolver (`$GITHUB_SHA` now wins on the Actions runner, which it did not before).
+- **`dashboard.py`** — Data Health page, immediately below the existing serving-SHA `st.code(...)`: `describe_drift(get_serving_revision(), latest_pipeline_code_version())` → `st.success` (match) / `st.warning` (drift or unknown) / `st.info` (pending). Wrapped in try/except → a `st.caption` fallback, never a page crash. Read-only, recomputed every render, **no dashboard write** (TR-12 / §85.2 — a served surface must not reach a production write path, so v1 stays pull-only on the dashboard side). Data Health page only; gates nothing.
+
+**Tests — `tests/test_deployment_identity.py` (NEW, 24 tests, all isolated — no real DB, no network, no AppTest):** `resolve_code_version()` precedence incl. `$GITHUB_SHA` deleted via monkeypatch for the "unset" cases (it is set on the CI runner); `code_version` round-trips through `record_run()` SQLite (persist / NULL-when-omitted / update-on-conflict); reaches the Postgres `INSERT` (faked psycopg2 capturing SQL + params); `describe_drift()` all four states; `latest_pipeline_code_version()` (most-recent-ok / ignores-failed-runs / None-on-missing-column / None-on-no-rows); `_working_tree_state()` (dirty `.py` / ignores data+test files / clean / non-zero rc → unknown / `git` missing → unknown); `_record_hook()` defaulting to the run value and an explicit arg winning.
+
+**Fixture:** `tests/fixtures/psx_fixture.db` **not changed** — its `pipeline_runs` also lacks the TR-06 Tier-2 columns, and `latest_pipeline_code_version()` is defensive by construction (missing column → `None` → panel shows "pending"). App-boot renders the Data Health page cleanly on the unchanged fixture. Consistent with how TR-06 Tier 2 handled the same fixture.
+
+**Test results (local, Python 3.14):** targeted `serving_revision` + `data_health` + `deployment_identity` + `boring_signals` marker + `tr06` + `tr05` — all green. **Full unit suite (`pytest tests/ --ignore=tests/test_app_boot.py`): 276 passed, 0 failed.** **App-boot smoke (all 15 pages): 16 passed, 0 failed** — Data Health page renders the new drift panel without error.
+
+**Real-repo smoke (read-only, no DB write):** with `$GITHUB_SHA` unset, `resolve_code_version()` == `get_serving_revision()` == `git rev-parse HEAD` == `37705ad…` (exact match); `describe_drift` returns the correct `match` / `drift` (names both 7-char SHAs + "reboot") / `pending` strings.
+
+**Held at the gates (unchanged from the spec):** (1) SQLite backup + one observed local `main.py --update` run to confirm a real `pipeline_runs` row carries the SHA; (2) the Postgres `ALTER TABLE pipeline_runs ADD COLUMN code_version` under **separate explicit sign-off** (`ensure_ledger_pg()` will also apply it automatically on the next pipeline run — called out for go-ahead first per program discipline); (3) first Actions run verified to stamp `GITHUB_SHA`; (4) merge. Nothing committed.
+
+**Date of this subsection: 2026-08-31. Status: OI-9 Phase 1 executed — code + 24 tests, full suite 276 + app-boot 16 green, real-repo resolver verified. No DB write, no commit. Held at the SQLite-first-run / Postgres-DDL-sign-off / merge gates. Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+### 88.8 Rollout step 1 — SQLite backup + one observed local run (2026-08-31)
+
+Authorized. `§0a.3.7` step 2. **Local `psx_data.db` only — no Postgres write (both PG env vars unset, verified; `import main` adds no env keys; the OI-8 fix is in place), nothing committed.**
+
+**Backup (before any write):** `backups/psx_data_pre_code_version_20260831.db` via the SQLite online-backup API — `PRAGMA integrity_check` → `ok`, **882,016,256 bytes**, 57 `pipeline_runs` rows, **sha256 `e4072fbc77f6f957dc9f5f1868158b889938d51e4999ab2150a40e5334017176`**. Pre-state recorded: all 10 signal tables current to 2026-08-28 (`setup_log` to 08-20 on its own cadence), `pipeline_runs` 57 rows / no `code_version` column, integrity `ok`.
+
+**Run:** `python main.py --update` — 2026-08-31 (Sunday), local already current → the "already up to date" branch. Exit 0.
+- The new deployment-identity block fired first, exactly as designed:
+  ```
+  INFO  cmd_update run_id=42c8f982-… code_version=37705adf11d986593291f151f6cb9eb67251981f working_tree=dirty
+  WARNING  LOCAL WORKING TREE DIRTY at production write -- code_version=37705ad…, modified tracked .py:
+           boring_signals.py, dashboard.py, data_health.py, main.py, serving_revision.py.
+  ```
+  (Correct — the Phase-1 changes are uncommitted. The WARNING is the intended v1 behaviour; the run was **not** blocked.)
+- `Leaders deep scan updated.` · `Freshness gate passed -- state verified fresh as of 2026-08-28.`
+
+**Verification (post-run, independent query):**
+- `PRAGMA integrity_check` → **ok**.
+- `pipeline_runs` now has the **`code_version TEXT`** column (auto-added by `ensure_ledger_sqlite()`), 58 rows (was 57 — one new `deployment_identity` row).
+- **3 rows carry the SHA, all exactly `37705adf11d986593291f151f6cb9eb67251981f` == local `git rev-parse HEAD`:** `deployment_identity`/2026-08-31 (detail: `code_version=37705ad…; working_tree=dirty (boring_signals.py, dashboard.py, data_health.py, main.py, serving_revision.py)`), `support_reversal`/2026-08-28, `leaders_scan`/2026-08-28 (the two hooks this branch refreshes).
+- **55 pre-existing rows keep `code_version` NULL** — additive, no backfill, exactly as specified.
+- **All 10 signal tables byte-unchanged** — identical row counts and MAX dates pre/post (`prices`/`prices_adjusted` 1,757,895; `stock_signals` 694,392; `boring_signals` 212; `leaders_scan` 907 — refreshed idempotently; `setup_log` 208,348; etc.). No signal behaviour changed.
+- **`data_health.latest_pipeline_code_version()`** (the function the Data Health drift panel calls) returns `37705adf…` against the real DB — the read path works end-to-end.
+
+**Still held:** Postgres `ALTER TABLE pipeline_runs ADD COLUMN code_version` under **separate explicit sign-off** (§0a.3.7 step 3) → first Actions run verified to stamp `GITHUB_SHA` (step 4) → merge (step 5). Backup retained per MAINTENANCE_LOG. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Date of this subsection: 2026-08-31. Status: OI-9 rollout step 1 done — SQLite `code_version` column live locally, first real run stamped the correct SHA on 3 rows, 0 signal-table change, integrity ok, backup retained. Held at the Postgres-DDL sign-off gate.**
+
+### 88.9 Rollout step 3 — Postgres `ALTER TABLE` under sign-off (2026-08-31)
+
+Authorized (explicit, in-session). `§0a.3.7` step 3. **`ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS code_version TEXT` on live Supabase — additive, nullable, no backfill. No other statement, no other table.**
+
+**Read-only prep (fresh connection, `database_pg._parse_pg_url()` + `psycopg2.connect(**kwargs)`, creds from `.env`):** `transaction_read_only=off`, `pg_is_in_recovery()=False`, `current_user=postgres`. `pipeline_runs`: **12 columns** (base 7 + the §61 TR-06 Tier-2 five), **43 rows**, `code_version` absent, latest rows 2026-08-28 (cloud current).
+
+**Backup (before any write; Supabase PITR is OFF):** `scratch_code_version_20260831/pipeline_runs_pre_code_version.csv` (43 rows, 12 cols) + `pipeline_runs_schema_pre.json`. Script `scratch_code_version_20260831/ddl.py` (not committed — scratch), dry-run by default, `--apply` to commit, refuses to run if `code_version` already exists.
+
+**Dry-run (txn + `ROLLBACK`):** column adds → 13 columns, **row delta 0**, all NULL, checks PASS, rolled back — nothing persisted.
+
+**Apply (`--apply`, committed):** same result, **`>>> COMMITTED <<<`**. Then `data_health.ensure_ledger_pg()` run once against the post-DDL schema and confirmed a **clean no-op** (13 columns / 43 rows unchanged) — the next `daily_scraper.yml` run will not re-alter the schema.
+
+**Independent post-verify (second fresh connection):** `code_version` present as `text` / `is_nullable=YES`; `pipeline_runs` **43 rows** (unchanged), **0 non-null** `code_version`; 13 columns; `boring_signals` untouched.
+
+**Both backends now carry `pipeline_runs.code_version`.** SQLite has it + 3 stamped rows (§88.8); Postgres has it + 0 stamped rows (the next cloud run will be the first to stamp — that is rollout step 4, and it requires the merge first). **Held at:** merge (step 5) → observe the first post-merge `daily_scraper.yml` run stamps `code_version == GITHUB_SHA == origin/main HEAD` (step 4) → Cloud reboot → the Data Health drift panel shows ✅. Nothing committed. **Kiran remains NOT VERIFIED — DO NOT TRADE.**
+
+**Date of this subsection: 2026-08-31. Status: OI-9 Postgres `code_version` column added under sign-off — dry-run + apply + independent verify, 0 rows changed, `ensure_ledger_pg()` confirmed a no-op. Both backends ready. Next gate: the OI-9 code PR + merge, then first cloud run observed.**

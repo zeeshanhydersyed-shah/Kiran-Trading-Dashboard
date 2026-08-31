@@ -7868,6 +7868,27 @@ elif cur == PAGES[14]:  # Data Health
     _dh_serving_sha = get_serving_revision()
     st.code(_dh_serving_sha if _dh_serving_sha else "UNKNOWN — could not determine serving revision", language=None)
 
+    # OI-9 / TR-11 (docs/KIRAN_CLEANUP_AUDIT.md 88): mechanically compare the
+    # code THIS dashboard process is serving against the code the pipeline
+    # that produced the currently-displayed data actually ran. A mismatch on
+    # Streamlit Cloud means an in-place redeploy did not recycle the serving
+    # process (see 62 / 78) and a full reboot is needed. Read-only, recomputed
+    # every render, no write.
+    try:
+        from serving_revision import describe_drift as _dh_describe_drift
+        from data_health import latest_pipeline_code_version as _dh_pipeline_ver
+        _dh_level, _dh_msg = _dh_describe_drift(_dh_serving_sha, _dh_pipeline_ver())
+        if _dh_level == "match":
+            st.success("✅ " + _dh_msg)
+        elif _dh_level == "drift":
+            st.warning("⚠️ " + _dh_msg)
+        elif _dh_level == "unknown":
+            st.warning("⚠️ " + _dh_msg)
+        else:  # pending
+            st.info("ℹ️ " + _dh_msg)
+    except Exception as _dh_drift_exc:
+        st.caption(f"serving-vs-pipeline drift check unavailable: {_dh_drift_exc}")
+
     def _dh_load_summary():
         if _PG_URL:
             from dashboard_pg import get_dh_summary_pg
