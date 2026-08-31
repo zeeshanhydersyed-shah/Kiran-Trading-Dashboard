@@ -231,7 +231,10 @@ def test_return_coverage_empty_universe_reports_zero_zero_zero(tmp_path, monkeyp
 @pytest.fixture
 def leaders_stub(monkeypatch):
     monkeypatch.setattr(leaders_scan, "_pending_scan_dates", lambda db_path=None: list(DATES))
-    monkeypatch.setattr(leaders_scan, "save_top_picks", lambda db_path=None: None)
+    # save_top_picks() gained a scan_date param (§29.9 / TR-01 Phase 1b) -- run_all()
+    # now calls it once per caught-up date, so the stub must accept it.
+    monkeypatch.setattr(leaders_scan, "save_top_picks",
+                        lambda db_path=None, scan_date=None: None)
     monkeypatch.setattr(leaders_scan, "fill_leaders_forward_returns", lambda db_path=None: None)
 
 
@@ -274,7 +277,7 @@ def test_run_all_still_calls_whole_table_steps_even_with_failures(monkeypatch):
     top_picks_called = []
     forward_returns_called = []
     monkeypatch.setattr(leaders_scan, "save_top_picks",
-                         lambda db_path=None: top_picks_called.append(True))
+                         lambda db_path=None, scan_date=None: top_picks_called.append(True))
     monkeypatch.setattr(leaders_scan, "fill_leaders_forward_returns",
                          lambda db_path=None: forward_returns_called.append(True))
 

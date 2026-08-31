@@ -170,3 +170,115 @@ def test_vol_rejection_flag_pg_handles_decimal_pivot_high():
     # just return an int flag.
     result = leaders_scan._vol_rejection_flag_pg(cur, "AAA", "2026-08-19", pivot_high)
     assert result in (0, 1)
+
+
+# ---------------------------------------------------------------------------
+# save_top_picks() per-date -- the §29.9 sibling of the setup_log/leaders_scan
+# latest-date-only fix. leaders_scan.run_all() backfills leaders_scan for every
+# pending date; save_top_picks() used to derive leaders_top_picks for only the
+# newest of them, permanently (nothing re-derives an older date on a later run).
+# ---------------------------------------------------------------------------
+
+PICK_DATES = ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27"]
+
+
+@pytest.fixture
+def picks_db(tmp_path, monkeypatch):
+    """Temp DB with the tables save_top_picks() / run_all() touch."""
+    if not os.path.exists(FIXTURE_DB):
+        pytest.skip(f"schema source not found: {FIXTURE_DB}")
+    db = str(tmp_path / "picks.db")
+    src = sqlite3.connect(f"file:{FIXTURE_DB}?mode=ro", uri=True)
+    dst = sqlite3.connect(db)
+    for table in ("stock_signals", "leaders_scan", "leaders_top_picks",
+                  "sector_signals"):
+        dst.execute(src.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+            (table,)).fetchone()[0])
+    src.close()
+    monkeypatch.setattr(leaders_scan, "_PG_URL", None)
+    dst.commit()
+    yield dst, db
+    dst.close()
+
+
+def _add_scan_row(con, scan_date, symbol="LEAD", setup_type="PRE_BREAKOUT",
+                  final_score=10):
+    con.execute("""
+        INSERT INTO leaders_scan
+        (scan_date, setup_type, symbol, sector, sector_rank, vol_ratio_today,
+         entry_trigger, stop_loss, sl_pct, flag, final_score)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    """, (scan_date, setup_type, symbol, "CEMENT", 3, 2.4,
+          101.0, 95.0, 5.9, "OK", final_score))
+    con.commit()
+
+
+def _picks_dates(con):
+    return sorted(r[0] for r in con.execute(
+        "SELECT DISTINCT scan_date FROM leaders_top_picks"))
+
+
+def test_save_top_picks_honours_explicit_scan_date(picks_db):
+    con, db = picks_db
+    _add_scan_row(con, "2026-08-20")            # older
+    _add_scan_row(con, "2026-08-27")            # newest
+
+    leaders_scan.save_top_picks(db, scan_date="2026-08-20")
+
+    assert _picks_dates(con) == ["2026-08-20"], "must derive the date asked for, not MAX"
+
+
+def test_save_top_picks_default_still_uses_max(picks_db):
+    con, db = picks_db
+    _add_scan_row(con, "2026-08-20")
+    _add_scan_row(con, "2026-08-27")
+
+    leaders_scan.save_top_picks(db)             # no scan_date -> newest
+
+    assert _picks_dates(con) == ["2026-08-27"]
+
+
+def test_run_all_derives_picks_for_every_backfilled_date(picks_db, monkeypatch):
+    con, db = picks_db
+    # leaders_scan sits at PICK_DATES[0]; stock_signals runs through PICK_DATES[-1]
+    _add_scan_row(con, PICK_DATES[0])
+    con.executemany(
+        "INSERT INTO stock_signals (symbol, date, avg_vol_10d) VALUES ('AAA', ?, 900000)",
+        [(d,) for d in PICK_DATES])
+    con.commit()
+
+    # stub the heavy screener: a real leaders_scan row appears for each caught-up date
+    def fake_append(_db, scan_date=None):
+        _add_scan_row(sqlite3.connect(db), scan_date)
+    monkeypatch.setattr(leaders_scan, "append_leaders_scan", fake_append)
+    monkeypatch.setattr(leaders_scan, "fill_leaders_forward_returns", lambda *_a, **_k: None)
+
+    result = leaders_scan.run_all(db)
+
+    assert result["dates_eligible"] == 3        # PICK_DATES[1:] are pending
+    assert result["failed_dates"] == []
+    # leaders_top_picks now covers every caught-up date, not just the newest
+    assert _picks_dates(con) == PICK_DATES[1:]
+
+
+def test_run_all_pick_backfill_is_idempotent(picks_db, monkeypatch):
+    con, db = picks_db
+    _add_scan_row(con, PICK_DATES[0])
+    con.executemany(
+        "INSERT INTO stock_signals (symbol, date, avg_vol_10d) VALUES ('AAA', ?, 900000)",
+        [(d,) for d in PICK_DATES])
+    con.commit()
+
+    def fake_append(_db, scan_date=None):
+        _add_scan_row(sqlite3.connect(db), scan_date)
+    monkeypatch.setattr(leaders_scan, "append_leaders_scan", fake_append)
+    monkeypatch.setattr(leaders_scan, "fill_leaders_forward_returns", lambda *_a, **_k: None)
+
+    leaders_scan.run_all(db)
+    leaders_scan.run_all(db)
+
+    dupes = con.execute(
+        "SELECT scan_date, setup_type, rank, COUNT(*) c FROM leaders_top_picks "
+        "GROUP BY scan_date, setup_type, rank HAVING c > 1").fetchall()
+    assert dupes == []

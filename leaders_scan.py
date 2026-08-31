@@ -778,19 +778,23 @@ def append_leaders_scan(db_path=None, scan_date=None):
 
 # ── Top picks writer ──────────────────────────────────────────────────────────
 
-def _save_top_picks_pg() -> None:
+def _save_top_picks_pg(scan_date=None) -> None:
     """PG-backed equivalent of save_top_picks(). Same selection logic, ON
     CONFLICT instead of INSERT OR REPLACE. Assumes leaders_top_picks already
     exists in Supabase with UNIQUE(scan_date, setup_type, rank) (migrated
-    once via migrate_to_supabase.py) — no DDL run here."""
+    once via migrate_to_supabase.py) — no DDL run here.
+
+    scan_date: a specific ISO date to (re)derive picks for. None → the newest
+    scan_date in leaders_scan (the original behaviour). See save_top_picks()."""
     import psycopg2.extras
     from database_pg import get_conn
 
     with get_conn() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        cur.execute("SELECT MAX(scan_date) AS d FROM leaders_scan")
-        scan_date = cur.fetchone()["d"]
+        if scan_date is None:
+            cur.execute("SELECT MAX(scan_date) AS d FROM leaders_scan")
+            scan_date = cur.fetchone()["d"]
         if not scan_date:
             return
 
@@ -842,21 +846,31 @@ def _save_top_picks_pg() -> None:
                 ))
 
 
-def save_top_picks(db_path=None):
+def save_top_picks(db_path=None, scan_date=None):
     """
-    From today's leaders_scan, select up to top 3 per setup_type (final_score >= MIN_PICK_SCORE)
+    From leaders_scan, select up to top 3 per setup_type (final_score >= MIN_PICK_SCORE)
     and write to leaders_top_picks. If fewer than 3 qualify, write only those that do.
     If none qualify, nothing is written — this is intentional.
+
+    scan_date: a specific ISO date to (re)derive picks for. None → the newest
+    scan_date in leaders_scan (the original behaviour, kept for direct callers).
+    run_all() now passes an explicit date per iteration of its backfill loop, so
+    a multi-date catch-up derives picks for EVERY caught-up date, not only the
+    newest — the sibling of the §24/§25 setup_log/leaders_scan fix, closing the
+    gap documented in docs/KIRAN_CLEANUP_AUDIT.md §29.9. The per-date write is a
+    DELETE-by-scan_date + re-insert against the UNIQUE(scan_date, setup_type,
+    rank) key (§29.8), so it is idempotent and safe to re-run.
     """
     if _PG_URL:
-        _save_top_picks_pg()
+        _save_top_picks_pg(scan_date=scan_date)
         return
 
     if db_path is None:
         db_path = config.DB_PATH
 
     con = sqlite3.connect(db_path)
-    scan_date = con.execute("SELECT MAX(scan_date) FROM leaders_scan").fetchone()[0]
+    if scan_date is None:
+        scan_date = con.execute("SELECT MAX(scan_date) FROM leaders_scan").fetchone()[0]
     if not scan_date:
         con.close()
         return
@@ -1151,8 +1165,25 @@ def run_all(db_path=None) -> dict:
         except Exception as exc:
             print(f"Leaders scan failed for {scan_date}: {exc}")
             failed_dates.append(scan_date)
-    # Top picks and forward returns are whole-table operations, not per-date.
-    save_top_picks(db_path)
+
+    # Derive top picks per caught-up date, not just the newest -- save_top_picks()
+    # was latest-date-only, so a multi-date backfill wrote leaders_scan for N
+    # dates but leaders_top_picks for only 1, permanently (§29.9). Each call is an
+    # idempotent DELETE-by-scan_date + re-insert. fill_leaders_forward_returns()
+    # genuinely IS whole-table (it scans every OPEN/NOT_TRIGGERED pick) and stays
+    # a single trailing call.
+    picks_dates = [d for d in pending if d not in failed_dates]
+    if not picks_dates:
+        # nothing new appended -- refresh the current date's picks, unchanged
+        save_top_picks(db_path)
+    else:
+        for scan_date in picks_dates:
+            try:
+                save_top_picks(db_path, scan_date=scan_date)
+            except Exception as exc:
+                print(f"Top picks failed for {scan_date}: {exc}")
+                failed_dates.append(scan_date)
+
     fill_leaders_forward_returns(db_path)
     return {
         "dates_eligible": len(pending),

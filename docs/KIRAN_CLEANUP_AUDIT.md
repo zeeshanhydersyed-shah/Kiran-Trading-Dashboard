@@ -6218,3 +6218,63 @@ Not fixed here (out of Phase 1a scope). Recorded for the Trust Register open-ite
 ### 89.10 CI outcome
 
 PR #41 (`feat/tr01-phase1a-recovery-trigger-window`), 4 commits: (1) ledger §88.10 sweep-in, (2) the fix + tests + §89, (3) an abandoned fat-margin fixture attempt, (4) the test rework (§89.7). Two CI unit-test failures on commits 2–3, both the §89.9 pandas-version issue; commit 4 (`5e9488d`) green on the pinned stack — `clean-install` (Python 3.11) ✅, `unit-tests` **290 passed / 55.8s** ✅, `app-boot` **16 passed** ✅. **Merge held for owner sign-off** (project CLAUDE.md core rule 5 — hard stop before every merge). Trust Register not touched (§0a.4 placement + TR-01 row rewrite need their own fresh sign-off).
+
+### 89.11 Merged (2026-08-31)
+
+PR #41 merged: `gh pr merge 41 --merge --delete-branch` -> **`origin/main`: `0b1f869` -> `350e220`** (merge commit `350e22088e6497a14fd9e5211f9242f7dada158e`). Local `main` fast-forwarded; `signal_engine.py` on `main` confirmed carrying `_recovery_trigger_window` / `_last_recovery_as_of` and the loop consuming `trig_dates` / `trig_window`. `git status` on `main` = only `breadth_data.csv` (OI-3) + `local_cloud_price_reconciliation.py` (OI-2); §88.10 is now committed (PR #41 commit 1). `daily_scraper.yml` NOT triggered by the merge (last run 2026-08-29 schedule; next scheduled is the Mon 2026-09-01 17:00 UTC cron = TR-11 step 4). CI re-run on the merge commit `350e220`: all 3 checks green (`clean-install` / `unit-tests` / `app-boot`; run 33394620931 conclusion success).
+
+**This subsection (§89.11) is uncommitted in the `main` working tree** -- swept into the next Phase 1 PR, same handling as §88.10 before it.
+
+**TR-01 Phase 1a is DONE.** Next Phase 1 items (owner picks): `leaders_top_picks` latest-date-only (`leaders_scan.save_top_picks`, `leaders_scan.py:859`); rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite<->PG `boring_signals` parity integration test (§35.3); TR-14. Kiran verdict unchanged: **NOT VERIFIED -- DO NOT TRADE**; TR-01 stays 🔴 RED.
+
+## 90. <span style="color:#16a34a;">● TR-01 Phase 1b — `save_top_picks()` made per-date; `run_all()` now derives `leaders_top_picks` for every caught-up date (2026-08-31)</span>
+
+Second execution unit of the TR-01 enforcement arc (migration plan §40.17 Phase 1). Applies the fix **§29.9 already named but never implemented**. **Code only — no DB write, no schema change, no `MAINTENANCE_LOG` entry.** PR [#42](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/42). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**; TR-01 stays 🔴 RED.
+
+### 90.1 Read-only reconstruction
+
+`leaders_scan.run_all()` (`leaders_scan.py:1124`): `_pending_scan_dates()` → loop `append_leaders_scan(scan_date=d)` over every pending date (backfills `leaders_scan` correctly, the §25 fix) → then **one** `save_top_picks(db_path)` call → `fill_leaders_forward_returns()`.
+
+`save_top_picks()` (`:845` SQLite) / `_save_top_picks_pg()` (`:781` PG) both did `SELECT MAX(scan_date) FROM leaders_scan`, `DELETE` that one date, write its top picks. **Single date, no loop** — so a multi-date catch-up wrote `leaders_scan` for N dates and `leaders_top_picks` for only the newest, and no later run re-derives an older date (it too only touches its own `MAX`). Same defect class as §24 (`setup_log`) in the sibling table. `run_all()`'s own comment ("Top picks and forward returns are whole-table operations, not per-date") is half wrong: `fill_leaders_forward_returns()` genuinely is whole-table; `save_top_picks()` was strictly latest-date.
+
+**`leaders_top_picks` IS a consumed historical series** (unlike Phase 1a's `recovery_signals` snapshot):
+- Leaders page "audit" panel — `dashboard.py:2051` `WHERE scan_date <= date('now','-10 days')`; PG twin `dashboard_pg.py:898`.
+- `fill_leaders_forward_returns()` / `_fill_leaders_forward_returns_pg()` scan every `OPEN`/`NOT_TRIGGERED` historical pick to fill `fwd_return_*d` and label `WINNER`/`LOSER`.
+
+**Historical-coverage check** (read-only, live local `psx_data.db`): `leaders_top_picks` = **34 rows / 17 distinct `scan_date` / 2026-06-16 → 2026-08-17** — MAX is **11 sessions behind** `leaders_scan` (current at 2026-08-28). 25 of the 42 in-span trading sessions have no row. Some of the 25 are legitimate zero-pick days (nothing cleared `MIN_PICK_SCORE = 5`) and cannot be told apart from genuinely-skipped days from the output table alone (the CLAUDE.md resumable-scripts caveat — an item can legitimately produce zero rows); but every non-newest date of every multi-date backfill batch was genuinely never derived. `leaders_scan` itself: 907 rows / 46 distinct dates, 4 missing (07-13/20/21/29 — `stock_signals` gaps / the 07-07 outage) — essentially complete.
+
+### 90.2 The fix (item 1b-i) — `leaders_scan.py`
+
+- `save_top_picks(db_path=None, scan_date=None)` and `_save_top_picks_pg(scan_date=None)` — new optional `scan_date`; `None` keeps the `MAX(scan_date)` behaviour, so every existing/direct caller is unaffected. When a date is given, the existing `WHERE scan_date = ?` / `WHERE scan_date = %s` filters and the `sector_signals WHERE date = ?` `n_sectors` lookup all just take that date — **no scoring/screener change** (`leaders_scan` for the date already holds the right rows from `append_leaders_scan`).
+- `run_all()` — after the `append_leaders_scan` loop: `picks_dates = [d for d in pending if d not in failed_dates]`; if empty, one trailing `save_top_picks(db_path)` (unchanged); otherwise loop `save_top_picks(db_path, scan_date=d)` per date, a `save_top_picks` failure recorded in `failed_dates` (observable, not swallowed). `fill_leaders_forward_returns()` stays a single trailing whole-table call.
+- Corrected the misleading `run_all()` comment.
+- This is exactly §29.9's prescribed "Fix shape" and the TR-01 spec's Phase 1b line. The per-date write is idempotent — `DELETE`-by-`scan_date` + re-insert against `UNIQUE(scan_date, setup_type, rank)` (§29.8).
+
+### 90.3 Tests — `tests/test_leaders_scan_backfill.py` (+4)
+
+- `save_top_picks(scan_date=D)` derives picks for D, not `MAX`.
+- `save_top_picks()` with no `scan_date` still derives `MAX` (backward compat).
+- `run_all()` over a simulated 3-date gap (heavy screener stubbed; `fill_leaders_forward_returns` a no-op) → `leaders_top_picks` gains rows for **every** caught-up date, `dates_eligible == 3`, `failed_dates == []`.
+- `run_all()` twice → zero duplicate `(scan_date, setup_type, rank)` rows.
+
+Two pre-existing `tests/test_tr06_coverage_fields.py` tests needed a **test-only** stub-signature update — their `save_top_picks` monkeypatch lambdas didn't accept the new `scan_date` kwarg (`run_all()` now passes it). No behaviour change; the coverage-reporting assertions (`dates_eligible` / `dates_processed` / `failed_dates`) are unchanged and still pass.
+
+Local full run (pandas 3.0.2 / py3.14): **310 passed** (7m). Authoritative gate is CI on the pinned stack — see §90.7.
+
+### 90.4 What 1b-i does NOT do — the 25 historical dates (item 1b-ii, OPEN)
+
+`_pending_scan_dates()` floors on `MAX(leaders_scan.scan_date)`, so it will not return the 25 pre-existing gap dates — they have `leaders_scan` rows but never had `save_top_picks` run. Going forward `leaders_top_picks` stays in lockstep with `leaders_scan`; history is not touched.
+
+**Recommended: do the historical backfill (1b-ii) as its own signed-off task** — re-run `save_top_picks(scan_date=d)` for every `leaders_scan` `scan_date` absent from `leaders_top_picks`, both backends. It is deterministic and idempotent from the **trusted** `leaders_scan` table (a genuine zero-pick day re-evaluates to zero rows — harmless), and unlike Phase 1a's accepted gap this history is **actively consumed** (the Leaders audit/performance view; forward-return labeling). DB write → backup-first (SQLite file copy + sha256; PG `leaders_top_picks` CSV; Supabase PITR is OFF). **Pre-work:** re-verify live Postgres `leaders_scan` / `leaders_top_picks` state first — §40.4 recorded PG `leaders_top_picks` frozen at 2026-06-30; the OI-8-era catch-up touched `leaders_scan` but PG `leaders_top_picks` coverage is unconfirmed.
+
+### 90.5 Housekeeping
+
+PR #42 also sweeps in **ledger §89.11** (the Phase 1a / PR #41 merge record), uncommitted in the `main` working tree since the merge — same handling as §88.10 → PR #41.
+
+### 90.7 CI outcome
+
+PR #42: <CI_RESULT>.
+
+### 90.8 Status
+
+Item 1b-i implemented + tested. **1b-ii (historical backfill) OPEN — awaiting owner decision.** After 1b-i + (if approved) 1b-ii, `leaders_top_picks` is closed for Phase 1. **Still open in Phase 1:** rolling trim omits `sector_signals` + `index_prices` (`database_pg._TRIM_TABLES`); the SQLite↔PG `boring_signals` parity integration test (§35.3); TR-14 (authoritative universe). **Date of this section: 2026-08-31.**
