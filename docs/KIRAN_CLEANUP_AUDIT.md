@@ -6541,3 +6541,36 @@ The first reboot attempt (owner rebooted after PR #47 merged) showed the panel i
 ### 96.5 Status
 
 **TR-11 → 🟢 GREEN.** OI-9 → DONE. Component D (independent standing drift ALERT) remains folded into TR-18/TR-07 as always planned. Moves no other row — **TR-01 stays 🔴 RED** (the enforcement half — SQLite prevented from independently computing / being served as current — is unbuilt; the TR-01 Phase-1 arc §89–§95 is groundwork, not the core). **11 cutover-blocking rows remain: TR-01, TR-03, TR-04, TR-06, TR-07, TR-08, TR-13, TR-14, TR-16, TR-17, TR-18.** Trust Register edits (TR-11 row → GREEN, §5, §0 Amendment Log, OI-9 → DONE, OI-11 added) are **LOCAL ONLY** — that file is gitignored and never pushed without a fresh explicit ask. Kiran verdict **UNCHANGED: NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
+
+---
+
+## 97. <span style="color:#eab308;">◐ TR-14.2 — retroactive `scrape_coverage` sweep over the Postgres 2-year window (2026-09-01)</span>
+
+The second half of TR-14: TR-14.1a/b built the record + enforce mechanism forward; this stamps `scrape_coverage` for the **existing operational window** so history is provably checked, not just future scrapes. Owner-approved (scoping spec §4.D / decision 2 = "(a) PG 2-year window now"). Docs PR [#50](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/50).
+
+### 97.1 Method
+
+`scratch_tr14_2_retro_sweep_20260901/retro_sweep.py` — for every distinct `prices` trading date in the last 2 years (**495 dates, 2024-09-02 … 2026-08-31**), re-fetch the ksestocks MarketSummary page and record a `scrape_coverage` verdict:
+
+- `baseline` = symbols the source now shows traded that date, on our equity+index basis = `len(parse_market_summary(html).price_rows) + .index_rows` (post the scraper's own non-equity/`close<=0` filter).
+- `stored` = `COUNT(DISTINCT symbol)` in `prices` + `index_prices` for that date.
+- Passed to `data_health.record_scrape_coverage()` **unchanged** as `expected_total=baseline`, `parsed_total=stored` → its `_coverage_verdict()` (TOL=0) yields: `UNKNOWN` if the re-fetched page is itself truncated / countless (no baseline); `COMPLETE` if `stored >= baseline`; `PARTIAL` if `stored < baseline`. Every row carries an explicit `detail` (`"TR-14.2 retro 2026-09-01: stored=N source=M -> …"`) so retro rows are distinguishable from live-scrape rows.
+- **Read-only** except the `scrape_coverage` INSERTs (additive to a table that was empty — no backup needed, per the scoping spec). **Resumable** (skips dates that already have a row; committed per 20-date chunk). ~50 min, `REQUEST_DELAY=2s`. All 495 rows stamped `code_version = a5967e8` (HEAD).
+
+### 97.2 Result — 492 COMPLETE, **3 PARTIAL** (previously-invisible historical data losses)
+
+Independent fresh-connection verify: 495 rows, every window date covered (0 missing), `prices` untouched (231,268 rows), a re-run is a clean no-op.
+
+| Date | stored | source | short | Diagnosis (verified by symbol-level diff + neighbour-date checks) |
+|---|---|---|---|---|
+| **2026-08-20** | 481 | 492 | **11** | **Tail-truncated scrape.** The 7 missing equity symbols are all W–Z (`WTL, YOUW, ZAHID, ZAL, ZIL, ZTL, ZUMA`) — each has 18 August rows vs ~19 trading days, i.e. present every day *except* 08-20 — plus 4 missing `index_prices` rows (stored 1 of 5). The response was cut off before the end of the table. This is exactly the "480 dip nobody could classify" the TR-14 scoping spec §3 flagged — now definitively a partial scrape, not a thin trading day. |
+| **2026-05-06** | 484 | 491 | 7 (10 equity by name) | 10 regularly-trading equity symbols missing (`AGLNCPS, ASLCPS, BAFS, BIPLSC2, EWIC, GEMBCEM, NSRM, OML, SLYT, SSML` — all `is_non_equity_symbol=False`, 90–489 rows of history each). Not a tail pattern (index rows present); a partial/failed parse of scattered rows. |
+| **2026-04-27** | 477 | 482 | 5 | **`index_prices` entirely missing for the date** (stored 0 of 5; `index_prices` jumps 04-24 → 04-28). Equity side was complete (0 symbols missing by name). A whole day of KSE-100 + sibling index closes absent from the authoritative backend. |
+
+### 97.3 Impact + the repair decision (OI-12)
+
+Each missing symbol leaves a 1-day hole in that symbol's own price history (its MA/ATR/RS windows spanning the date are computed on one fewer bar) and slightly skews that date's *cross-sectional* RS rank / breadth / sector composite for every other symbol. 2026-08-20's breadth was computed on 481 not 492; `boring_signals` scanned 08-20 against a thin universe. Not catastrophic — but real, and until now invisible. **Logged as Trust Register OI-12** (local): backfill the 3 dates (re-scrape → upsert the missing `prices`/`index_prices` rows → recompute the affected `prices_adjusted`/`stock_signals`/`sector_signals`/`market_regime` windows), or accept as documented scars — **owner's decision, backup-first plan when taken up.** The retro `PARTIAL` rows do not retroactively touch `boring_signals_scanned`; `_completeness_ok` would only re-evaluate those dates if they are re-scanned.
+
+### 97.4 Status
+
+TR-14's mechanism is now complete: **records forward** (14.1a), **enforces** a PARTIAL current session (14.1b), and **history is provably checked** against the source's own per-date count (14.2). What remains for the **row** to close: a first real *live* cloud `scrape_coverage` row observed (waits for the first cron that scrapes a new trading day), and the owner's disposition of the 3 PARTIAL dates (OI-12). Optional follow-up: the same sweep over full local SQLite history (scoping decision 2(b), a background job). Trust Register edits (TR-14 evidence, OI-12) **LOCAL ONLY**. TR-01 stays 🔴 RED. Kiran verdict **UNCHANGED: NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
