@@ -250,6 +250,18 @@ because they affect live trading-signal correctness on Cloud.
   forgotten) must be prevented or flagged — a wrong factor silently corrupts
   `prices_adjusted` and every pre-ex-date `stock_signals` row (TR-04). The
   SQLite confirm path has the same single-action limit today; fix both.
+- **Backlog item folded into this work (owner-approved 2026-09-01, Trust
+  Register OI-12 / ledger §98):** once the historical-rebuild path exists,
+  recompute the derived tables for the three dates OI-12 backfilled raw rows
+  into — **2026-04-27, 2026-05-06, 2026-08-20**. Specifically: `stock_signals`
+  for the ~6 tracked symbols that gained a bar (notably `WTL`) **and** the
+  cross-sectional `rs_rank` / `sector_rs_rank` for all symbols on 2026-08-20
+  and 2026-05-06 (computed on the pre-backfill population); `sector_signals`
+  breadth/composite for 2026-08-20; and `market_regime` for **2026-04-27**
+  (still absent — the KSE-100 close is now present but a mid-series insert
+  perturbs the `regime_days` chain, so it needs the rebuild, not an append).
+  Until then the skew is small and largely inert (04-27/05-06 are outside
+  every consumer's ~30-day lookback; 08-20 is within one 30-day sector chart).
 
 ### `market_regime.regime_days` is non-idempotent
 
