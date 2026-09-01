@@ -6614,3 +6614,34 @@ Adding rows to a historical date leaves 3 derived surfaces stale for those dates
 ### 98.4 Status
 
 **OI-12 Phase 1 (raw archive) DONE + verified, both backends. PG `scrape_coverage` 495/495 COMPLETE.** OI-12 stays **open** for the derived-table residual (§98.3), tied to the `stock_signals` PG port. Retain `backups/psx_data_pre_oi12_backfill_20260901.db` + the PG CSVs until a clean nightly. Trust Register OI-12 updated (local). TR-01 stays 🔴 RED. Kiran verdict **UNCHANGED: NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
+
+---
+
+## 99. <span style="color:#16a34a;">● Pipeline schedule locked — `daily_scraper.yml` now runs 5 redundant cron slots (2026-09-01)</span>
+
+Owner-approved schedule for the cloud pipeline. PR [#53](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/53). Groundwork for **TR-18** (the watchdog's "run overdue" threshold is defined against this).
+
+### 99.1 The two problems, verified
+
+1. **GitHub Actions cron drift.** Measured on this repo: usual +25–30 min, but +2h (2026-08-26), +5h (2026-08-31), and **slots dropped entirely** — 2026-08-27 and 2026-08-28's 17:00 UTC slots never fired; each ran only on an ~8h-late catch-up, and the 08-28 catch-up (00:51 UTC 08-29) then *failed* on the pre-§82 no-data `ValueError`, with **no alert**. A single cron entry is a single point of failure regardless of what time it is set to.
+2. **Data-availability timing.** PSX closes ~15:30 PKT; `scraper.dates_since()` won't request "today" before 16:00 PKT (11:00 UTC) and `_is_stale()` rejects premature stale data. ksestocks EOD data is reliably complete **~19:30–20:00 PKT (14:30–15:00 UTC)** on a weekday — `refresh_manager.py:83` assumes 19:00 PKT; observed complete by 19:40 PKT (2026-08-17) and ≤20:15 PKT (2026-09-01). Weekend/holiday: several hours later (owner observation). Scheduling much before ~19:30 PKT risks a red run (source banner flips to "today" before the table is published) or a stored preliminary close.
+
+### 99.2 Why redundant attempts are ~free
+
+`main.py --update` is idempotent. When `dates_since()` returns nothing new, it runs the cheap "already up to date" path (+ a same-day close re-check) and `run_freshness_gate()` **passes** whenever `get_source_date()` == `MAX(date) FROM prices` — i.e. an early run that finds no new data is a **green no-op (~2 min)**, not a false alarm. The repo is **public → unlimited Actions minutes**. `concurrency: group: daily-scraper, cancel-in-progress: false` serialises any overlap.
+
+### 99.3 The locked schedule
+
+| Cron (UTC) | PKT | Role |
+|---|---|---|
+| `30 14 * * 1-5` | 19:30 | **Primary** — earliest slot that safely catches complete data |
+| `0 17 * * 1-5` | 22:00 | Backup if 19:30 was too early or dropped *(the previous sole slot, kept)* |
+| `0 20 * * 1-5` | 01:00 | Final same-day safety net (absorbs multi-hour drift) |
+| `0 14 * * 6` | Sat 19:00 | Catch a Friday whose weekday slots all failed |
+| `30 12 * * 1` | Mon 17:30 | Last-resort catch-up before `health_check.py`'s 4-day absolute-freshness floor trips |
+
+Three same-day weekday attempts cover GitHub drift + dropped slots; the Sat + Mon-early runs cover "every Friday slot was dropped" while staying inside the 4-day floor. `workflow_dispatch` unchanged.
+
+### 99.4 Follow-through for TR-18
+
+The watchdog (next session) alerts when **no `daily_scraper.yml` run has succeeded by ~22:00 UTC (03:00 PKT) on a trading day** — after all three same-day slots plus drift. Independent of GitHub Actions (a dead-man's-switch: the pipeline pings healthchecks.io on success, healthchecks.io alerts on a missing ping) so it still fires when Actions itself is the thing that failed. Ping URL + ntfy topic already provisioned (TR-01 spec §0a.4). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**

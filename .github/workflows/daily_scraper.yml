@@ -4,7 +4,22 @@ name: Daily PSX Scraper
 
 on:
   schedule:
-    - cron: "0 17 * * 1-5"   # Monday–Friday at 17:00 UTC (22:00 PKT)
+    # Redundant attempts, not one perfectly-timed run. GitHub's scheduler
+    # drops or delays cron slots by hours -- measured on this repo: +2h
+    # (2026-08-26), +5h (2026-08-31), and slots dropped entirely (2026-08-27 /
+    # 2026-08-28 ran only on ~8h-late catch-ups; the 08-28 catch-up then
+    # failed, unalerted). `main.py --update` is idempotent and a cheap green
+    # no-op when there is nothing new (freshness gate sees source-date ==
+    # DB-max and passes), so extra attempts cost almost nothing -- public
+    # repo, unlimited Actions minutes. ksestocks EOD data is reliably
+    # complete ~19:30-20:00 PKT (refresh_manager.py's 19:00 assumption +
+    # observed 19:40 PKT 2026-08-17 / <=20:15 PKT 2026-09-01). `concurrency`
+    # below serialises any overlap. Schedule locked 2026-09-01 (ledger §99).
+    - cron: "30 14 * * 1-5"   # 19:30 PKT -- primary attempt
+    - cron: "0 17 * * 1-5"    # 22:00 PKT -- backup if 19:30 was too early or dropped
+    - cron: "0 20 * * 1-5"    # 01:00 PKT -- final same-day safety net
+    - cron: "0 14 * * 6"      # Sat 19:00 PKT -- catch a Friday whose weekday slots all failed
+    - cron: "30 12 * * 1"     # Mon 17:30 PKT -- last-resort catch-up before health_check.py's 4-day floor
   workflow_dispatch:            # allow manual trigger from GitHub UI
 
 concurrency:
