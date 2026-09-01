@@ -29,6 +29,15 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-09-01 — OI-12: backfilled the raw rows missing from the 3 TR-14.2 PARTIAL dates (both backends)
+- **What:** Re-fetched ksestocks MarketSummary for 2026-04-27 / 2026-05-06 / 2026-08-20 and inserted the `prices` / `index_prices` / `prices_adjusted` rows that were absent — **both** local SQLite and Postgres were short (this is a re-fetch, not a backend sync). `scratch_oi12_backfill_20260901/backfill.py`, insert-only.
+- **Why:** Owner decision on ledger §97's 3 findings = backfill. Phase 1 = the raw archive; the derived-table residual (§98.3) is deferred to the `stock_signals` PG port.
+- **DB writes:** **PG** — `prices` +17, `index_prices` +9, `prices_adjusted` +17 (all `ON CONFLICT (symbol,date) DO NOTHING`). **Local SQLite** — `prices` +17, `index_prices` +5 (local already had 08-20's index), `prices_adjusted` +17. `prices_adjusted` = 1:1 copy of the new `prices` rows, factor 1.0 (verified no confirmed corporate action affects any of these symbol/date pairs). Rows added: 04-27 (5 index KSE-*), 05-06 (10 equity `AGLNCPS…SSML`), 08-20 (7 equity `WTL,YOUW,ZAHID,ZAL,ZIL,ZTL,ZUMA` + 4 index).
+- **Backup first:** local — `backups/psx_data_pre_oi12_backfill_20260901.db` (`integrity_check` ok, sha256 `c323de1ea4ee5e0cd67fa3965056dfd5e0bb430be0fb70e8fb588a9612b2b53c`). PG — CSV of the 3 dates' `prices`/`index_prices`/`prices_adjusted` rows in `scratch_oi12_backfill_20260901/`. Rollback = `DELETE` the inserted (date,symbol) set.
+- **Verification:** independent fresh-connection full-row compare over the 3-date window — every pre-backfill PG row still present **byte-identical, 0 changed, 0 missing**; counts match the inserts exactly; local `integrity_check` ok, MAX dates unchanged. `scrape_coverage` re-computed for the 3 dates → all COMPLETE; **PG `scrape_coverage` now 495/495 COMPLETE** (was 492/3).
+- **Residual (OI-12 stays open):** `stock_signals` (WTL + 5 other tracked symbols missing a bar; cross-sectional `rs_rank` on 08-20/05-06), `sector_signals` breadth on 08-20, `market_regime` 2026-04-27 still absent — deferred to the `stock_signals` Postgres port (§98.3). Retain the backups until a clean nightly.
+- **By:** Claude Code, under explicit user authorization ("OI-12: backfill the 3 partial dates"), dry-run shown first per backend. Full detail: ledger §98.
+
 ### 2026-09-01 — TR-14.2: retroactive `scrape_coverage` sweep of the Postgres 2-year window
 - **What:** Re-fetched the ksestocks MarketSummary page for all **495** distinct `prices` trading dates in the last 2 years (2024-09-02 … 2026-08-31) and stamped a `scrape_coverage` verdict per date — `baseline` (symbols the source now shows traded, equity+index) vs `stored` (our `prices` + `index_prices` count). `scratch_tr14_2_retro_sweep_20260901/retro_sweep.py`, via `data_health.record_scrape_coverage()` unchanged. Read-only except the INSERTs; resumable (per-20-date chunk commit; skips dates with an existing row); ~50 min at `REQUEST_DELAY=2s`.
 - **Why:** TR-14 scoping spec §4.D — the "provably checked … historical" half of TR-14. Ledger §97. Owner-approved (decision 2 = "(a) PG 2-year window now").

@@ -6574,3 +6574,43 @@ Each missing symbol leaves a 1-day hole in that symbol's own price history (its 
 ### 97.4 Status
 
 TR-14's mechanism is now complete: **records forward** (14.1a), **enforces** a PARTIAL current session (14.1b), and **history is provably checked** against the source's own per-date count (14.2). What remains for the **row** to close: a first real *live* cloud `scrape_coverage` row observed (waits for the first cron that scrapes a new trading day), and the owner's disposition of the 3 PARTIAL dates (OI-12). Optional follow-up: the same sweep over full local SQLite history (scoping decision 2(b), a background job). Trust Register edits (TR-14 evidence, OI-12) **LOCAL ONLY**. TR-01 stays 🔴 RED. Kiran verdict **UNCHANGED: NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
+
+---
+
+## 98. <span style="color:#eab308;">◐ OI-12 — backfill the 3 TR-14.2 PARTIAL dates: raw archive repaired (2026-09-01)</span>
+
+Owner decision on §97's 3 findings: **backfill.** This section covers **Phase 1 — the raw archive** (`prices` / `index_prices` / `prices_adjusted`, both backends). The **derived-table residual** (`stock_signals` / `sector_signals` / `market_regime` for those dates) is scoped in §98.3 and deliberately deferred. Docs PR [#51](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/51).
+
+### 98.1 What was missing, and from where
+
+Both backends were short for all 3 dates (local SQLite **and** Postgres) — so this was a **re-fetch from ksestocks**, not a backend-to-backend sync. `scratch_oi12_backfill_20260901/backfill.py` — one-time HTML fetch to disk, then `parse_market_summary()` (the scraper's own parser) → insert-only the rows absent from each backend.
+
+| Date | Postgres inserted | Local inserted |
+|---|---|---|
+| **2026-04-27** | 5 `index_prices` (KSE-100/30/ALL/MI30/MIALL — the date was entirely absent) | same 5 `index_prices` |
+| **2026-05-06** | 10 `prices` (`AGLNCPS, ASLCPS, BAFS, BIPLSC2, EWIC, GEMBCEM, NSRM, OML, SLYT, SSML`) | same 10 `prices` |
+| **2026-08-20** | 7 `prices` (`WTL, YOUW, ZAHID, ZAL, ZIL, ZTL, ZUMA` — the W–Z tail) + 4 `index_prices` (KSE-100 was present locally-scraped; PG's index was also tail-truncated) | same 7 `prices` (local already had all 5 index rows for 08-20) |
+
+`prices_adjusted` got a 1:1 copy of each new `prices` row (**factor 1.0** — verified no confirmed corporate action affects any of these symbol/date pairs; only `ZAHID` has a *pending, unconfirmed* suspect at 2026-07-13, which pre-dates 08-20 anyway). KSE-100 close for 2026-04-27 = 169,497.35; 2026-08-20 = present (169,xxx). WTL/2026-08-20 close = 1.18.
+
+### 98.2 Discipline + verification
+
+- **Insert-only** — `ON CONFLICT (symbol,date) DO NOTHING` (PG) / `INSERT … WHERE NOT EXISTS` (local `prices_adjusted`, which has no UNIQUE constraint). No existing row can be modified.
+- **Backup first** — local: full DB copy `backups/psx_data_pre_oi12_backfill_20260901.db` (`PRAGMA integrity_check` ok, sha256 `c323de1ea4ee5e0cd67fa3965056dfd5e0bb430be0fb70e8fb588a9612b2b53c`). PG: CSV of all `prices`/`index_prices`/`prices_adjusted` rows for the 3 dates (`scratch_oi12_backfill_20260901/pg_*_pre_backfill.csv`, 1436/6/1436 rows). Rollback = `DELETE … WHERE (date,symbol)` in the inserted set (or restore from CSV).
+- **PG local/PG runs were separate processes**, the local one hard-aborting if any PG env var is visible (OI-8 lesson).
+- **Independent verify (fresh connection):** every pre-backfill PG row still present **byte-identical — 0 changed, 0 missing** (full-row compare over the 3-date window); counts `prices` 1436→1453 (+17), `index_prices` 6→15 (+9), `prices_adjusted` 1436→1453 (+17) — exactly the inserts. Local `integrity_check` ok, MAX dates unchanged.
+- **`scrape_coverage` re-verified:** the 3 dates re-computed (baseline vs new stored count) → all **COMPLETE**. **PG `scrape_coverage` is now 495/495 COMPLETE** (was 492/3).
+
+### 98.3 Residual — derived tables for the 3 dates (NOT done here)
+
+Adding rows to a historical date leaves 3 derived surfaces stale for those dates:
+
+1. **`stock_signals`** — the ~6 *tracked* backfilled symbols (notably **WTL** — liquid, TECHNOLOGY & COMMUNICATION, a real screening candidate) have no `stock_signals` row for their backfilled date, and their own RS_60 / MA / ATR windows spanning it are computed on one fewer bar until a full recompute. Separately, cross-sectional `rs_rank` / `sector_rs_rank` for **all** ~490 symbols on 2026-08-20 and 2026-05-06 was computed on the pre-backfill population (a shift of a few rank positions).
+2. **`sector_signals`** — breadth / composite for 2026-08-20 (computed on 481 not 492) and 2026-05-06.
+3. **`market_regime`** — **2026-04-27 is still absent** (the row jumps 04-24 → 04-28); the KSE-100 close is now present so it *can* be computed, but a mid-series insert perturbs the `regime_days` chain (inert for the dashboard — `get_regime_status_pg()` recomputes days-since from a row scan and ignores the stored column, CLAUDE.md Known Gap).
+
+**Why deferred, not done now:** `recompute_symbol_signals()` and the sector/regime historical-recompute machinery are **SQLite-only — no Postgres port** (CLAUDE.md "Known Gaps: Postgres Parity"). A bespoke 3-date multi-table recompute on the authoritative backend, late in a session, trades a **small and largely-inert skew** (2026-04-27 / 05-06 are 4+ months old — no PG consumer reads derived tables past ~30 days, §93.2; 2026-08-20 is 12 sessions old, within one 30-day sector-history chart) for real risk. **Recommended disposition:** fold the derived recompute for these 3 dates into the `stock_signals` Postgres-port work (CLAUDE.md Known Gap / OI-4) — that port needs a full historical-rebuild path regardless, and it will naturally pick up the now-correct raw data. `market_regime` 2026-04-27 can be done as an isolated single-date fix if the owner wants the gap closed sooner.
+
+### 98.4 Status
+
+**OI-12 Phase 1 (raw archive) DONE + verified, both backends. PG `scrape_coverage` 495/495 COMPLETE.** OI-12 stays **open** for the derived-table residual (§98.3), tied to the `stock_signals` PG port. Retain `backups/psx_data_pre_oi12_backfill_20260901.db` + the PG CSVs until a clean nightly. Trust Register OI-12 updated (local). TR-01 stays 🔴 RED. Kiran verdict **UNCHANGED: NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
