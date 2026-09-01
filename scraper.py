@@ -414,8 +414,70 @@ def parse_market_summary(html: str, target_date: date) -> tuple[list, list, list
     return sector_rows, price_rows, index_rows
 
 
-def scrape_date(target_date: date, session: requests.Session) -> tuple[list, list, list]:
-    """Scrape one date. Returns (sector_rows, price_rows, index_rows). Empty lists if no data."""
+_TRADED_COUNT_RE = re.compile(r"Number of traded companies in sector:\s*([0-9,]+)")
+
+
+def parse_sector_counts(html: str) -> tuple[int | None, int, dict[str, tuple[int, int]]]:
+    """TR-14: the source's own per-date completeness statement.
+
+    ksestocks' MarketSummary page prints, for each sector, a header row
+    "(Number of traded companies in sector: N)". This walks the same table
+    parse_market_summary() does and returns:
+        expected_total  -- sum of every stated N (None if the page has no
+                           such rows at all -> UNKNOWN, e.g. a no-data day)
+        parsed_total    -- count of 8-cell data rows actually present in the
+                           HTML, in the sections that carried a stated N
+                           (BEFORE parse_market_summary's non-equity/bad-cell
+                           filters -- this measures whether the HTML itself
+                           was truncated, not what we chose to keep)
+        per_sector      -- {sector: (stated, rows_seen)} for the detail line
+
+    On a healthy day expected_total == parsed_total exactly (verified live
+    2026-08-31: 38 sectors, 622 == 622). A truncated response shows
+    parsed_total < expected_total and per_sector names the short section.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    tables = soup.find_all("table")
+    data_table = tables[-1] if tables else None
+    if not data_table:
+        return None, 0, {}
+
+    current: str | None = None
+    per_sector: dict[str, list[int]] = {}
+    for row in data_table.find_all("tr"):
+        cells = row.find_all("td")
+        if not cells:
+            continue
+        if len(cells) == 2:
+            m = _TRADED_COUNT_RE.search(cells[1].get_text(strip=True))
+            if m:
+                current = cells[0].get_text(strip=True)
+                per_sector[current] = [int(m.group(1).replace(",", "")), 0]
+                continue
+            if cells[1].get_text(strip=True) == "":
+                current = cells[0].get_text(strip=True)   # e.g. "Market Indexes" -- no count
+                continue
+        if cells[0].get_text(strip=True) == "Symbol":
+            continue
+        if len(cells) == 8 and current in per_sector:
+            per_sector[current][1] += 1
+
+    if not per_sector:
+        return None, 0, {}
+    expected_total = sum(v[0] for v in per_sector.values())
+    parsed_total = sum(v[1] for v in per_sector.values())
+    return expected_total, parsed_total, {k: (v[0], v[1]) for k, v in per_sector.items()}
+
+
+def scrape_date(target_date: date, session: requests.Session,
+                coverage_out: list | None = None) -> tuple[list, list, list]:
+    """Scrape one date. Returns (sector_rows, price_rows, index_rows). Empty lists if no data.
+
+    coverage_out (TR-14): if a list is passed, one dict per scraped date is
+    appended -- {scrape_date, expected_total, parsed_total, detail} -- from
+    the source's own per-sector traded-company counts. Opt-in; existing
+    callers pass nothing and are unaffected.
+    """
     html = _fetch_html(target_date, session)
     if not html:
         return [], [], []
@@ -424,6 +486,21 @@ def scrape_date(target_date: date, session: requests.Session) -> tuple[list, lis
 
     if not price_rows:
         logger.info("No trading data for %s (holiday or weekend)", target_date)
+        return sector_rows, price_rows, index_rows
+
+    if coverage_out is not None:
+        try:
+            exp, parsed, per_sector = parse_sector_counts(html)
+            short = {s: c for s, c in per_sector.items() if c[1] < c[0]}
+            coverage_out.append({
+                "scrape_date": target_date.strftime("%Y-%m-%d"),
+                "expected_total": exp,
+                "parsed_total": parsed,
+                "detail": ("; ".join(f"{s}: {c[0]} stated, {c[1]} parsed"
+                                     for s, c in short.items()) or None),
+            })
+        except Exception as exc:      # never let a telemetry parse break the scrape
+            logger.warning("parse_sector_counts failed for %s: %s", target_date, exc)
 
     return sector_rows, price_rows, index_rows
 
@@ -461,6 +538,7 @@ def scrape_date_range(
     dates: list[date],
     session: requests.Session | None = None,
     prev_prices: list | None = None,
+    coverage_out: list | None = None,
 ) -> tuple[list, list, list]:
     """
     Scrape multiple dates sequentially.
@@ -468,6 +546,8 @@ def scrape_date_range(
 
     prev_prices: price rows from the DB's last stored date, used to detect
                  the first date in the batch being a holiday ghost.
+    coverage_out (TR-14): passed through to scrape_date() -- one per-date
+                 completeness dict appended per scraped date. Opt-in.
     """
     if session is None:
         session = build_session()
@@ -482,8 +562,9 @@ def scrape_date_range(
     failed_dates: list[date] = []
     for idx, d in enumerate(dates, 1):
         logger.info("Scraping %s (%d/%d)...", d, idx, total)
+        _cov_this: list | None = [] if coverage_out is not None else None
         try:
-            s_rows, p_rows, i_rows = scrape_date(d, session)
+            s_rows, p_rows, i_rows = scrape_date(d, session, coverage_out=_cov_this)
         except Exception as exc:
             # One date's scrape must never abort the whole batch (design:
             # audit §39.19 "Ingestion ... logged, non-fatal"; §39.17 row 18;
@@ -509,8 +590,11 @@ def scrape_date_range(
                 )
                 if idx < total:
                     time.sleep(REQUEST_DELAY)
-                continue
+                continue     # ghost date: _cov_this discarded, no coverage row (matches "no rows stored")
             prev_fp = curr_fp
+
+        if coverage_out is not None and _cov_this:
+            coverage_out.extend(_cov_this)
 
         # Later sector assignments win (keep the most recent sector mapping)
         for sym, sec in s_rows:

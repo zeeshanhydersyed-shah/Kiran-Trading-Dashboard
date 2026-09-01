@@ -493,6 +493,158 @@ def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, deta
 
 
 # ---------------------------------------------------------------------------
+# TR-14 -- per-date scrape completeness vs the source's own per-sector
+# traded-company counts (scraper.parse_sector_counts). Recorded every scrape;
+# TR-14.1b wires a PARTIAL current session into check_all() so it blocks.
+# ---------------------------------------------------------------------------
+
+COVERAGE_COMPLETE = "COMPLETE"
+COVERAGE_PARTIAL  = "PARTIAL"
+COVERAGE_UNKNOWN  = "UNKNOWN"
+
+# Owner decision (TR-14 spec §6): TOL = 0. A PARTIAL always means investigate;
+# the specific short sector is named in `detail` rather than silently absorbed.
+_COVERAGE_TOL = 0
+
+_SCRAPE_COVERAGE_SQLITE_DDL = """
+CREATE TABLE IF NOT EXISTS scrape_coverage (
+    scrape_date     TEXT PRIMARY KEY,
+    expected_total  INTEGER,
+    parsed_total    INTEGER,
+    coverage_status TEXT NOT NULL,
+    detail          TEXT,
+    recorded_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    code_version    TEXT
+)
+"""
+
+_SCRAPE_COVERAGE_PG_DDL = """
+CREATE TABLE IF NOT EXISTS scrape_coverage (
+    scrape_date     DATE PRIMARY KEY,
+    expected_total  INTEGER,
+    parsed_total    INTEGER,
+    coverage_status TEXT NOT NULL,
+    detail          TEXT,
+    recorded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    code_version    TEXT
+)
+"""
+
+
+def _coverage_verdict(expected_total, parsed_total) -> str:
+    if expected_total is None:
+        return COVERAGE_UNKNOWN
+    if parsed_total is not None and parsed_total >= expected_total - _COVERAGE_TOL:
+        return COVERAGE_COMPLETE
+    return COVERAGE_PARTIAL
+
+
+def ensure_scrape_coverage_sqlite(con) -> None:
+    con.execute(_SCRAPE_COVERAGE_SQLITE_DDL)
+
+
+def ensure_scrape_coverage_pg(cur) -> None:
+    """One-time DDL for scrape_coverage on Postgres -- NOT called implicitly
+    (same signed-off-first-run contract as ensure_boring_signals_scanned_table_pg)."""
+    cur.execute(_SCRAPE_COVERAGE_PG_DDL)
+
+
+def record_scrape_coverage(rows: list[dict], code_version: str | None = None) -> list[dict]:
+    """Upsert one scrape_coverage row per scraped date. Never raises -- a
+    completeness-telemetry write must not be able to break the scrape.
+
+    rows: dicts from scraper.scrape_date_range(coverage_out=...) --
+          {scrape_date, expected_total, parsed_total, detail}.
+    Returns the same rows with 'coverage_status' filled in (for the caller's
+    log line), even if the DB write itself failed.
+    """
+    out = []
+    for r in rows:
+        r = dict(r)
+        r["coverage_status"] = _coverage_verdict(r.get("expected_total"), r.get("parsed_total"))
+        out.append(r)
+    if not out:
+        return out
+
+    try:
+        if _PG_URL:
+            _record_scrape_coverage_pg(out, code_version)
+        else:
+            con = sqlite3.connect(config.DB_PATH)
+            try:
+                ensure_scrape_coverage_sqlite(con)
+                con.executemany(
+                    """
+                    INSERT INTO scrape_coverage
+                        (scrape_date, expected_total, parsed_total, coverage_status, detail, code_version)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(scrape_date) DO UPDATE SET
+                        expected_total  = excluded.expected_total,
+                        parsed_total    = excluded.parsed_total,
+                        coverage_status = excluded.coverage_status,
+                        detail          = excluded.detail,
+                        recorded_at     = datetime('now'),
+                        code_version    = excluded.code_version
+                    """,
+                    [(r["scrape_date"], r.get("expected_total"), r.get("parsed_total"),
+                      r["coverage_status"], r.get("detail"), code_version) for r in out],
+                )
+                con.commit()
+            finally:
+                con.close()
+    except Exception as exc:
+        logger.warning("record_scrape_coverage: write failed (%s)", type(exc).__name__)
+    return out
+
+
+def _record_scrape_coverage_pg(rows: list[dict], code_version: str | None) -> None:
+    url = _env_pg_url()
+    if not url:
+        return
+    import psycopg2
+    from database_pg import _parse_pg_url
+    conn = psycopg2.connect(**_parse_pg_url(url))
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    """
+                    INSERT INTO scrape_coverage
+                        (scrape_date, expected_total, parsed_total, coverage_status, detail, code_version)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT(scrape_date) DO UPDATE SET
+                        expected_total  = EXCLUDED.expected_total,
+                        parsed_total    = EXCLUDED.parsed_total,
+                        coverage_status = EXCLUDED.coverage_status,
+                        detail          = EXCLUDED.detail,
+                        recorded_at     = NOW(),
+                        code_version    = EXCLUDED.code_version
+                    """,
+                    [(r["scrape_date"], r.get("expected_total"), r.get("parsed_total"),
+                      r["coverage_status"], r.get("detail"), code_version) for r in rows],
+                )
+    finally:
+        conn.close()
+
+
+def scrape_coverage_status(scrape_date: str) -> str | None:
+    """The recorded coverage_status for one date, or None if not recorded /
+    the table does not exist. Read-only; never raises. Used by check_all()
+    (TR-14.1b) and boring_signals' completeness gate."""
+    scrape_date = _iso(scrape_date) or str(scrape_date)
+    try:
+        fetch_one, close = _open()
+        try:
+            row = fetch_one("SELECT coverage_status FROM scrape_coverage WHERE scrape_date = {p}",
+                            (scrape_date,))
+            return row[0] if row and row[0] else None
+        finally:
+            close()
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # The check itself
 # ---------------------------------------------------------------------------
 

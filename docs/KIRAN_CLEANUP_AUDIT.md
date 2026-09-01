@@ -6411,3 +6411,46 @@ Because the first trim of a newly-covered table is a large irreversible `DELETE`
 ### 93.5 Status
 
 Item 1c DONE (code + first trim). Going forward the daily `trim_old_rows_pg()` deletes only the ~23 `sector_signals` rows/session that newly age past 2 years. **Phase 1 of the TR-01 arc now has one item left: 1e — TR-14 (authoritative point-in-time expected-universe source), the large sub-project.** Also fills the §92.5 CI-result placeholder (uncommitted since PR #44). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**; TR-01 stays 🔴 RED. **Date of this section: 2026-08-31.**
+
+---
+
+## 94. <span style="color:#eab308;">◐ TR-01 Phase 1e / TR-14.1a — `scrape_coverage`: per-date scrape completeness vs the source's own count (record-only) (2026-09-01)</span>
+
+TR-14 is Phase 1's last item and the largest. It is being built in two PRs: **TR-14.1a (this one) records** a completeness verdict every scrape; **TR-14.1b (next) enforces** it (a `PARTIAL` current session fails the freshness gate and swaps the `boring_signals` OI-6 completeness floor). PR [#46](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/46). Scoping spec (owner-approved) recap in §94.1; the finding that motivated it in §94.2; what shipped in §94.3; what is deliberately NOT here in §94.4.
+
+### 94.1 TR-14 scope (owner-approved, from the pre-registered scoping spec)
+
+TR-14's amended acceptance asks for **(A) an authoritative point-in-time expected-universe source** and **(B) a completeness check wired to fail the pipeline** — explicitly *not* "compare today's count to a rolling baseline", which is what both interim mechanisms do (`boring_signals._completeness_ok()` condition 2 = `symbols_priced ≥ 0.85 × median(last 20 days)`, Trust Register §0a.1.5; and §39.2's designed-not-built MANDATORY check). Owner decisions locked: **TOL = 0** (a PARTIAL always means investigate; the short sector is named, not silently absorbed); retroactive sweep = the **PG 2-year window** (TR-14.2, a separate PR); **PARTIAL blocks** (withholds the dashboard, same as TR-05); the alert rides the Phase-3 ntfy channel once it exists, GitHub failure email until then.
+
+### 94.2 The finding — the authoritative source already arrives in every scrape and is discarded
+
+`ksestocks.com/MarketSummary` (one POST = the whole market for one date; the scraper's only source) prints, for **every sector**, a header row `(Number of traded companies in sector: N)`. `scraper.parse_market_summary()` already sees that text — it uses it to detect a section header — and **throws the number away**. Summed across the page it is a **source-provided, per-date, self-describing count of exactly what traded that day**. Live-verified three times read-only (2026-08-31 / source date 2026-08-31): **38 sectors, Σ stated = 622, data rows present = 622**.
+
+Why this beats `stock_metadata` / `symbol_active_dates`: `stock_metadata.listing_date` **is** `MIN(date) FROM prices` and `delisting_date` **is** `MAX(date) FROM prices` (`build_stock_metadata.py`) — it is derived *from* `prices`, so it cannot verify `prices` (circular), and it only covers the ~468-symbol curated roster (survivorship trap — raw `prices` has ~1,004 distinct symbols historically). The ksestocks count is independent of our stored data and genuinely per-date: it tracks listings, delistings, suspensions and half-days automatically because it is the source's own tally. It measures *traded*, not *listed* — the right thing for catching a **partial / truncated scrape** (the §35.1 2026-07-07 empty day, the §51.3 07-08/07-10 deficits, the §82 crash class), which is what TR-14 is for.
+
+### 94.3 What shipped in TR-14.1a — record only, no gating
+
+- **`scraper.parse_sector_counts(html) -> (expected_total, parsed_total, per_sector)`.** Walks the same last-table the main parser does. `expected_total` = Σ every stated `N`; `parsed_total` = count of 8-cell data rows in the sections that carried a stated `N`, counted **before** the downstream non-equity / bad-numeric / `close<=0` filters, so it is apples-to-apples with the source's own tally. Returns `(None, 0, {})` when the page has no count rows at all (a no-data day → `UNKNOWN`, never a false `PARTIAL`). Never raises.
+- **`scraper.scrape_date` / `scrape_date_range` gain an opt-in `coverage_out: list | None`.** When a list is passed, one dict per successfully-scraped date is appended (`{scrape_date, expected_total, parsed_total, detail}`). Existing callers pass nothing and are byte-for-byte unaffected; the §82 no-table path is untouched; a ghost date (stale copy of the prior session, skipped) correctly gets **no** coverage row.
+- **`scrape_coverage` table (both backends).** `scrape_date` PK, `expected_total`, `parsed_total`, `coverage_status` (`COMPLETE` / `PARTIAL` / `UNKNOWN`), `detail`, `recorded_at`, `code_version` (OI-9 groundwork, nullable). SQLite DDL is folded into `record_scrape_coverage()`; the **Postgres `ensure_scrape_coverage_pg()` is a separate, explicitly-invoked step — not called implicitly** (same "assumes the table exists, DDL is signed off first" contract as `ensure_boring_signals_scanned_table_pg()`).
+- **`data_health._coverage_verdict()`** — `UNKNOWN` if `expected_total is None`; `COMPLETE` if `parsed_total >= expected_total - _COVERAGE_TOL` (`_COVERAGE_TOL = 0`); else `PARTIAL`.
+- **`data_health.record_scrape_coverage(rows, code_version=None)`** — idempotent upsert (`ON CONFLICT(scrape_date) DO UPDATE`), **never raises** (a completeness-telemetry write must not be able to break the scrape); returns the rows with `coverage_status` filled in for the caller's log line even if the DB write itself failed. `data_health.scrape_coverage_status(date)` is the read-back (read-only, `None` on missing row / missing table, never raises) — the hook TR-14.1b will call from `check_all()`.
+- **`main.cmd_update()`** threads `coverage_out` through both the main scrape path and the same-day-recheck branch, calls `record_scrape_coverage(..., code_version=code_version)`, logs any `PARTIAL` at WARNING with the named sector(s), and writes a `scrape_coverage` `_record_hook` heartbeat (`INSUFFICIENT` if any PARTIAL, else `EXPECTED`). **None of this gates anything yet** — that is TR-14.1b.
+- **Tests:** `tests/test_scrape_coverage.py` (15) — parse extraction (healthy / truncated / no-table / uncounted "Market Indexes" section), the 5 verdict cases, isolated-DB record + read-back + idempotent + never-raises-on-write-failure, `scrape_date_range → coverage_out` with a truncated page → `PARTIAL` naming the sector, and a ghost date → no row. `tests/test_scraper_no_data_resilience.py` — 2 stub signatures updated for the new `coverage_out` kwarg. **Full suite 335 passed** (320 pre-1a + 15), CI: see §94.5.
+
+### 94.4 Observed working before merge
+
+Two independent observations of the (still-uncommitted) code:
+1. **Scoped script** (`scratch_tr14_1a_observe_20260831/observe.py`) — one live `ksestocks` fetch, `parse_sector_counts` → 622 == 622 / 38 sectors / 0 short, `record_scrape_coverage` → `COMPLETE`, `scrape_coverage_status("2026-08-31")` → `COMPLETE`, table holds exactly 1 row, no existing table touched, `PRAGMA integrity_check` ok.
+2. **The real local Task Scheduler pipeline** ran the same working tree on its own schedule (`run_update.bat` → `main.py --update`, run_id `66f01996…`, 2026-09-01 ~03:49–03:58 UTC, on `d248e31`). The OI-9 dirty-tree WARNING fired correctly. It scraped 2026-08-31 and, as part of the real hook chain, wrote `scrape_coverage = (2026-08-31, 622, 622, COMPLETE, code_version=d248e31…)` and a clean `COMPLETED / EXPECTED` heartbeat — no PARTIAL, no UNKNOWN, no error. `MAINTENANCE_LOG.md` 2026-09-01 carries the DB-write detail + the pre-write backup (`backups/psx_data_pre_scrape_coverage_20260831.db`).
+
+### 94.5 NOT in this PR
+
+- **Enforcement.** TR-14.1b (next): a `PARTIAL` current session → `data_health.check_all()` red → `run_freshness_gate()` fails + `_pub_ok` withholds; and replace `boring_signals`' §0a.1.5 condition-2 rolling-median floor with `scrape_coverage_status(scan_date) == COMPLETE`. Integration test that a PARTIAL fails the gate.
+- **The Postgres table.** `ensure_scrape_coverage_pg()` first run against live Supabase is a separate signed-off step (same as `boring_signals_scanned` / the OI-9 `ALTER`), then observe one real cloud `scrape_coverage` row.
+- **TR-14.2 retroactive sweep** — the read-only PG-2-year-window re-fetch + stamp, its own PR + sign-off.
+- A full historical listed-securities registry / survivorship fix for the ~690 `prices`-only symbols — matters for backtests, not "did today's scrape get everything that traded"; out of TR-14 scope.
+
+### 94.6 Status
+
+TR-14.1a code + tests done, observed working locally, **record-only (gates nothing)**. TR-14 (item 1e) stays open; TR-01 stays 🔴 RED; Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
