@@ -6507,3 +6507,37 @@ Hook order in `cmd_update()` already puts the `scrape_coverage` hook (right afte
 ### 95.5 Status
 
 Enforcement wired. TR-14 (item 1e) — the record + enforce mechanism is complete against the ksestocks per-sector count; what remains for the **row** is the retroactive-history half (TR-14.2) and a first real cloud observation. TR-01 stays 🔴 RED; Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
+
+---
+
+## 96. <span style="color:#16a34a;">● TR-11 → 🟢 GREEN — standing deployment-identity mechanism observed working in production (2026-09-01)</span>
+
+**TR-11 is the 2nd of the 13 cutover-blocking Trust-Register rows to close** (TR-05 was the 1st, §87). It closes on the *standing/repeatable* deployed-SHA readback its acceptance criterion demands — vs. §62's one-time manual proof for a single commit.
+
+### 96.1 What the row was held on
+
+Per §88 the reconstruction showed every TR-11 acceptance clause already met **except** the standing "the deployed commit SHA is read back from the live deployment and matches" clause. OI-9 (§0a.3, §88) built the mechanism to close it:
+- `pipeline_runs.code_version` (additive, nullable, **both backends**) stamped on every production run via `serving_revision.resolve_code_version()` — `$GITHUB_SHA` → `.git/HEAD` → `None`, never a guess.
+- `serving_revision.describe_drift(serving_sha, pipeline_sha)` → a Data Health panel that **mechanically** compares the serving checkout's `.git/HEAD` against `data_health.latest_pipeline_code_version()` — `match` / `drift` / `pending` / `unknown`, no eyeballing, no dashboard write (TR-12).
+- `main._working_tree_state()` — a local pre-write checkout-identity + dirty-tree record (WARNING + `deployment_identity` marker row; v1 does not block).
+
+Code merged 2026-08-31 (PR #40). Held at: a production observation that a cloud run stamps `code_version == GITHUB_SHA == origin/main HEAD`, then the Cloud app is rebooted and the drift panel reads ✅.
+
+### 96.2 The production observation (2026-09-01)
+
+1. **Cloud cron, `code_version` stamped.** The 2026-08-31 21:44 UTC `daily_scraper.yml` run (`event: schedule`, 4h44m late — GitHub scheduler delay, §94.7) stamped every hook `code_version = d248e31`, which was `origin/main` HEAD at that time; `deployment_identity` detail recorded `working_tree=clean`. A follow-up `workflow_dispatch` on 2026-09-01 06:10 UTC, after PRs #46–#48 merged, stamped `code_version = 5fe1c53 = origin/main HEAD` — verified directly against live Postgres (`data_health.latest_pipeline_code_version()` → `5fe1c53`).
+2. **Cloud reboot + drift panel ✅.** The owner rebooted the Streamlit Cloud serving app. The Data Health page then displayed **Serving Revision `5fe1c53c8c75723ea4933ce18312363e7ba74af0`** and `describe_drift()` returned **`match` — "Serving code matches the pipeline (`5fe1c53`)"** (green). Serving SHA == latest-pipeline SHA == `origin/main` HEAD. First-party screenshot-confirmed.
+3. **Deployed behavior observed** — not just source: the dashboard rendered the regime banner, Kelly sizing, and the Corporate Action Review surface; the freshness/serving gate was VERIFIED (data current to 2026-08-31); the new `describe_drift` panel itself was live.
+4. **`git status` on `main`** is clean except the two long-standing deferred items (`breadth_data.csv` OI-3, `local_cloud_price_reconciliation.py` OI-2) — the standard already accepted at §76 for this row.
+
+### 96.3 A sequencing miss, and the recovery
+
+The first reboot attempt (owner rebooted after PR #47 merged) showed the panel in **drift**: serving `62f32da` vs latest pipeline `4fdd4dc`. Cause: (a) the last pipeline run at that point was a manual dispatch on the older `4fdd4dc`; (b) PR #48 (an unrelated OI-10 docs note) was merged *during* the reboot window, moving `origin/main` to `5fe1c53`. Recovery: hold `origin/main` stable at `5fe1c53`, run one `workflow_dispatch` on it to stamp `code_version = 5fe1c53`, then reboot once more so serving, pipeline, and HEAD all converged. **Lesson recorded: freeze `main` for the duration of a deployment-identity observation.** The mechanism itself behaved correctly throughout — it flagged a real divergence, then a real match.
+
+### 96.4 OI-11 — a residual (does not block GREEN)
+
+`describe_drift()`'s "drift" branch hard-codes the remediation "a Cloud reboot (not a redeploy) is needed" — correct when the serving process is *behind*, wrong when serving is *ahead* of the last pipeline run (a reboot cannot change `pipeline_runs`; a pipeline run is what's needed). The equality check and the `match` state are correct; only the one-directional message is imprecise. Logged as Trust Register OI-11 — pass `describe_drift()` an ancestry hint so it can emit a distinct non-alarming "pipeline will align on its next run" state, plus a test for the serving-ahead case. Small, post-GREEN.
+
+### 96.5 Status
+
+**TR-11 → 🟢 GREEN.** OI-9 → DONE. Component D (independent standing drift ALERT) remains folded into TR-18/TR-07 as always planned. Moves no other row — **TR-01 stays 🔴 RED** (the enforcement half — SQLite prevented from independently computing / being served as current — is unbuilt; the TR-01 Phase-1 arc §89–§95 is groundwork, not the core). **11 cutover-blocking rows remain: TR-01, TR-03, TR-04, TR-06, TR-07, TR-08, TR-13, TR-14, TR-16, TR-17, TR-18.** Trust Register edits (TR-11 row → GREEN, §5, §0 Amendment Log, OI-9 → DONE, OI-11 added) are **LOCAL ONLY** — that file is gitignored and never pushed without a fresh explicit ask. Kiran verdict **UNCHANGED: NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
