@@ -785,17 +785,46 @@ def _symbols_priced_by_date(by_symbol: dict) -> "dict":
     return counts
 
 
-def _completeness_ok(symbols_priced: int, prior_complete_counts: list) -> bool:
-    """Interim data-completeness gate (Trust Register §0a.1.5): a date passes
-    iff it has at least MIN_UNIVERSE_ABS priced symbols AND (once at least
-    COVERAGE_MEDIAN_WINDOW prior complete scans exist) at least
-    REL_COVERAGE_FLOOR x the median of those. A failing date is still
-    scanned -- a real breakout that is visible should not be withheld -- but
-    its marker is written complete=0 so a later, fuller run re-scans it.
-    Replaced by a check against an authoritative point-in-time universe once
-    TR-14 delivers one."""
+def _coverage_verdict_for(scan_date) -> str | None:
+    """The authoritative per-date scrape-completeness verdict for scan_date
+    (TR-14.1a's scrape_coverage table), or None when there is no verdict --
+    the date predates the feature, the source's count row was unreadable, or
+    this backend has recorded nothing yet. Never raises: boring_signals must
+    not gain a hard dependency that can break the scan."""
+    try:
+        from data_health import scrape_coverage_status
+        return scrape_coverage_status(scan_date)
+    except Exception:
+        return None
+
+
+def _completeness_ok(symbols_priced: int, prior_complete_counts: list,
+                     scan_date=None) -> bool:
+    """Data-completeness gate (Trust Register §0a.1.5).
+
+    Condition 1 (absolute floor): symbols_priced >= MIN_UNIVERSE_ABS.
+
+    Condition 2 (TR-14.1b): when scrape_coverage (TR-14.1a) has an
+    authoritative verdict for scan_date, use it -- COMPLETE passes, PARTIAL
+    fails -- against ksestocks' own per-sector traded-company count. When it
+    does not (UNKNOWN, or no row: a date before the feature, or a backend
+    where nothing has recorded yet), fall back to the interim relative floor
+    -- symbols_priced >= REL_COVERAGE_FLOOR x median of the last
+    COVERAGE_MEDIAN_WINDOW complete scans.
+
+    A failing date is still scanned -- a real breakout that is visible should
+    not be withheld -- but its marker is written complete=0 so a later,
+    fuller run re-scans it."""
     if symbols_priced < MIN_UNIVERSE_ABS:
         return False
+
+    cov = _coverage_verdict_for(scan_date) if scan_date is not None else None
+    if cov == "COMPLETE":
+        return True
+    if cov == "PARTIAL":
+        return False
+
+    # cov is None or "UNKNOWN" -- no authoritative answer, use the heuristic.
     if len(prior_complete_counts) >= COVERAGE_MEDIAN_WINDOW:
         med = statistics.median(prior_complete_counts)
         if med > 0 and symbols_priced < REL_COVERAGE_FLOOR * med:
@@ -1076,7 +1105,7 @@ def _scan_boring_breakouts_pending_sqlite(run_id: str | None = None) -> tuple[in
         dates_processed += 1
 
         priced = int(priced_by_date.get(scan_date, 0))
-        complete = _completeness_ok(priced, prior_complete_counts)
+        complete = _completeness_ok(priced, prior_complete_counts, scan_date)
         try:
             _mark_scanned(scan_date, universe_size, priced, complete, run_id, code_version)
         except Exception:
@@ -1176,7 +1205,7 @@ def _scan_boring_breakouts_pending_pg(run_id: str | None = None) -> tuple[int, i
         dates_processed += 1
 
         priced = int(priced_by_date.get(scan_date, 0))
-        complete = _completeness_ok(priced, prior_complete_counts)
+        complete = _completeness_ok(priced, prior_complete_counts, scan_date)
         try:
             _mark_scanned(scan_date, universe_size, priced, complete, run_id, code_version)
         except Exception:
