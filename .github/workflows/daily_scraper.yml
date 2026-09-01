@@ -39,6 +39,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Ping healthchecks.io (start)
+        # TR-18 dead-man's-switch, part 1 of 3. Distinguishes "job never ran"
+        # (healthchecks.io sees no ping at all) from "job started but never
+        # finished successfully" (a /start with no matching success). The
+        # `!= ''` guard makes this a safe no-op until the owner adds the
+        # HEALTHCHECKS_PING_URL repo secret -- never fails the job either way
+        # (bare curl failure here must not fail a real scrape).
+        if: ${{ secrets.HEALTHCHECKS_PING_URL != '' }}
+        env:
+          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+        run: curl -fsS -m 10 --retry 5 "$HEALTHCHECKS_PING_URL/start" || true
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -69,8 +81,40 @@ jobs:
         run: python health_check.py
         # E9: connection-is-real, staleness-chain, freshness-floor, flows T+2, rolling-trim sanity
 
+      - name: Ping healthchecks.io (success)
+        # TR-18 dead-man's-switch, part 2 of 3. Only reached if the update
+        # AND the health check both succeeded. healthchecks.io is configured
+        # (on its own side, not in this repo) as a Cron-schedule check
+        # expecting this ping by 22:30 UTC weekdays with a 90-minute grace --
+        # if it doesn't arrive, healthchecks.io alerts independently of
+        # whether this job ran at all.
+        if: ${{ success() && secrets.HEALTHCHECKS_PING_URL != '' }}
+        env:
+          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+        run: curl -fsS -m 10 --retry 5 "$HEALTHCHECKS_PING_URL" || true
+
       - name: Notify on failure
+        # TR-18 dead-man's-switch, part 3 of 3. Two independent signals so a
+        # gap in one doesn't silence the other: /fail marks this run as a
+        # known failure on healthchecks.io's own dashboard (distinct from a
+        # plain missed ping), and the direct ntfy push puts a real error
+        # message on the owner's phone immediately, without waiting on
+        # healthchecks.io's grace window. Both guarded and best-effort --
+        # must never mask the real job failure this step is reporting.
         if: failure()
+        env:
+          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           echo "::error::Daily scraper FAILED on $(date -u '+%Y-%m-%d %H:%M UTC'). Check logs above."
-          # Optional: add a curl ca
+          if [ -n "$HEALTHCHECKS_PING_URL" ]; then
+            curl -fsS -m 10 --retry 3 "$HEALTHCHECKS_PING_URL/fail" || true
+          fi
+          if [ -n "$NTFY_TOPIC" ]; then
+            curl -fsS -m 10 \
+              -H "Title: Kiran daily_scraper FAILED" \
+              -H "Priority: high" \
+              -H "Tags: warning" \
+              -d "Run failed on $(date -u '+%Y-%m-%d %H:%M UTC'). Check GitHub Actions logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              "https://ntfy.sh/$NTFY_TOPIC" || true
+          fi
