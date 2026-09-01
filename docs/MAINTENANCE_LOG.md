@@ -29,6 +29,14 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-09-01 — TR-11 deployment-identity production observation (workflow dispatches + Cloud reboot)
+- **What:** Closed out TR-11 step 4 (OI-9 / ledger §96). Two `daily_scraper.yml` `workflow_dispatch` runs — 33471393043 (on `4fdd4dc`) and **33476372598 (on `5fe1c53`)** — each hit the "already up to date" path (no new trading day) but stamped `pipeline_runs.code_version` on their `deployment_identity` / `support_reversal` / `leaders_scan` heartbeats. Owner rebooted the Streamlit Cloud serving app **twice** (once after PR #47, once after `origin/main` settled at `5fe1c53`).
+- **Why:** TR-11's acceptance needs a *standing* deployed-SHA readback observed in production. First reboot showed the drift panel in ⚠️ (serving `62f32da` vs pipeline `4fdd4dc`) — an unrelated docs PR (#48) had moved `main` during the reboot window; frozen `main`, re-dispatched on HEAD, re-rebooted.
+- **DB writes:** Postgres `pipeline_runs` only — heartbeat rows from the dispatch runs, `code_version` = the dispatched commit SHA (canonical `$GITHUB_SHA`). No signal-table change (both runs were "already up to date"). No backup needed (append-only telemetry).
+- **Verification:** live PG `data_health.latest_pipeline_code_version()` → `5fe1c53`; Data Health page (owner screenshot) — **Serving Revision `5fe1c53c8c75723ea4933ce18312363e7ba74af0`**, `describe_drift()` panel **✅ green "Serving code matches the pipeline (`5fe1c53`)"**. Serving SHA == latest-pipeline SHA == `origin/main` HEAD.
+- **Outcome:** **TR-11 → 🟢 GREEN** (Trust Register, local). Follow-up OI-11 (drift-panel message imprecise when serving is ahead of the pipeline). `scrape_coverage` on PG still 0 rows (no new trading day scraped yet).
+- **By:** Claude Code (dispatches) + owner (Cloud reboots). Full detail: ledger §96.
+
 ### 2026-09-01 — TR-14.1a: `scrape_coverage` table created on Supabase Postgres
 - **What:** `CREATE TABLE IF NOT EXISTS scrape_coverage (...)` on the live Supabase DB — the Postgres half of the TR-14.1a table (PR #46, ledger §94). Brand-new **empty** table; the DDL is `data_health.ensure_scrape_coverage_pg(cur)` run verbatim (the shipped function, so what ran here == what any signed-off caller runs). Not called implicitly by any pipeline code — this is the one-time explicit step, same contract as `ensure_boring_signals_scanned_table_pg()` / the OI-9 `ALTER`.
 - **Why:** So the cloud `daily_scraper.yml` pipeline can record a per-date completeness verdict. Until this table exists, `record_scrape_coverage()`'s PG path fails its INSERT (caught, never raises — so the cloud was silently not recording coverage). Owner-authorized this session.
