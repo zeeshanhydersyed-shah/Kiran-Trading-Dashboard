@@ -34,6 +34,17 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # TR-18 dead-man's-switch. Hoisted to job-level env (not left as
+      # secrets.X inline in `if:`, and not a step-local env) because a
+      # step's `if:` can read job-level env but not its own step-level env
+      # (env for a step isn't materialized until the step runs), and GitHub
+      # Actions' schema does not accept the secrets context directly inside
+      # a step `if:` expression -- confirmed the hard way: the first version
+      # of this workflow (secrets.HEALTHCHECKS_PING_URL != '' in `if:`)
+      # passed local `yaml.safe_load()` but failed GitHub's own workflow
+      # validator with zero jobs scheduled (ledger §100.5).
+      HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
 
     steps:
       - name: Checkout code
@@ -46,9 +57,7 @@ jobs:
         # `!= ''` guard makes this a safe no-op until the owner adds the
         # HEALTHCHECKS_PING_URL repo secret -- never fails the job either way
         # (bare curl failure here must not fail a real scrape).
-        if: ${{ secrets.HEALTHCHECKS_PING_URL != '' }}
-        env:
-          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+        if: env.HEALTHCHECKS_PING_URL != ''
         run: curl -fsS -m 10 --retry 5 "$HEALTHCHECKS_PING_URL/start" || true
 
       - name: Set up Python
@@ -88,9 +97,7 @@ jobs:
         # expecting this ping by 22:30 UTC weekdays with a 90-minute grace --
         # if it doesn't arrive, healthchecks.io alerts independently of
         # whether this job ran at all.
-        if: ${{ success() && secrets.HEALTHCHECKS_PING_URL != '' }}
-        env:
-          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+        if: success() && env.HEALTHCHECKS_PING_URL != ''
         run: curl -fsS -m 10 --retry 5 "$HEALTHCHECKS_PING_URL" || true
 
       - name: Notify on failure
@@ -102,9 +109,6 @@ jobs:
         # healthchecks.io's grace window. Both guarded and best-effort --
         # must never mask the real job failure this step is reporting.
         if: failure()
-        env:
-          HEALTHCHECKS_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           echo "::error::Daily scraper FAILED on $(date -u '+%Y-%m-%d %H:%M UTC'). Check logs above."
           if [ -n "$HEALTHCHECKS_PING_URL" ]; then
