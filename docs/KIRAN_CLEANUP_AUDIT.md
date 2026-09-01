@@ -6721,3 +6721,15 @@ Per the register's own acceptance-test wording ("a forced missing-run scenario..
 - **Option 2 from the original discussion (disabling the real `daily_scraper.yml` triggers to prove the actual production wiring, not a throwaway facsimile) was not run** — the owner chose option 1. The throwaway check used the same ping mechanism, the same ntfy topic, and the same integration config as the real check, so the difference is "did the real GitHub Actions workflow's `curl` commands fire" (proven separately in §100 by code review + CI) vs. "does healthchecks.io correctly detect an absence and alert" (proven here) — the two halves together cover the full chain, just not in one single end-to-end run against the live pipeline.
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE** (TR-18 is an infrastructure-trustworthiness row, not itself a trading-signal row — its GREEN does not change Kiran's overall verdict, which still depends on the other 10 remaining blockers).
+
+---
+
+## 102. <span style="color:#16a34a;">● TR-18 → 🟢 GREEN — owner sign-off on the one disclosed residual (2026-09-01)</span>
+
+§101 closed everything empirically provable and disclosed exactly one thing that isn't: acceptance item 7 (the watchdog's own failure cannot silently disable monitoring) is closed by **design argument**, not a forced test — healthchecks.io is a mature third-party SaaS, and this project has no meaningful way to force *it* to fail in order to prove detection of that failure. This is the same shape of residual TR-05 carried into its own closure (§87's item (a), the "for whichever backend is authoritative" clause, closed by an explicit owner decision rather than further implementation) — flagged to the owner for the same treatment rather than assumed.
+
+**Owner response, same session:** *"Yes, satisfied — mark TR-18 green."* Explicit acceptance that using an established external service, rather than code this project wrote and could silently break, is sufficient closure for item 7.
+
+**TR-18 → 🟢 GREEN.** Trust Register updated: row status, §0 Amendment Log (new entry mirroring §87's/§96's format), §5 Definition of Done blocking-list strikethrough + "10 remain" (TR-01, TR-03, TR-04, TR-06, TR-07, TR-08, TR-13, TR-14, TR-16, TR-17). **TR-18 is the third of the 13 cutover-blocking rows to close, after TR-05 (§87) and TR-11 (§96).** Moves no other row — each of the 10 remaining rows still needs its own proof, on its own terms.
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
