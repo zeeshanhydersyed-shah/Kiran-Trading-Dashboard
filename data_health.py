@@ -780,6 +780,44 @@ def check_all(expected_session: str | None = None,
                 ))
             else:
                 items.append(Item(label, "ok", f"ran {last_run}"))
+
+        # -- TR-14.1b: per-date scrape completeness vs the source's own count --
+        # scrape_coverage (TR-14.1a) records COMPLETE / PARTIAL / UNKNOWN per
+        # scraped date, from ksestocks' own per-sector traded-company totals.
+        # A PARTIAL reference session means the scrape was truncated -> block
+        # (stale -> red -> STALE -> both TR-05 gates withhold). UNKNOWN (the
+        # source's count row was absent/garbled) and a missing scrape_coverage
+        # row (the date predates TR-14.1a, or nothing has recorded on this
+        # backend yet) are non-blocking, per the TR-14 scoping decision
+        # ("PARTIAL blocks; UNKNOWN alerts, does not block").
+        if reference:
+            try:
+                cov_row = fetch_one(
+                    "SELECT coverage_status, detail FROM scrape_coverage "
+                    "WHERE scrape_date = {p}",
+                    (reference,),
+                )
+            except Exception as exc:
+                # Table absent = feature not deployed / no row yet on this
+                # backend -> say nothing, do not block. Any other read error
+                # is a genuine fault and degrades to amber like the checks above.
+                if not _is_missing_table(exc):
+                    items.append(Item("scrape_coverage", "unknown",
+                                      f"coverage table unreadable: {exc}"))
+                cov_row = None
+            if cov_row:
+                cov_status, cov_detail = cov_row[0], cov_row[1]
+                if cov_status == "PARTIAL":
+                    items.append(Item(
+                        "scrape_coverage", "stale",
+                        f"{reference} scraped partially"
+                        + (f" -- {cov_detail}" if cov_detail else "")))
+                elif cov_status == "COMPLETE":
+                    items.append(Item("scrape_coverage", "ok",
+                                      f"{reference} complete vs source count"))
+                else:  # UNKNOWN, or any unexpected value -- visible, non-blocking
+                    items.append(Item("scrape_coverage", "ok",
+                                      f"{reference} source count unavailable"))
     finally:
         try:
             close()

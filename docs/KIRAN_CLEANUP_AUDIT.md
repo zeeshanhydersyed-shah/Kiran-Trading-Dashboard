@@ -6454,3 +6454,56 @@ Two independent observations of the (still-uncommitted) code:
 ### 94.6 Status
 
 TR-14.1a code + tests done, observed working locally, **record-only (gates nothing)**. TR-14 (item 1e) stays open; TR-01 stays 🔴 RED; Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
+
+### 94.7 PG table + dispatch (2026-09-01)
+
+`CREATE TABLE scrape_coverage` run on live Supabase under sign-off (`data_health.ensure_scrape_coverage_pg()` verbatim, dry-run→apply, fresh-conn verify: 7 cols, PK on `scrape_date`, 0 rows, public tables 62→63, `prices`/`pipeline_runs` untouched; `MAINTENANCE_LOG` 2026-09-01). A manual `workflow_dispatch` (run 33471393043, on `4fdd4dc`) then ran clean — `deployment_identity` cv=`4fdd4dc` tree=clean, freshness gate + 5 health checks PASS — but wrote **no** `scrape_coverage` row: source date was still 2026-08-31 so `cmd_update()` took the "already up to date" path (no re-scrape → `record_scrape_coverage()` not called). The first real cloud row waits for the first cron that scrapes a genuinely new trading day.
+
+---
+
+## 95. <span style="color:#eab308;">◐ TR-01 Phase 1e / TR-14.1b — `scrape_coverage` now *enforces*: a PARTIAL session withholds publication (2026-09-01)</span>
+
+The enforcement half of TR-14 (TR-14.1a, §94, records; this makes it bite). PR [#47](https://github.com/zeeshanhydersyed-shah/Kiran-Trading-Dashboard/pull/47).
+
+### 95.1 `check_all()` gains a `scrape_coverage` check
+
+After the heartbeat loop, `data_health.check_all()` looks up the reference session's `scrape_coverage` row:
+
+| `coverage_status` | `check_all` item | verdict effect |
+|---|---|---|
+| `PARTIAL` | `Item("scrape_coverage", "stale", "<date> scraped partially -- <sector detail>")` | → **red** → `publication_status` **STALE** |
+| `COMPLETE` | `Item("scrape_coverage", "ok", "<date> complete vs source count")` | none (informational) |
+| `UNKNOWN` (source count row absent/garbled) | `Item("scrape_coverage", "ok", "<date> source count unavailable")` | none — surfaced, **not** blocking (TR-14 scoping decision: "PARTIAL blocks; UNKNOWN alerts, does not block") |
+| no row / table absent | *nothing* | none |
+| other read error | `Item("scrape_coverage", "unknown", …)` | → amber (consistent with every other check in `check_all`) |
+
+`reference` = `expected_session` when the source is reachable and `prices` is level with it, else `prices` MAX(date) — so a PARTIAL still blocks when ksestocks is unreachable.
+
+**Both TR-05 gates inherit this for free** — `main.run_freshness_gate()` and `dashboard.py`'s `_pub_ok` both already gate on `publication_status(check_all(...)) == VERIFIED`. No change to `main.py` or `dashboard.py`.
+
+**Deploy-safety:** a missing row or an absent table adds no item, so shipping this while PG `scrape_coverage` is still empty changes nothing. It bites only once a real `PARTIAL` is recorded.
+
+### 95.2 `boring_signals._completeness_ok()` — §0a.1.5 condition 2 swapped
+
+`_completeness_ok(symbols_priced, prior_complete_counts, scan_date=None)`:
+
+1. **Absolute floor** — `symbols_priced >= MIN_UNIVERSE_ABS` — unchanged.
+2. **Condition 2 (was: `symbols_priced >= 0.85 × median(last 20 complete scans)`):** now, when `scrape_coverage` has an authoritative verdict for `scan_date` (`data_health.scrape_coverage_status()` via the never-raising `_coverage_verdict_for()` wrapper) — `COMPLETE` passes, `PARTIAL` fails. When it does not (`UNKNOWN`, or no row — a date before TR-14.1a, or a backend that has recorded nothing) — **fall back to the old relative-median floor.** A hard replace would mark every un-swept historical pending date `complete=0` and re-scan it forever; the fallback is the graceful transition until TR-14.2's retroactive sweep backfills `scrape_coverage` for the operational window.
+
+Hook order in `cmd_update()` already puts the `scrape_coverage` hook (right after the scrape) before the `boring_signals` hook, so the current session's verdict is available to the authoritative path on a real run. `seed_scanned_window()` (the OI-6 verified-window seed) is unaffected — it marks `complete=True` unconditionally by design.
+
+### 95.3 Tests
+
+- `test_data_health.py` (+7): PARTIAL → red + `publication_status` STALE + sector named; COMPLETE → green with an ok item; UNKNOWN → green, non-blocking; missing row → no item, green; absent table → no item, green; PARTIAL still blocks when `expected_session=None` (checked against `prices` MAX).
+- `test_scrape_coverage.py` (+8): `_completeness_ok` — absolute floor still hard-fails; COMPLETE passes below the median; PARTIAL fails above the median; no row / UNKNOWN / `scan_date=None` all fall back to the exact pre-TR-14.1b heuristic; `_coverage_verdict_for` degrades to `None` on any error.
+- Full suite: see §95.5.
+
+### 95.4 NOT in this PR
+
+- TR-14.2 retroactive PG-window sweep (its own PR + sign-off).
+- Observing the first real cloud PARTIAL/COMPLETE (§94.7 — waits for a new-day cloud scrape).
+- Any change to signal-firing logic, locked boring parameters, or the dedup rule.
+
+### 95.5 Status
+
+Enforcement wired. TR-14 (item 1e) — the record + enforce mechanism is complete against the ksestocks per-sector count; what remains for the **row** is the retroactive-history half (TR-14.2) and a first real cloud observation. TR-01 stays 🔴 RED; Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**

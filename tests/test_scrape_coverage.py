@@ -193,3 +193,70 @@ def test_ghost_date_gets_no_coverage_row(monkeypatch):
     scraper.scrape_date_range([dt.date(2026, 8, 27)], session=object(),
                               prev_prices=prev, coverage_out=cov)
     assert cov == []
+
+
+# ---------------------------------------------------------------------------
+# TR-14.1b -- boring_signals._completeness_ok() prefers the authoritative
+# scrape_coverage verdict, falls back to the rolling-median heuristic
+# ---------------------------------------------------------------------------
+
+import boring_signals as bs  # noqa: E402
+
+_ABS = bs.MIN_UNIVERSE_ABS
+_WIN = bs.COVERAGE_MEDIAN_WINDOW
+
+
+def test_completeness_absolute_floor_still_hard_fails(sqlite_db):
+    # Below the absolute floor -> fail regardless of any coverage verdict.
+    dh.record_scrape_coverage([{"scrape_date": "2026-08-27", "expected_total": 500,
+                                "parsed_total": 500, "detail": None}])
+    assert bs._completeness_ok(_ABS - 1, [], "2026-08-27") is False
+
+
+def test_completeness_complete_coverage_passes_even_below_median(sqlite_db):
+    # A COMPLETE authoritative verdict beats the rolling-median heuristic:
+    # symbols_priced well under 0.85*median still passes.
+    dh.record_scrape_coverage([{"scrape_date": "2026-08-27", "expected_total": 490,
+                                "parsed_total": 490, "detail": None}])
+    prior = [490] * _WIN            # median 490 -> heuristic floor ~416
+    assert bs._completeness_ok(300, prior, "2026-08-27") is True
+
+
+def test_completeness_partial_coverage_fails_even_above_median(sqlite_db):
+    # A PARTIAL authoritative verdict fails even when the count looks healthy.
+    dh.record_scrape_coverage([{"scrape_date": "2026-08-27", "expected_total": 490,
+                                "parsed_total": 470,
+                                "detail": "CEMENT: 20 stated, 0 parsed"}])
+    prior = [490] * _WIN
+    assert bs._completeness_ok(488, prior, "2026-08-27") is False
+
+
+def test_completeness_no_coverage_row_falls_back_to_heuristic(sqlite_db):
+    # No scrape_coverage row for this date -> the old relative-floor behaviour.
+    prior = [490] * _WIN           # floor ~416.5
+    assert bs._completeness_ok(400, prior, "2026-08-27") is False   # below floor
+    assert bs._completeness_ok(450, prior, "2026-08-27") is True    # above floor
+
+
+def test_completeness_unknown_coverage_falls_back_to_heuristic(sqlite_db):
+    dh.record_scrape_coverage([{"scrape_date": "2026-08-27", "expected_total": None,
+                                "parsed_total": 0, "detail": None}])   # -> UNKNOWN
+    prior = [490] * _WIN
+    assert bs._completeness_ok(400, prior, "2026-08-27") is False
+    assert bs._completeness_ok(450, prior, "2026-08-27") is True
+
+
+def test_completeness_none_scan_date_is_pure_heuristic(sqlite_db):
+    # Callers that don't pass scan_date get exactly the pre-TR-14.1b behaviour.
+    prior = [490] * _WIN
+    assert bs._completeness_ok(400, prior) is False
+    assert bs._completeness_ok(450, prior) is True
+
+
+def test_coverage_verdict_for_never_raises(monkeypatch):
+    # A blown-up data_health query must degrade to None, not propagate.
+    monkeypatch.setattr(dh.config, "DB_PATH", "/nonexistent/dir/x.db")
+    monkeypatch.setattr(dh, "_PG_URL", None)
+    assert bs._coverage_verdict_for("2026-08-27") is None
+    # and _completeness_ok still works (heuristic path)
+    assert bs._completeness_ok(_ABS + 5, [], "2026-08-27") is True

@@ -201,6 +201,80 @@ def test_failed_heartbeat_is_stale_not_ok(temp_db):
     assert any(i.label == "setup_log" and i.status == "stale" for i in v.items)
 
 
+# ---------------------------------------------------------------------------
+# TR-14.1b -- scrape_coverage gating in check_all()
+# ---------------------------------------------------------------------------
+
+def _put_coverage(db_path, scrape_date, status, detail=None):
+    con = sqlite3.connect(db_path)
+    con.execute("""CREATE TABLE IF NOT EXISTS scrape_coverage (
+        scrape_date TEXT PRIMARY KEY, expected_total INTEGER, parsed_total INTEGER,
+        coverage_status TEXT NOT NULL, detail TEXT, recorded_at TEXT, code_version TEXT)""")
+    con.execute("INSERT OR REPLACE INTO scrape_coverage "
+                "(scrape_date, coverage_status, detail) VALUES (?, ?, ?)",
+                (scrape_date, status, detail))
+    con.commit()
+    con.close()
+
+
+def test_partial_scrape_coverage_turns_system_red(temp_db):
+    _heartbeat_all()
+    _put_coverage(temp_db, "2026-08-13", "PARTIAL", "CEMENT: 20 stated, 15 parsed")
+    v = dh.check_all(expected_session="2026-08-13")
+    assert v.level == "red", [f"{i.label}:{i.status}" for i in v.items]
+    bad = [i for i in v.failures if i.label == "scrape_coverage"]
+    assert bad and bad[0].status == "stale"
+    assert "CEMENT" in bad[0].detail
+    assert dh.publication_status(v) == dh.PUBLICATION_STALE
+
+
+def test_complete_scrape_coverage_stays_green(temp_db):
+    _heartbeat_all()
+    _put_coverage(temp_db, "2026-08-13", "COMPLETE")
+    v = dh.check_all(expected_session="2026-08-13")
+    assert v.level == "green", [f"{i.label}:{i.detail}" for i in v.failures]
+    assert any(i.label == "scrape_coverage" and i.status == "ok" for i in v.items)
+
+
+def test_unknown_scrape_coverage_does_not_block(temp_db):
+    # UNKNOWN = the source's own count row was absent/garbled. Per the TR-14
+    # scoping decision it is surfaced but does NOT withhold publication.
+    _heartbeat_all()
+    _put_coverage(temp_db, "2026-08-13", "UNKNOWN")
+    v = dh.check_all(expected_session="2026-08-13")
+    assert v.level == "green"
+    assert any(i.label == "scrape_coverage" for i in v.items)
+
+
+def test_missing_scrape_coverage_row_is_silent(temp_db):
+    # A date with no scrape_coverage row (predates TR-14.1a / nothing recorded
+    # on this backend yet) must not add any item -- deploying the check while
+    # the table is still empty changes nothing.
+    _heartbeat_all()
+    _put_coverage(temp_db, "2026-08-11", "COMPLETE")  # some other date only
+    v = dh.check_all(expected_session="2026-08-13")
+    assert v.level == "green"
+    assert not any(i.label == "scrape_coverage" for i in v.items)
+
+
+def test_absent_scrape_coverage_table_is_silent(temp_db):
+    # The temp_db fixture never creates scrape_coverage at all.
+    _heartbeat_all()
+    v = dh.check_all(expected_session="2026-08-13")
+    assert v.level == "green"
+    assert not any(i.label == "scrape_coverage" for i in v.items)
+
+
+def test_partial_coverage_checked_against_prices_max_when_source_unreachable(temp_db):
+    # expected_session=None -> reference falls back to prices MAX(date). A
+    # PARTIAL row for that date must still block.
+    _heartbeat_all()
+    _put_coverage(temp_db, "2026-08-13", "PARTIAL", "REFINERY: 4 stated, 2 parsed")
+    v = dh.check_all(expected_session=None, source_error="522")
+    assert v.level == "red"
+    assert any(i.label == "scrape_coverage" and i.status == "stale" for i in v.failures)
+
+
 def test_unreachable_source_never_green(temp_db):
     # Absolute check cannot be performed -> amber, never green, even though
     # every relative check passes.
