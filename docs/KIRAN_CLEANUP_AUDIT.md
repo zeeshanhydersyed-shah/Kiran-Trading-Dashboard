@@ -6645,3 +6645,42 @@ Three same-day weekday attempts cover GitHub drift + dropped slots; the Sat + Mo
 ### 99.4 Follow-through for TR-18
 
 The watchdog (next session) alerts when **no `daily_scraper.yml` run has succeeded by ~22:00 UTC (03:00 PKT) on a trading day** — after all three same-day slots plus drift. Independent of GitHub Actions (a dead-man's-switch: the pipeline pings healthchecks.io on success, healthchecks.io alerts on a missing ping) so it still fires when Actions itself is the thing that failed. Ping URL + ntfy topic already provisioned (TR-01 spec §0a.4). Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. **Date of this section: 2026-09-01.**
+
+---
+
+## 100. <span style="color:#eab308;">◐ TR-18 — independent missed-run watchdog: `daily_scraper.yml` wired for the healthchecks.io/ntfy dead-man's-switch (code done, acceptance test + owner console steps pending) (2026-09-01)</span>
+
+Pre-registered spec (scratchpad `TR18_WATCHDOG_SPEC_DRAFT.md`) reviewed and approved by the owner: 90-minute grace period, no separate push alert for TR-05 staleness (the existing dashboard state already covers it), and the healthchecks.io-vs-workflow ntfy wiring split as designed. Implements acceptance-criteria items 1–4 and 6 of the Trust Register's TR-18 row (register line 596); items 5 and 7 were already argued closed by design in the spec (§3 of the scratch doc) and are not re-litigated here.
+
+### 100.1 What changed — `.github/workflows/daily_scraper.yml` only
+
+Three new/changed steps, all guarded so a merge before the owner adds the two new secrets is a safe no-op (never fails a real scrape run on a missing secret or a flaky third-party call — every `curl` ends `|| true`):
+
+1. **`Ping healthchecks.io (start)`** — first step in the job, before checkout's dependents. Pings `$HEALTHCHECKS_PING_URL/start`. Distinguishes "job never started" (healthchecks.io sees nothing) from "job started but never finished" (a `/start` with no matching success ping before the grace window elapses) — closes acceptance item 4's "failed, not merely missing" half in combination with the success/fail pings below.
+2. **`Ping healthchecks.io (success)`** — added after `Health Check`, gated `success()`. Only reached if both `python main.py --update` and `python health_check.py` exited clean. This is the actual dead-man's-switch signal — closes item 3 (missed execution) once healthchecks.io's Cron check is configured against it (owner console step, §100.3).
+3. **`Notify on failure`** (existing step, extended) — now also pings `$HEALTHCHECKS_PING_URL/fail` (a second, independent record of "ran but failed," visible on healthchecks.io's own dashboard) and pushes directly to `ntfy.sh/$NTFY_TOPIC` with a real message (run timestamp + a direct link to the failed Actions run) and `Priority: high`. This is the immediate channel for item 4/6 — doesn't wait on healthchecks.io's grace window, and still fires even if the healthchecks.io ping itself fails for some unrelated reason (both `curl`s independent, each wrapped so one failing doesn't skip the other).
+
+`if:` conditions reference `secrets.HEALTHCHECKS_PING_URL` directly (`${{ secrets.X != '' }}`), not a step-local `env.` lookup — a step's own `env:` block is not visible to that same step's `if:` condition (it's populated only once the step actually runs), so gating on `env.HEALTHCHECKS_PING_URL` would always evaluate as unset and skip the step regardless of the secret's real value. Caught before commit, not after a broken merge.
+
+Verified: `python -c "import yaml; yaml.safe_load(open('.github/workflows/daily_scraper.yml'))"` parses clean. No change to `main.py`, `health_check.py`, or any signal-computation code — this task is workflow-file-only, matching the spec's §6 scope statement.
+
+### 100.2 Design closure for items 2, 5, 7 (unchanged from the spec, restated for the ledger)
+
+- **Item 2 (independence)** and **item 7 (watchdog can't silently die)** — healthchecks.io is a third-party SaaS whose own clock does the "did a ping arrive" check; that check runs on their infrastructure regardless of whether `daily_scraper.yml` executes at all, so it isn't a step that "only runs if the job runs."
+- **Item 5 (stale publication)** — owner-accepted: TR-05's `_pub_ok` already withholds the dashboard and shows "NOT VERIFIED — DO NOT TRADE" the moment the serving-boundary check finds the published state stale; no new push layered on top, since a push here would just re-alert on the same underlying missed/failed run items 3/4 already cover.
+
+### 100.3 Owner console steps still required — code alone does not close this row
+
+None of these can be done from the repo:
+
+1. **Add two GitHub Actions secrets** (Settings → Secrets and variables → Actions → New repository secret), same place `DATABASE_URL` already lives:
+   - `HEALTHCHECKS_PING_URL` = `https://hc-ping.com/a3777fbd-d1ce-4011-8b5b-1e8a527bc5cf`
+   - `NTFY_TOPIC` = `kiran-psx-alerts-7g3k9qx2mp`
+2. **Configure the healthchecks.io check itself** — Cron-schedule type, expected cadence `30 22 * * 1-5` (22:30 UTC weekdays), **90-minute grace** (owner-confirmed 2026-09-01) — i.e. alerts if nothing succeeds by ~00:00 UTC / 05:00 PKT.
+3. **Add healthchecks.io's own ntfy integration**, pointed at topic `kiran-psx-alerts-7g3k9qx2mp` — this is the only channel that can cover a genuinely missed run (nothing in this repo runs at all in that case, so nothing in this repo can push an alert for it).
+
+### 100.4 Not yet done — acceptance test
+
+TR-18's register-defined acceptance test (a forced missing-run scenario, watched independently, alert actually received; the watchdog's own disablement independently detected) has **not** been run. Requires the owner's console steps above to be in place first. This is the gate before the TR-18 row can move off 🔴 RED — code shipped and reviewed is necessary, not sufficient, per this register's own standard applied to every other row.
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
