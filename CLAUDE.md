@@ -238,6 +238,18 @@ because they affect live trading-signal correctness on Cloud.
   single dashboard site — most of `stock_signals.py`'s computation pipeline),
   then remove the hard block in `dashboard.py`'s Confirm button and wire
   `rebuild_symbol_adjusted_pg()` / `mark_dh_confirmed_pg()` back in.
+- **Design requirement to carry into that work (logged 2026-09-01, Trust
+  Register OI-10):** the confirm UI currently models **one** corporate action
+  per suspect (single `confirmed_action` + single `adjustment_factor`), but a
+  stock can announce several for the same ex-date — e.g. a cash dividend *and*
+  a bonus issue, or a right issue + dividend. A compound event must apply the
+  **product** of the per-action factors (`rebuild_symbol_adjusted*()` already
+  takes a final factor, so the change is upstream: schema + UI to capture N
+  actions, plus a components breakdown so it stays auditable which actions
+  composed the factor). Partial confirmation (one action entered, another
+  forgotten) must be prevented or flagged — a wrong factor silently corrupts
+  `prices_adjusted` and every pre-ex-date `stock_signals` row (TR-04). The
+  SQLite confirm path has the same single-action limit today; fix both.
 
 ### `market_regime.regime_days` is non-idempotent
 
