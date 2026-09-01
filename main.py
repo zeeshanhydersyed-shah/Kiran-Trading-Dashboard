@@ -277,13 +277,19 @@ def cmd_update():
             try:
                 session = build_session()
                 prev_prices = get_latest_prices()
+                _cov_rows: list = []
                 sector_rows, price_rows, index_rows = scrape_date_range(
-                    [latest_date], session, prev_prices=prev_prices
+                    [latest_date], session, prev_prices=prev_prices, coverage_out=_cov_rows
                 )
                 upsert_sectors(sector_rows)
                 upsert_prices(price_rows)
                 if index_rows:
                     upsert_index_prices(index_rows)
+                try:      # TR-14.1a -- record completeness for the re-check too
+                    from data_health import record_scrape_coverage
+                    record_scrape_coverage(_cov_rows, code_version=code_version)
+                except Exception as exc:
+                    logger.warning("Same-day scrape coverage failed: %s", exc)
                 logger.info("Same-day re-check complete for %s.", latest_date)
             except Exception as exc:
                 logger.warning("Same-day re-check failed: %s", exc)
@@ -363,7 +369,9 @@ def cmd_update():
     logger.info("Update: scraping %d new date(s) since %s…", len(new_dates), latest_str)
     session = build_session()
     prev_prices = get_latest_prices()
-    sector_rows, price_rows, index_rows = scrape_date_range(new_dates, session, prev_prices=prev_prices)
+    _coverage_rows: list = []
+    sector_rows, price_rows, index_rows = scrape_date_range(
+        new_dates, session, prev_prices=prev_prices, coverage_out=_coverage_rows)
 
     upsert_sectors(sector_rows)
     upsert_prices(price_rows)
@@ -382,6 +390,33 @@ def cmd_update():
     # executed at some wall-clock time" -- a hook that runs daily but silently
     # processes nothing would otherwise still look healthy.
     _session_date = mx
+
+    # TR-14.1a: record per-date scrape completeness against the source's own
+    # per-sector traded-company counts (scraper.parse_sector_counts). Additive
+    # this PR -- it does not yet gate anything; TR-14.1b wires a PARTIAL current
+    # session into check_all() / the freshness gate. Never fatal.
+    try:
+        from data_health import record_scrape_coverage
+        _cov = record_scrape_coverage(_coverage_rows, code_version=code_version)
+        _partial = [r for r in _cov if r["coverage_status"] == "PARTIAL"]
+        _unknown = [r for r in _cov if r["coverage_status"] == "UNKNOWN"]
+        if _partial:
+            logger.warning(
+                "scrape coverage: %d PARTIAL date(s) -- %s",
+                len(_partial),
+                " | ".join(f"{r['scrape_date']}: {r['detail']}" for r in _partial),
+            )
+        _record_hook(
+            "scrape_coverage", _session_date, run_id=run_id,
+            execution_status="COMPLETED",
+            coverage_status="INSUFFICIENT" if _partial else "EXPECTED",
+            eligible_count=len(_cov),
+            processed_count=len(_cov) - len(_partial) - len(_unknown),
+            detail=(f"{len(_partial)} PARTIAL, {len(_unknown)} UNKNOWN"
+                    if (_partial or _unknown) else None),
+        )
+    except Exception as exc:
+        logger.warning("scrape coverage hook failed: %s", exc)
 
     # Append new prices to prices_adjusted, then scan for corporate action
     # suspects. TR-06 Tier 2 (2026-08-24): split into two independent

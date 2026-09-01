@@ -66,7 +66,7 @@ def test_scrape_date_range_continues_past_a_raising_date(monkeypatch, caplog):
     good = dt.date(2026, 8, 27)
     bad = dt.date(2026, 8, 28)
 
-    def fake_scrape_date(d, session):
+    def fake_scrape_date(d, session, coverage_out=None):
         if d == bad:
             raise ValueError("not enough values to unpack (expected 3, got 2)")
         return ([("HBL", "COMMERCIAL BANKS")],
@@ -85,7 +85,7 @@ def test_scrape_date_range_continues_past_a_raising_date(monkeypatch, caplog):
 
 
 def test_scrape_date_range_all_dates_fail_returns_empty_not_raise(monkeypatch):
-    def boom(d, session):
+    def boom(d, session, coverage_out=None):
         raise RuntimeError("ksestocks 522")
 
     monkeypatch.setattr(scraper, "scrape_date", boom)
