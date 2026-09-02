@@ -227,6 +227,28 @@ def cmd_update():
     except Exception as exc:
         logger.debug("deployment_identity heartbeat failed: %s", exc)
 
+    # TR-01/TR-12 consumer-authority alert (2026-09-02, ledger §109). Option A
+    # of the two-option plan: alert immediately, don't block (Option B --
+    # Postgres role separation -- is a deferred follow-up). Fires only when
+    # this exact process's active backend selector is Postgres AND the OS is
+    # Windows -- the one combination that should never legitimately happen
+    # (GitHub Actions/Streamlit Cloud never run on Windows), and does not
+    # fire for the intentional boring_signals mirror (a separate, opt-in
+    # .env read that never touches this variable). See
+    # data_health.is_local_windows_pg_write_risk()'s own docstring for why
+    # this check, not a positive "is this GitHub Actions" check.
+    try:
+        from data_health import is_local_windows_pg_write_risk, alert_consumer_authority_violation
+        _cmd_update_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+        if is_local_windows_pg_write_risk(_cmd_update_pg_url):
+            alert_consumer_authority_violation(
+                run_id, code_version,
+                detail=f"cmd_update() invoked with a live Postgres URL on a Windows host "
+                       f"(run_id={run_id})",
+            )
+    except Exception as exc:
+        logger.debug("consumer-authority check itself failed: %s", exc)
+
     # init_db()'s statements are all CREATE TABLE/INDEX IF NOT EXISTS --
     # idempotent no-ops once the schema exists, which it always does for a
     # running deployment. But it's the one call in this function that was

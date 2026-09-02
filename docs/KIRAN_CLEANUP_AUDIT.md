@@ -6944,3 +6944,45 @@ TR-08's SQLite side went live in §104 (PR #60); the Postgres side did not, beca
 MAINTENANCE_LOG entry recorded same day.
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
+
+---
+
+## 109. <span style="color:#eab308;">◐ TR-01/TR-12 — consumer-authority: Option A (alert, not block) built + tested; Option B (structural, DB roles) scoped as a follow-up (2026-09-02)</span>
+
+Sixth concrete TR-01 step, closing TR-12's own disclosed residual (§107.3/§107.4): "no local consumer process, UI included, can reach a production write path" — the general class OI-8 (ledger §85) already demonstrated once for real. Owner presented with two options at different rigor/effort levels; picked both — Option A now, Option B as a scoped, not-yet-built follow-up.
+
+### 109.1 Why this needed a real design pass, not just "block writes from local"
+
+Two things make this harder than TR-01's other steps today:
+
+1. **The local machine is not the only non-authoritative writer.** The local `boring_signals` mirror-to-Postgres heartbeat is an *intentional* local→Postgres write (that table is SQLite-only forever; Cloud needs visibility). A guard that fires on "any local write" would also fire on this legitimate case.
+2. **Positively distinguishing GitHub Actions from Streamlit Cloud is not reliable from inside the process.** Both read `DATABASE_URL` the same way; Streamlit Cloud's secrets bridge (`dashboard.py:45-54`, copies `st.secrets` → `os.environ` before `database.py` is even imported) means a local `streamlit run dashboard.py` with a locally-configured `.streamlit/secrets.toml` would look byte-identical to a real Streamlit Cloud deployment from inside the code.
+
+**The actual traceable fact, confirmed by reading the code, not assumed:** every single Postgres connection in this codebase — `database_pg.get_conn()`/`_connect()`, and every direct `psycopg2.connect(**_parse_pg_url(url))` call scattered across `data_health.py`/`leaders_scan.py`/`signal_engine.py`/etc. — ultimately calls `database_pg._parse_pg_url()`. There is no other way to get a Postgres connection in this repo. That's the one universal chokepoint, though (see §109.2) it turned out to be the wrong *level* to gate at, since it has no query context to distinguish a read from a write.
+
+**The design actually used:** rather than trying to positively identify "is this GitHub Actions" or "is this Streamlit Cloud," check for the one thing that can *never* legitimately be either — `platform.system() == "Windows"`. GitHub Actions runs on `ubuntu-latest`; Streamlit Cloud runs Linux containers. Neither has ever run on Windows, and never will under this project's current deployment shape. A Windows process with a live Postgres URL is unconditionally anomalous, regardless of how it got there (a stray env var, OI-8's exact mechanism, a future bug nobody's found yet, or someone manually testing locally against Postgres without realizing the implication).
+
+**Why the `boring_signals` mirror doesn't trip this:** confirmed structurally, not special-cased. That heartbeat reaches Postgres via `_env_pg_url()` — a separate, opt-in `.env` read used *only* for that one call — without ever setting the process's main `DATABASE_URL`/`_PG_URL` backend selector, which is what this guard actually checks. The exemption falls out of the existing architecture; nothing new had to be carved out for it.
+
+### 109.2 What was built — Option A
+
+- **`data_health.is_local_windows_pg_write_risk(pg_url)`** — the detection: `bool(pg_url) and platform.system() == "Windows"`. Fails open (returns `False`) on any detection error — deliberate, since this is an alert mechanism, not a gate; a failure to determine the platform must not itself become a spurious alarm.
+- **`data_health.alert_consumer_authority_violation(run_id, code_version, detail)`** — the response: a loud `logger.error(...)`, a `pipeline_runs` heartbeat (`hook_name='consumer_authority_violation'`, `execution_status=FAILED`, carries `run_id`/`code_version`/`detail` — queryable evidence, not just a log line that scrolls away), and an immediate push to the already-provisioned TR-18 ntfy topic (`kiran-psx-alerts-7g3k9qx2mp`, `Priority: urgent`) — no new alert channel provisioned for the same owner's phone. Never raises; wrapped independently around the DB write and the network push so either failing doesn't mask the other or the real condition being reported.
+- **One call site**: `main.cmd_update()`'s top, right alongside the existing OI-9 dirty-tree-warning block (same style, same place a production run's identity is already being resolved). Checks once per invocation; does **not** block the run — Option A is alert-only, matching the owner's choice and the pre-existing TR-01 spec decision ("local-checkout write-lock = warn-only").
+
+### 109.3 Tests
+
+New `tests/test_consumer_authority.py`, 10 tests, fully isolated: `is_local_windows_pg_write_risk()` (Windows+URL→True, no-URL→False, Linux+URL→False — the real GitHub Actions shape, detection-failure→fails open, 4 tests); `alert_consumer_authority_violation()` (heartbeat + ntfy both fire with correct content, never raises when the DB write fails, never raises when the network push fails, 3 tests); and the real integration shape via `main.cmd_update()` (3 tests, reusing `test_tr05_freshness_gate.py`'s isolation-fixture pattern) — fires exactly once on Windows+live-URL, stays silent in the overwhelmingly common real case (local, no Postgres URL at all), and stays silent on the real GitHub Actions shape (Linux+URL). All pass; full suite re-run clean: 378 (368+10 new).
+
+### 109.4 Option B — scoped, not built: Postgres role separation
+
+Documented here as the deferred structural follow-up, not implemented this pass. The actual fix that *prevents* the write rather than alerting on it:
+
+- **A new, more restricted Postgres role** for whatever the local machine and Streamlit Cloud actually need — likely `SELECT` everywhere plus `INSERT`/`UPDATE` only on the specific operational tables the deployed dashboard legitimately edits (`trade_setups`, `corporate_action_suspects`, portfolio-related tables — the exact grant list needs a full audit of `dashboard_pg.py`'s write functions before this is built, not assumed from memory).
+- **GitHub Actions keeps the existing full-access credential** — the only role that should ever have unrestricted write access to the MANDATORY signal tables.
+- **Two secrets need rotating** once the new role exists: Streamlit Cloud's `secrets.toml` `DATABASE_URL` (owner console action — same boundary as every other Streamlit Cloud config change this program has deferred to the owner), and the local machine's own `.env`/environment either drops its Postgres URL entirely or gets a read-only variant, depending on whether local ever needs to read Postgres going forward (relevant to TR-01's eventual pull-sync/local-archive phase, not decided here).
+- This is real, multi-step, credential-management work — new DB role creation (SQL I'd draft, review needed since role/password creation is more sensitive than the additive `CREATE TABLE`s this program has done so far), then two separate secret rotations neither of which Claude Code can perform directly. A future session's own scoped task, not squeezed into this one.
+
+Full local test suite re-run clean before pushing. TR-12's disclosed residual narrows (the silent half is closed) but does not fully close — the row's own evidence should reflect Option A done, Option B scoped-not-built, not claim full closure.
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.

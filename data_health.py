@@ -493,6 +493,87 @@ def _record_pg(url, hook_name, run_date, finished_at, status, rows_written, deta
 
 
 # ---------------------------------------------------------------------------
+# TR-01/TR-12 -- consumer-authority alert (2026-09-02, ledger §109). Option A
+# of the two-option plan agreed with the owner: alert immediately, don't
+# block (that's Option B, deferred -- Postgres role separation). Closes the
+# "silent" half of the OI-8 incident class: a local Windows process ends up
+# with a live Postgres URL and starts writing production signal data, and
+# nobody finds out until real damage is already done (OI-8 itself ran two
+# days before anyone noticed). This does not prevent the write -- it makes
+# sure it can never again be silent.
+#
+# Why "platform == Windows" and not "is this GitHub Actions" or "is this
+# Streamlit Cloud": those two are the only legitimate places a real
+# production write can originate, and neither one *ever* runs on Windows
+# (ubuntu-latest runners, Linux containers respectively) -- a positive check
+# for "is this the owner's local machine" would need to distinguish local
+# Streamlit from Cloud Streamlit, which look byte-identical from inside the
+# process (both read DATABASE_URL the same way). Checking for the one
+# environment that can never legitimately be either is more robust than
+# trying to positively identify the two that can.
+#
+# Why this does not also fire on the intentional boring_signals mirror
+# write: that heartbeat uses _env_pg_url() (a separate, opt-in .env read)
+# specifically so it can reach Postgres without flipping the process's main
+# _PG_URL backend selector -- the exact thing this function's caller checks.
+# The exemption is structural, not a special case bolted on here.
+# ---------------------------------------------------------------------------
+
+def is_local_windows_pg_write_risk(pg_url: str | None) -> bool:
+    """True only when a Postgres URL is live AND this process is running on
+    Windows -- the one combination that should never legitimately occur
+    (GitHub Actions and Streamlit Cloud are both always Linux). Never
+    raises; a failure to determine the platform is treated as *not* a risk
+    (fail-open here, deliberately -- this is an alert, not a gate, so a
+    detection failure should not itself become a spurious alarm)."""
+    if not pg_url:
+        return False
+    try:
+        import platform
+        return platform.system() == "Windows"
+    except Exception:
+        return False
+
+
+def alert_consumer_authority_violation(run_id: str | None, code_version: str | None,
+                                        detail: str) -> None:
+    """Log loudly, record a pipeline_runs heartbeat, and push an immediate
+    ntfy alert (reusing TR-18's already-provisioned topic -- no new channel
+    for the same owner's phone). Never raises -- an alert must not be able
+    to break the run it is reporting on."""
+    logger.error(
+        "CONSUMER-AUTHORITY VIOLATION: a local Windows process has a live "
+        "Postgres URL and is about to write production signal data outside "
+        "GitHub Actions -- %s. See Trust Register TR-01/TR-12.", detail,
+    )
+    try:
+        record_run(
+            "consumer_authority_violation",
+            __import__("datetime").date.today().isoformat(),
+            status="error", detail=detail, run_id=run_id, code_version=code_version,
+            execution_status=EXECUTION_FAILED,
+        )
+    except Exception as exc:
+        logger.debug("consumer_authority_violation heartbeat failed: %s", exc)
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "https://ntfy.sh/kiran-psx-alerts-7g3k9qx2mp",
+            data=f"Local Windows process writing to Postgres outside GitHub Actions: "
+                 f"{detail}".encode("utf-8"),
+            headers={
+                "Title": "Kiran: local machine writing to production Postgres",
+                "Priority": "urgent",
+                "Tags": "rotating_light",
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as exc:
+        logger.debug("consumer_authority_violation ntfy alert failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
 # TR-14 -- per-date scrape completeness vs the source's own per-sector
 # traded-company counts (scraper.parse_sector_counts). Recorded every scrape;
 # TR-14.1b wires a PARTIAL current session into check_all() so it blocks.
