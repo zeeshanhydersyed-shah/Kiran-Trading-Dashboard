@@ -6828,3 +6828,48 @@ Confirmed directly, twice (a fresh Bash shell and a fresh PowerShell.exe process
 **TR-09 stays 🟡 AMBER, not yet closed** — infrastructure exists, but TR-09's own bar is explicit: "a documented restoration drill has been performed **at least once**," not that the tooling to perform one exists. That evidence is the next thing to produce, after restart.
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
+
+---
+
+## 106. <span style="color:#16a34a;">● TR-09 → 🟢 GREEN — first real B2 backup + restoration drill executed, PASS (2026-09-02)</span>
+
+Owner restarted the Claude Code session (twice — the first restart wasn't enough on its own, see §106.1); credentials became visible; the actual execution §105 was blocked on then ran clean end-to-end, after fixing two real bugs neither of which showed up until tested against the live account.
+
+### 106.1 Why one restart wasn't enough
+
+`setx` writes to the Windows registry but does not propagate to already-running processes, and closing/reopening just the Claude Code window doesn't guarantee a fresh environment snapshot if its own parent process (e.g. an already-running terminal host) was itself launched before the variables were set. Confirmed directly: after the owner's first restart, `[Environment]::GetEnvironmentVariable($v, "User")` showed all three variables correctly saved in the registry, but `[Environment]::GetEnvironmentVariable($v, "Process")` still showed them unset in this session's own process. The reliable fix — a full Windows sign-out/sign-in, not just relaunching one app — was given to the owner, who did that; the second restart's fresh shell saw all three variables correctly.
+
+### 106.2 Two real bugs, found only by actually running it against the live account
+
+Queried B2's `b2_authorize_account` API directly (via `urllib`, reading `B2_ACCOUNT_ID`/`B2_ACCOUNT_KEY` from the now-visible environment, never printing either value — only non-secret response fields) rather than guess at the failure from restic's own terse error text:
+
+1. **Bucket name mismatch.** `backup_to_b2.py` hardcoded `kiran-psx-backup`; the owner's actual bucket (confirmed straight from the authorize-account response, tied to the actual restricted key) is `kiran-psx-backups` (plural). Fixed.
+2. **restic's native `b2:` backend returned `b2_list_buckets: 401`** against the restricted key — even though the same API response showed the key's capabilities genuinely include `listBuckets` (and `listAllBucketNames`), ruling out the obvious "wrong capability" explanation. restic's own documentation names this as a known class of issue with its native B2 backend's error handling and recommends the S3-compatible API instead — switched `RESTIC_REPO` to `s3:https://s3.us-east-005.backblazeb2.com/kiran-psx-backups/restic-repo` (the account's actual S3 endpoint, also read from the same API response) and added credential translation in `_restic_env()` (`B2_ACCOUNT_ID`/`B2_ACCOUNT_KEY` → `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` — Backblaze accepts the same application key pair for both APIs, no new key needed). Fixed, and it's the fix that actually got the repo to initialize.
+
+### 106.3 A third bug, found only by the drill itself
+
+`restore_drill_b2.py`'s first real run failed with `restic ... returned non-zero exit status 1` — an unhelpfully generic message, because the `except Exception` handler only stringified the `CalledProcessError` object itself, never surfacing its actual `.stderr`. Fixed to print the real detail, which turned out to be a third, purely cosmetic issue: `failed to restore timestamp of "...\C\Users": Access is denied` — restic on Windows reconstructs the full original path (including `C:\Users`) under the restore target, and cannot set that specific reconstructed directory's *modification timestamp* (an ACL peculiarity of the real `C:\Users` folder, unrelated to file content), causing restic to exit non-zero despite its own log line reading "ignoring error" for exactly that case. Trusting restic's exit code alone here would have been a false negative on the one thing this script exists to prove. Fixed: the restore call no longer uses `check=True`; a non-zero exit is only treated as a real failure if the stderr does **not** match this specific known-cosmetic pattern — the actual arbiter of pass/fail is the file-content checks below it, which is what the script was already designed to do.
+
+### 106.4 The actual evidence — full drill output
+
+```
+Latest snapshot: ba00f7a6 (2026-09-02T12:22:34+05:00)
+[PASS] restic restore exit code -- (cosmetic timestamp-only issue, correctly identified)
+[PASS] psx_data.db restored -- 841.2 MB
+[PASS] PRAGMA integrity_check -- ok
+[PASS] prices table plausible -- 1,758,903 rows, MAX(date)=2026-09-01
+[PASS] KIRAN_BORING_STATE_TRUST_REGISTER.md restored -- 164,342 chars
+[PASS] KIRAN_CLOUD_RELIABILITY_AUDIT.md restored -- 26,177 chars
+[PASS] KIRAN_SQLITE_ONLY_SCOPING.md restored -- 19,654 chars
+Overall: PASS -- restoration verified end-to-end.
+```
+
+First real backup: snapshot `ba00f7a6`, ~882MB uploaded in ~6 minutes, retention policy applied cleanly. `MAINTENANCE_LOG.md` entry recorded same-day. Full local test suite re-run clean after both script fixes.
+
+### 106.5 TR-09 → GREEN
+
+Every element of TR-09's amended acceptance criterion is now met with real evidence, not just tooling: (1) failure-domain independence — Backblaze B2, a different provider/account than Supabase or this machine; (2) at least one successful, evidenced restoration test — §106.4, not merely a file existing; (3) the restored state preserves the required-to-keep assets — the audit ledger (this Trust Register) explicitly included in scope, verified restored; (4) explicit RPO/RTO — 24h RPO (daily backup, owner-set), RTO demonstrated same-session (backup-to-verified-restore completed within roughly 15 minutes end to end, well inside any reasonable same-day bar).
+
+**TR-09 is non-blocking** (§5's Definition of Done: "kept non-blocking per this pass's explicit judgment call, since it protects against loss of an already-correct state rather than against serving an incorrect one") — its GREEN does not move any cutover-blocking row. It is, however, the first of TR-01's own concrete sub-steps to reach a fully-closed state (TR-12's archival and TR-08's v1 both remain partial/open on their own terms).
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
