@@ -141,6 +141,8 @@ regenerate the CI fixture too: `python tests/fixtures/build_fixture_db.py`.
 | `sector_signals.py` | Daily sector RS scores, breadth, composite scores |
 | `backfill_setup_log.py` | Historical + daily setup_log population (all 4 setup types) |
 | `compute_forward_returns.py` | Fills fwd_return_5d/10d/20d for setup_log rows once window closes |
+| `backup_to_b2.py` | TR-01/TR-09 daily offsite backup of `psx_data.db` + the 3 gitignored audit docs to Backblaze B2 via `restic`. Local-machine only (Task Scheduler `KIRAN_B2_Backup`, daily 22:00), not run in GitHub Actions. Credentials (`B2_ACCOUNT_ID`/`B2_ACCOUNT_KEY`/`RESTIC_PASSWORD`) are local user env vars, never committed |
+| `restore_drill_b2.py` | TR-09's restoration drill — actually restores the latest B2 snapshot into an isolated temp dir and verifies it (SQLite integrity check + plausibility, doc files readable), not just confirms a backup file exists. Run manually/periodically, not scheduled |
 
 ## Supabase tables
 | Table | Contents |
