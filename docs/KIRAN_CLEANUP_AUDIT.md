@@ -6733,3 +6733,21 @@ Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE** (TR-18 is an infrastr
 **TR-18 → 🟢 GREEN.** Trust Register updated: row status, §0 Amendment Log (new entry mirroring §87's/§96's format), §5 Definition of Done blocking-list strikethrough + "10 remain" (TR-01, TR-03, TR-04, TR-06, TR-07, TR-08, TR-13, TR-14, TR-16, TR-17). **TR-18 is the third of the 13 cutover-blocking rows to close, after TR-05 (§87) and TR-11 (§96).** Moves no other row — each of the 10 remaining rows still needs its own proof, on its own terms.
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
+
+---
+
+## 103. <span style="color:#16a34a;">● TR-01 work begins — TR-12: the 4 stale `main_backup_e8*.py` write-surface files archived and neutralized (2026-09-02)</span>
+
+Owner picked **TR-01** as the next row (2026-09-01 session end). Read-only status re-check confirmed the row exactly as last recorded: policy decided (2026-08-26, reaffirmed 2026-08-31), enforcement fully unbuilt, Phase 1 (data-integrity repairs) done except TR-14. Two prerequisite pieces the original TR-01 enforcement spec called for — alerting and deployment identity — turned out to already be satisfied as a side effect of TR-18 and TR-11 closing under their own row numbers.
+
+Rather than start the large, multi-phase enforcement build (publication contract → local archive → shadow mode → cutover → burn-in → retire old write surface) cold, picked the cheapest independent piece first, per the standing "silent-failure/write-surface risks come first" rule: **TR-12's four stale `main_backup_e8*.py` files**, flagged since §40.1/§41.3 (2026-08-21) and never acted on.
+
+**Verified before touching anything:** `grep -rl "main_backup_e8" --include="*.py" --include="*.yml" --include="*.bat" --include="*.md" .` — the only hits outside the four files themselves are descriptive mentions in `CLAUDE.md` / the Trust Register / this ledger. No `.py`/`.yml`/`.bat` file imports or calls any of them. Each confirmed to still carry a real `cmd_update()` + `if __name__ == "__main__":` entry point and a real `sqlite3.connect(DB_PATH)` — genuinely runnable, genuinely capable of a production write, not inert.
+
+**Action taken:** moved all four (`git mv`, preserved as renames) into a new `ARCHIVED_main_backups/` directory — same convention as the pre-existing `ARCHIVED_PSX_SCRAPER/`. **Relocation alone would not have closed the risk** (a file in a differently-named folder is still runnable), so each file's real body was additionally replaced with a short stub: a docstring explaining what it was and pointing at git history for the original content, followed by `raise RuntimeError(...)` so the file cannot execute a production write even if invoked directly by mistake. Added `ARCHIVED_main_backups/README.md` explaining the whole directory. Original content is not lost — fully recoverable via `git log --follow` or the pre-archival commit.
+
+Full local test suite re-run after the change (unaffected — none of the 4 files were imported by anything, confirmed above) before pushing, per standing practice.
+
+**Not a full TR-12 closure** — the row's acceptance criterion is broader ("no file capable of writing to a production table outside the orchestrated entry points, **or** every such file is explicitly inventoried and access-controlled"), and CLAUDE.md's own §40.1 catalogued roughly 60 directly-runnable scripts in this repo total. This closes the single worst-known instance (4 full `main.py` duplicates), not the general inventory. TR-12 stays non-blocking (§5's Definition of Done lists it as should-close-eventually, not cutover-blocking) but is measurably smaller now.
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
