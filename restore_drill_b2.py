@@ -81,11 +81,37 @@ def main() -> int:
 
     try:
         snapshot_id = _latest_snapshot_id()
-        _run_restic(["restore", snapshot_id, "--target", restore_root])
-        checks.append(("restic restore completed (content-hash verified internally)", True, ""))
     except Exception as exc:
-        print(f"FAIL: restore itself failed -- {exc}")
+        print(f"FAIL: could not determine latest snapshot -- {exc}")
         return 1
+
+    cmd = ["restic", "restore", snapshot_id, "--target", restore_root]
+    result = subprocess.run(cmd, env=_restic_env(), capture_output=True, text=True, timeout=1800)
+    restore_stderr = (result.stderr or "").strip()
+    if result.returncode != 0:
+        # restic on Windows can exit non-zero for a purely cosmetic reason:
+        # it cannot set the *modification timestamp* on reconstructed parent
+        # directories under C:\Users (an ACL/permissions quirk of that
+        # specific folder, not a content problem) -- its own log line says
+        # "ignoring error" for exactly that case and still writes every
+        # file. Trusting restic's exit code alone here would be a false
+        # negative on the one thing this script actually exists to prove;
+        # what matters is whether the files landed correctly, and the
+        # checks below are the real arbiter of that, not this exit code.
+        cosmetic = ("ignoring error" in restore_stderr and "failed to restore timestamp" in restore_stderr)
+        checks.append((
+            "restic restore exit code",
+            cosmetic,  # not appended as a hard failure if this is the known cosmetic case
+            restore_stderr[-300:] if restore_stderr else f"exit {result.returncode}",
+        ))
+        if not cosmetic:
+            print(f"FAIL: restore itself failed -- {restore_stderr or result.stdout}")
+            return 1
+        print(f"NOTE: restic exited non-zero on a known cosmetic issue (directory timestamp "
+              f"on a Windows-protected path, not file content) -- verifying actual restored "
+              f"content below rather than trusting the exit code alone.")
+    else:
+        checks.append(("restic restore completed (content-hash verified internally)", True, ""))
 
     # --- psx_data.db ---
     db_path = _restored_path(restore_root, os.path.join(_PROJECT_DIR, "psx_data.db"))

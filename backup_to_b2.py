@@ -25,8 +25,18 @@ RESTIC_PASSWORD (the repo's own client-side encryption key -- unrelated to
 B2 auth; losing it makes the backup permanently unrecoverable even with
 valid B2 credentials) are all read from the environment, set once as local
 user environment variables by the owner. This script never sees, logs, or
-handles the actual values -- restic reads them directly from its own
-environment.
+handles the actual values -- it maps them onto the AWS_* names restic's S3
+backend expects (see _restic_env()) and passes them straight through.
+
+Backend note (2026-09-02, ledger §105.4): restic's *native* `b2:` backend
+returned `b2_list_buckets: 401` against this account's restricted key even
+though the key's own capabilities genuinely include listBuckets (confirmed
+directly against B2's API) -- restic's own docs name this as a known class
+of issue ("issues with error handling in the current B2 library that restic
+uses") and recommend B2's S3-compatible API instead, which is what this
+script actually uses. B2_ACCOUNT_ID/B2_ACCOUNT_KEY work unchanged as
+S3-style credentials -- Backblaze accepts the same application key pair for
+both APIs, no new key needed.
 
 Usage:
     python backup_to_b2.py              # real backup + prune
@@ -53,10 +63,14 @@ logger = logging.getLogger("backup_to_b2")
 
 _PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Not secrets -- a bucket name and a repo path prefix inside it, same
+# Not secrets -- a bucket name, this account's fixed B2 S3-compatible
+# endpoint (confirmed directly against the b2_authorize_account API,
+# 2026-09-02 -- tied to which storage cluster the account was provisioned
+# on, does not change), and a repo path prefix inside the bucket. Same
 # comfort level as this repo already hardcodes non-secret config (config.py).
-B2_BUCKET = "kiran-psx-backup"
-RESTIC_REPO = f"b2:{B2_BUCKET}:restic-repo"
+B2_BUCKET = "kiran-psx-backups"
+B2_S3_ENDPOINT = "s3.us-east-005.backblazeb2.com"
+RESTIC_REPO = f"s3:https://{B2_S3_ENDPOINT}/{B2_BUCKET}/restic-repo"
 
 # The actual backup scope, owner-agreed 2026-09-02 -- see module docstring.
 BACKUP_TARGETS = [
@@ -83,8 +97,17 @@ NTFY_TOPIC = "kiran-psx-alerts-7g3k9qx2mp"
 
 
 def _restic_env() -> dict:
+    """restic's S3 backend reads AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, not
+    B2_ACCOUNT_ID/B2_ACCOUNT_KEY -- Backblaze's own application keys work
+    unchanged as S3-style credentials (confirmed live against the account),
+    so this just renames them in the subprocess's env without ever reading
+    or logging the actual values in this process."""
     env = os.environ.copy()
     env["RESTIC_REPOSITORY"] = RESTIC_REPO
+    if env.get("B2_ACCOUNT_ID"):
+        env["AWS_ACCESS_KEY_ID"] = env["B2_ACCOUNT_ID"]
+    if env.get("B2_ACCOUNT_KEY"):
+        env["AWS_SECRET_ACCESS_KEY"] = env["B2_ACCOUNT_KEY"]
     return env
 
 
