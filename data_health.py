@@ -174,6 +174,20 @@ PUBLICATION_VERIFIED       = "VERIFIED"
 PUBLICATION_STALE          = "STALE"
 PUBLICATION_CANNOT_VERIFY  = "CANNOT_VERIFY"
 
+# TR-01 shadow-mode / Phase 2 remainder (2026-09-02, SHADOWMODE_SPEC_DRAFT.md
+# §5.1). "Do every every-session MANDATORY table carry data through the same
+# session date, or is one silently frozen while another advanced?" -- the
+# §39.5 / §40.20 "mismatched data_cutoff across MANDATORY tables" guard. This
+# is the one coherence signal the shadow-mode per-session PASS marker depends
+# on. Recorded on current_publication; deliberately NOT wired into the
+# promote/withhold decision in v1 (the promotion rule stays exactly as
+# owner-agreed for TR-08 v1) -- the consumer (local_archive_sync, PR 2)
+# filters on `coherence != INCOHERENT` itself. Fail-closed to UNKNOWN, never
+# a false COHERENT.
+COHERENCE_COHERENT   = "COHERENT"
+COHERENCE_INCOHERENT = "INCOHERENT"
+COHERENCE_UNKNOWN    = "UNKNOWN"
+
 
 def publication_status(verdict: "Verdict | None") -> str:
     """Map a check_all() Verdict (or its absence) to the TR-05 publication vocabulary.
@@ -731,12 +745,18 @@ def scrape_coverage_status(scrape_date: str) -> str | None:
 # this run_id get promoted to "current published state," and if not, exactly
 # which gate withheld it. v1 scope (owner-agreed, scratch
 # TR08_PUBLICATION_CONTRACT_SPEC_DRAFT.md): freshness + completeness +
-# per-run mandatory-hook completion only. Deliberately does NOT include a
-# coherence (TR-04) or full validation (TR-06 tiering) field -- neither has a
-# real per-run computed source yet; adding a fake one would be worse than
-# leaving the gap named. Does NOT change dashboard.py's existing `_pub_ok`
-# serving-time behavior (TR-05, already GREEN in production) -- this is a
-# recording layer underneath it, not a replacement.
+# per-run mandatory-hook completion. Full validation (TR-06 tiering) is still
+# deliberately out -- it has no real per-run computed source yet. Does NOT
+# change dashboard.py's existing `_pub_ok` serving-time behavior (TR-05,
+# already GREEN in production) -- this is a recording layer underneath it,
+# not a replacement.
+#
+# 2026-09-02 (SHADOWMODE_SPEC_DRAFT.md §5.1): a `coherence` field is added --
+# an actual per-run computed check (mandatory_tables_coherence()), not a
+# fake one. It records whether every every-session MANDATORY table carried
+# data through the same session date. It does NOT gate the promote/withhold
+# decision (that rule stays exactly as owner-agreed for TR-08 v1); the
+# shadow-mode consumer filters on it directly.
 # ---------------------------------------------------------------------------
 
 # The hooks a displayed SIGNAL actually depends on -- owner-confirmed
@@ -766,7 +786,8 @@ CREATE TABLE IF NOT EXISTS current_publication (
     completeness_status        TEXT,
     mandatory_hooks_completed  INTEGER,
     promoted                   INTEGER NOT NULL,
-    withheld_reason            TEXT
+    withheld_reason            TEXT,
+    coherence                  TEXT
 )
 """
 
@@ -781,13 +802,28 @@ CREATE TABLE IF NOT EXISTS current_publication (
     completeness_status        TEXT,
     mandatory_hooks_completed  BOOLEAN,
     promoted                   BOOLEAN NOT NULL,
-    withheld_reason            TEXT
+    withheld_reason            TEXT,
+    coherence                  TEXT
 )
 """
+
+# Additive nullable columns for current_publication, applied to an
+# already-created table the same way _NEW_COLUMNS is for pipeline_runs. The
+# live table exists on both backends (SQLite since PR #60, Postgres since
+# ledger §108) with 0 rows -- so this is a pure schema add, no backfill.
+# (name, SQLite type, Postgres type)
+_CURRENT_PUBLICATION_NEW_COLUMNS: list[tuple[str, str, str]] = [
+    ("coherence", "TEXT", "TEXT"),
+]
 
 
 def ensure_current_publication_sqlite(con) -> None:
     con.execute(_CURRENT_PUBLICATION_SQLITE_DDL)
+    existing = {row[1] for row in
+               con.execute("PRAGMA table_info(current_publication)").fetchall()}
+    for name, sqlite_type, _pg_type in _CURRENT_PUBLICATION_NEW_COLUMNS:
+        if name not in existing:
+            con.execute(f"ALTER TABLE current_publication ADD COLUMN {name} {sqlite_type}")
 
 
 def ensure_current_publication_pg(cur) -> None:
@@ -795,6 +831,8 @@ def ensure_current_publication_pg(cur) -> None:
     implicitly (same signed-off-first-run contract as
     ensure_scrape_coverage_pg / ensure_boring_signals_scanned_table_pg)."""
     cur.execute(_CURRENT_PUBLICATION_PG_DDL)
+    for name, _sqlite_type, pg_type in _CURRENT_PUBLICATION_NEW_COLUMNS:
+        cur.execute(f"ALTER TABLE current_publication ADD COLUMN IF NOT EXISTS {name} {pg_type}")
 
 
 def mandatory_hooks_completed_for_run(run_id: str | None,
@@ -829,6 +867,72 @@ def mandatory_hooks_completed_for_run(run_id: str | None,
         return False
 
 
+# The every-session MANDATORY tables that must carry a row for the expected
+# session on every trading day. This is the EVERY_SESSION subset that gates a
+# SIGNAL: market_regime is EVERY_SESSION too but NON-MANDATORY per §39.2
+# (informative context, not an executable signal); recovery_signals is
+# NON-MANDATORY and uses as_of_date. boring_signals / setup_log ARE MANDATORY
+# but legitimately produce zero rows some sessions (HEARTBEAT, not
+# EVERY_SESSION) -- their per-session completion is already gated by
+# mandatory_hooks_completed_for_run(), not by a MAX(date) comparison, so
+# including them here would false-positive on every no-breakout / no-setup
+# day. A lag in one of THESE four while another advances is the §36.2 failure
+# class: prices_adjusted frozen 8 days while prices advanced, both silently
+# called "current".  (table, date column)
+COHERENCE_TABLES: tuple[tuple[str, str], ...] = (
+    ("prices",          "date"),
+    ("prices_adjusted", "date"),
+    ("stock_signals",   "date"),
+    ("sector_signals",  "date"),
+)
+
+
+def mandatory_tables_coherence(expected: str | None,
+                                tables: tuple[tuple[str, str], ...] = COHERENCE_TABLES
+                                ) -> tuple[str, str | None]:
+    """Do the every-session MANDATORY tables all carry data through the same
+    session date? Returns (status, detail).
+
+      COHERENT   -- every table's MAX(date) == expected
+      INCOHERENT -- at least one table's MAX(date) != expected (names them)
+      UNKNOWN    -- expected is None, or a table could not be read
+
+    The §39.5 / §40.20 "mismatched data_cutoff across MANDATORY tables" guard,
+    and the one coherence signal SHADOWMODE_SPEC_DRAFT.md's per-session PASS
+    marker depends on. Read-only; never raises; fail-closed to UNKNOWN, never
+    a false COHERENT. Table/column names come from a hardcoded tuple, never
+    caller input -- safe to interpolate.
+    """
+    if not expected:
+        return COHERENCE_UNKNOWN, "no expected session"
+    expected = _iso(expected) or str(expected)
+    try:
+        fetch_one, close = _open()
+        try:
+            mismatched: list[str] = []
+            unreadable: list[str] = []
+            for table, col in tables:
+                try:
+                    row = fetch_one(f"SELECT MAX({col}) FROM {table}", ())
+                    tmax = _iso(row[0]) if row and row[0] else None
+                except Exception:
+                    tmax = None
+                if tmax is None:
+                    unreadable.append(table)
+                elif tmax != expected:
+                    mismatched.append(f"{table}={tmax}")
+            if unreadable:
+                return COHERENCE_UNKNOWN, "unreadable: " + ", ".join(unreadable)
+            if mismatched:
+                return (COHERENCE_INCOHERENT,
+                        f"expected {expected}; mismatched: " + ", ".join(mismatched))
+            return COHERENCE_COHERENT, None
+        finally:
+            close()
+    except Exception:
+        return COHERENCE_UNKNOWN, "coherence query failed"
+
+
 def decide_and_record_publication(
     run_id: str | None,
     code_version: str | None,
@@ -836,6 +940,7 @@ def decide_and_record_publication(
     freshness_status: str | None,
     completeness_status: str | None,
     mirror_to_postgres: bool = False,
+    coherence_status: str | None = None,
 ) -> dict:
     """The TR-08 publication decision. Computes whether this run gets
     promoted to "current published state," writes one append-only row
@@ -853,6 +958,11 @@ def decide_and_record_publication(
     decision, not just the promoted ones; the *previous* promoted row is
     never touched, so `latest_promoted_publication()` keeps returning the
     last genuinely good state exactly as TR-08's invariant requires.
+
+    `coherence_status` (SHADOWMODE_SPEC_DRAFT.md §5.1) is recorded as-is and
+    deliberately does NOT participate in the promotion rule above -- the
+    shadow-mode consumer filters on it directly. Passing None (every
+    pre-existing caller) stores NULL, exactly as before.
     """
     mandatory_ok = mandatory_hooks_completed_for_run(run_id)
     reasons = []
@@ -874,6 +984,7 @@ def decide_and_record_publication(
         mandatory_hooks_completed=mandatory_ok,
         promoted=promoted,
         withheld_reason=withheld_reason,
+        coherence=coherence_status,
     )
 
     try:
@@ -888,12 +999,12 @@ def decide_and_record_publication(
                     INSERT INTO current_publication
                         (run_id, code_version, source_as_of, freshness_status,
                          completeness_status, mandatory_hooks_completed, promoted,
-                         withheld_reason)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                         withheld_reason, coherence)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (run_id, code_version, source_as_of, freshness_status,
                      completeness_status, int(mandatory_ok), int(promoted),
-                     withheld_reason),
+                     withheld_reason, coherence_status),
                 )
                 con.commit()
             finally:
@@ -925,13 +1036,13 @@ def _record_publication_pg(url: str, decision: dict) -> None:
                     INSERT INTO current_publication
                         (run_id, code_version, source_as_of, freshness_status,
                          completeness_status, mandatory_hooks_completed, promoted,
-                         withheld_reason)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                         withheld_reason, coherence)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (decision["run_id"], decision["code_version"], decision["source_as_of"],
                      decision["freshness_status"], decision["completeness_status"],
                      decision["mandatory_hooks_completed"], decision["promoted"],
-                     decision["withheld_reason"]),
+                     decision["withheld_reason"], decision.get("coherence")),
                 )
     finally:
         conn.close()
@@ -951,7 +1062,8 @@ def latest_promoted_publication() -> dict | None:
             row = fetch_one(
                 """
                 SELECT run_id, promoted_at, code_version, source_as_of,
-                       freshness_status, completeness_status, withheld_reason
+                       freshness_status, completeness_status, withheld_reason,
+                       coherence
                 FROM current_publication
                 WHERE promoted = {p}
                 ORDER BY promoted_at DESC, id DESC
@@ -969,7 +1081,8 @@ def latest_promoted_publication() -> dict | None:
                 return None
             return dict(zip(
                 ("run_id", "promoted_at", "code_version", "source_as_of",
-                 "freshness_status", "completeness_status", "withheld_reason"),
+                 "freshness_status", "completeness_status", "withheld_reason",
+                 "coherence"),
                 row,
             ))
         finally:
@@ -998,7 +1111,8 @@ def latest_publication_attempt() -> dict | None:
             row = fetch_one(
                 """
                 SELECT run_id, promoted_at, code_version, source_as_of,
-                       freshness_status, completeness_status, promoted, withheld_reason
+                       freshness_status, completeness_status, promoted, withheld_reason,
+                       coherence
                 FROM current_publication
                 ORDER BY promoted_at DESC, id DESC
                 LIMIT 1
@@ -1009,7 +1123,8 @@ def latest_publication_attempt() -> dict | None:
                 return None
             result = dict(zip(
                 ("run_id", "promoted_at", "code_version", "source_as_of",
-                 "freshness_status", "completeness_status", "promoted", "withheld_reason"),
+                 "freshness_status", "completeness_status", "promoted", "withheld_reason",
+                 "coherence"),
                 row,
             ))
             result["promoted"] = _as_bool(result["promoted"])
