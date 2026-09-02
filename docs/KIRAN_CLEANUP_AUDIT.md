@@ -7053,3 +7053,40 @@ The "Postgres" source is a real SQLite DB behind a compact psycopg2-emulating sh
 PR 2 is **code only** — no `psx_archive.db` created, no Task Scheduler job, no real sync run. B-exec (first sync → creates `psx_archive.db`; the simulated-offline-gap drill; the scheduled job; MAINTENANCE_LOG) is a later signed-off step, and needs A-obs first (a real promoted `current_publication` row to pull). `current_publication` on Postgres is still 0 rows.
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
+
+### 111.4 Component B MERGED — PR #68, `origin/main` `900caec` → `a18aad6`
+
+CI green 3/3 on the branch and the merge commit; branch deleted; `daily_scraper.yml` not triggered. PR 3 (Component C, §112) branches off the updated `main` — `shadow_compare.py` imports `local_archive_sync._default_pg_conn`.
+
+## 112. <span style="color:#eab308;">◐ TR-01 shadow-mode PR 3 — Component C: `shadow_compare.py`, the per-session diff (code only) (2026-09-02)</span>
+
+Owner: "start PR 3 (Component C) now". **`shadow_compare.py`** — new script, project root. Once per session (a tail step of `local_archive_sync.py`), for the latest `current_publication` session on Postgres that is `promoted` **and** `coherence = 'COHERENT'` (stricter than Component B's "not INCOHERENT" — the comparison only runs on a session confirmed internally coherent; a non-COHERENT session is skipped and logged, an honest surfacing if the coherence check itself proves flaky).
+
+### 112.1 What it compares, and what halts
+
+A per-table **decision-driving digest** for the session, from three sources — AUTH (Postgres), LOCAL (`psx_data.db`), ARCHIVE (`psx_archive.db`):
+
+| Table | Digest | §4.2 halt on disagreement? |
+|---|---|---|
+| `prices` / `prices_adjusted` | symbol set for the session + `close` per symbol | **Yes** — a symbol on one side only (coverage), or a `close` outside float tolerance (`max(0.01, 0.1%)` — far wider than §34.2 rounding) |
+| `stock_signals` | per symbol: `bos_flag`; and the pre-breakout-band / `base_tightness<8` / `stage2_bull` / liquidity / `sector_rs_rank≤3` buckets | **Yes on `bos_flag`** (§4.2b). The other bucket flips are `noted`, non-halting — a flip that actually changes a setup shows up in `setup_log` membership, which does halt |
+| `sector_signals` | per sector: top-3 rank, `composite_score` sign, `breadth_score` sign | No — `noted` only (§4.2 does not name `sector_signals`) |
+| `boring_signals` | existence per symbol + `strategy_confirmed`; `status` | **Yes on existence + `strategy_confirmed`** (§4.2a). `status` is `noted`, non-halting (it mutates post-hoc and §4.2 doesn't list it). No `direction` column exists — boring breakouts are long-only |
+| `setup_log` | the `(symbol, setup_type)` set for the session | **Yes** (§4.2c) |
+| `market_regime` | the `regime` label | No — `noted` only (§4.2 owner decision) |
+
+**Verdicts:** `DISAGREE` — LOCAL vs AUTH differ on any halting field → counter **resets to 0** (§4.6) + loud `logger.error` + ntfy push (TR-18 topic, inlined like §552's `alert_consumer_authority_violation`). `CLEAN` — agree on every halting field (non-halting `noted` diffs allowed, surfaced in `--status`) → counter **+1**. `INCOMPLETE` — a source unreadable, Postgres unreachable, LOCAL not caught up to the session yet (zero rows in the core every-session tables — distinguished from a real coverage disagreement), the session not published, **or ARCHIVE ≠ AUTH** (a Component B bug — the comparison infra isn't sound; alerted, counter unchanged, retried next run).
+
+### 112.2 State + pass condition
+
+`shadow_comparison` (in `psx_archive.db`): `session_date` PK, `compared_at`, `verdict`, `clean_session_number` (running consecutive-CLEAN count — CLEAN = prev+1, DISAGREE = 0, INCOMPLETE = carry), `halting_json` / `noted_json` / `detail`. One row per session; a session is compared once and its CLEAN/DISAGREE verdict is final, but an INCOMPLETE row is retried on later runs until it resolves. **Shadow mode PASSES when the best clean streak reaches the floor (default 10)** — `shadow_status()` reports the current + best streak and the pass flag. This does **not** trigger cutover — evidence for §40.18 criterion 6.
+
+### 112.3 Tests — `tests/test_shadow_compare.py`, 20, fully isolated
+
+Three SQLite DBs stand in for AUTH / LOCAL / ARCHIVE (AUTH behind a `%s`→`?` shim); ntfy is an injected spy. Covers: identical data → CLEAN + counter increments + no alert; `boring_signals` existence / `strategy_confirmed` / `stock_signals.bos_flag` / `setup_log` membership / `prices` coverage / `close` outside tolerance → DISAGREE + alert + counter 0; `close` within tolerance → CLEAN; `market_regime` label / `sector_signals` flip / `boring_signals` status → CLEAN + `noted`, no alert; ARCHIVE ≠ AUTH → INCOMPLETE naming Component B + alert; LOCAL behind (zero rows) → INCOMPLETE not DISAGREE; Postgres unreachable → INCOMPLETE, no crash; no promoted / non-COHERENT publication → "no eligible session"; already-compared CLEAN skipped; INCOMPLETE retried and resolves to CLEAN; DISAGREE at streak 7 → 0 → next CLEAN → 1; `shadow_status` reports pass at floor 10. Plus a read-only smoke against live Supabase — every digest runs against real 2026-09-01 data (496 price symbols, 291 `stock_signals`, 23 sectors, 58 `setup_log`, 8 boring, regime `RANGING`); `_latest_eligible_session` returns `None` (no promoted+COHERENT row yet).
+
+### 112.4 Not executed here
+
+PR 3 is **code only** — no `shadow_comparison` rows, not wired into `local_archive_sync.py`'s tail yet, no window started. C-exec (the historical replay pass §7.3; wiring the tail step; starting the clock) is a later signed-off step and follows A-obs + B-exec.
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. All three shadow-mode components are now code-complete; execution waits on A-obs (a real promoted `current_publication` row from the authoritative cloud pipeline).
