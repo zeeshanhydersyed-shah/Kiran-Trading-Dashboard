@@ -7023,3 +7023,33 @@ OI-13 closed. **Postgres** — `ALTER TABLE current_publication ADD COLUMN IF NO
 No cutover. No dashboard change (the TR-08 panel added at §104 keeps working; adding a coherence line to it is a trivial optional follow-up, not in this spec). No `validation` tiering (TR-06), no atomic-promotion pointer (TR-17), no provenance chain (TR-16) — TR-08 stays RED, its own row. No `run_update.bat` change. No strategy/threshold touch. The A-obs step (observe the authoritative path write a live `current_publication` row with a populated `coherence` field — still never seen from GitHub Actions, §108 note) follows A-exec.
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. 10 cutover-blocking rows remain (TR-01, TR-03, TR-04, TR-06, TR-07, TR-08, TR-13, TR-14, TR-16, TR-17).
+
+### 110.5 Component A MERGED 2026-09-02 — PR #67, `origin/main` `2ebfcf9` → `900caec`
+
+CI green on the merge commit (3/3), local `main` fast-forwarded, branch deleted. `daily_scraper.yml` not triggered. `git status` back to the two standing deferrals (OI-2/OI-3). A-exec (§110.3a) was completed and merged in the same PR (the doc record commit `634824f`). Next: A-obs, then Component B (below).
+
+## 111. <span style="color:#eab308;">◐ TR-01 shadow-mode PR 2 — Component B: `local_archive_sync.py`, the Phase 4 pull-sync mirror (code only) (2026-09-02)</span>
+
+Owner: "start PR 2 (Component B) now" (A-obs is an observation gate on the authoritative write, not a blocker on writing B's code). **`local_archive_sync.py`** — new script, project root. Pulls the authoritative published state DOWN from Postgres into a **separate** `psx_archive.db`, append/replace only, never computing, `psx_data.db` never referenced. This is the target-architecture local role a cutover would switch to (§38.6 / §39.12).
+
+### 111.1 Design
+
+- **Eligible sessions:** `current_publication` rows on Postgres with `promoted = true` and `coherence` not `INCOHERENT` (NULL / UNKNOWN / COHERENT all pass — the permissive TR-14 reading; only an explicit INCOHERENT excludes). One per distinct `source_as_of`, latest `promoted_at` wins — so a same-day withheld re-run never un-promotes a session that an earlier slot promoted.
+- **Correction to §110.2's caveat:** confirmed by code read that `main.run_freshness_gate()` calls `decide_and_record_publication()` with `mirror_to_postgres` defaulting to **False** and never overrides it — so **every `current_publication` row on Postgres is written natively by the authoritative GitHub-Actions→Postgres pipeline.** There is no local-mirror contamination in `current_publication` (the `mirror_to_postgres=True` in `main.py` is on the `boring_signals` `pipeline_runs` heartbeat, a different table). Component B does not need to filter for authoritative-path rows — they all are.
+- **Pull model:** for every eligible session within `window_days` (default 90) of the latest eligible session, `DELETE` that session's rows from the archive and re-`INSERT` from Postgres, for all 14 `ARCHIVE_TABLES` (the EVERY_SESSION + NON-MANDATORY signal tables + `boring_signals_scanned` + `scrape_coverage`) plus a full copy of `current_publication`. Re-pulling the whole trailing window every run keeps post-hoc mutations current (`boring_signals` status, `setup_log` outcome labels / forward returns, `leaders_top_picks` outcome) with no per-table change tracking. Sessions older than the window are left frozen (their signals long since resolved; `psx_data.db` remains the permanent full-history archive per §40.14 — `psx_archive.db` is specifically the shadow-mode comparison mirror).
+- **Resumable by construction:** each session pulled independently and idempotently (`DELETE`+`INSERT`); a crash mid-run just redoes the unfinished sessions next run. No replay risk — Postgres is the source of truth, only copied. A per-session query failure rolls back the (read-only) PG transaction so the remaining sessions are not dragged to ERROR.
+- **Completeness check:** per session, per table, archive row count vs Postgres row count. Any mismatch → session `status = PARTIAL` (never silently OK), naming the table(s).
+- **State:** `archive_sync_state` (one row per session — `session_date`, `source_run_id`, `coherence`, `synced_at`, `status` OK/PARTIAL/ERROR, `row_counts_json`, `detail`); `archive_sync_meta` (one row — `last_run_at`, `last_run_status`, `last_session_synced`, `pg_latest_promoted_session`, `sessions_in_window`, `detail`). A `last_run_at` that stops advancing, or `last_session_synced` behind `pg_latest_promoted_session` (`archive_status().is_behind`), is the stale-archive signal (§39.12).
+- **Postgres connection:** a direct `psycopg2.connect` (not the pooled `get_conn`), `set_session(readonly=True)`. Injectable (`sync_archive(pg_conn=...)`) for tests. Value coercion on insert: `date`/`datetime` → ISO string, `Decimal` → float, `bool` → int.
+- **Guards:** `sync_archive` raises if `archive_path` resolves to `config.DB_PATH`. The script imports `config` only for the default archive-path directory; it never opens `psx_data.db`.
+- **CLI:** `python local_archive_sync.py` (sync) / `--status` (print the heartbeat, no write).
+
+### 111.2 Tests — `tests/test_local_archive_sync.py`, 13, fully isolated
+
+The "Postgres" source is a real SQLite DB behind a compact psycopg2-emulating shim (`%s`→`?`), same idea as `test_boring_signals_backend_parity.py`'s `_PgLikeCursor`. Covers: only promoted+coherent sessions pulled (withheld + INCOHERENT both excluded); re-run with no new data is a clean no-op; a multi-session gap caught up in one pass; a source that hands back an incomplete result set → session `PARTIAL` naming `prices`; `psx_data.db` never touched (sentinel path asserted absent); refuses `psx_data.db` as the archive; a post-hoc `boring_signals` status change is re-pulled within the window; out-of-window sessions skipped; a later withheld re-run does not un-promote; `archive_status().is_behind` true when a session errored; no eligible sessions yet → OK not ERROR; `current_publication` mirrored; content identical across repeated runs. Plus a read-only smoke probe against live Supabase confirmed the `SELECT * … LIMIT 0` column discovery works for all 15 tables and the connection is genuinely read-only (`ReadOnlySqlTransaction` on an attempted write).
+
+### 111.3 Not executed here
+
+PR 2 is **code only** — no `psx_archive.db` created, no Task Scheduler job, no real sync run. B-exec (first sync → creates `psx_archive.db`; the simulated-offline-gap drill; the scheduled job; MAINTENANCE_LOG) is a later signed-off step, and needs A-obs first (a real promoted `current_publication` row to pull). `current_publication` on Postgres is still 0 rows.
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
