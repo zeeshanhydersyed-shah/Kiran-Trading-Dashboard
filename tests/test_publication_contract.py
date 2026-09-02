@@ -63,6 +63,24 @@ def _seed_all_mandatory(db, run_id, skip=None, fail=None, run_date="2026-09-02")
         _seed_hook(db, hook, run_id, run_date=run_date, execution_status=status)
 
 
+def _seed_coherence_tables(db, dates: dict[str, str] | None = None,
+                            default_date="2026-09-02"):
+    """Create the four COHERENCE_TABLES with one row each. `dates` overrides
+    the MAX(date) for named tables; anything unnamed gets `default_date`.
+    Pass an empty string for a table to create it with no rows."""
+    dates = dates or {}
+    con = sqlite3.connect(db)
+    try:
+        for table, col in dh.COHERENCE_TABLES:
+            con.execute(f"CREATE TABLE IF NOT EXISTS {table} ({col} TEXT)")
+            d = dates.get(table, default_date)
+            if d:
+                con.execute(f"INSERT INTO {table} ({col}) VALUES (?)", (d,))
+        con.commit()
+    finally:
+        con.close()
+
+
 # ---------------------------------------------------------------------------
 # mandatory_hooks_completed_for_run
 # ---------------------------------------------------------------------------
@@ -301,3 +319,124 @@ def test_freshness_gate_gate_computation_failure_records_cannot_verify(sqlite_db
     assert attempt["run_id"] == "run-z"
     assert attempt["promoted"] is False
     assert attempt["freshness_status"] == dh.PUBLICATION_CANNOT_VERIFY
+
+
+# ---------------------------------------------------------------------------
+# SHADOWMODE_SPEC_DRAFT.md §5.1 -- the `coherence` field: do every
+# every-session MANDATORY table carry data through the same session date?
+# Recorded on current_publication; does NOT gate the promote/withhold rule.
+# ---------------------------------------------------------------------------
+
+def test_coherence_all_tables_at_expected(sqlite_db):
+    _seed_coherence_tables(sqlite_db, default_date="2026-09-02")
+    status, detail = dh.mandatory_tables_coherence("2026-09-02")
+    assert status == dh.COHERENCE_COHERENT
+    assert detail is None
+
+
+def test_coherence_one_table_behind_is_incoherent_and_named(sqlite_db):
+    _seed_coherence_tables(
+        sqlite_db, default_date="2026-09-02",
+        dates={"prices_adjusted": "2026-08-25"},   # the §36.2 failure shape
+    )
+    status, detail = dh.mandatory_tables_coherence("2026-09-02")
+    assert status == dh.COHERENCE_INCOHERENT
+    assert "prices_adjusted=2026-08-25" in detail
+    assert "stock_signals" not in detail  # the ones that agree are not named
+
+
+def test_coherence_table_absent_is_unknown_not_false_coherent(sqlite_db):
+    # Only two of the four tables exist -- the rest are unreadable.
+    _seed_coherence_tables(sqlite_db, dates={"stock_signals": "", "sector_signals": ""})
+    con = sqlite3.connect(sqlite_db)
+    con.execute("DROP TABLE stock_signals")
+    con.execute("DROP TABLE sector_signals")
+    con.commit()
+    con.close()
+    status, detail = dh.mandatory_tables_coherence("2026-09-02")
+    assert status == dh.COHERENCE_UNKNOWN
+    assert "stock_signals" in detail and "sector_signals" in detail
+
+
+def test_coherence_no_expected_session_is_unknown(sqlite_db):
+    _seed_coherence_tables(sqlite_db)
+    status, detail = dh.mandatory_tables_coherence(None)
+    assert status == dh.COHERENCE_UNKNOWN
+
+
+def test_coherence_never_raises_on_query_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(dh, "_PG_URL", None)
+    monkeypatch.setattr(dh.config, "DB_PATH", str(tmp_path / "nonexistent_dir" / "x.db"))
+    status, _ = dh.mandatory_tables_coherence("2026-09-02")
+    assert status == dh.COHERENCE_UNKNOWN
+
+
+def test_decision_round_trips_coherence(sqlite_db):
+    _seed_all_mandatory(sqlite_db, "run-c")
+    _seed_coherence_tables(sqlite_db)
+    dh.decide_and_record_publication(
+        run_id="run-c", code_version="abc123", source_as_of="2026-09-02",
+        freshness_status=dh.PUBLICATION_VERIFIED, completeness_status=dh.COVERAGE_COMPLETE,
+        coherence_status=dh.COHERENCE_COHERENT,
+    )
+    assert dh.latest_promoted_publication()["coherence"] == dh.COHERENCE_COHERENT
+    assert dh.latest_publication_attempt()["coherence"] == dh.COHERENCE_COHERENT
+
+
+def test_incoherent_state_is_recorded_but_still_promoted(sqlite_db):
+    """v1 scope: coherence is recorded, not gated. An INCOHERENT run whose
+    freshness + completeness + mandatory hooks all pass is still promoted --
+    the shadow-mode consumer (local_archive_sync, PR 2) is what filters on
+    `coherence != INCOHERENT`, not the promotion rule."""
+    _seed_all_mandatory(sqlite_db, "run-i")
+    decision = dh.decide_and_record_publication(
+        run_id="run-i", code_version="abc123", source_as_of="2026-09-02",
+        freshness_status=dh.PUBLICATION_VERIFIED, completeness_status=dh.COVERAGE_COMPLETE,
+        coherence_status=dh.COHERENCE_INCOHERENT,
+    )
+    assert decision["promoted"] is True
+    assert decision["withheld_reason"] is None
+    assert decision["coherence"] == dh.COHERENCE_INCOHERENT
+    assert dh.latest_promoted_publication()["coherence"] == dh.COHERENCE_INCOHERENT
+
+
+def test_decision_without_coherence_kwarg_stores_null(sqlite_db):
+    """Every pre-existing caller omits coherence_status -- must stay valid."""
+    _seed_all_mandatory(sqlite_db, "run-n")
+    dh.decide_and_record_publication(
+        run_id="run-n", code_version="abc123", source_as_of="2026-09-02",
+        freshness_status=dh.PUBLICATION_VERIFIED, completeness_status=dh.COVERAGE_COMPLETE,
+    )
+    assert dh.latest_promoted_publication()["coherence"] is None
+
+
+def test_ensure_current_publication_sqlite_adds_column_to_existing_table(sqlite_db):
+    """The live table predates this column (SQLite since PR #60). Simulate
+    that: create it WITHOUT coherence, then ensure_* must add it, idempotently."""
+    con = sqlite3.connect(sqlite_db)
+    con.execute("""
+        CREATE TABLE current_publication (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, promoted_at TEXT,
+            code_version TEXT, source_as_of TEXT, freshness_status TEXT,
+            completeness_status TEXT, mandatory_hooks_completed INTEGER,
+            promoted INTEGER NOT NULL, withheld_reason TEXT)
+    """)
+    con.commit()
+    dh.ensure_current_publication_sqlite(con)
+    dh.ensure_current_publication_sqlite(con)  # idempotent -- must not raise
+    cols = {row[1] for row in con.execute("PRAGMA table_info(current_publication)")}
+    assert "coherence" in cols
+    con.close()
+
+
+def test_freshness_gate_records_coherence_status(sqlite_db):
+    _seed_all_mandatory(sqlite_db, "run-g")
+    _seed_coherence_tables(sqlite_db, default_date="2026-09-02")
+    ok = main.run_freshness_gate(
+        fetch_expected_session=lambda: "2026-09-02",
+        check_all_fn=lambda expected_session, source_error: dh.Verdict(
+            level="green", expected="2026-09-02", expected_source="ksestocks", items=[]),
+        run_id="run-g", code_version="ccc333",
+    )
+    assert ok is True
+    assert dh.latest_promoted_publication()["coherence"] == dh.COHERENCE_COHERENT

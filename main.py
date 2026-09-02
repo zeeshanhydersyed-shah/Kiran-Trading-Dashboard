@@ -823,6 +823,7 @@ def run_freshness_gate(
     from data_health import (
         check_all, publication_status, PUBLICATION_VERIFIED, PUBLICATION_CANNOT_VERIFY,
         scrape_coverage_status, decide_and_record_publication,
+        mandatory_tables_coherence, COHERENCE_COHERENT,
     )
 
     def _record_decision(status: str, expected: str | None) -> None:
@@ -830,10 +831,21 @@ def run_freshness_gate(
             return
         try:
             completeness = scrape_coverage_status(expected) if expected else None
+            # SHADOWMODE_SPEC_DRAFT.md §5.1 -- record whether every
+            # every-session MANDATORY table carried data through the same
+            # session date. Detail (which table lagged) goes to the log, the
+            # bare status to the record. Does not gate promotion.
+            coherence, coherence_detail = mandatory_tables_coherence(expected)
+            if coherence != COHERENCE_COHERENT:
+                logger.warning(
+                    "PUBLICATION COHERENCE %s at run %s -- %s",
+                    coherence, run_id, coherence_detail or "no detail",
+                )
             decide_and_record_publication(
                 run_id=run_id, code_version=code_version, source_as_of=expected,
                 freshness_status=status, completeness_status=completeness,
                 mirror_to_postgres=mirror_to_postgres,
+                coherence_status=coherence,
             )
         except Exception as exc:
             logger.debug("publication decision recording failed: %s", exc)
