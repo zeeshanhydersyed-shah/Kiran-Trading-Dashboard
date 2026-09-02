@@ -645,6 +645,301 @@ def scrape_coverage_status(scrape_date: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# TR-08 Publication Contract (2026-09-02, ledger §104) -- an append-only
+# record of every publication *decision* main.run_freshness_gate() makes: did
+# this run_id get promoted to "current published state," and if not, exactly
+# which gate withheld it. v1 scope (owner-agreed, scratch
+# TR08_PUBLICATION_CONTRACT_SPEC_DRAFT.md): freshness + completeness +
+# per-run mandatory-hook completion only. Deliberately does NOT include a
+# coherence (TR-04) or full validation (TR-06 tiering) field -- neither has a
+# real per-run computed source yet; adding a fake one would be worse than
+# leaving the gap named. Does NOT change dashboard.py's existing `_pub_ok`
+# serving-time behavior (TR-05, already GREEN in production) -- this is a
+# recording layer underneath it, not a replacement.
+# ---------------------------------------------------------------------------
+
+# The hooks a displayed SIGNAL actually depends on -- owner-confirmed
+# 2026-09-02. Everything else recorded in pipeline_runs (corporate-action
+# bookkeeping, the deployment_identity record, support_reversal -- a killed
+# strategy since 2026-07-23 that always writes zero rows) is real telemetry
+# but not required for THIS run to count as a valid publication.
+MANDATORY_HOOKS = (
+    "regime",
+    "sector_signals",
+    "stock_signals",
+    "boring_signals",
+    "recovery_signals",
+    "portfolio_signals",
+    "setup_log",
+    "leaders_scan",
+)
+
+_CURRENT_PUBLICATION_SQLITE_DDL = """
+CREATE TABLE IF NOT EXISTS current_publication (
+    id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id                     TEXT,
+    promoted_at                TEXT NOT NULL DEFAULT (datetime('now')),
+    code_version               TEXT,
+    source_as_of               TEXT,
+    freshness_status           TEXT,
+    completeness_status        TEXT,
+    mandatory_hooks_completed  INTEGER,
+    promoted                   INTEGER NOT NULL,
+    withheld_reason            TEXT
+)
+"""
+
+_CURRENT_PUBLICATION_PG_DDL = """
+CREATE TABLE IF NOT EXISTS current_publication (
+    id                         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    run_id                     TEXT,
+    promoted_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    code_version               TEXT,
+    source_as_of               TEXT,
+    freshness_status           TEXT,
+    completeness_status        TEXT,
+    mandatory_hooks_completed  BOOLEAN,
+    promoted                   BOOLEAN NOT NULL,
+    withheld_reason            TEXT
+)
+"""
+
+
+def ensure_current_publication_sqlite(con) -> None:
+    con.execute(_CURRENT_PUBLICATION_SQLITE_DDL)
+
+
+def ensure_current_publication_pg(cur) -> None:
+    """One-time DDL for current_publication on Postgres -- NOT called
+    implicitly (same signed-off-first-run contract as
+    ensure_scrape_coverage_pg / ensure_boring_signals_scanned_table_pg)."""
+    cur.execute(_CURRENT_PUBLICATION_PG_DDL)
+
+
+def mandatory_hooks_completed_for_run(run_id: str | None,
+                                       mandatory_hooks=MANDATORY_HOOKS) -> bool:
+    """True only if every hook in `mandatory_hooks` has an execution_status
+    of COMPLETED for this run_id in pipeline_runs. Fail-closed like every
+    other publication-gate check here: no run_id, a query error, or any
+    mandatory hook missing/FAILED all return False, never True by default --
+    a computation that could not be verified must never look like a pass
+    (the same CANNOT_VERIFY-never-becomes-VERIFIED principle TR-05 uses).
+    """
+    if not run_id:
+        return False
+    try:
+        fetch_one, close = _open()
+        try:
+            placeholders = ",".join("{p}" for _ in mandatory_hooks)
+            row = fetch_one(
+                f"""
+                SELECT COUNT(*) FROM pipeline_runs
+                WHERE run_id = {{p}}
+                  AND hook_name IN ({placeholders})
+                  AND execution_status = {{p}}
+                """,
+                (run_id, *mandatory_hooks, EXECUTION_COMPLETED),
+            )
+            completed = int(row[0]) if row and row[0] is not None else 0
+            return completed >= len(mandatory_hooks)
+        finally:
+            close()
+    except Exception:
+        return False
+
+
+def decide_and_record_publication(
+    run_id: str | None,
+    code_version: str | None,
+    source_as_of: str | None,
+    freshness_status: str | None,
+    completeness_status: str | None,
+    mirror_to_postgres: bool = False,
+) -> dict:
+    """The TR-08 publication decision. Computes whether this run gets
+    promoted to "current published state," writes one append-only row
+    recording the decision and the real gate results behind it, and returns
+    the same dict for the caller to log. Never raises -- a publication-
+    telemetry write must not be able to break the pipeline it is measuring,
+    same contract as record_run()/record_scrape_coverage().
+
+    Promotion rule: freshness must be VERIFIED, completeness must not be
+    PARTIAL (COMPLETE/UNKNOWN/absent all pass -- the same permissive reading
+    boring_signals._completeness_ok() already uses for TR-14, since a date
+    with no scrape_coverage row yet must not retroactively fail everything),
+    and every MANDATORY_HOOKS entry must show COMPLETED for this run_id.
+    A withheld run still gets a row -- an honest, queryable record of every
+    decision, not just the promoted ones; the *previous* promoted row is
+    never touched, so `latest_promoted_publication()` keeps returning the
+    last genuinely good state exactly as TR-08's invariant requires.
+    """
+    mandatory_ok = mandatory_hooks_completed_for_run(run_id)
+    reasons = []
+    if freshness_status != PUBLICATION_VERIFIED:
+        reasons.append(f"freshness={freshness_status}")
+    if completeness_status == COVERAGE_PARTIAL:
+        reasons.append(f"completeness={completeness_status}")
+    if not mandatory_ok:
+        reasons.append("mandatory_hooks_incomplete")
+    promoted = not reasons
+    withheld_reason = "; ".join(reasons) if reasons else None
+
+    decision = dict(
+        run_id=run_id,
+        code_version=code_version,
+        source_as_of=source_as_of,
+        freshness_status=freshness_status,
+        completeness_status=completeness_status,
+        mandatory_hooks_completed=mandatory_ok,
+        promoted=promoted,
+        withheld_reason=withheld_reason,
+    )
+
+    try:
+        if _PG_URL:
+            _record_publication_pg(_PG_URL, decision)
+        else:
+            con = sqlite3.connect(config.DB_PATH)
+            try:
+                ensure_current_publication_sqlite(con)
+                con.execute(
+                    """
+                    INSERT INTO current_publication
+                        (run_id, code_version, source_as_of, freshness_status,
+                         completeness_status, mandatory_hooks_completed, promoted,
+                         withheld_reason)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (run_id, code_version, source_as_of, freshness_status,
+                     completeness_status, int(mandatory_ok), int(promoted),
+                     withheld_reason),
+                )
+                con.commit()
+            finally:
+                con.close()
+    except Exception as exc:
+        logger.debug("current_publication write failed: %s", type(exc).__name__)
+
+    if mirror_to_postgres and not _PG_URL:
+        url = _env_pg_url()
+        if url:
+            try:
+                _record_publication_pg(url, decision)
+            except Exception as exc:
+                logger.debug("current_publication PG mirror failed: %s", type(exc).__name__)
+
+    return decision
+
+
+def _record_publication_pg(url: str, decision: dict) -> None:
+    import psycopg2
+    from database_pg import _parse_pg_url
+    conn = psycopg2.connect(**_parse_pg_url(url))
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                ensure_current_publication_pg(cur)
+                cur.execute(
+                    """
+                    INSERT INTO current_publication
+                        (run_id, code_version, source_as_of, freshness_status,
+                         completeness_status, mandatory_hooks_completed, promoted,
+                         withheld_reason)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (decision["run_id"], decision["code_version"], decision["source_as_of"],
+                     decision["freshness_status"], decision["completeness_status"],
+                     decision["mandatory_hooks_completed"], decision["promoted"],
+                     decision["withheld_reason"]),
+                )
+    finally:
+        conn.close()
+
+
+def latest_promoted_publication() -> dict | None:
+    """The most recently PROMOTED current_publication row, or None if the
+    table doesn't exist yet or nothing has ever been promoted. Read-only,
+    never raises. This is what a dashboard panel reads to show "what run is
+    actually being served" -- deliberately the latest *promoted* row, not
+    just the latest row, so a withheld decision never overwrites the last
+    genuinely good publication a reader would see (TR-08's core invariant).
+    """
+    try:
+        fetch_one, close = _open()
+        try:
+            row = fetch_one(
+                """
+                SELECT run_id, promoted_at, code_version, source_as_of,
+                       freshness_status, completeness_status, withheld_reason
+                FROM current_publication
+                WHERE promoted = {p}
+                ORDER BY promoted_at DESC, id DESC
+                LIMIT 1
+                """,
+                # A Python bool, not an int -- SQLite's INTEGER column and
+                # Postgres' BOOLEAN column both adapt True/False correctly;
+                # binding 1 here would raise "operator does not exist:
+                # boolean = integer" on Postgres (the exact bug class this
+                # codebase has already hit twice: bos_flag TEXT-vs-DATE and
+                # the Decimal-vs-float dedup guard).
+                (True,),
+            )
+            if not row:
+                return None
+            return dict(zip(
+                ("run_id", "promoted_at", "code_version", "source_as_of",
+                 "freshness_status", "completeness_status", "withheld_reason"),
+                row,
+            ))
+        finally:
+            close()
+    except Exception:
+        return None
+
+
+# Cast explicitly rather than trust the driver: SQLite returns an int (0/1)
+# for an INTEGER column, psycopg2 returns a real bool for a BOOLEAN column --
+# without this, a caller's `if row["promoted"] is False` would silently
+# behave differently per backend, exactly the class of cross-backend
+# surprise this codebase has hit before (TEXT-vs-DATE, Decimal-vs-float).
+def _as_bool(value) -> bool:
+    return bool(value)
+
+
+def latest_publication_attempt() -> dict | None:
+    """The single most recent current_publication row regardless of whether
+    it was promoted -- used to show "the last attempt withheld state and
+    why" alongside latest_promoted_publication()'s "what's actually served."
+    Read-only, never raises."""
+    try:
+        fetch_one, close = _open()
+        try:
+            row = fetch_one(
+                """
+                SELECT run_id, promoted_at, code_version, source_as_of,
+                       freshness_status, completeness_status, promoted, withheld_reason
+                FROM current_publication
+                ORDER BY promoted_at DESC, id DESC
+                LIMIT 1
+                """,
+                (),
+            )
+            if not row:
+                return None
+            result = dict(zip(
+                ("run_id", "promoted_at", "code_version", "source_as_of",
+                 "freshness_status", "completeness_status", "promoted", "withheld_reason"),
+                row,
+            ))
+            result["promoted"] = _as_bool(result["promoted"])
+            return result
+        finally:
+            close()
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # The check itself
 # ---------------------------------------------------------------------------
 
