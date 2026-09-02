@@ -6918,3 +6918,29 @@ Every clause of TR-12's acceptance criterion is now met: every file confirmed ca
 Full local test suite re-run clean after all 9 moves (nothing referenced any of them, confirmed before each move). Trust Register: TR-12 row → GREEN. TR-01's own row updated (4 concrete steps now done: TR-12 batch 1, TR-08 v1, TR-09 GREEN, TR-12 batch 2).
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
+
+---
+
+## 108. <span style="color:#16a34a;">● TR-08 — `current_publication` created on live Supabase, both backends now record publication decisions (2026-09-02)</span>
+
+Fifth concrete TR-01 step, owner-directed ("Let's do the Postgres DDL first" — the user's own grading of the three remaining TR-01 threads ranked this highest on difficulty-to-importance ratio: low effort, code already written and tested, closes a real gap).
+
+### 108.1 Why this mattered, not just "the other backend"
+
+TR-08's SQLite side went live in §104 (PR #60); the Postgres side did not, because `ensure_current_publication_pg()` follows this project's own signed-off-first-run contract (same as `scrape_coverage`/`boring_signals_scanned` before it) — code written, not executed. Every `run_freshness_gate()` call on the GitHub Actions/Postgres path since §104 merged has been silently failing to record its publication decision (caught by the `try/except` around the recording call, logged at `debug`, never raised, never blocking a real run) — meaning the **authoritative** backend, the one TR-01's whole policy direction is about, was the one side of this contract with zero actual records.
+
+### 108.2 Execution — same rollout pattern as every prior table addition this program has used
+
+`scratch_tr08_pg_ddl_20260902/ddl.py`: dry-run (open transaction → `CREATE TABLE current_publication` → confirm `information_schema` shows it would exist within the transaction → `ROLLBACK`, verified 0 writes committed) → `--apply` (same DDL, `COMMIT`) → independent fresh-connection re-verify (new `psycopg2.connect()`, not reusing the applying connection) → re-ran `--apply` once more to confirm the real `ensure_current_publication_pg()` code path's `CREATE TABLE IF NOT EXISTS` is a clean no-op against an existing table, same as every other table this project has added this way.
+
+**Independently verified:** 10 columns, types matching the SQLite DDL's intent translated correctly (`BOOLEAN` not `INTEGER`, `TIMESTAMPTZ` not `TEXT`) — `id bigint`, `run_id text`, `promoted_at timestamptz not null`, `code_version text`, `source_as_of text`, `freshness_status text`, `completeness_status text`, `mandatory_hooks_completed boolean`, `promoted boolean not null`, `withheld_reason text`. 0 rows (fresh table). `pipeline_runs` row count unchanged (68) and public table count went 63→64 exactly — nothing else touched. No backup taken, same reasoning as `scrape_coverage`'s PG DDL: a `CREATE TABLE` of a table with no prior existence has nothing to lose; rollback if ever needed is a plain `DROP TABLE current_publication`.
+
+### 108.3 What this closes, and what it doesn't
+
+**Closes:** TR-08 now records real publication decisions on both backends — the next GitHub Actions run of `daily_scraper.yml` will be the first to write a real `current_publication` row on the authoritative backend (not yet observed as of this entry; that observation is the natural next check, same pattern as OI-9's "first real cloud cron" gate).
+
+**Does not close:** TR-08 itself stays the same status it already was (v1, record-only, no `coherence`/`validation` fields, `_pub_ok`'s serving behavior untouched per §104.1's disclosed design tension) — this was infrastructure parity between backends, not new scope. TR-17/TR-16 remain exactly as disclosed in §104.6.
+
+MAINTENANCE_LOG entry recorded same day.
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
