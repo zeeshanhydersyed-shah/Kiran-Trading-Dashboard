@@ -7090,3 +7090,14 @@ Three SQLite DBs stand in for AUTH / LOCAL / ARCHIVE (AUTH behind a `%s`→`?` s
 PR 3 is **code only** — no `shadow_comparison` rows, not wired into `local_archive_sync.py`'s tail yet, no window started. C-exec (the historical replay pass §7.3; wiring the tail step; starting the clock) is a later signed-off step and follows A-obs + B-exec.
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. All three shadow-mode components are now code-complete; execution waits on A-obs (a real promoted `current_publication` row from the authoritative cloud pipeline).
+
+### 112.5 Component C MERGED — PR #69, `origin/main` `a18aad6` → `e5ad430` (2026-09-02)
+
+CI green 3/3 on the branch and the merge commit; branch deleted; `daily_scraper.yml` not triggered. **All three shadow-mode components (A/B/C) are on `origin/main`.** `git status` back to the two standing deferrals (OI-2/OI-3).
+
+**Where the arc stands — the execution gates, in order:**
+1. **A-obs** — observe the authoritative GitHub-Actions→Postgres pipeline write a `current_publication` row with `promoted = true` and a populated `coherence`. Needs the first cron that scrapes a genuinely new trading day (after 2026-09-02 EOD publishes). `current_publication` on PG is 0 rows today. Passive — just check `current_publication` + the row's `coherence` after the next new-day run.
+2. **B-exec** — first `local_archive_sync.py` run → creates `psx_archive.db`, pulls the promoted+coherent sessions; then the simulated-multi-session-offline-gap drill; then the `KIRAN_Archive_Sync` Task Scheduler job. Backup-first (sha256 of `psx_data.db` before/after to prove it's untouched); MAINTENANCE_LOG. Needs A-obs (something to pull).
+3. **C-exec** — the §7.3 historical replay pass; wire `shadow_compare.run_compare()` into `local_archive_sync.py`'s tail (owner decision §4.5); then the clock starts. MAINTENANCE_LOG.
+4. **The window** — ≥10 consecutive CLEAN trading sessions (`shadow_status().best_streak >= 10`). Weekly plain-English status to the owner. **Parallel TR work resumes here** (TR-03/04/06/07/08/13/14/16/17).
+5. **PASS** feeds §40.18 cutover criterion 6 (+ criterion 5, the local-archive resume drill). Cutover itself stays a separate owner decision against the full 10-condition hard AND.
