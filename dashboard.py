@@ -7889,6 +7889,40 @@ elif cur == PAGES[14]:  # Data Health
     except Exception as _dh_drift_exc:
         st.caption(f"serving-vs-pipeline drift check unavailable: {_dh_drift_exc}")
 
+    # TR-08 Publication Contract (2026-09-02, ledger §104). Read-only,
+    # recomputed every render, no dashboard write -- same rule the drift
+    # panel above and TR-05's _pub_ok follow (TR-12/§85.2: a served surface
+    # must not reach a production write path). Additive alongside _pub_ok,
+    # not a replacement for it -- _pub_ok's existing st.stop()-on-stale
+    # behavior is untouched (TR08_PUBLICATION_CONTRACT_SPEC_DRAFT.md §3).
+    # This panel answers a narrower, different question than _pub_ok: not
+    # "is right-now fresh enough to show," but "which specific pipeline run
+    # is the one actually behind what's on screen, and did it cleanly clear
+    # every mandatory gate."
+    st.markdown("**Publication Contract (TR-08)**")
+    try:
+        from data_health import latest_promoted_publication as _dh_latest_promoted
+        from data_health import latest_publication_attempt as _dh_latest_attempt
+        _dh_promoted = _dh_latest_promoted()
+        _dh_attempt = _dh_latest_attempt()
+        if _dh_promoted:
+            st.success(
+                f"✅ Currently published: run `{_dh_promoted['run_id']}` "
+                f"(code `{_dh_promoted['code_version'] or 'unknown'}`, "
+                f"source as-of {_dh_promoted['source_as_of'] or 'unknown'}, "
+                f"promoted {_dh_promoted['promoted_at']})"
+            )
+        else:
+            st.info("ℹ️ No publication has ever been promoted yet (table empty or not created).")
+        if _dh_attempt and not _dh_attempt.get("promoted"):
+            st.warning(
+                f"⚠️ Most recent run (`{_dh_attempt['run_id']}`, {_dh_attempt['promoted_at']}) "
+                f"was withheld — {_dh_attempt.get('withheld_reason') or 'no reason recorded'}. "
+                "The publication above is still the last one that cleared every gate."
+            )
+    except Exception as _dh_pub_exc:
+        st.caption(f"publication contract panel unavailable: {_dh_pub_exc}")
+
     def _dh_load_summary():
         if _PG_URL:
             from dashboard_pg import get_dh_summary_pg

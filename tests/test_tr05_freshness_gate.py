@@ -294,7 +294,7 @@ def test_tail_path_invokes_gate(
 
     calls = []
     monkeypatch.setattr(main, "run_freshness_gate",
-                         lambda: (calls.append(1), True)[1])
+                         lambda **kw: (calls.append(1), True)[1])
 
     result = main.cmd_update()
 
@@ -325,7 +325,7 @@ def test_upstream_no_data_day_reaches_gate_instead_of_crashing(
 
     calls = []
     monkeypatch.setattr(main, "run_freshness_gate",
-                        lambda: (calls.append(1), False)[1])
+                        lambda **kw: (calls.append(1), False)[1])
 
     result = main.cmd_update()   # must not raise
 

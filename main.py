@@ -757,12 +757,15 @@ def cmd_update():
     # them ran. Extracted to its own function (rather than inlined here) so
     # it is independently unit-testable with injected fetch/check functions,
     # without exercising the rest of this ~470-line function.
-    return run_freshness_gate()
+    return run_freshness_gate(run_id=run_id, code_version=code_version)
 
 
 def run_freshness_gate(
     fetch_expected_session=None,
     check_all_fn=None,
+    run_id=None,
+    code_version=None,
+    mirror_to_postgres=False,
 ) -> bool:
     """TR-05 Blocker 1 -- fail-closed local execution-time freshness gate.
 
@@ -781,8 +784,37 @@ def run_freshness_gate(
     to even compute a verdict is treated as a failed gate, never as success
     -- CANNOT_VERIFY must never become VERIFIED (TR-05 fail-closed
     semantics).
+
+    TR-08 (2026-09-02, ledger §104): run_id/code_version/mirror_to_postgres
+    are new, additive, optional kwargs -- every existing caller (this
+    function's own tests included) keeps working unchanged. When run_id is
+    supplied, this function also makes the publication decision: reuses the
+    SAME verdict this call already computed (never a second live check_all()
+    call, which could disagree with the first if source data changed
+    between calls) to record whether this run gets promoted to "current
+    published state." This is deliberately the one and only call site --
+    cmd_update()'s own tail is unchanged (`return run_freshness_gate()`),
+    since this function already runs on both backends (branches on
+    DATABASE_URL/_PG_URL like every other hook, whether invoked from a local
+    `main.py --update` or the GitHub Actions Postgres path).
     """
-    from data_health import check_all, publication_status, PUBLICATION_VERIFIED
+    from data_health import (
+        check_all, publication_status, PUBLICATION_VERIFIED, PUBLICATION_CANNOT_VERIFY,
+        scrape_coverage_status, decide_and_record_publication,
+    )
+
+    def _record_decision(status: str, expected: str | None) -> None:
+        if run_id is None:
+            return
+        try:
+            completeness = scrape_coverage_status(expected) if expected else None
+            decide_and_record_publication(
+                run_id=run_id, code_version=code_version, source_as_of=expected,
+                freshness_status=status, completeness_status=completeness,
+                mirror_to_postgres=mirror_to_postgres,
+            )
+        except Exception as exc:
+            logger.debug("publication decision recording failed: %s", exc)
 
     if check_all_fn is None:
         check_all_fn = check_all
@@ -802,6 +834,7 @@ def run_freshness_gate(
         _fresh_status = publication_status(_fresh_verdict)
     except Exception as exc:
         logger.error("FRESHNESS GATE COULD NOT RUN -- treating as failure: %s", exc)
+        _record_decision(PUBLICATION_CANNOT_VERIFY, None)
         return False
 
     if _fresh_status != PUBLICATION_VERIFIED:
@@ -813,12 +846,14 @@ def run_freshness_gate(
             "verified-fresh state. expected=%s | %s",
             _fresh_status, _fresh_verdict.expected, _fresh_detail,
         )
+        _record_decision(_fresh_status, _fresh_verdict.expected)
         return False
 
     logger.info(
         "Freshness gate passed -- state verified fresh as of %s.",
         _fresh_verdict.expected,
     )
+    _record_decision(_fresh_status, _fresh_verdict.expected)
     return True
 
 
