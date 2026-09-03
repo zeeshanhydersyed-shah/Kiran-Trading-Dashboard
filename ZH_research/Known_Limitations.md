@@ -138,10 +138,44 @@ Every quant platform has limitations. Acknowledging them honestly protects the i
 
 ---
 
+## Data Limitations — added 2026-09-03 (read-only diff, `KIRAN_CLEANUP_AUDIT.md` §116; census `trading_edge_program/loop_000`)
+
+### L-14 — Corporate-action adjustments are almost entirely unapplied (supersedes the optimistic framing of L-04 / L-09)
+**Limitation:** `prices_adjusted` is byte-identical to raw `prices` (within a 1% epsilon on every shared date) for **760 of 904 symbols** — **100% of every symbol whose price history ends before 2024**, and 76% of 2024+ symbols. The review queue `corporate_action_suspects_clean.csv` holds **11,469 detected suspects spanning 2005–2026, every one `review_status = PENDING`** (never reviewed). `apply_price_adjustments.load_events()` applies only (a) auto-detected large bonus events (≥25% single-day drop, pattern-matched — and never validated against an independent record) and (b) rows explicitly set `CONFIRMED` (one exists). **Every cash dividend, rights issue, and sub-25% bonus across 21 years is unadjusted.** On the Postgres backend the ratio is worse (11 of 573 symbols) and the confirm/rebuild path is hard-blocked.
+
+**Implication:** Any study using `prices_adjusted` before 2024 is effectively using **raw** prices. Total-return / dividend-drag analysis is silently wrong; momentum, mean-reversion, breakout, base-tightness and RS-rank signals see a spurious gap-down on every unadjusted ex-date. Volume is **never** adjusted for any event.
+
+**Authoritative treatment:** `trading_edge_program/loop_001..006_5` — a frozen Tier-1 corporate-action spec and an independently-verified 12-name pilot artifact (face-value splits + succession linkage only; bonuses/dividends/rights still out of scope). `loop_007` §15 = the minimum substrate a defensible study needs.
+
+**Scope:** Every study that reads `prices_adjusted`, `stock_signals`, `sector_signals`, or `setup_log` forward returns for any date before ~2024, or for any symbol with an unadjusted corporate action. Production cross-ref: **TR-03**.
+
+---
+
+### L-15 — No point-in-time universe; `stock_metadata` covers half the traded symbols (sharpens L-04)
+**Limitation:** `stock_metadata` has **468 rows** against **904 distinct symbols in `prices`** — **436 traded symbols are absent entirely** and are invisible to every screener JOIN through `sectors` / `stock_metadata`. `stock_metadata.listing_date == MIN(prices.date)` for **468 of 468 symbols** — the listing date is *derived from the price data*, not a real listing record, and cannot predate our history. Only **9** symbols are flagged `is_active = 0`, against a traded universe that shrank from **624 (2005)** to **313 (2023)**. There is no `(symbol, date) → in-universe` record; "the tradeable universe on 2015-06-30" cannot be answered. `kse100_constituents` is current-only. `symbol_active_dates` is stale (ends 2026-07-31).
+
+**Implication:** Every backtest that filters via `sectors` / `stock_metadata` silently excludes names that later delisted → systematic upward performance bias, worse at longer horizons. Cross-sectional studies (breadth, RS rank, "N above MA") run over a survivor-only, non-point-in-time population.
+
+**Scope:** All universe-filtered and cross-sectional studies. Production cross-ref: **TR-14**. Also memory `psx_db_schema_notes`.
+
+---
+
+### L-16 — Universe coverage discontinuity at the 2023→2024 boundary
+**Limitation:** distinct symbols/year: 2019 = 460, **2020 = 311, 2021 = 393, 2022 = 316, 2023 = 313**, 2024 = 534. Month-level: **Dec-2023 = 292 → Jan-2024 = 454 (+162, +55% overnight)**. Pre-2024 history is the BI-PostgreSQL merge; 2024+ is the ksestocks scraper. 2020–2023 is a genuinely thin window — a name trading continuously 2019–2024 can have a hole in 2020–2023. This straddles the Dev/Validation era boundary used by both era designs currently in use.
+
+**Implication:** Any study spanning the seam sees a ~55% universe expansion that is a data artifact, not a market event — breadth, participation, cross-sectional rank and new-high counts are all discontinuous there.
+
+**Mitigation:** Bound studies to 2024+ or to a fixed explicit symbol list; add a `min_date` guard to study scaffolding. Full treatment: `trading_edge_program/loop_007` §8.
+
+**Scope:** Any study spanning 2023→2024. Notes the 2020–2023 window is thinner than 2005–2019.
+
+---
+
 ## Tracking
 
 | ID | Added | Addressed By | Status |
 |---|---|---|---|
 | L-01 through L-13 | 2026-07-01 | — | Active |
+| L-14, L-15, L-16 | 2026-09-03 | `trading_edge_program` LOOP 000–007 (spec + pilot done; full remediation not started) | Active |
 
 *Add new limitations here as they are discovered. Never remove a limitation; mark as "Resolved" with explanation if addressed.*

@@ -7259,3 +7259,35 @@ Full suite: **437 passed** (was 428, +9). `daily_scraper.yml` not triggered.
 - The `pipeline_runs` `(hook_name, run_date)` key question (§113.3) — a later cron slot overwriting an earlier run's coverage row.
 
 TR-06 stays 🔴 RED. Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
+
+---
+
+## 116. <span style="color:#dc2626;">🔴 Historical research dataset — corporate-action / survivorship / coverage defects: read-only diff, confirmed + quantified, cross-linked (2026-09-03)</span>
+
+Read-only diff of `psx_data.db` (local, full-history) prompted by the owner's observation that `prices_adjusted` matched raw `prices` for most symbols. **No writes anywhere. No new register** — a systematic log already exists and this entry cross-links to it rather than duplicating it.
+
+### 116.1 The dataset, as it actually is
+
+- **Local SQLite (`psx_pipeline/psx_data.db`, 882 MB): the full-history archive** — `prices` + `prices_adjusted` both span **2005-01-03 → 2026-09-02, 1,759,402 rows, 904 symbols**. **This is the research source.**
+- **Postgres/Supabase: the 2-year rolling operational copy** — `2024-09-02 → 2026-09-02, 232,280 rows, 573 symbols` (`trim_old_rows_pg`). **Not a research source.** (This is the reverse of the "local is windowed" assumption in the question that prompted the diff.)
+- The stray `C:\Users\Lenovo\psx_data.db` is a **0-byte stub** — do not open it.
+
+### 116.2 What the diff quantified (all consistent with the prior logs — see §116.3)
+
+- **Corporate actions barely applied.** `prices_adjusted.close` is byte-identical to `prices.close` (1% epsilon) for **760 of 904 symbols (84%)** — **100% of every symbol whose history ends before 2024** (218 in 2005–2019, 93 in 2020–2023) and 76% of 2024+ symbols. `corporate_action_suspects_clean.csv` = **11,469 detected suspects (2005–2026), every one `review_status=PENDING`**. `apply_price_adjustments.load_events()` applies only auto-detected large bonus events + explicitly-`CONFIRMED` rows (1 exists). So every cash dividend, rights issue and sub-25% bonus across 21 years is unadjusted. On Postgres: 11/573 symbols adjusted (confirm path hard-blocked). → **TR-03**.
+- **Survivorship / no point-in-time universe.** `stock_metadata` = **468 rows vs 904 traded symbols** (436 orphaned → invisible to every screener JOIN); `listing_date == MIN(prices.date)` for **468/468** (circular); only **9** symbols flagged delisted despite the traded universe shrinking 624 (2005) → 313 (2023). `symbol_active_dates` exists but is stale (ends 2026-07-31). → **TR-14**, memory `psx_db_schema_notes`.
+- **Coverage discontinuity at the 2023→2024 boundary.** distinct symbols/year: 2019 = 460, **2020 = 311, 2022 = 316, 2023 = 313**, 2024 = 534; month-level **Dec-2023 = 292 → Jan-2024 = 454 (+162 overnight)** — the BI-PostgreSQL-merge seam. 2020–2023 is genuinely thin.
+
+### 116.3 This is already logged — the authoritative sources
+
+**A systematic data-quality log and a remediation plan already exist.** This entry does not replace them:
+
+- **`psx_pipeline/ZH_research/`** (frozen 2026-07-01): `Known_Limitations.md` (L-04 survivorship, L-09 adjusted-price look-ahead), `Data_Quality_Policy.md`, `Certified_Dataset_v1.0.md`. **Amended 2026-09-03** with L-14 / L-15 / L-16 (the quantified corporate-action-non-adjustment, the point-in-time-universe absence, and the 2020–2023 discontinuity) — the pre-existing L-04/L-09 understated these.
+- **`C:\Users\Lenovo\ZH_Research_PSX\trading_edge_program\loop_000..007\`** (2026-09-03, read-only, active): **LOOP 000** = the full defect census (independently re-derives the same numbers); **LOOP 001–006.5** = a frozen Tier-1 corporate-action-adjustment spec + an independently-verified 12-name "Tier-1a" pilot artifact (face-value splits + succession linkage only); **LOOP 007** = a research-readiness gate ("EDGE RESEARCH NOT READY"), the "minimum defensible research substrate" (11 requirements), and a build sequence. **This program is the authoritative remediation plan** — its LOOP 007 §15/§16 supersede any plan drafted here.
+- **Production Trust Register** — TR-03 (🟡 AMBER, cutover-blocking: "full-history pre-2026 `prices_adjusted` reconciliation still not built") and TR-14 (🔴 RED: "authoritative point-in-time expected-universe source does not exist"). Both got a `[EVIDENCE ADDED 2026-09-03]` note pointing at this quantification + the two sources above.
+
+### 116.4 Not done here
+
+Nothing executed. No acquisition, no rebuild. The `trading_edge_program` owns the remediation sequence; this entry's job was to confirm the defect from the `psx_pipeline` side, correct the local-vs-Postgres misconception, amend `Known_Limitations.md`, and wire the cross-links so a Kiran/production session finds the existing work.
+
+**Kiran production verdict unchanged: NOT VERIFIED — DO NOT TRADE** (this concerns the historical research dataset, not the live signal).
