@@ -162,13 +162,17 @@ def _record_hook(hook_name, run_date, status="ok", rows_written=None,
     dead job look identical -- see docs/KIRAN_CLEANUP_AUDIT.md 31.
 
     TR-06 Tier 2 (2026-08-24): five additive optional kwargs, all defaulting
-    to None so every existing call site -- including main.py's still-HELD
-    hooks (regime/sector_signals/stock_signals/recovery_signals/
-    portfolio_signals), deliberately not touched by this change -- keeps
-    working unchanged. run_id: the shared identity for this cmd_update()
-    invocation (see its generation at the top of cmd_update()). See
-    data_health.py's record_run() for what each field means and why
-    execution_status is derived from `status` rather than required here.
+    to None so every existing call site keeps working unchanged. run_id: the
+    shared identity for this cmd_update() invocation (see its generation at
+    the top of cmd_update()). See data_health.py's record_run() for what each
+    field means and why execution_status is derived from `status` rather than
+    required here.
+
+    Ledger §113 (2026-09-03): the five hooks TR-06 Tier 2 originally left
+    un-threaded (regime/sector_signals/stock_signals/recovery_signals/
+    portfolio_signals) now DO pass run_id + execution_status -- without them,
+    mandatory_hooks_completed_for_run() could never match them to the
+    freshness gate's run_id and every authoritative publication withheld.
     """
     try:
         from data_health import record_run
@@ -516,10 +520,11 @@ def cmd_update():
     try:
         from regime import append_latest_regime
         append_latest_regime()
-        _record_hook("regime", _session_date)
+        _record_hook("regime", _session_date, run_id=run_id, execution_status="COMPLETED")
     except Exception as exc:
         logger.warning("Regime hook failed: %s", exc)
-        _record_hook("regime", _session_date, status="error", detail=str(exc))
+        _record_hook("regime", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
 
     # Backfill days_to_nearest_transition for trade_setups rows where it is still
     # NULL. This column is retrospective-only (requires future transition data) so
@@ -548,18 +553,20 @@ def cmd_update():
     # Append today's sector signals
     try:
         sector_signals.append_latest_sector_signals()
-        _record_hook("sector_signals", _session_date)
+        _record_hook("sector_signals", _session_date, run_id=run_id, execution_status="COMPLETED")
     except Exception as exc:
         logger.warning("Sector signals hook failed: %s", exc)
-        _record_hook("sector_signals", _session_date, status="error", detail=str(exc))
+        _record_hook("sector_signals", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
 
     # Append today's stock signals
     try:
         stock_signals.append_latest_stock_signals()
-        _record_hook("stock_signals", _session_date)
+        _record_hook("stock_signals", _session_date, run_id=run_id, execution_status="COMPLETED")
     except Exception as exc:
         logger.warning("Stock signals hook failed: %s", exc)
-        _record_hook("stock_signals", _session_date, status="error", detail=str(exc))
+        _record_hook("stock_signals", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
 
     # Recovery Bases + Portfolio signals (signal_engine.py). Previously had no
     # automated caller at all -- see docs/KIRAN_CLEANUP_AUDIT.md 30 -- so
@@ -585,16 +592,20 @@ def cmd_update():
         # signal_engine.py itself didn't anticipate.
         _record_hook("recovery_signals", _session_date,
                      status="ok" if _rec.get("status") == "ok" else "error",
+                     execution_status="COMPLETED" if _rec.get("status") == "ok" else "FAILED",
                      rows_written=_rec.get("rows_written"),
-                     detail=_rec.get("message"))
+                     detail=_rec.get("message"), run_id=run_id)
         _record_hook("portfolio_signals", _session_date,
                      status="ok" if _port.get("status") == "ok" else "error",
+                     execution_status="COMPLETED" if _port.get("status") == "ok" else "FAILED",
                      rows_written=_port.get("rows_written"),
-                     detail=_port.get("message"))
+                     detail=_port.get("message"), run_id=run_id)
     except Exception as exc:
         logger.warning("Signal engine hook failed: %s", exc)
-        _record_hook("recovery_signals", _session_date, status="error", detail=str(exc))
-        _record_hook("portfolio_signals", _session_date, status="error", detail=str(exc))
+        _record_hook("recovery_signals", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
+        _record_hook("portfolio_signals", _session_date, status="error", detail=str(exc),
+                     run_id=run_id, execution_status="FAILED")
 
     # Append today's setups to setup_log and label outcomes
     try:

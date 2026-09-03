@@ -440,3 +440,83 @@ def test_freshness_gate_records_coherence_status(sqlite_db):
     )
     assert ok is True
     assert dh.latest_promoted_publication()["coherence"] == dh.COHERENCE_COHERENT
+
+
+# ---------------------------------------------------------------------------
+# The five formerly-HELD cmd_update() hooks now thread run_id into their
+# pipeline_runs heartbeat (ledger §113). Without it,
+# mandatory_hooks_completed_for_run() can never match them to the freshness
+# gate's run_id, so decide_and_record_publication() withholds EVERY
+# authoritative publication -- exactly what the first real cloud
+# current_publication row (2026-09-02, withheld_reason=
+# "mandatory_hooks_incomplete") turned out to be. Asserted against main.py's
+# AST rather than a full cmd_update() run so the guard is deterministic and
+# has no scrape/DB dependency.
+# ---------------------------------------------------------------------------
+
+_HELD_HOOKS = {
+    "regime", "sector_signals", "stock_signals",
+    "recovery_signals", "portfolio_signals",
+}
+
+
+def _record_hook_calls_by_hook_name(source: str):
+    import ast
+
+    calls: dict[str, list[ast.Call]] = {}
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Name) and func.id == "_record_hook"):
+            continue
+        if not node.args or not isinstance(node.args[0], ast.Constant):
+            continue
+        calls.setdefault(node.args[0].value, []).append(node)
+    return calls
+
+
+def test_held_hooks_thread_run_id_into_every_record_hook_call():
+    main_py = os.path.join(_ROOT, "main.py")
+    with open(main_py, encoding="utf-8") as fh:
+        calls = _record_hook_calls_by_hook_name(fh.read())
+
+    for hook in _HELD_HOOKS:
+        hook_calls = calls.get(hook, [])
+        assert hook_calls, f"no _record_hook('{hook}', ...) call found in main.py"
+        for call in hook_calls:
+            kwargs = {kw.arg for kw in call.keywords}
+            assert "run_id" in kwargs, (
+                f"_record_hook('{hook}', ...) at main.py line {call.lineno} "
+                f"is missing run_id= -- mandatory_hooks_completed_for_run() "
+                f"cannot match it and the publication will withhold (ledger §113)"
+            )
+
+
+def test_held_hook_success_calls_report_completed_execution_status():
+    """The success-path call for each HELD hook must land execution_status
+    COMPLETED -- either passed explicitly or derived by record_run() from
+    status='ok' (test_tr06_coverage_fields covers the derivation). A call
+    that passes status='error' unconditionally would silently never count."""
+    main_py = os.path.join(_ROOT, "main.py")
+    with open(main_py, encoding="utf-8") as fh:
+        calls = _record_hook_calls_by_hook_name(fh.read())
+
+    import ast
+
+    for hook in _HELD_HOOKS:
+        saw_completed_path = False
+        for call in calls.get(hook, []):
+            status_kw = next((kw for kw in call.keywords if kw.arg == "status"), None)
+            exec_kw = next((kw for kw in call.keywords if kw.arg == "execution_status"), None)
+            # A bare call (no status=) or status="ok" derives COMPLETED.
+            if status_kw is None:
+                saw_completed_path = True
+            elif isinstance(status_kw.value, ast.Constant) and status_kw.value.value == "ok":
+                saw_completed_path = True
+            elif exec_kw is not None and isinstance(exec_kw.value, ast.IfExp):
+                saw_completed_path = True  # status computed per sub-signal
+        assert saw_completed_path, (
+            f"no COMPLETED-path _record_hook('{hook}', ...) call in main.py"
+        )

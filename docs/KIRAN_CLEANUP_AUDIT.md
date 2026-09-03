@@ -7101,3 +7101,80 @@ CI green 3/3 on the branch and the merge commit; branch deleted; `daily_scraper.
 3. **C-exec** — the §7.3 historical replay pass; wire `shadow_compare.run_compare()` into `local_archive_sync.py`'s tail (owner decision §4.5); then the clock starts. MAINTENANCE_LOG.
 4. **The window** — ≥10 consecutive CLEAN trading sessions (`shadow_status().best_streak >= 10`). Weekly plain-English status to the owner. **Parallel TR work resumes here** (TR-03/04/06/07/08/13/14/16/17).
 5. **PASS** feeds §40.18 cutover criterion 6 (+ criterion 5, the local-archive resume drill). Cutover itself stays a separate owner decision against the full 10-condition hard AND.
+
+---
+
+## 113. <span style="color:#eab308;">◐ A-obs — first authoritative `current_publication` row observed, and it is WITHHELD: 5 MANDATORY hooks record with `run_id=NULL`, so the publication contract withholds every cloud publication (2026-09-03)</span>
+
+The shadow-mode arc's first execution gate (§112.5 gate 1, "A-obs") was checked read-only against live Supabase. The authoritative GitHub-Actions→Postgres pipeline **has** now written its first-ever `current_publication` row — closing the long-open §108 / TR-11 item "observe the first real cloud cron write a live `current_publication` row" — but the row is `promoted = false`, and tracing why surfaced a real defect in the TR-08 publication contract's cloud behavior.
+
+### 113.1 What the check found (read-only, live Supabase)
+
+`current_publication` — **1 row**:
+
+| field | value |
+|---|---|
+| `run_id` | `383148d3-cecb-4687-b1a7-3047d426b29b` |
+| `promoted_at` | 2026-09-02 18:10:38 UTC |
+| `code_version` | `318de3f…` (= `origin/main` HEAD) |
+| `source_as_of` | 2026-09-02 |
+| `freshness_status` | `VERIFIED` |
+| `completeness_status` | `COMPLETE` |
+| `coherence` | `COHERENT` |
+| `mandatory_hooks_completed` | **false** |
+| `promoted` | **false** |
+| `withheld_reason` | **`mandatory_hooks_incomplete`** |
+
+The underlying data is fully healthy: `prices` / `prices_adjusted` / `stock_signals` / `sector_signals` / `market_regime` all at 2026-09-02; `scrape_coverage` for 2026-09-02 is `COMPLETE` (627/627). Component A's `coherence` field computed and recorded correctly end-to-end on the authoritative path (`COHERENT`). The freshness gate passed. The **only** failing condition is `mandatory_hooks_completed_for_run()`.
+
+### 113.2 Root cause — the 5 formerly-"HELD" hooks record with `run_id = NULL`
+
+`decide_and_record_publication()` promotes only when `mandatory_hooks_completed_for_run(run_id)` returns true, which requires **every** `MANDATORY_HOOKS` entry to have a `pipeline_runs` row matching **that exact `run_id`** with `execution_status = 'COMPLETED'`. `MANDATORY_HOOKS` = `regime, sector_signals, stock_signals, boring_signals, recovery_signals, portfolio_signals, setup_log, leaders_scan`.
+
+On the live 2026-09-02 run, `pipeline_runs` shows (ids 106–114, all `code_version=318de3f`, 18:02–18:08 UTC):
+
+| hook | `run_id` on the heartbeat | `execution_status` |
+|---|---|---|
+| `scrape_coverage` | `383148d3` | COMPLETED |
+| `corporate_action_append` | `383148d3` | COMPLETED |
+| `corporate_action_suspects_scan` | `383148d3` | COMPLETED |
+| `regime` | **NULL** | COMPLETED |
+| `sector_signals` | **NULL** | COMPLETED |
+| `stock_signals` | **NULL** | COMPLETED |
+| `recovery_signals` | **NULL** | COMPLETED |
+| `portfolio_signals` | **NULL** | COMPLETED |
+| `setup_log` | `383148d3` | COMPLETED |
+
+`_record_hook()`'s own docstring names the cause: *"main.py's still-HELD hooks (regime/sector_signals/stock_signals/recovery_signals/portfolio_signals), deliberately not touched by [the TR-06 Tier-2] change."* Their call sites in `cmd_update()` were `_record_hook("regime", _session_date)` — no `run_id`, no `execution_status`. `record_run()` already *derives* `execution_status='COMPLETED'` from the default `status='ok'` (so that column is fine), but `run_id` stays `NULL`, so `mandatory_hooks_completed_for_run()` counts only 1 of 8 (`setup_log`) at decision time → withhold.
+
+**This means the authoritative pipeline withholds EVERY publication, indefinitely**, until those 5 hooks thread `run_id`. It is not a data problem and not a transient — it is structural, on both backends.
+
+### 113.3 Secondary observation (not fixed here) — `pipeline_runs` is keyed `(hook_name, run_date)`, so later cron slots overwrite an earlier run's `run_id`
+
+`daily_scraper.yml` fires up to 5 redundant slots per day (ledger §99), each a full `python main.py --update`. A later slot that takes the "already up to date" early-return path re-writes the `support_reversal` + `leaders_scan` heartbeats under **its own** new `run_id`, and `record_run()` upserts on the `(hook_name, run_date)` natural key — so it overwrites the earlier slot's `run_id` for those hooks. By the time this check ran, `pipeline_runs` for 2026-09-02 showed `leaders_scan` under a 22:20 UTC run_id and `boring_signals` under an 03:22 UTC run_id (the local Task Scheduler mirror), neither matching `383148d3`.
+
+This does **not** affect promotion (the decision is made once, mid-run, and never re-evaluated), and it does not un-promote a promoted row. But a post-hoc "was this publication's run actually complete?" audit query would get a false negative. Flagged as a design question for TR-06/TR-16 — whether `pipeline_runs` needs a `(hook_name, run_id)` key or a separate per-run completion record — not resolved in this entry.
+
+### 113.4 Design tension surfaced (owner decision, not resolved here) — `MANDATORY_HOOKS` vs §39.2
+
+The `MANDATORY_HOOKS` tuple (owner-approved for TR-08 v1, ledger §104) contains four hooks that §39.2 explicitly classifies **NON-MANDATORY**: `regime` ("informative context, not an executable signal"), `leaders_scan` ("a watch-list/research feature, not itself a trigger for real capital"), and `recovery_signals` / `portfolio_signals` — which §39.1/§39.2 call **"currently ineligible for MANDATORY status even if the owner wanted them there"** because their latest-date-only defect (no backfill loop, §39.1 / §40.8) means "a single missed day could block publication indefinitely until someone manually re-ran them."
+
+The fix in this entry threads `run_id` through all 5 held hooks, making the **owner-approved 8-hook list actually function** rather than silently withholding forever. It does **not** change the list. Two things the owner may want to decide separately:
+- Whether to trim `MANDATORY_HOOKS` to §39.2's set (`sector_signals`, `stock_signals`, `boring_signals`, `setup_log` + the scrape/`prices_adjusted` completeness already covered by `scrape_coverage`/`corporate_action_append`), which would also remove the §39.1 "missed `signal_engine` day blocks publication" exposure.
+- Whether `signal_engine`'s backfill defect (§40.8) should be fixed before `recovery_signals`/`portfolio_signals` gate anything. `signal_engine.main()` is auto-wired as of 2026-08-19 (hook 7), so a day it fails now withholds the publication — arguably correct fail-closed behaviour for a record-only v1, but it is the exposure §39.1 named.
+
+v1 is record-only (§104.1 — `_pub_ok`'s serving behaviour is untouched, TR-05 still governs what the dashboard shows), so a withheld `current_publication` row has **zero trading-safety impact today**. Its only current consumers are the shadow-mode arc (Component B filters eligible sessions on `promoted = true` → B-exec would pull zero sessions) and future cutover criteria.
+
+### 113.5 The fix (this PR)
+
+`main.py` `cmd_update()` — the success **and** error `_record_hook()` calls for `regime`, `sector_signals`, `stock_signals`, `recovery_signals`, `portfolio_signals` now pass `run_id=run_id` (the one per-invocation identity already generated at the top of `cmd_update()` and already threaded through `setup_log`/`boring_signals`/`leaders_scan`) and an explicit `execution_status` (`COMPLETED` on success, `FAILED` on error; `recovery_signals`/`portfolio_signals` mirror their per-sub-signal status). No behaviour change beyond the heartbeat's `run_id`/`execution_status` columns; the early-return path is untouched (it does not run these 5 hooks and records no publication decision, §104.5).
+
+`tests/test_publication_contract.py` +2: an AST guard that every `_record_hook()` call for the 5 hooks passes `run_id=`, and that each hook has a COMPLETED-path call (deterministic, no scrape/DB dependency). Existing `test_tr06_coverage_fields.py::test_record_run_derives_execution_status_when_not_passed` already anticipated this diff.
+
+Full suite: **423 passed** (was 421, +2).
+
+### 113.6 What this does and does not unblock
+
+- **A-obs (§112.5 gate 1):** partially met — the authoritative row exists with a populated `coherence`, but it is `promoted = false`. Once this PR is merged and the next new-day cloud cron runs, the row should promote (freshness VERIFIED + completeness COMPLETE + all 8 hooks COMPLETED under one `run_id`). **Re-check `current_publication` after that run before declaring A-obs done.**
+- **B-exec:** still blocked until a `promoted = true` row exists to pull.
+- Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. 10 cutover-blocking rows remain.
