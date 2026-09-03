@@ -78,6 +78,17 @@ except ImportError as e:
     warnings.warn(f"Could not import cmd_update from main: {e}", RuntimeWarning)
     cmd_update = None
 
+# TR-01 consumer authority (ledger §114 / scratch_tr01_optionb_20260903): a
+# served surface must never be able to trigger a production write. On the
+# Postgres/Cloud deployment the sidebar "Refresh Data" button would run the
+# full pipeline (scrape + every MANDATORY signal table) against the
+# authoritative backend -- exactly the OI-8 failure class (ledger §85.2). The
+# scheduled GitHub Actions cron is the only writer; disable the manual path
+# entirely when a Postgres URL is configured.
+if _PG_URL:
+    HAS_CMD_UPDATE = False
+    cmd_update = None
+
 try:
     from refresh_manager import (
         execute_refresh_with_tracking,
@@ -156,7 +167,14 @@ div[data-testid="stHorizontalBlock"] > div > div > div > button[kind="primary"] 
 
 @st.cache_data(ttl=7200, show_spinner="Loading market data...")  # 2 hours instead of 30 min
 def load_data() -> dict:
-    init_db()
+    # TR-01 consumer authority (ledger §114): the served dashboard must not run
+    # DDL / schema migrations against the authoritative backend. Schema is
+    # owned by the pipeline's full-privilege role; the restricted Cloud role
+    # (kiran_dashboard) has no CREATE/ALTER grant, and init_db()'s main DDL
+    # loop is not fully fail-safe. SQLite (local) still needs this to bootstrap
+    # a fresh database file.
+    if not _PG_URL:
+        init_db()
     data = run_analysis()
     # Always fetch fresh KSE-100 to avoid stale 50-MA in header vs. charts
     from kse100_filter import KSE100Filter
@@ -1154,7 +1172,13 @@ with st.sidebar:
         # Session just started; haven't tried yet (first render before cache warms)
         st.caption("📡 ksestocks: checking…")
 
-    if st.button("🔄 Refresh Data", type="primary", key="sb_refresh", use_container_width=True):
+    if _PG_URL:
+        # TR-01 consumer authority (ledger §114): no manual pipeline trigger on
+        # the authoritative Cloud backend -- the scheduled GitHub Actions cron
+        # is the only writer (scratch_tr01_optionb_20260903, finding A). The
+        # source-date caption above still shows whether new data is available.
+        st.caption("🔄 Data updates automatically via the scheduled pipeline.")
+    elif st.button("🔄 Refresh Data", type="primary", key="sb_refresh", use_container_width=True):
         with st.spinner("Checking ksestocks.com for new data…"):
             try:
                 if not HAS_CMD_UPDATE or cmd_update is None:
@@ -4103,8 +4127,10 @@ A **positive score** is the minimum bar for a quality setup. A **negative score*
 # PAGE 6 — ANALYTICS
 # ═══════════════════════════════════════════════════════════════════════════════
 elif cur == PAGES[6]:  # Analytics
-    # Ensure portfolio tables exist
-    init_db()
+    # Ensure portfolio tables exist (SQLite bootstrap only; ledger §114 -- on
+    # Postgres the pipeline owns schema, the served dashboard runs no DDL).
+    if not _PG_URL:
+        init_db()
 
     # ── Pull all closed trades (System-taken + Actual) ────────────────────────
     all_trades = get_trade_setups()

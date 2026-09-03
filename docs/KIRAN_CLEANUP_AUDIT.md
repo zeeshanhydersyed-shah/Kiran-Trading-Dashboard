@@ -7178,3 +7178,41 @@ Full suite: **423 passed** (was 421, +2).
 - **A-obs (§112.5 gate 1):** partially met — the authoritative row exists with a populated `coherence`, but it is `promoted = false`. Once this PR is merged and the next new-day cloud cron runs, the row should promote (freshness VERIFIED + completeness COMPLETE + all 8 hooks COMPLETED under one `run_id`). **Re-check `current_publication` after that run before declaring A-obs done.**
 - **B-exec:** still blocked until a `promoted = true` row exists to pull.
 - Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**. 10 cutover-blocking rows remain.
+
+---
+
+## 114. <span style="color:#eab308;">◐ TR-01 Option B companion PR — the served dashboard no longer runs DDL or exposes a full-pipeline trigger on the authoritative backend (2026-09-03)</span>
+
+Parallel TR-01 work while PR #71 (§113) awaits merge. The structural consumer-authority fix (§109.4 Option B — a restricted Postgres role) was audited and drafted: **`scratch_tr01_optionb_20260903/TR01_OPTION_B_DB_ROLE_DRAFT.md`** (→ Trust Register OI-15). That draft's read-only audit of the whole dashboard write surface (`dashboard.py` / `dashboard_pg.py` / `database.py` / `database_pg.py` / `boring_signals.py`) found two things that **must be fixed before** a restricted role can be introduced without breaking the app — this PR fixes those two. It does **not** create the role or rotate any secret (those are the draft's own §6 rollout, owner-gated).
+
+### 114.1 Finding A — the "🔄 Refresh Data" button ran the whole pipeline from the deployed Cloud app
+
+`dashboard.py`'s sidebar "🔄 Refresh Data" button (visible to every viewer of the live Streamlit Cloud app) called **`main.cmd_update()`** — a full scrape + write to every MANDATORY signal table on the authoritative Postgres backend. This is the OI-8 failure class (ledger §85.2, where the *local* dashboard's Refresh button authored PG's entire 2026-08-28 dataset) as a permanent, one-click, un-authenticated control on the deployed consumer. §109's guard cannot see it — that alert only fires on `platform.system() == 'Windows'`, and Streamlit Cloud is Linux.
+
+**Fix:** when `_PG_URL` is set, `dashboard.py` now forces `HAS_CMD_UPDATE = False` / `cmd_update = None` at the import site, and the sidebar renders a plain caption ("Data updates automatically via the scheduled pipeline.") in place of the button. The source-date status line above it is unchanged, so a Cloud viewer still sees whether new data is available — they just can't trigger the write. The GitHub Actions cron remains the only writer. The local SQLite path is untouched (the button still works there).
+
+### 114.2 Finding B — the deployed dashboard ran DDL + schema migrations at startup
+
+`dashboard.py` called `init_db()` in `load_data()` (cached, once per session) and again on the Analytics page. On the Postgres path that is `database_pg.init_db()` — 7 `CREATE TABLE IF NOT EXISTS`, 7 `CREATE INDEX IF NOT EXISTS`, ~20 `ALTER TABLE … ADD COLUMN IF NOT EXISTS` (ownership-required even when the column exists), and 4 data-migration `UPDATE`s. The main `ddl_statements` loop had **no per-statement error handling**, so a single denied statement under a restricted role would abort the shared transaction and propagate a full-page exception through `load_data()`.
+
+**Fix (two layers):**
+- **`dashboard.py`** — both `init_db()` call sites are now `if not _PG_URL: init_db()`. On Postgres, schema is owned by the pipeline's full-privilege role; the served dashboard runs no DDL. The SQLite path still bootstraps a fresh file.
+- **`database_pg.init_db()`** — the main `ddl_statements` loop now matches the existing migration loops: per-statement `try/except` with `conn.rollback()` in the `except`. The rollback is the part that actually matters — without it, the first denied statement poisons the transaction and every subsequent statement fails with "current transaction is aborted", which is why the existing migration loops (that had `try/except: pass` but no rollback) would have silently skipped everything after their first failure too. All three loops now roll back per failure, so a restricted role that *can* run the plain `UPDATE trade_setups …` data-migrations still gets them even though every preceding DDL statement was denied.
+
+### 114.3 Findings C–E (documented in the draft, not addressed here)
+
+- **C** — `mark_executed()` (Explorer → Boring Breakouts) UPDATEs the MANDATORY `boring_signals` table from the consumer. Owner decision in the draft §4.1 (grant the narrow `UPDATE` vs. move execution-tracking to its own table). Not touched in this PR.
+- **D** — Data Health "False Positive" legitimately UPDATEs `corporate_action_suspects` (Confirm is already hard-blocked on PG). This is in the legitimate consumer write set.
+- **E** — the retired Flows page's write functions are still re-exported by `database.py`; dead from the dashboard. The role simply won't grant `flows_signal_log` writes.
+
+### 114.4 Tests — `tests/test_consumer_authority_no_ddl.py`, 5, fully deterministic
+
+AST checks on `dashboard.py` (no Streamlit/DB/scrape needed): both `init_db()` calls are gated on `not _PG_URL`; `HAS_CMD_UPDATE = False` sits inside `if _PG_URL:`; the "🔄 Refresh Data" `st.button` is only reachable when `_PG_URL` is unset. Plus two behavioural tests for `database_pg.init_db()` via a fake connection whose cursor raises "permission denied" on every DDL statement — `init_db()` must not propagate, must roll back each failure (≥10 rollbacks), must still attempt every statement (not stop at the first), and must still reach the plain-`UPDATE` data-migrations.
+
+Full suite: **426 passed** (was 421, +5). `daily_scraper.yml` not triggered.
+
+### 114.5 What remains (the draft's own rollout — owner-gated, not this PR)
+
+`CREATE ROLE kiran_dashboard` + `kiran_readonly` (draft §5), verify block, then the two secret rotations (Streamlit Cloud `secrets.toml`, local `.env`) — owner console actions. This PR is the safe prerequisite: it proves the dashboard works with no DDL and no manual pipeline trigger, on the *current* full credential, before the credential is ever narrowed.
+
+Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
