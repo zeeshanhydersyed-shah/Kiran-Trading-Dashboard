@@ -695,14 +695,23 @@ def cmd_update():
         )
         if _agent_proc.returncode == 0:
             logger.info("Agent daily hook: complete.")
+            _record_hook("agent_daily", _session_date, run_id=run_id,
+                         execution_status="COMPLETED")
         else:
-            logger.warning(
-                "Agent daily hook: exited %d — %s",
-                _agent_proc.returncode,
-                (_agent_proc.stderr or b"")[-500:].decode("utf-8", errors="replace"),
-            )
+            _agent_err = (_agent_proc.stderr or b"")[-500:].decode("utf-8", errors="replace")
+            logger.warning("Agent daily hook: exited %d — %s",
+                           _agent_proc.returncode, _agent_err)
+            # TR-06 Tier 2: NON-MANDATORY heartbeat (data_health.NON_MANDATORY_HOOKS)
+            # -- recorded so an Agent failure is queryable, never feeds the
+            # trading verdict (§39.2). The 2026-08-24 "anthropic package not
+            # installed" failure (ledger §60.4) went entirely unrecorded before.
+            _record_hook("agent_daily", _session_date, status="error", run_id=run_id,
+                         execution_status="FAILED",
+                         detail=f"exit {_agent_proc.returncode}: {_agent_err[:300]}")
     except Exception as exc:
         logger.warning("Agent daily hook failed (will retry next run): %s", exc)
+        _record_hook("agent_daily", _session_date, status="error", run_id=run_id,
+                     execution_status="FAILED", detail=str(exc)[:300])
 
     # Pre-compute Leaders deep scan (filtered picks + audit trail)
     try:
@@ -757,21 +766,36 @@ def cmd_update():
     # Regenerate market breadth oscillator data for Regime page
     try:
         import subprocess
-        subprocess.run(
+        _mbo_proc = subprocess.run(
             [sys.executable, "market_breadth_oscillator.py"],
             timeout=300,
             check=False,
             capture_output=True,
         )
-        logger.info("Market breadth oscillator data updated.")
+        if _mbo_proc.returncode == 0:
+            logger.info("Market breadth oscillator data updated.")
+            _record_hook("market_breadth_oscillator", _session_date, run_id=run_id,
+                         execution_status="COMPLETED")
+        else:
+            # Previously this step logged "updated" regardless of the exit
+            # code -- a failed subprocess was completely invisible. TR-06 Tier 2:
+            # NON-MANDATORY heartbeat, recorded but never feeds the verdict (§39.2).
+            _mbo_err = (_mbo_proc.stderr or b"")[-500:].decode("utf-8", errors="replace")
+            logger.warning("Breadth oscillator update exited %d — %s",
+                           _mbo_proc.returncode, _mbo_err)
+            _record_hook("market_breadth_oscillator", _session_date, status="error",
+                         run_id=run_id, execution_status="FAILED",
+                         detail=f"exit {_mbo_proc.returncode}: {_mbo_err[:300]}")
     except Exception as exc:
         logger.warning("Breadth oscillator update failed: %s", exc)
+        _record_hook("market_breadth_oscillator", _session_date, status="error",
+                     run_id=run_id, execution_status="FAILED", detail=str(exc)[:300])
 
     # Rolling trim — delete rows older than 2 years from large Supabase tables.
     # Runs LAST so trimming never races against any earlier step's reads.
     # Failure is logged but never crashes the pipeline.
+    _trim_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
     try:
-        _trim_pg_url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
         if _trim_pg_url:
             from database_pg import trim_old_rows_pg
             trim_results = trim_old_rows_pg()
@@ -781,8 +805,18 @@ def cmd_update():
                 logger.info("Rolling trim complete: %d rows deleted (%s)", total_trimmed, detail)
             else:
                 logger.info("Rolling trim: nothing to delete (all tables within 2-year window).")
+            # TR-06 Tier 2: NON-MANDATORY heartbeat (§39.2) -- Postgres-only
+            # maintenance, so it only records when it actually runs (a local
+            # SQLite pipeline skips this block entirely and correctly leaves
+            # no rolling_trim row).
+            _record_hook("rolling_trim", _session_date, run_id=run_id,
+                         execution_status="COMPLETED", rows_written=total_trimmed,
+                         detail=detail[:300])
     except Exception as exc:
         logger.warning("Rolling trim hook failed: %s", exc)
+        if _trim_pg_url:
+            _record_hook("rolling_trim", _session_date, status="error", run_id=run_id,
+                         execution_status="FAILED", detail=str(exc)[:300])
 
     # TR-05 Blocker 1: cmd_update()'s own end-of-run self-check. Runs last,
     # after every hook above -- their existing per-hook try/except-and-warn

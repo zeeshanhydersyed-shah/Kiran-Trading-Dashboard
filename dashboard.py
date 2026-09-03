@@ -7949,6 +7949,30 @@ elif cur == PAGES[14]:  # Data Health
     except Exception as _dh_pub_exc:
         st.caption(f"publication contract panel unavailable: {_dh_pub_exc}")
 
+    # TR-06 Tier 2: non-critical pipeline steps (Agent daily, breadth
+    # oscillator, Postgres rolling trim). These are DEGRADED-OK by design
+    # (§39.2) -- a failure here does NOT withhold the trading signal and is
+    # deliberately kept out of check_all()'s verdict -- but it must still be
+    # visible rather than silent (before this, a failed Agent subprocess left
+    # no trace anywhere -- ledger §60.4). Read-only, recomputed every render.
+    st.markdown("**Pipeline heartbeats — non-critical steps**")
+    try:
+        from data_health import non_mandatory_hook_health as _dh_nmh
+        _dh_nm_rows = _dh_nmh()
+        if not _dh_nm_rows:
+            st.caption("No non-critical heartbeat recorded yet on this backend.")
+        else:
+            for _r in _dh_nm_rows:
+                _line = f"**{_r['label']}** — last ran {_r['last_run']}"
+                if _r["detail"]:
+                    _line += f" · {_r['detail']}"
+                if _r["execution_status"] == "FAILED":
+                    st.warning(f"⚠️ {_line}")
+                else:
+                    st.caption(f"✅ {_line}")
+    except Exception as _dh_nm_exc:
+        st.caption(f"non-critical heartbeat panel unavailable: {_dh_nm_exc}")
+
     def _dh_load_summary():
         if _PG_URL:
             from dashboard_pg import get_dh_summary_pg

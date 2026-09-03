@@ -359,6 +359,160 @@ def test_check_all_recognizes_corporate_action_append_heartbeat(temp_health_db):
     )
 
 
+# ---------------------------------------------------------------------------
+# TR-06 Tier 2 completion (ledger §115): check_all() reads the coverage
+# assertion, not just run_date/status; the 3 non-critical chain steps get a
+# heartbeat but never feed the verdict.
+# ---------------------------------------------------------------------------
+
+def test_check_all_flags_insufficient_coverage_as_stale(temp_health_db):
+    """leaders_scan ran (status ok) but its own coverage report says it
+    skipped some eligible dates -- processed < eligible. That is the "ran but
+    under-produced" state TR-06 requires be distinguishable from a clean run;
+    check_all() must return it as stale (blocking), not ok."""
+    data_health.record_run(
+        "leaders_scan", "2026-09-02", status="ok",
+        execution_status="COMPLETED", coverage_status="INSUFFICIENT",
+        eligible_count=5, processed_count=3, detail="failed_dates=['2026-08-30']",
+    )
+    verdict = data_health.check_all(expected_session=None)
+    item = _item(verdict, "leaders_scan")
+    assert item is not None
+    assert item.status == "stale", (
+        f"INSUFFICIENT coverage with processed<eligible must block, got "
+        f"{item.status!r} ({item.detail!r})"
+    )
+    assert "INSUFFICIENT" in item.detail
+
+
+def test_check_all_large_catchup_is_visible_but_not_blocking(temp_health_db):
+    """boring_signals scanned a big backlog in one run -- coverage_status is
+    INSUFFICIENT (abnormally large) but every eligible session WAS processed
+    (processed == eligible). The data is complete; surface a note, do not
+    withhold the signal."""
+    data_health.record_run(
+        "boring_signals", "2026-09-02", status="ok",
+        execution_status="COMPLETED", coverage_status="INSUFFICIENT",
+        eligible_count=22, processed_count=22,
+        detail="long scan gap: 22 trading dates were pending in one run",
+    )
+    verdict = data_health.check_all(expected_session=None)
+    item = _item(verdict, "boring_signals")
+    assert item is not None
+    assert item.status == "ok", (
+        f"a complete (processed==eligible) large catch-up must not block, got "
+        f"{item.status!r} ({item.detail!r})"
+    )
+    assert "catch-up" in item.detail
+
+
+def test_check_all_expected_coverage_is_ok(temp_health_db):
+    data_health.record_run(
+        "setup_log", "2026-09-02", status="ok",
+        execution_status="COMPLETED", coverage_status="EXPECTED",
+        eligible_count=1, processed_count=1,
+    )
+    verdict = data_health.check_all(expected_session=None)
+    item = _item(verdict, "setup_log")
+    assert item is not None and item.status == "ok"
+
+
+def test_check_all_null_coverage_is_ok(temp_health_db):
+    """portfolio_signals (and every held-style hook) reports no coverage pair
+    -- coverage_status NULL. That is a legitimate non-answer, not a fault."""
+    data_health.record_run(
+        "portfolio_signals", "2026-09-02", status="ok", execution_status="COMPLETED",
+    )
+    verdict = data_health.check_all(expected_session=None)
+    item = _item(verdict, "portfolio_signals")
+    assert item is not None and item.status == "ok"
+
+
+def test_check_all_degrades_when_coverage_columns_absent(tmp_path, monkeypatch):
+    """The committed CI fixture's pipeline_runs has only the base 7 columns.
+    check_all() must still evaluate heartbeats on run_date/status and never
+    raise -- exactly the defensive contract latest_pipeline_code_version()
+    already follows."""
+    db = str(tmp_path / "old_schema.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE prices (date TEXT)")
+    con.execute(
+        "CREATE TABLE pipeline_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "hook_name TEXT, run_date TEXT, finished_at TEXT, status TEXT, "
+        "rows_written INTEGER, detail TEXT)"
+    )
+    con.execute(
+        "INSERT INTO pipeline_runs (hook_name, run_date, finished_at, status) "
+        "VALUES ('setup_log', '2026-09-02', '2026-09-02T00:00:00', 'ok')"
+    )
+    con.commit()
+    con.close()
+    monkeypatch.setattr(data_health.config, "DB_PATH", db)
+    monkeypatch.setattr(data_health, "_PG_URL", None)
+
+    verdict = data_health.check_all(expected_session=None)  # must not raise
+    item = _item(verdict, "setup_log")
+    assert item is not None and item.status == "ok"
+
+
+# -- non_mandatory_hook_health() -------------------------------------------
+
+def test_non_mandatory_hook_health_reports_latest_per_hook(temp_pipeline_runs_db):
+    data_health.record_run("agent_daily", "2026-09-01", status="ok",
+                           execution_status="COMPLETED")
+    data_health.record_run("agent_daily", "2026-09-02", status="error",
+                           execution_status="FAILED", detail="exit 1: anthropic not installed")
+    data_health.record_run("rolling_trim", "2026-09-02", status="ok",
+                           execution_status="COMPLETED", detail="sector_signals=120")
+    rows = data_health.non_mandatory_hook_health()
+    by_hook = {r["hook"]: r for r in rows}
+    assert by_hook["agent_daily"]["last_run"] == "2026-09-02"
+    assert by_hook["agent_daily"]["execution_status"] == "FAILED"
+    assert "anthropic" in by_hook["agent_daily"]["detail"]
+    assert by_hook["rolling_trim"]["execution_status"] == "COMPLETED"
+    # market_breadth_oscillator never ran -> omitted, not a fake row
+    assert "market_breadth_oscillator" not in by_hook
+
+
+def test_non_mandatory_hook_health_never_raises_on_missing_table(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_health.config, "DB_PATH", str(tmp_path / "empty.db"))
+    monkeypatch.setattr(data_health, "_PG_URL", None)
+    assert data_health.non_mandatory_hook_health() == []
+
+
+def test_non_mandatory_hooks_never_reach_check_all_verdict(temp_health_db):
+    """A failed agent_daily / breadth / trim heartbeat must NOT produce a
+    check_all() item -- §39.2 classes them degraded-OK; a failed Agent run
+    cannot be allowed to make Kiran say NOT VERIFIED."""
+    data_health.record_run("agent_daily", "2026-09-02", status="error",
+                           execution_status="FAILED", detail="boom")
+    data_health.record_run("market_breadth_oscillator", "2026-09-02", status="error",
+                           execution_status="FAILED")
+    data_health.record_run("rolling_trim", "2026-09-02", status="error",
+                           execution_status="FAILED")
+    verdict = data_health.check_all(expected_session=None)
+    labels = {i.label for i in verdict.items}
+    assert "agent daily" not in labels
+    assert "breadth oscillator" not in labels
+    assert "rolling trim" not in labels
+
+
+# -- main.py wires the 3 non-critical steps -------------------------------
+
+def test_main_instruments_the_three_non_critical_steps():
+    import ast as _ast
+    src = open(os.path.join(_ROOT, "main.py"), encoding="utf-8").read()
+    hooks_recorded = {
+        node.args[0].value
+        for node in _ast.walk(_ast.parse(src))
+        if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Name)
+        and node.func.id == "_record_hook" and node.args
+        and isinstance(node.args[0], _ast.Constant)
+    }
+    for h in ("agent_daily", "market_breadth_oscillator", "rolling_trim"):
+        assert h in hooks_recorded, f"main.py cmd_update() does not _record_hook({h!r})"
+
+
 def test_check_all_recognizes_corporate_action_suspects_scan_heartbeat(temp_health_db):
     data_health.record_run(
         "corporate_action_suspects_scan", "2026-08-24", status="ok", rows_written=0,
