@@ -203,9 +203,19 @@ def init_db():
         """,
         "CREATE INDEX IF NOT EXISTS idx_portfolio_val_date ON portfolio_values (date)",
     ]
+    # TR-01 consumer authority (ledger §114): the served dashboard no longer
+    # calls init_db() on the Postgres path (see dashboard.py load_data()), so
+    # this normally runs only under the pipeline's full-privilege role. Kept
+    # defensively best-effort per statement anyway -- a restricted role
+    # (kiran_dashboard) has no CREATE/ALTER grant, and one denied statement
+    # aborts the transaction, so without the rollback every following
+    # statement in the block would fail with "current transaction is aborted".
     with get_conn() as conn:
         for stmt in ddl_statements:
-            _exec(conn, stmt)
+            try:
+                _exec(conn, stmt)
+            except Exception:
+                conn.rollback()
 
     # Non-destructive migrations: add columns that older deployments may lack
     migrations = [
@@ -252,7 +262,7 @@ def init_db():
             try:
                 _exec(conn, sql)
             except Exception:
-                pass
+                conn.rollback()  # un-poison the txn for the next statement
 
     # Data migrations (safe to run multiple times)
     data_migrations = [
@@ -266,7 +276,7 @@ def init_db():
             try:
                 _exec(conn, sql)
             except Exception:
-                pass
+                conn.rollback()  # un-poison the txn for the next statement
 
     logger.info("PostgreSQL database initialised.")
 
