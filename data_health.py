@@ -1139,6 +1139,80 @@ def latest_publication_attempt() -> dict | None:
 # The check itself
 # ---------------------------------------------------------------------------
 
+def _pipeline_runs_has_coverage_cols(fetch_one) -> bool:
+    """True if pipeline_runs carries the TR-06 Tier-2 coverage columns.
+
+    The committed CI fixture (tests/fixtures/psx_fixture.db) predates them
+    (base 7 columns only), so check_all()'s heartbeat check must degrade to
+    run_date/status-only there rather than raise. On Postgres and the real
+    local SQLite DB the columns always exist (ledger §61 / §110), so this
+    probe never fails on a backend where a poisoned transaction would matter.
+    """
+    try:
+        fetch_one(
+            "SELECT coverage_status, eligible_count, processed_count "
+            "FROM pipeline_runs LIMIT 0",
+            (),
+        )
+        return True
+    except Exception:
+        return False
+
+
+# Bonus / DEGRADED-OK steps in cmd_update()'s chain (§39.2): the Agent daily
+# subprocess, the market-breadth-oscillator subprocess, and the Postgres
+# rolling trim. Each writes a heartbeat so a failure is queryable rather than
+# silent (TR-06: "every hook in the daily chain writes a heartbeat"), but they
+# are deliberately NOT in HEARTBEAT above and never feed check_all()'s verdict
+# -- a failed Agent run or breadth-oscillator run must not make Kiran say
+# NOT VERIFIED (§39.2 classes these NON-MANDATORY / degraded-OK).
+# (hook_name as recorded in pipeline_runs, human label)
+NON_MANDATORY_HOOKS: tuple[tuple[str, str], ...] = (
+    ("agent_daily",               "agent daily"),
+    ("market_breadth_oscillator", "breadth oscillator"),
+    ("rolling_trim",              "rolling trim"),
+)
+
+
+def non_mandatory_hook_health() -> list[dict]:
+    """Latest heartbeat per NON_MANDATORY_HOOKS entry, for an informational
+    Data Health panel or an external watchdog (TR-18). Read-only, never
+    raises. A hook with no row yet is omitted. Does NOT contribute to
+    check_all()'s verdict -- these steps are degraded-OK by design (§39.2).
+    """
+    out: list[dict] = []
+    try:
+        fetch_one, close = _open()
+    except Exception:
+        return out
+    try:
+        for hook, label in NON_MANDATORY_HOOKS:
+            try:
+                row = fetch_one(
+                    "SELECT run_date, status, detail FROM pipeline_runs "
+                    "WHERE hook_name = {p} ORDER BY run_date DESC LIMIT 1",
+                    (hook,),
+                )
+            except Exception:
+                continue
+            if not row:
+                continue
+            exec_status = EXECUTION_COMPLETED if row[1] == "ok" else EXECUTION_FAILED
+            out.append({
+                "hook": hook,
+                "label": label,
+                "last_run": _iso(row[0]),
+                "execution_status": exec_status,
+                "detail": row[2],
+            })
+    finally:
+        try:
+            close()
+        except Exception:
+            pass
+    return out
+
+
 def _sessions_between(fetch_one, low: str, high: str) -> int | None:
     """Trading sessions strictly after `low`, up to and including `high`.
 
@@ -1236,11 +1310,23 @@ def check_all(expected_session: str | None = None,
                 items.append(Item(label, "ok", tmax))
 
         # -- heartbeat items --
+        # TR-06 Tier 2: read the coverage assertion, not just run_date/status.
+        # `record_run()` stores coverage_status / eligible_count /
+        # processed_count per hook per run, but nothing read them back before
+        # this -- so a hook that ran and silently produced less than it was
+        # eligible to (leaders_scan skipping failed dates, setup_log breaking
+        # out of its pending-date loop) looked identical to a clean run.
+        _hb_cov = _pipeline_runs_has_coverage_cols(fetch_one)
+        _hb_select = (
+            "SELECT run_date, status, coverage_status, eligible_count, "
+            "processed_count, detail FROM pipeline_runs"
+            if _hb_cov else
+            "SELECT run_date, status FROM pipeline_runs"
+        )
         for hook, label in HEARTBEAT:
             try:
                 row = fetch_one(
-                    "SELECT run_date, status FROM pipeline_runs "
-                    "WHERE hook_name = {p} ORDER BY run_date DESC LIMIT 1",
+                    _hb_select + " WHERE hook_name = {p} ORDER BY run_date DESC LIMIT 1",
                     (hook,),
                 )
             except Exception as exc:
@@ -1259,6 +1345,13 @@ def check_all(expected_session: str | None = None,
                 continue
 
             last_run, run_status = _iso(row[0]), row[1]
+            cov_status = row[2] if _hb_cov else None
+            cov_elig = row[3] if _hb_cov else None
+            cov_proc = row[4] if _hb_cov else None
+            cov_detail = row[5] if _hb_cov else None
+            _proc_all = (cov_elig is not None and cov_proc is not None
+                         and cov_proc >= cov_elig)
+
             if run_status != "ok":
                 items.append(Item(label, "stale", f"last run {last_run} failed"))
             elif reference and last_run < reference:
@@ -1269,6 +1362,27 @@ def check_all(expected_session: str | None = None,
                     + (f", {behind} session{'s' if behind != 1 else ''} behind" if behind else ""),
                     behind=behind,
                 ))
+            elif cov_status == COVERAGE_INSUFFICIENT and not _proc_all:
+                # The hook ran (status ok) but its own coverage report says it
+                # did not finish every unit it was eligible to process -- a
+                # partial completion that leaves real holes. Exactly the "ran
+                # but under-produced" state TR-06 requires be distinguishable
+                # from a clean run; blocks, like any stale item.
+                items.append(Item(
+                    label, "stale",
+                    f"ran {last_run} but coverage INSUFFICIENT"
+                    + (f" -- {cov_detail}" if cov_detail
+                       else f" ({cov_proc}/{cov_elig} processed)")))
+            elif cov_status == COVERAGE_INSUFFICIENT:
+                # INSUFFICIENT, but every eligible unit WAS processed -- the
+                # abnormally-large-but-complete catch-up case (boring_signals
+                # after a multi-day outage scans the whole backlog in one run).
+                # The data is complete; surface it as a visible note on the
+                # Data Health page, do not withhold the signal.
+                items.append(Item(
+                    label, "ok",
+                    f"ran {last_run}, large catch-up processed"
+                    + (f" -- {cov_detail}" if cov_detail else f" ({cov_elig} sessions)")))
             else:
                 items.append(Item(label, "ok", f"ran {last_run}"))
 

@@ -7216,3 +7216,46 @@ Full suite: **426 passed** (was 421, +5). `daily_scraper.yml` not triggered.
 `CREATE ROLE kiran_dashboard` + `kiran_readonly` (draft §5), verify block, then the two secret rotations (Streamlit Cloud `secrets.toml`, local `.env`) — owner console actions. This PR is the safe prerequisite: it proves the dashboard works with no DDL and no manual pipeline trigger, on the *current* full credential, before the credential is ever narrowed.
 
 Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.
+
+---
+
+## 115. <span style="color:#eab308;">◐ TR-06 Tier 2 — the coverage assertion is now READ, and the 3 non-critical chain steps get a heartbeat (2026-09-03)</span>
+
+TR-06's acceptance criterion has two bundled halves (§59.3): (a) every hook in the daily chain writes a heartbeat, and (b) *"a hook that runs but produces less than expected is distinguishable from one that runs correctly."* The §61 work built the recording side — `pipeline_runs` gained `coverage_status` / `eligible_count` / `processed_count`, and `boring_signals` / `leaders_scan` / `setup_log` / `corporate_action_*` populate them. But §59.3 / §60.6 found the read side was never built: **`check_all()`'s HEARTBEAT query read only `run_date` and `status`** — the coverage columns were captured and then thrown away. This entry closes that, plus instruments the last 3 uninstrumented chain steps. (PR #71 / §113 already did the adjacent `run_id` threading for the 5 formerly-HELD hooks.)
+
+### 115.1 The coverage assertion is now read (`data_health.check_all()`)
+
+The HEARTBEAT loop now selects `coverage_status`, `eligible_count`, `processed_count`, `detail` alongside `run_date` / `status`, and after the existing "failed" and "N sessions behind" checks:
+
+- **`coverage_status = INSUFFICIENT` and NOT (`processed_count >= eligible_count`)** → `stale` (blocking). The hook ran but its own report says it did not finish every unit it was eligible to process — a partial completion that leaves real holes (`leaders_scan` skipped failed dates; `setup_log` broke out of its pending-date loop early — `processed_count` is `NULL` in that case). This is the "ran but under-produced" state TR-06 names.
+- **`coverage_status = INSUFFICIENT` and `processed_count >= eligible_count`** → `ok`, with the detail carried through as a visible note. The only shape that reaches here is `boring_signals`'s "abnormally large but complete" catch-up (a multi-day outage's whole backlog scanned in one run). The data is complete — surface it, do not withhold.
+- **`EXPECTED` / `NOT_APPLICABLE` / `NULL`** → `ok` exactly as before. `NULL` is the legitimate non-answer from hooks with no eligible/processed pair (`portfolio_signals`, and the append/snapshot-shaped hooks).
+
+**Defensive against the stale CI fixture.** `tests/fixtures/psx_fixture.db`'s `pipeline_runs` predates §61 (base 7 columns only). `_pipeline_runs_has_coverage_cols()` probes once (`SELECT … LIMIT 0`, catches on missing column) and the loop falls back to `run_date` / `status`-only — same defensive contract `latest_pipeline_code_version()` already follows. On Postgres and the real local SQLite DB the columns always exist, so the probe never fails on a backend where a poisoned transaction would matter. (The fixture is genuinely stale on two counts — missing the §61 columns, and still carrying the pre-split `hook_name='corporate_action'` — and should be regenerated in a dedicated pass; not bundled here.)
+
+### 115.2 The 3 non-critical chain steps now write a heartbeat (`main.py`)
+
+`agent_daily` (the Agent subprocess), `market_breadth_oscillator` (the breadth-oscillator subprocess), and `rolling_trim` (the Postgres 2-year trim) each now call `_record_hook(..., execution_status=COMPLETED|FAILED)` on both the success and failure path. Before this:
+
+- the Agent subprocess had **no heartbeat at all** — the 2026-08-24 "anthropic package not installed" failure (§60.4) left no trace anywhere;
+- the breadth-oscillator step **logged "updated" regardless of the subprocess exit code** — a failed run was completely silent;
+- `rolling_trim` had no heartbeat (it only records when it actually runs — a local SQLite pipeline skips the whole block and correctly leaves no `rolling_trim` row).
+
+These 3 are **NON-MANDATORY / degraded-OK** (§39.2 — "Agent output, breadth oscillator … explicitly bonus/non-critical"). They are deliberately **NOT** in `data_health.HEARTBEAT` and **never feed `check_all()`'s verdict** — a failed Agent run must not make Kiran say NOT VERIFIED. They are collected in a new `data_health.NON_MANDATORY_HOOKS` tuple and surfaced by `non_mandatory_hook_health()` (read-only, never raises), which the Data Health page renders as a small **"Pipeline heartbeats — non-critical steps"** panel (a `⚠️` line for a FAILED step, a `✅` caption otherwise). A test asserts these three never produce a `check_all()` item.
+
+### 115.3 Tests — `tests/test_tr06_coverage_fields.py` +9 (16 → 25)
+
+`check_all()`: INSUFFICIENT + `processed < eligible` → stale; INSUFFICIENT + `processed == eligible` (large catch-up) → ok with a note; EXPECTED → ok; NULL coverage → ok; a `pipeline_runs` with only the base 7 columns → `check_all()` does not raise and still evaluates heartbeats. `non_mandatory_hook_health()`: latest-per-hook, FAILED surfaced, hooks with no row omitted, never raises on a missing table, and the three never reach the `check_all()` verdict. Plus an AST check that `main.py` `_record_hook`s all three new hook names.
+
+Full suite: **437 passed** (was 428, +9). `daily_scraper.yml` not triggered.
+
+### 115.4 What this closes, and what's left on TR-06
+
+**Closes:** the coverage-assertion *read* — half (b) of the acceptance criterion — for the MANDATORY HEARTBEAT hooks that report a coverage pair (`leaders_scan`, `setup_log`, `boring_signals`, `corporate_action_append`). And half (a) — "every hook in the daily chain writes a heartbeat" — for the last 3 uninstrumented steps.
+
+**Still open for TR-06 → GREEN:**
+- The MANDATORY hooks whose coverage is currently `NOT_APPLICABLE` because no real denominator is computed yet — `regime` / `sector_signals` / `stock_signals` (EVERY_SESSION, checked by `MAX(date)`, which catches a dead producer but not an under-producing one) and `corporate_action_suspects_scan`. TR-06's criterion wants a *coverage* assertion for these too (e.g. `sector_signals` rows written vs. active sectors for the date), not just a presence check.
+- A first real production observation of an INSUFFICIENT verdict actually withholding (test-harness proven here; not yet manufactured in production, per the standing constraint).
+- The `pipeline_runs` `(hook_name, run_date)` key question (§113.3) — a later cron slot overwriting an earlier run's coverage row.
+
+TR-06 stays 🔴 RED. Kiran verdict unchanged: **NOT VERIFIED — DO NOT TRADE**.

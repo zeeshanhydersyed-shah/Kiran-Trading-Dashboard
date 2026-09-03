@@ -31,6 +31,15 @@ CLI entry at all — §40.1 catalogued ~60 directly-runnable scripts in this rep
 full stale backup copies of `main.py` itself (`main_backup_e8*.py`) that can still write straight
 to production tables outside any pipeline path.
 
+**Consumer-authority progress (2026-09-03, ledger §114 / PR #72):** when `_PG_URL` is set (the
+deployed Streamlit Cloud app), `dashboard.py` no longer calls `init_db()` (schema/DDL is the
+pipeline's job — the restricted-role path can't `CREATE`/`ALTER`) and the sidebar "🔄 Refresh Data"
+button is replaced by a caption — it used to call `main.cmd_update()`, i.e. a full pipeline write
+to every MANDATORY table from the served surface (the OI-8 class). The GitHub Actions cron is the
+only writer. The local SQLite path is unchanged (button + `init_db()` still work there). The
+structural half — a restricted `kiran_dashboard` Postgres role + secret rotations — is drafted
+(`scratch_tr01_optionb_20260903/TR01_OPTION_B_DB_ROLE_DRAFT.md`) and awaiting owner sign-off.
+
 ## Operational workflow — three roles, do not blur them
 
 This project runs across three distinct roles. Keep to your own role; don't assume another's job:
@@ -699,6 +708,16 @@ append_setup_log_today()
 10. Leaders deep scan
 11. `auto_save_setups()` + `auto_save_setups_with_source()`
 12. Market breadth oscillator subprocess
+13. Rolling trim (`trim_old_rows_pg()`) — Postgres only, runs last
+
+**Heartbeat coverage (TR-06, ledger §115):** every step now writes a `pipeline_runs` heartbeat.
+Steps 9 / 12 / 13 (`agent_daily`, `market_breadth_oscillator`, `rolling_trim`) are **NON-MANDATORY**
+(`data_health.NON_MANDATORY_HOOKS`, §39.2) — recorded and shown on the Data Health page but they
+never feed `check_all()`'s trading verdict. `check_all()` now also *reads* the coverage assertion
+(`coverage_status`/`eligible_count`/`processed_count`) for the MANDATORY heartbeat hooks: a hook
+that ran but did not finish every eligible unit → `stale` (blocks). The 5 formerly-HELD hooks
+(steps 4–8's `regime`/`sector_signals`/`stock_signals`/`recovery_signals`/`portfolio_signals`)
+thread `run_id` as of PR #71 (ledger §113).
 
 ---
 
