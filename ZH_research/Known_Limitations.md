@@ -149,6 +149,8 @@ Every quant platform has limitations. Acknowledging them honestly protects the i
 
 **Scope:** Every study that reads `prices_adjusted`, `stock_signals`, `sector_signals`, or `setup_log` forward returns for any date before ~2024, or for any symbol with an unadjusted corporate action. Production cross-ref: **TR-03**.
 
+**Update 2026-09-09 (CA Pipeline Rebuild — partial mitigation for the liquid 2021+ universe):** `trading_edge_program/ca_pipeline_kse100_20260907/` now has a **defensible 2021→present total-return series for 84/96 current KSE-100 members (123/141 liquid PSX equities)** in standalone `*_prices_v2.sqlite` artifacts — `close_v2` split/bonus-adjusted, `close_tr` also dividend-adjusted, `volume_v2` share-count-adjusted, per-row `flags`/`adjustment_confidence` audit trail. Read via `ca_v2_reader.load_v2_prices()`. **This is a separate read-only research artifact — it does NOT fix `prices_adjusted`** (production integration is research-consumer only, `PRODUCTION_INTEGRATION_PLAN.md`, Trust Register TR-19 placeholder). Envelope: pre-2018 raw (`KNOWN_HISTORICAL_GAP`); 2018-2020 price-only (`close_tr == close_v2`); 2021+ full. 8 events / 7 symbols remain `UNRESOLVED_RESIDUAL` (NATF, MUGHAL, TPLP×2, NCL, GATM×2, NCPL-2024, GCIL-2025) + HINOON ambiguous — flagged, excluded by default. A study wanting total-return-correct 2021+ prices for the liquid universe should read that artifact, not `prices_adjusted`.
+
 ---
 
 ### L-15 — No point-in-time universe; `stock_metadata` covers half the traded symbols (sharpens L-04)
@@ -157,6 +159,8 @@ Every quant platform has limitations. Acknowledging them honestly protects the i
 **Implication:** Every backtest that filters via `sectors` / `stock_metadata` silently excludes names that later delisted → systematic upward performance bias, worse at longer horizons. Cross-sectional studies (breadth, RS rank, "N above MA") run over a survivor-only, non-point-in-time population.
 
 **Scope:** All universe-filtered and cross-sectional studies. Production cross-ref: **TR-14**. Also memory `psx_db_schema_notes`.
+
+**Update 2026-09-09 (CA Pipeline Rebuild):** the CA pipeline's **expanded universe** (141 = 96 KSE-100 + 45 liquid non-members at a PKR 10 M/day median-turnover floor) removes the *index-committee selection* effect but **not** the *survived-to-today* effect — still not point-in-time. `ca_v2_reader` discloses this in every returned frame's `attrs`. Point-in-time membership reconstruction remains deferred (owner, pending a decision to buy historical index-membership data). Absolute-return / Sharpe figures from any study on that universe read optimistic; cross-sectional / relative findings are more robust.
 
 ---
 
@@ -169,6 +173,8 @@ Every quant platform has limitations. Acknowledging them honestly protects the i
 
 **Scope:** Any study spanning 2023→2024. Notes the 2020–2023 window is thinner than 2005–2019.
 
+**Update 2026-09-09 (CA Pipeline Rebuild):** independently confirmed while building the v2 artifacts — **10 current KSE-100 names have exactly 0 price rows across 2021-2023** (`BNWM, GADT, IBFL, JDWS, PGLC, PSX, SRVI, SSOM, YOUW, PAKT`; data 2005 → gap → resumes 2024). `ca_v2_reader` and the `l3_manifest` `NO — pre-2024 data gap` verdict both exclude them by default. This is a data-coverage fill job (another source for the 2020-2023 hole), **not** a corporate-action problem — out of scope for the CA pipeline.
+
 ---
 
 ## Tracking
@@ -176,6 +182,6 @@ Every quant platform has limitations. Acknowledging them honestly protects the i
 | ID | Added | Addressed By | Status |
 |---|---|---|---|
 | L-01 through L-13 | 2026-07-01 | — | Active |
-| L-14, L-15, L-16 | 2026-09-03 | `trading_edge_program` LOOP 000–007 (spec + pilot done; full remediation not started) | Active |
+| L-14, L-15, L-16 | 2026-09-03 | `trading_edge_program` LOOP 000–007 + CA Pipeline Rebuild `ca_pipeline_kse100_20260907` (2026-09-09: defensible 2021+ total-return for 84/96 KSE-100 / 123/141 liquid, standalone research artifact; not wired into production) | Active — partially mitigated for the liquid 2021+ universe |
 
 *Add new limitations here as they are discovered. Never remove a limitation; mark as "Resolved" with explanation if addressed.*
