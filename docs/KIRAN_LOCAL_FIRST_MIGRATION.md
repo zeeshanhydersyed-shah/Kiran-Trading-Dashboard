@@ -42,13 +42,15 @@ directories **as work completes** — never leave finished work only in chat.
 
 ## 1. STATUS AT A GLANCE
 
-**Overall: PHASE 0 — approved, not started.** No code written. No pipeline changed. The old
-dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is still the live system.
+**Overall: PHASE 0 complete — all §9 decisions resolved by the owner 2026-09-09; Phase 1
+authorized, not yet started.** No code written. No pipeline changed. The old dual pipeline
+(Task Scheduler + SQLite, GitHub Actions + Supabase) is still the live system. Phase 1 work
+begins only on the owner's explicit "start Phase 1" for a session.
 
 | # | Phase | Status | Since | Notes |
 |---|---|---|---|---|
-| 0 | Decision & planning | ✅ DONE | 2026-09-09 | Design approved in principle; this tracker + the ledger/register entries written |
-| 1 | Stand up the archive + execute SEQ-1 | ⬜ NOT STARTED | — | Bronze/Silver store from the current full history; immutable-baseline manifest (git + B2 object-lock); fold in the frozen DR-006 baseline + BI preservation set |
+| 0 | Decision & planning | ✅ DONE | 2026-09-09 | Design approved in principle; tracker + ledger/register entries written; **all 7 §9 decisions resolved by the owner 2026-09-09** |
+| 1 | Stand up the archive + execute SEQ-1 | ⬜ NOT STARTED (authorized) | — | Authorized 2026-09-09 (§9 D7) as an **immutable baseline-preservation operation only — no rehabilitation or mutation of the historical dataset**. Bronze/Silver store from the current full history; immutable-baseline manifest (git + B2 object-lock); fold in the frozen DR-006 baseline + BI preservation set. Not started — awaits owner's per-session "start Phase 1" |
 | 2 | Rework the scrape (GitHub Actions) | ⬜ NOT STARTED | — | New workflow: commit `YYYY-MM-DD.parquet` (immutable) + refresh `latest.parquet`. Old `daily_scraper.yml` keeps running in parallel until Phase 6 |
 | 3 | Build the Medallion transforms | ⬜ NOT STARTED | — | Bronze ingest (capture-file lineage), Silver (port CA + conforming; wire the v2 reader as an available source, gate off), Gold (2-yr slice, screeners, grading). Idempotency tests per transform |
 | 4 | Publication contract + atomic swap | ⬜ NOT STARTED | — | Four gates into the Gold build; `current_publication` with the full lineage block; staging-DB build + rename |
@@ -88,8 +90,10 @@ Trust Register amendment 2026-09-09).
 
 | Store | Holds | Written by | Read by | Engine |
 |---|---|---|---|---|
-| `prices_archive` | Bronze + Silver — full history 2005→now (~900 MB) | Scraper (append), Silver transform | Silver build, research, DR loops | DuckDB / Parquet |
-| `psx_serving` | Gold — 2-yr window + signals + grades (<200 MB) | Nightly Gold build (full replace, atomic swap) | Front end only | SQLite / DuckDB |
+| `prices_archive` | Bronze + Silver — full history 2005→now (~900 MB) | Scraper (append), Silver transform | Silver build, research, DR loops | DuckDB + Parquet |
+| `psx_serving` | Gold — 2-yr window + signals + grades (<200 MB) | Nightly Gold build (full replace, atomic swap) | Front end only | DuckDB |
+
+*Engine decided 2026-09-09 (§9 D1): **DuckDB across all three layers** (Bronze, Silver, Gold).*
 
 **Data flow:** GitHub Actions scrapes → commits `data/incoming/YYYY-MM-DD.parquet` (immutable,
 one per date) + refreshes `latest.parquet` → local pipeline `git pull` → append to Bronze
@@ -243,21 +247,52 @@ retained. A full rebuild of Supabase state from the archive is possible but is a
 
 ---
 
-## 9. Open owner decisions
+## 9. Owner decisions — ALL RESOLVED 2026-09-09
 
-| # | Decision | Recommendation | Resolved? |
+| # | Decision | Resolution (owner, 2026-09-09) | Resolved? |
 |---|---|---|---|
-| 1 | Serving engine for Gold | DuckDB across all three layers | ⬜ |
-| 2 | Front end serve mechanism | Pure static files + `http.server`; add a Flask API only if a page needs parameterized queries | ⬜ |
-| 3 | Fixed local pipeline schedule | Nightly Task Scheduler trigger at a set hour + catch-up-on-wake fallback | ⬜ |
-| 4 | Dated-capture retention | Prune to a `psx-data-archive` repo after ~90 days | ⬜ |
-| 5 | Q6 gate for v2 in the dashboard | Defer to a post-cutover follow-up, not coupled to the migration | ⬜ |
-| 6 | Front end scope at cutover | Two pages (Sector Grading, Explorer); the other 13 dropped, not ported | ⬜ |
-| 7 | SEQ-1 authorization | The migration executes the immutable-baseline build the DR program has had pending | ⬜ |
+| 1 | Serving engine for Gold | **DuckDB across all three layers** (Bronze, Silver, Gold) | ✅ |
+| 2 | Front end serve mechanism | **Static files + `http.server`** as the initial mechanism; an API added **only if a real requirement emerges** | ✅ |
+| 3 | Fixed local pipeline schedule | **Fixed nightly Task Scheduler trigger** with **explicit catch-up-on-wake** and **no-duplicate execution semantics** | ✅ |
+| 4 | Dated-capture retention | **Prune to `psx-data-archive` after ~90 days**, but only **after the archive is verified** — copy check + SHA-256 + retrieval test + manifest evidence — **before any prune** | ✅ |
+| 5 | Q6 gate for v2 in the dashboard | **Deferred until after the Kiran cutover** — not coupled to the migration | ✅ |
+| 6 | Front end scope at cutover | **Sector Grading + Explorer only**; the other 13 pages dropped, not ported | ✅ |
+| 7 | SEQ-1 authorization | **Authorized as an immutable baseline-preservation operation only.** Does **not** authorize any rehabilitation or mutation of the historical dataset | ✅ |
+
+**Binding conditions carried forward from the resolutions:**
+- **D3** — the scheduler design must guarantee a single execution per night: catch-up-on-wake
+  if the fixed trigger was missed, and a lock / already-ran guard so a wake catch-up plus a
+  later on-time trigger cannot both run the pipeline for the same date.
+- **D4** — pruning dated capture files to `psx-data-archive` is gated on a verification record
+  (byte copy check, SHA-256 match, a real retrieval from the archive, and a manifest) proving
+  every file to be pruned is safely preserved. No prune without that evidence.
+- **D7** — Phase 1 / SEQ-1 is **preservation only**: read the current full history, write an
+  immutable baseline (manifest + git + B2 object-lock), fold in the frozen DR-006 baseline and
+  the BI preservation set. It must not adjust, correct, re-scrape, or otherwise mutate any
+  historical row. Any rehabilitation of the substrate remains the separate DR program's work
+  under its own authorization.
 
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-09 (latest) — All 7 §9 decisions resolved by the owner
+The owner resolved every open decision in §9 in one pass:
+1. DuckDB serving engine across Bronze/Silver/Gold.
+2. Static files + `http.server` initially; API only if a real need appears.
+3. Fixed nightly Task Scheduler trigger, with explicit catch-up-on-wake and no-duplicate
+   execution semantics.
+4. Prune dated captures to `psx-data-archive` after ~90 days, but only after copy check +
+   SHA-256 + retrieval + manifest evidence proves preservation.
+5. Defer the Q6 / v2-in-dashboard gate until after the Kiran cutover.
+6. Cutover front end = Sector Grading + Explorer only; other 13 pages dropped.
+7. SEQ-1 authorized as an immutable baseline-**preservation** operation only — no
+   rehabilitation or mutation of the historical dataset.
+
+§9, §1, and §3 updated to record these. Phase 1 is now **authorized** but **not started** —
+per §0 it begins only on the owner's explicit "start Phase 1" for a session. Still no code
+written, no pipeline touched; the old dual pipeline is still the live system. This doc update
+committed to `origin/main` (doc-only). Next: owner says when to start Phase 1.
 
 ### 2026-09-09 (later) — Working protocol added; tracker on origin/main
 The decision docs were merged to `origin/main` via **PR #78** (squash, `9b0ef22`) —
