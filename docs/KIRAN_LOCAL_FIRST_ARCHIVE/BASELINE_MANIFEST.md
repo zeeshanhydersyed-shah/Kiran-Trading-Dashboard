@@ -1,8 +1,8 @@
 # Kiran Local-First Migration -- Immutable Baseline Manifest (SEQ-1)
 
-- **Generated:** 2026-09-09T22:05:59
+- **Generated:** 2026-09-09T22:24:38
 - **Archive root:** `D:\KIRAN_ARCHIVE` (off-repo; C: is space-constrained)
-- **Files:** 94 &nbsp;|&nbsp; **Total bytes:** 1,898,679,178
+- **Files:** 92 &nbsp;|&nbsp; **Total bytes:** 1,898,646,386
 - **Authorization:** `KIRAN_LOCAL_FIRST_MIGRATION` Phase 1 / DR-program SEQ-1. Owner decision D7 (2026-09-09): *preservation only* -- no historical row is mutated, corrected, or re-scraped.
 - **Machine-checkable copy:** `BASELINE_MANIFEST.sha256` (same directory).
 - **Verify:** `python -m archive.archive_manifest verify` (re-hashes every file under the archive root and compares).
@@ -13,7 +13,7 @@
 |---|---|---|---|
 | `STORE_MANIFEST.json` | Per-table row counts / column lists / per-file hashes for the Parquet store | 1 | 10,387 |
 | `backup_set` | Folded-in prior frozen artifacts: the DR-006 rehabilitation baseline and the 17-file BI source-preservation set | 21 | 969,487,591 |
-| `baseline` | Whole-DB immutable point-in-time snapshot of live `psx_data.db` (all 53 tables) captured via the SQLite Online Backup API + its capture report | 4 | 882,932,767 |
+| `baseline` | Whole-DB immutable point-in-time snapshot of live `psx_data.db` (all 53 tables) captured via the SQLite Online Backup API + its capture report | 2 | 882,899,975 |
 | `bronze` | Raw OHLCV substrate as Parquet (`prices`, `index_prices`), partitioned by year -- source of truth for price | 44 | 21,533,415 |
 | `silver` | CA-adjusted prices + universe as Parquet (`prices_adjusted`, `sectors`, `stock_metadata`), as-captured | 24 | 24,715,018 |
 
@@ -27,7 +27,7 @@
 ### `STORE_MANIFEST.json`
 
 ```
-757ea2792f64c4511cc8bac094068da2b2a0213b54bfddc1242e3735e66748ba  STORE_MANIFEST.json  (10,387 b)
+61e555bd8cc6aa820f5cd5267ff75467537117c9df16bad47c2b7439b0bd559d  STORE_MANIFEST.json  (10,387 b)
 ```
 
 ### `backup_set`
@@ -59,10 +59,8 @@ c03a393f44e4d3a73978784e8c47a0dc6729c2af8362377f7daee76859c9a8e0  backup_set/dr0
 ### `baseline`
 
 ```
-e6b30612f394a3c71e737b883bfe50cc7bf9a22a7cac6c18116a7c9d64aaff99  baseline/capture_report_20260909_215346.json  (3,103 b)
-21cf2e7f72e8f372428791d38e87c13f943bae5e8f208ba417d733ae09ebb6e7  baseline/psx_data_baseline_KIRAN_LFM_P1_20260909_215346.db  (882,896,896 b)
-fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb  baseline/psx_data_baseline_KIRAN_LFM_P1_20260909_215346.db-shm  (32,768 b)
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  baseline/psx_data_baseline_KIRAN_LFM_P1_20260909_215346.db-wal  (0 b)
+0d6f857d0fe3eea9a2c8069ffda504d31e6bba828657ae38267283e078b2b9ce  baseline/capture_report_20260909_222210.json  (3,079 b)
+9418cb1bf98c197550e02eae663f0ab870ccc93c967dfb743c221cd3d5f70d61  baseline/psx_data_baseline_KIRAN_LFM_P1_20260909_222210.db  (882,896,896 b)
 ```
 
 ### `bronze`

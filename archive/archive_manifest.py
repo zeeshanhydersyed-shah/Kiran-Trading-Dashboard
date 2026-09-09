@@ -34,9 +34,9 @@ MANIFEST_DIR = os.path.join(REPO_DIR, "docs", "KIRAN_LOCAL_FIRST_ARCHIVE")
 SHA_FILE = os.path.join(MANIFEST_DIR, "BASELINE_MANIFEST.sha256")
 MD_FILE = os.path.join(MANIFEST_DIR, "BASELINE_MANIFEST.md")
 
-# Directories / files under ARCHIVE_ROOT that are transient and not part of the
-# protected baseline (none right now -- listed for future use).
+# Transient / non-baseline paths under ARCHIVE_ROOT.
 EXCLUDE_DIRS = {".b2_cache", "restic-cache"}
+EXCLUDE_SUFFIXES = ("-wal", "-shm", "-journal", ".tmp")
 
 
 def sha256(path: str) -> str:
@@ -52,6 +52,8 @@ def walk_archive() -> list[str]:
     for root, dirs, files in os.walk(ARCHIVE_ROOT):
         dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
         for name in files:
+            if name.endswith(EXCLUDE_SUFFIXES):
+                continue
             full = os.path.join(root, name)
             rel = os.path.relpath(full, ARCHIVE_ROOT).replace("\\", "/")
             if rel in ("BASELINE_MANIFEST.sha256", "BASELINE_MANIFEST.md"):
