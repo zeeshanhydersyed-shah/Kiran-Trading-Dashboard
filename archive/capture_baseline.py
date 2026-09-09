@@ -95,8 +95,17 @@ def main() -> int:
     dst = sqlite3.connect(dest)
     with dst:
         src.backup(dst)
+    # The backup inherits the source's WAL journal mode; force the frozen
+    # artifact to be a single self-contained file (no -wal / -shm sidecars,
+    # which are transient and would otherwise churn the manifest).
+    dst.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    dst.execute("PRAGMA journal_mode=DELETE")
     dst.close()
     src.close()
+    for side in ("-wal", "-shm"):
+        p = dest + side
+        if os.path.exists(p):
+            os.remove(p)
     print(f"[{dt.datetime.now():%H:%M:%S}] captured -> {dest}")
 
     live_hash_after = sha256(LIVE_DB)
