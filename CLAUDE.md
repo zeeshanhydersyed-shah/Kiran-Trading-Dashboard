@@ -1,44 +1,46 @@
 # Kiran PSX Trading Dashboard — Project Reference
 
-## ⚠ Production architecture — FINAL DECISION (2026-08-26): Postgres/Supabase is authoritative
+## ⚠ Production architecture — DECISION (2026-09-09): LOCAL-FIRST. The Windows machine is authoritative.
 
-**This supersedes every earlier note in this file suggesting the architecture was undecided,
-SQLite-only, or "design only, not yet authorized."** As of 2026-08-26, the decision is made:
-**Postgres/Supabase is the long-term authoritative production backend.** Local SQLite is being
-transitioned to a **read-only, one-way-fed mirror** — it no longer independently computes
-production signals once this transition is complete (TR-01; the Trust Gap Register is kept in
-local project notes, not in this repo). This is a decision, not yet a completed migration — the
-internal cloud-reliability scoping notes (local) hold the realistic effort estimate, and
-`docs/KIRAN_CLEANUP_AUDIT.md` §63+ covers repair work already executed under this direction (the
-TR-13 `boring_signals` rebuild).
+**This supersedes the 2026-08-26 "Postgres/Supabase is authoritative" decision and every
+earlier note in this file about the architecture.** As of 2026-09-09 the owner has approved,
+**in principle**, a migration to a **local-first architecture**:
 
-**Background, unchanged from the original finding:** `docs/KIRAN_CLEANUP_AUDIT.md` §33-40
-documents the forensic + architecture review (2026-08-21) that led to this decision. Headline
-finding: Kiran ran as two fully independent production pipelines — local Task Scheduler (SQLite)
-and GitHub Actions cron (Postgres) — computing nearly every signal table twice with no
-reconciliation, causing confirmed real incidents (the PRL signal never reaching production, a
-`prices_adjusted` gap on each backend independently, signal disagreements between backends).
-Full reliability contract (MANDATORY-vs-degraded tables, a `production_state` publication marker,
-freshness rules, watchdog/alerting design) is in §39; the 8-phase migration + exact go/no-go
-cutover criteria + rollback plan is in §40. **The decision to proceed with this direction has been
-made; most of §39-40's implementation has NOT been executed yet** — check the internal Trust Gap
-Register (local project notes) for exactly what's closed vs. still open before assuming any
-specific reliability guarantee already holds.
+- The **Windows machine is the single authoritative backend**, running a **Medallion pipeline**
+  (Bronze → Silver → Gold) once a night on a fixed schedule.
+- **GitHub Actions keeps only the daily scrape**, committing raw data to the repo as dated,
+  immutable `data/incoming/YYYY-MM-DD.parquet` capture files (+ a rolling `latest.parquet`).
+- **Supabase and Streamlit Cloud are retired.** The dashboard becomes a **static two-page site**
+  (Sector Grading, Explorer) reading precomputed JSON — it computes nothing on load.
+- The **SQLite compute path is deleted**, not mirrored — `_pg` branches, `database_pg.py`,
+  `dashboard_pg.py`, and the stale `main_backup_e8*.py` copies all go at cutover.
+- The Data Rehabilitation program's **CA v2 substrate** (`ca_pipeline_kse100_20260907/`) becomes
+  a named **Silver-layer input** — research reads it now; the dashboard reads it only behind a
+  separate gate (TR-19 graded, shadow comparison, coverage decision).
+
+**► The plan and live status tracker is [`docs/KIRAN_LOCAL_FIRST_MIGRATION.md`](KIRAN_LOCAL_FIRST_MIGRATION.md).**
+Check its §1 phase table for what is done / ongoing / pending. **State 2026-09-09: PHASE 0 —
+approved, not started. No code written. The old dual pipeline is still the live system.**
+Decision record: `docs/KIRAN_CLEANUP_AUDIT.md` §117. Per-row Trust Register impact: Amendment
+Log 2026-09-09 (LOCAL — not committed).
+
+**Background, unchanged:** `docs/KIRAN_CLEANUP_AUDIT.md` §33-40 documents the forensic review
+(2026-08-21). Headline finding: Kiran ran as **two fully independent production pipelines** —
+local Task Scheduler (SQLite) and GitHub Actions cron (Postgres) — computing nearly every
+signal table twice with no reconciliation, causing confirmed real incidents. §39 is the
+reliability contract; §40 the 8-phase migration + cutover criteria. The local-first plan
+**reworks §39-40 for a local backend** rather than a cloud one — the fix direction is reversed,
+the failure analysis stands. Most of §39-40's implementation is still not executed — the
+migration tracker (above) is now the source of truth for what is built vs. open.
+
+**Verdict during the migration: unchanged — NOT VERIFIED — DO NOT TRADE** until the cutover
+gate passes and burn-in completes.
 
 **Before writing any new hook, backfill script, or `_pg`-suffixed function:** check whether it
-duplicates something already flagged in §37.B's table, and whether it needs its own `__main__`
-CLI entry at all — §40.1 catalogued ~60 directly-runnable scripts in this repo, including four
-full stale backup copies of `main.py` itself (`main_backup_e8*.py`) that can still write straight
-to production tables outside any pipeline path.
-
-**Consumer-authority progress (2026-09-03, ledger §114 / PR #72):** when `_PG_URL` is set (the
-deployed Streamlit Cloud app), `dashboard.py` no longer calls `init_db()` (schema/DDL is the
-pipeline's job — the restricted-role path can't `CREATE`/`ALTER`) and the sidebar "🔄 Refresh Data"
-button is replaced by a caption — it used to call `main.cmd_update()`, i.e. a full pipeline write
-to every MANDATORY table from the served surface (the OI-8 class). The GitHub Actions cron is the
-only writer. The local SQLite path is unchanged (button + `init_db()` still work there). The
-structural half — a restricted `kiran_dashboard` Postgres role + secret rotations — is drafted
-(`scratch_tr01_optionb_20260903/TR01_OPTION_B_DB_ROLE_DRAFT.md`) and awaiting owner sign-off.
+duplicates something already flagged in §37.B's table. Note that under the local-first plan the
+whole `_pg` surface is being *removed* — do not extend it. §40.1 catalogued ~60
+directly-runnable scripts including four stale `main_backup_e8*.py` copies (already archived,
+ledger §103) that could write straight to production outside any pipeline path.
 
 ## Operational workflow — three roles, do not blur them
 
