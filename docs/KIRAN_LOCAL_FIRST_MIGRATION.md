@@ -1,10 +1,11 @@
 # Kiran Local-First Migration — Plan & Live Status Tracker
 
-**This is the single document to check for what is done, ongoing, and pending on the
-local-first migration.** Update §1 (the phase table) and §10 (the running log) every time a
-phase or task changes state — same discipline as `MAINTENANCE_LOG.md` and the Trust Register.
+**This is the SINGLE SOURCE OF TRUTH for what is done, ongoing, and pending on the local-first
+migration.** Progress is tracked here and nowhere else — code detail lives in PRs, DB
+operations in `MAINTENANCE_LOG.md`, but the *state of the migration* is §1 + §10 of this file.
 
-- **Decision status:** approved in principle by the owner, 2026-09-09.
+- **Decision status:** approved in principle by the owner, 2026-09-09. On `origin/main` since
+  PR #78 (`9b0ef22`).
 - **Full design:** the reviewed architecture document (artifact, private) — see §11. This file
   carries a working summary (§3–§4) so the repo is self-contained.
 - **Governance:** the three-roles model and Production-Write Discipline are unchanged. Every
@@ -12,6 +13,30 @@ phase or task changes state — same discipline as `MAINTENANCE_LOG.md` and the 
   re-verification.
 - **Verdict during the migration:** unchanged — **NOT VERIFIED — DO NOT TRADE** until the
   cutover gate (§6) passes and the burn-in completes.
+
+---
+
+## 0. WORKING PROTOCOL (read first, every session)
+
+**Trigger phrase.** A session that opens with **`KIRAN_LOCAL_FIRST_MIGRATION`** means: resume
+this migration. Read this document top to bottom — especially §1 (the phase table) and §10 (the
+running log) — confirm the current state, then wait for the owner's specific instruction for
+the session. Do not auto-start a phase.
+
+**Session reset.** The chat context is cleared after each completed task. Nothing carries over
+except what is written to project files. Treat every session as starting cold from this
+document.
+
+**Auto-save.** Write code, logs, tests, and artifacts to their real project files and
+directories **as work completes** — never leave finished work only in chat.
+
+**Keep this document current — before finishing ANY task:**
+1. Update **§1** (phase table) — status + date for every phase/task that changed state.
+2. Tick the relevant boxes in **§5** — only when the task is done **and verified**.
+3. Add a dated entry to **§10** (running log), newest first — what was done, what is next.
+4. **Commit the doc update to `origin/main`** (doc-only commit is fine; branch → push → PR →
+   merge on green CI, matching PR #78). An uncommitted tracker update is a lost tracker update
+   once the session resets.
 
 ---
 
@@ -233,6 +258,14 @@ retained. A full rebuild of Supabase state from the archive is possible but is a
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-09 (later) — Working protocol added; tracker on origin/main
+The decision docs were merged to `origin/main` via **PR #78** (squash, `9b0ef22`) —
+`CLAUDE.md`, `KIRAN_CLEANUP_AUDIT.md` §117, and this tracker. CI green (3/3). Owner then set
+the working protocol for this migration: trigger phrase `KIRAN_LOCAL_FIRST_MIGRATION`, chat
+context cleared after each task, this document is the single source of truth and must be
+committed current before any task finishes — captured as **§0** above. Still PHASE 0, no code.
+Next: owner resolves the §9 open decisions, then Phase 1 begins on authorization.
 
 ### 2026-09-09 — Design approved in principle; tracking set up
 Owner approved the local-first architecture in principle. This tracker created.
