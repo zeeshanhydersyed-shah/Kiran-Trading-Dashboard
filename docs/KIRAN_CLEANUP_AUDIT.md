@@ -7291,3 +7291,44 @@ Read-only diff of `psx_data.db` (local, full-history) prompted by the owner's ob
 Nothing executed. No acquisition, no rebuild. The `trading_edge_program` owns the remediation sequence; this entry's job was to confirm the defect from the `psx_pipeline` side, correct the local-vs-Postgres misconception, amend `Known_Limitations.md`, and wire the cross-links so a Kiran/production session finds the existing work.
 
 **Kiran production verdict unchanged: NOT VERIFIED — DO NOT TRADE** (this concerns the historical research dataset, not the live signal).
+
+---
+
+## 117. <span style="color:#16a34a;">● Architecture decision — LOCAL-FIRST. Owner approved in principle; the 2026-08-26 "Postgres/Supabase is authoritative" direction is reversed (2026-09-09)</span>
+
+**One-line:** after a strategic evaluation, the owner approved **in principle** a migration off the cloud to a **local-first Medallion architecture** — the Windows machine is the single authoritative backend, GitHub Actions is reduced to a scrape-only job, Supabase and Streamlit Cloud are retired, and the dashboard becomes a static two-page site. **No code written. No pipeline touched.** The old dual pipeline is still the live system.
+
+### 117.1 What was decided
+
+| | Before (2026-08-26) | After (2026-09-09) |
+|---|---|---|
+| Authoritative backend | Supabase Postgres (cloud) | **The Windows machine** |
+| Compute | GitHub Actions cron → Postgres; local SQLite as an intended read-only mirror | **One local Medallion pipeline** (Bronze → Silver → Gold), nightly, fixed schedule |
+| GitHub Actions | scrape + full signal compute + PG write, 5 cron slots | **scrape only** → commit `data/incoming/YYYY-MM-DD.parquet` (immutable) + `latest.parquet` |
+| Dashboard | Streamlit Cloud, 15 pages, reads Postgres | **static HTML/JS**, 2 pages (Sector Grading, Explorer), reads precomputed JSON, computes nothing on load |
+| SQLite compute path / `_pg` branches / `database_pg.py` / `main_backup_e8*.py` | kept | **deleted at cutover** |
+| CA v2 substrate (DR program) | not integrated | **named Silver-layer input** — research now; dashboard only behind a separate gate (TR-19 graded) |
+
+The forensic finding that motivated the whole Trust Register — **two fully independent production pipelines, computing every signal table twice, no reconciliation** (§33–§40) — is unchanged. The fix *direction* is reversed: collapse to **local**, not cloud. §39's reliability contract and §40's 8-phase migration are **reworked for a local backend**; the failure analysis stands.
+
+### 117.2 Why
+
+Documented in the reviewed design artifact (private; summarised in `docs/KIRAN_LOCAL_FIRST_MIGRATION.md` §3–§4). The short version: the friction the owner had been attributing to "the cloud" traces to (a) the dual pipeline and (b) piecemeal growth (15 pages, ~60 runnable scripts, `_pg` twins of ~13 functions). Neither is fixed by staying on the cloud or by a hosted DB. One backend, one pipeline, one direction of flow fixes both — and closes or simplifies most of the cutover-blocking register **by construction**: TR-01 closes; TR-04 / TR-06 / TR-08 / TR-16 / TR-17 materially simplify; TR-05 / TR-09 / TR-11 / TR-12 stay GREEN and get simpler; TR-07 / TR-18 shift (alerting moves to a local ntfy push + the existing healthchecks.io switch); TR-13 / TR-14 are backend-independent and unchanged.
+
+### 117.3 The seven design questions resolved before approval
+
+`ca_provenance` and a full lineage block on every `current_publication` row; a scoped definition of "verified publication" (verified *for the universe and CA provenance declared*, not globally); Bronze backups via the DR program's SEQ-1 (frozen baselines + `restic`/B2 object-lock + a scheduled restore drill, git-committed `MANIFEST.sha256`); offline resilience via permanent dated capture files (1-day/1-week automatic, 1-month = backfill from the dated files); DR coexistence preserved (read-only, `mode=ro&immutable=1`, Bronze append-only so any past DR loop is re-verifiable); authority is **scoped and declared** not global; `latest.parquet` overwrite fixed by the immutable per-date capture files. Full detail: design doc §9 / migration tracker §4.
+
+### 117.4 What changed in the repo this entry
+
+- **`CLAUDE.md`** — the "Production architecture" section rewritten (local-first; pointer to the migration tracker).
+- **`docs/KIRAN_LOCAL_FIRST_MIGRATION.md`** — **NEW.** The plan + the live status tracker (phase table, task checkboxes, running log). This is the single doc to check for migration progress.
+- **`docs/KIRAN_BORING_STATE_TRUST_REGISTER.md`** (LOCAL — not committed) — Amendment Log entry 2026-09-09 with the per-row impact. **No graded row's colour changed** — nothing is built.
+- **`DATA_REHABILITATION_PROGRAM.md`** (in `trading_edge_program/`) — cross-reference addendum.
+- **`RESEARCH_LOG.md`** — "Kiran Production Integrity Program" row updated + synced.
+
+### 117.5 Not done
+
+No code. No pipeline change. No DB write. No migration phase started. Awaiting the owner's resolution of the 7 open decisions (migration tracker §9), then Phase 1 begins on authorization.
+
+**Kiran production verdict unchanged: NOT VERIFIED — DO NOT TRADE** — and stays that way until the cutover gate (migration tracker §6) passes and burn-in completes.
