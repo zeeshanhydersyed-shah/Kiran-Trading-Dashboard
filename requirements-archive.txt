@@ -1,0 +1,13 @@
+# Kiran Local-First Migration -- archive / Medallion tooling deps.
+# Kept out of requirements.txt (Streamlit Cloud, being retired) and
+# requirements-dev.txt (CI). Install locally for archive work:
+#     pip install -r requirements-archive.txt
+#
+# pyarrow is already a transitive dep (pandas) and does the Parquet export.
+pyarrow>=17
+#
+# duckdb is the Phase 3 Medallion engine. NOTE 2026-09-09: no cp314 wheel yet
+# (this machine runs Python 3.14). Install becomes possible either when duckdb
+# ships a 3.14 wheel or the pipeline runs on a pinned 3.11/3.12 venv -- decision
+# for Phase 3. Phase 1's Parquet store is engine-neutral and does not need it.
+# duckdb>=1.1

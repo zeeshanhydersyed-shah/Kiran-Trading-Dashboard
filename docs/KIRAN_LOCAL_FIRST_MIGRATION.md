@@ -42,15 +42,18 @@ directories **as work completes** — never leave finished work only in chat.
 
 ## 1. STATUS AT A GLANCE
 
-**Overall: PHASE 0 complete — all §9 decisions resolved by the owner 2026-09-09; Phase 1
-authorized, not yet started.** No code written. No pipeline changed. The old dual pipeline
-(Task Scheduler + SQLite, GitHub Actions + Supabase) is still the live system. Phase 1 work
-begins only on the owner's explicit "start Phase 1" for a session.
+**Overall: PHASE 1 IN PROGRESS (started 2026-09-09).** The local archive is built and verified
+— the whole-DB immutable baseline, the Bronze/Silver Parquet store, the folded-in DR-006 + BI
+sets, and the git-committed manifest are done. Off-site (B2 Object Lock) + the widened restore
+drill are the remaining Phase 1 legs and are blocked on the owner creating an Object-Lock B2
+bucket + key. **The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
+still the live system and is untouched** — nothing built in Phase 1 writes to `psx_data.db` or
+changes the pipeline (D7: preservation only).
 
 | # | Phase | Status | Since | Notes |
 |---|---|---|---|---|
 | 0 | Decision & planning | ✅ DONE | 2026-09-09 | Design approved in principle; tracker + ledger/register entries written; **all 7 §9 decisions resolved by the owner 2026-09-09** |
-| 1 | Stand up the archive + execute SEQ-1 | ⬜ NOT STARTED (authorized) | — | Authorized 2026-09-09 (§9 D7) as an **immutable baseline-preservation operation only — no rehabilitation or mutation of the historical dataset**. Bronze/Silver store from the current full history; immutable-baseline manifest (git + B2 object-lock); fold in the frozen DR-006 baseline + BI preservation set. Not started — awaits owner's per-session "start Phase 1" |
+| 1 | Stand up the archive + execute SEQ-1 | 🔵 IN PROGRESS | 2026-09-09 | Archive root `D:\KIRAN_ARCHIVE\` (C: space-constrained). **DONE:** whole-DB baseline captured via SQLite Online Backup API (`psx_data_baseline_KIRAN_LFM_P1_20260909_215346.db`, SHA-256 `21cf2e7f…b6e7`, `integrity_check` ok, 53/53 table counts + all substrate date spans match live, live hash `6a3b974d…425b` unchanged before/after); Bronze/Silver Parquet store (`prices`/`index_prices`/`prices_adjusted` by year + `sectors`/`stock_metadata`, `SUM(volume)` reconciles exactly); DR-006 baseline (`c03a393f…`) + BI 17-file set folded into `backup_set/` and hash-verified; `BASELINE_MANIFEST.{md,sha256}` (94 files, 1.90 GB) committed to git; `archive.archive_checksum_check` written for Task Scheduler; tooling in `archive/` + `requirements-archive.txt`. **PENDING (blocked on owner):** B2 Object-Lock bucket + restricted key → push baseline off-site + set local files read-only; extend `restore_drill_b2.py` to the widened set + run the drill once to PASS. **NOTE:** `duckdb` has no cp314 wheel (this machine is Python 3.14) — the Parquet store is engine-neutral; the DuckDB attach layer is a Phase 3 item. |
 | 2 | Rework the scrape (GitHub Actions) | ⬜ NOT STARTED | — | New workflow: commit `YYYY-MM-DD.parquet` (immutable) + refresh `latest.parquet`. Old `daily_scraper.yml` keeps running in parallel until Phase 6 |
 | 3 | Build the Medallion transforms | ⬜ NOT STARTED | — | Bronze ingest (capture-file lineage), Silver (port CA + conforming; wire the v2 reader as an available source, gate off), Gold (2-yr slice, screeners, grading). Idempotency tests per transform |
 | 4 | Publication contract + atomic swap | ⬜ NOT STARTED | — | Four gates into the Gold build; `current_publication` with the full lineage block; staging-DB build + rename |
@@ -151,12 +154,12 @@ Check a box only when the task is done **and verified**. Each phase is independe
 revertible; the old pipeline stays live until Phase 6.
 
 ### Phase 1 — Archive + SEQ-1 baseline
-- [ ] Restore the current full history into a Bronze/Silver DuckDB + Parquet store
-- [ ] Verify row counts and date spans against the live `psx_data.db`
-- [ ] Build the immutable-baseline manifest (`BASELINE_MANIFEST.md` + `.sha256`), commit to git
-- [ ] Push to Backblaze B2 with object-lock; set local baseline files read-only
-- [ ] Fold in the frozen DR-006 baseline (`rehabilitation_baseline/…c03a393f…db`) and the BI preservation set (17 files) as backup-set members
-- [ ] Wire a scheduled checksum check + extend `restore_drill_b2.py` to the widened backup set; run the drill once, PASS
+- [x] Restore the current full history into a Bronze/Silver **Parquet** store *(DuckDB attach layer deferred to Phase 3 — no cp314 wheel; Parquet is engine-neutral)* — `archive/build_store.py`, 2026-09-09
+- [x] Verify row counts and date spans against the live `psx_data.db` — 53/53 table counts match, all substrate spans match, `integrity_check` ok, live SHA-256 unchanged before/after (`archive/capture_baseline.py` + `D:\KIRAN_ARCHIVE\baseline\capture_report_20260909_215346.json`)
+- [x] Build the immutable-baseline manifest (`BASELINE_MANIFEST.md` + `.sha256`), commit to git — `docs/KIRAN_LOCAL_FIRST_ARCHIVE/`, 94 files / 1.90 GB, `archive/archive_manifest.py`
+- [ ] Push to Backblaze B2 with object-lock; set local baseline files read-only — **blocked on owner: create an Object-Lock bucket + restricted key**
+- [x] Fold in the frozen DR-006 baseline (`c03a393f…`) and the BI preservation set (17 files) as backup-set members — copied to `D:\KIRAN_ARCHIVE\backup_set\`, DR-006 `.db` hash matches, BI 17/17 match `PRESERVATION_MANIFEST.sha256`
+- [~] Wire a scheduled checksum check + extend `restore_drill_b2.py` to the widened backup set; run the drill once, PASS — **checksum check done** (`archive/archive_checksum_check.py`, for Task Scheduler `KIRAN_Archive_Checksum`); `restore_drill_b2.py` extension + the drill run are **blocked on the B2 push**
 
 ### Phase 2 — Rework the scrape
 - [ ] New GitHub Actions workflow: fetch → commit `data/incoming/YYYY-MM-DD.parquet` + refresh `latest.parquet`
@@ -276,7 +279,21 @@ retained. A full rebuild of Supabase state from the archive is possible but is a
 
 ## 10. Running log (newest first)
 
-### 2026-09-09 (latest) — All 7 §9 decisions resolved by the owner
+### 2026-09-09 (latest) — Phase 1 started: local archive built + verified; off-site is the open leg
+Owner said "start phase 1" and approved the recon plan (decisions A–E: archive on `D:\KIRAN_ARCHIVE\`;
+whole-DB baseline **plus** derived Bronze/Silver Parquet; new Object-Lock B2 bucket, direct upload
+not restic; `requirements-archive.txt`; trigger-based quiescence, non-elevated).
+
+Executed, all read-only against `psx_data.db` (SHA-256 `6a3b974d…425b`, unchanged before and after):
+- **Whole-DB immutable baseline** — SQLite Online Backup API → `D:\KIRAN_ARCHIVE\baseline\psx_data_baseline_KIRAN_LFM_P1_20260909_215346.db` (882,896,896 b, SHA-256 `21cf2e7f…b6e7`). `PRAGMA integrity_check` = ok. All 53 table counts and every substrate date span (`prices`/`prices_adjusted`/`index_prices` → 2005-01-03…2026-09-08, etc.) match live. Quiescence: no pipeline writer running, `PSX_TaskScheduler` logon-trigger-only with empty NextRunTime, last run 2026-09-08 complete, no WAL/SHM present.
+- **Bronze/Silver Parquet store** — `bronze/prices` + `bronze/index_prices` + `silver/prices_adjusted` (year= partitions) + `silver/sectors` + `silver/stock_metadata`, built from the frozen `.db`, deterministic. `SUM(volume)` over `prices` reconciles exactly to the DB (1,545,422,618,131). Indicator tables intentionally not exported — they live in the whole-DB baseline and get rebuilt in Phase 3.
+- **Folded-in members** — DR-006 rehabilitation baseline (`.db` SHA-256 `c03a393f…a8e0`, matches the tracker) and the DR-003 BI 17-file preservation set (re-verified 17/17 against its own `PRESERVATION_MANIFEST.sha256`) copied into `D:\KIRAN_ARCHIVE\backup_set\`. Canonical originals left in place.
+- **Manifest** — `docs/KIRAN_LOCAL_FIRST_ARCHIVE/BASELINE_MANIFEST.{sha256,md}` (94 files, 1,898,679,178 b), committed to git. `python -m archive.archive_manifest verify` = PASS. Scheduled-check wrapper `archive/archive_checksum_check.py` written (Task Scheduler `KIRAN_Archive_Checksum`, weekly, ntfy on drift — not yet registered).
+- Repo test gate: `pytest` 437 passed. Nothing in `archive/` is imported by production code.
+
+**Two Phase 1 legs remain, both blocked on the owner:** (1) create a **Backblaze B2 bucket with Object Lock enabled** + a restricted app key scoped to it (local env vars — Claude never sees the key); then Claude pushes the baseline + manifest off-site with a retention date and sets the local archive files read-only. (2) extend `restore_drill_b2.py` to the widened backup set and run the drill once to PASS — needs (1) done first. Also flagged: the `loop_dr_006/` capture report is stale (says "no baseline captured" — a later elevated attempt succeeded); worth a corrective note in the DR program.
+
+### 2026-09-09 — All 7 §9 decisions resolved by the owner
 The owner resolved every open decision in §9 in one pass:
 1. DuckDB serving engine across Bronze/Silver/Gold.
 2. Static files + `http.server` initially; API only if a real need appears.
