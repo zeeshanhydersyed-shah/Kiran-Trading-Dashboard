@@ -29,6 +29,50 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-09-09 — Cloud app down ~2 days: "Error installing requirements" (fixed by PR #75, then reboot)
+- **What:** The Streamlit Cloud app had been failing for ~2 days with "Error
+  installing requirements" / "Oh no. Error running app." Investigated
+  read-only, then shipped the one-line fix as **PR #75** (`git rm
+  packages.txt`, merged to `main` `87e43e3`) and rebooted the Cloud app.
+- **Root cause:** Streamlit Cloud moved its build base image to Debian 13
+  "trixie" but the image's apt sources still carry a Debian 11
+  "bullseye-security" entry. Debian 11 reached end-of-life 2026-08-31, so its
+  `InRelease` file is now expired and `apt-get update` exits non-zero. Cloud
+  only ran that apt step because the repo shipped a `packages.txt`
+  (`chromium`). Calendar-triggered, not a code change — `main` was unchanged
+  since Sept 3; a routine Cloud auto-reboot is what surfaced it. Build log:
+  `E: Release file for .../bullseye-security/InRelease is expired` →
+  `installer returned a non-zero exit code`.
+- **Why `chromium` was safe to drop:** `dashboard.py`/`dashboard_pg.py` never
+  import `page_flows`; `playwright` is not in `requirements.txt` (moved to
+  `requirements-optional.txt` 2026-08-12) so chromium was unusable on Cloud
+  anyway; `scrape_flows_today()` runs only in `main.py`'s daily hook, which
+  executes in GitHub Actions (`daily_scraper.yml` does its own `playwright
+  install chromium --with-deps`), never on the serving app, and is
+  try/except-wrapped. Removing `packages.txt` makes Cloud skip apt entirely.
+- **Not the cause (ruled out):** Supabase healthy (all MANDATORY tables at
+  `2026-09-08`, connects in ~1s); `daily_scraper.yml` succeeding (one
+  transient ksestocks 525 on 09-08 17:57 self-recovered); local
+  `streamlit run dashboard.py` boots and renders fine.
+- **DB writes:** none — investigation was read-only; the fix is repo-only.
+- **Verification:** CI green on PR #75 (clean install 3.11 / unit tests / app
+  boot). Cloud rebuild at `10:47:52 UTC` after the merge: `📦 Processing
+  dependencies...` went straight to `uv pip install` with **no apt step at
+  all** (packages.txt gone → apt skipped) → 47 packages installed on Python
+  3.11.16 (streamlit 1.39.1, numpy 1.26.4, pandas 2.3.3, all pins) →
+  `📦 Processed dependencies!` → `🔄 Updated app!`. Dashboard renders live —
+  Market Gates, sidebar "DATA CURRENT 2026-09-08", data status populated.
+- **Pre-existing issues still visible in the Cloud log (NOT caused by this
+  fix, NOT addressed here):** (1) `Could not read capital from DB:
+  'psycopg2.extensions.connection' object has no attribute 'execute'` →
+  `ERROR No capital source available` — the DB fallback for reading capital
+  calls `.execute()` on a connection instead of a cursor, so on Cloud (no
+  Excel journal) the Kelly/Portfolio capital figure has no source. Real bug,
+  separate task. (2) `kelly.py:269` pandas/SQLAlchemy `UserWarning` —
+  cosmetic.
+- **By:** Claude Code, owner-approved ("create the branch and PR" / "merge it
+  once CI passes").
+
 ### 2026-09-02 — TR-01 shadow-mode Component A: `current_publication.coherence` column added, both backends
 - **What:** Added the additive nullable `coherence TEXT` column to `current_publication` on **live Supabase** (`ALTER TABLE current_publication ADD COLUMN IF NOT EXISTS coherence TEXT`, via `scratch_shadowmode_20260902/alter_coherence_pg.py`: backup → dry-run [txn + ROLLBACK] → `--apply` [commit] → independent fresh-connection verify → re-ran the shipped `ensure_current_publication_pg()` to confirm it is now a clean idempotent no-op). On **local SQLite** (`psx_data.db`): the `current_publication` table did **not exist yet** (it is created lazily by `decide_and_record_publication()`, and every recent local pipeline run took the "already up to date" path — the earlier §108 note "SQLite side already live since PR #60" was the *code*, not the live table). Ran the shipped `ensure_current_publication_sqlite()` once against the live DB, which created the table fresh from the updated DDL, so it is born **with** the `coherence` column.
 - **Why:** Component A of the approved shadow-mode spec (`SHADOWMODE_SPEC_DRAFT.md`, ledger §110, OI-13). Shadow mode's per-session comparison needs a trustworthy "this session is safe to compare against" marker; `coherence` records whether `prices`/`prices_adjusted`/`stock_signals`/`sector_signals` all carry the same session date. Held for explicit owner sign-off before merging PR #67 (OI-9 precedent).
