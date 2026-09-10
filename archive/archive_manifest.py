@@ -39,6 +39,12 @@ MD_FILE = os.path.join(MANIFEST_DIR, "BASELINE_MANIFEST.md")
 EXCLUDE_SUFFIXES = ("-wal", "-shm", "-journal", ".tmp", ".log")
 EXCLUDE_EXACT = {"BASELINE_MANIFEST.sha256", "BASELINE_MANIFEST.md",
                  "OFFSITE_MANIFEST.json"}
+# Top-level trees that are the LIVE Medallion store, not the frozen SEQ-1
+# baseline: the data-captures git clone (Phase 2) and the evolving Bronze/Silver/
+# Gold stores (Phase 3). They have their own backup regime (nightly restic, Q3);
+# the baseline manifest deliberately covers only the immutable preservation set.
+# See docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md.
+EXCLUDE_TOPLEVEL = {"data-captures", "prices_archive", "psx_serving"}
 
 
 def sha256(path: str) -> str:
@@ -53,6 +59,8 @@ def walk_archive() -> list[str]:
     out = []
     for root, dirs, files in os.walk(ARCHIVE_ROOT):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
+        if os.path.abspath(root) == os.path.abspath(ARCHIVE_ROOT):
+            dirs[:] = [d for d in dirs if d not in EXCLUDE_TOPLEVEL]
         for name in files:
             if name.endswith(EXCLUDE_SUFFIXES) or name.startswith("."):
                 continue
