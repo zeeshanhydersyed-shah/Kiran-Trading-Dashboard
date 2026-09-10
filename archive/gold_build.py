@@ -202,7 +202,17 @@ def build_stock_signals(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
     deep_from = (dt.date.fromisoformat(warmup_from)
                  - dt.timedelta(days=_SS_LOOKBACK_CAL_DAYS)).isoformat()
 
-    symbol_sector = ss._load_universe(gcon)
+    # ss._load_universe() is `SELECT symbol, sector FROM stock_metadata` with NO
+    # EXCLUDED_SECTORS filter -- it relied on stock_metadata only ever holding
+    # tradeable symbols. Since 2026-08-03 the live stock_metadata carries ~150
+    # preserved excluded-sector rows, so live stock_signals now ranks untradeable
+    # stocks (KIRAN_CLEANUP_AUDIT.md §118). Gold conforms the universe the way
+    # every downstream consumer already does (processor.py / signal_engine.py /
+    # boring_signals.py): drop config.EXCLUDED_SECTORS + non-equity here.
+    import config
+    symbol_sector = {s: sec for s, sec in ss._load_universe(gcon).items()
+                     if sec not in config.EXCLUDED_SECTORS
+                     and not config.is_non_equity_symbol(s)}
     syms = set(symbol_sector)
 
     kse_list = ss._load_kse100(gcon, deep_from, end_date)
@@ -330,18 +340,19 @@ _SS_LOOKBACK_FLAGS = ["stage2_bull", "close_above_ema50", "ema50_slope_pos",
 def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> dict:
     """Compare Gold `stock_signals` to live `psx_data.db` on sample dates.
 
-    The two stores rank a different universe -- the live incremental pipeline
-    computed `stock_signals` for only ~290 symbols on every date through
-    2026-07-31 (jumping to ~425 on 2026-08-03), and live also carries
-    rank/score inconsistencies -- so an absolute-rank diff is meaningless.
+    The two stores rank a different universe -- Gold drops
+    `config.EXCLUDED_SECTORS` (which live has ranked since 2026-08-03, §118
+    Defect A), and live carries `recompute_symbol_signals` rank corruption on
+    MTL/PIAB (§118 Defect B) -- so an absolute-rank diff is meaningless.
     What actually tests the PORT:
 
       * `rs_score_20` (per-symbol RS vs KSE-100 -- population-independent) MUST
         be exact among the symbols present in BOTH stores;
-      * the other population-independent columns (`base_tightness`, `pivot_*`,
-        `bos_flag`, EMA-stack flags, ...) MUST be exact among shared symbols,
-        bar `NULL`-vs-value where Gold's load is shallower for a thin name;
-      * `only_live` MUST be empty (Gold is a superset);
+      * the hard population-independent columns (`base_tightness`, `pivot_*`,
+        `bos_flag`, `avg_vol_10d`, `vol_contraction`) MUST be exact among shared
+        symbols;
+      * **genuine** `only_live` MUST be empty -- `only_live` entries in an
+        EXCLUDED sector are EXPECTED (Gold correctly drops them);
       * Gold's OWN ranks must be self-consistent (monotonic in `rs_score_20`).
 
     Everything else -- the shared-symbol rank *order* differing from live,
@@ -384,7 +395,13 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
         flag_gold_null_total = 0
         flag_both_valued_total = 0
         gold_self_inconsistent_total = 0
-        only_live_total = 0
+        only_live_genuine_total = 0
+        live_excluded_sector_total = 0
+        try:
+            import config as _cfg
+            _excl = set(_cfg.EXCLUDED_SECTORS)
+        except Exception:
+            _excl = set()
         for d in samples:
             g = {r[ci["symbol"]]: r for r in gcon.execute(
                 f"SELECT {sel} FROM stock_signals WHERE date = ?", (d,)).fetchall()}
@@ -392,8 +409,13 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
                 f"SELECT {sel} FROM stock_signals WHERE date = ?", (d,)).fetchall()}
             shared = sorted((set(g) & set(lv)) - _SS_KNOWN_SILVER_RESIDUAL)
             only_gold = sorted(set(g) - set(lv) - _SS_KNOWN_SILVER_RESIDUAL)
-            only_live = sorted(set(lv) - set(g) - _SS_KNOWN_SILVER_RESIDUAL)
-            only_live_total += len(only_live)
+            only_live_all = sorted(set(lv) - set(g) - _SS_KNOWN_SILVER_RESIDUAL)
+            # §118 Defect A: live ranks EXCLUDED_SECTORS since 2026-08-03; Gold
+            # correctly drops them -> those `only_live` entries are EXPECTED.
+            live_excluded = [s for s in only_live_all if sec_of.get(s) in _excl]
+            only_live = [s for s in only_live_all if sec_of.get(s) not in _excl]
+            only_live_genuine_total += len(only_live)
+            live_excluded_sector_total += len(live_excluded)
 
             rs_score_mm = [s for s in shared
                            if abs((g[s][ci["rs_score_20"]] or 0) - (lv[s][ci["rs_score_20"]] or 0)) > 1e-6]
@@ -439,7 +461,9 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
                 "shared_symbols": len(shared),
                 "rs_score_20_exact": not rs_score_mm, "rs_score_20_mismatch": rs_score_mm[:10],
                 "only_gold_n": len(only_gold), "only_gold_sample": only_gold[:12],
-                "only_live_n": len(only_live), "only_live_sample": only_live[:12],
+                "only_live_genuine_n": len(only_live), "only_live_genuine_sample": only_live[:12],
+                "live_excluded_sector_n": len(live_excluded),
+                "live_excluded_sector_sample": live_excluded[:12],
                 "hard_columns_exact": not hard,
                 "hard_diff_n": len(hard), "hard_diff_sample": hard[:12],
                 "lookback_flag_flips": len(flag_flips),
@@ -458,7 +482,7 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
         # RAM/runtime trade-off on this box, not a logic diff -- so they are
         # reported (`lookback_flag_residual`), not failed. Set
         # KIRAN_SS_LOOKBACK_DAYS higher on adequate hardware for byte parity.
-        clean = (only_live_total == 0 and rs_score_mismatch_total == 0
+        clean = (only_live_genuine_total == 0 and rs_score_mismatch_total == 0
                  and hard_mismatch_total == 0 and gold_self_inconsistent_total == 0)
         return {
             "status": "clean" if clean else "residual",
@@ -467,6 +491,12 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
                 "both_valued": flag_both_valued_total,
                 "note": "EMA-stack flags on thin names; load-depth artifact, raise KIRAN_SS_LOOKBACK_DAYS",
             },
+            "live_excluded_sector_ranked": {
+                "total": live_excluded_sector_total,
+                "note": ("§118 Defect A: live ranks config.EXCLUDED_SECTORS since 2026-08-03; "
+                         "Gold drops them (matches processor.py / signal_engine.py). Expected, "
+                         "not a residual."),
+            },
             "sample_dates": samples, "window": [gmin, gmax],
             "rs_score_20_mismatch_total": rs_score_mismatch_total,
             "hard_column_mismatch_total": hard_mismatch_total,
@@ -474,7 +504,7 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
             "flag_gold_null_total": flag_gold_null_total,
             "flag_both_valued_total": flag_both_valued_total,
             "gold_rank_self_inconsistencies_total": gold_self_inconsistent_total,
-            "only_live_total": only_live_total,
+            "only_live_genuine_total": only_live_genuine_total,
             "ss_lookback_cal_days": _SS_LOOKBACK_CAL_DAYS,
             "excluded": sorted(_SS_KNOWN_SILVER_RESIDUAL),
             "verdict": ("Port faithful iff: `rs_score_20` exact + hard columns "
@@ -488,15 +518,18 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
                         "2015 floor. Raise KIRAN_SS_LOOKBACK_DAYS on a box with the RAM for "
                         "byte parity on those. Rank-order vs live + `live_rank_self_"
                         "inconsistencies` are LIVE defects -- see `finding`."),
-            "finding": ("Live `stock_signals` has TWO defects Gold fixes by construction: "
-                        "(1) UNIVERSE TRUNCATION -- live ranked ~290 symbols on every date "
-                        "through 2026-07-31, then ~425 from 2026-08-03 (a forward-only "
-                        "backfill), so every pre-2026-08-03 rank was over a ~32%-smaller "
-                        "population; (2) RANK/SCORE INCONSISTENCY -- e.g. MTL 2025-09-08 has "
-                        "live `rs_rank=1` with `rs_score_20=-6.06` (bottom-tier). Gold "
-                        "recomputes the full Silver universe with self-consistent ranks. "
-                        "`rs_score_20` (per-symbol vs KSE-100) matches live EXACTLY. "
-                        "See docs/KIRAN_CLEANUP_AUDIT.md."),
+            "finding": ("Live `stock_signals` has TWO defects Gold fixes (KIRAN_CLEANUP_AUDIT.md "
+                        "§118): (A) EXCLUDED-SECTOR POLLUTION -- `_load_universe` has no "
+                        "config.EXCLUDED_SECTORS filter; live's stock_metadata gained ~150 "
+                        "preserved excluded-sector rows on 2026-08-03, so live has ranked ~128 "
+                        "untradeable stocks (sugar / textiles / modarabas / small inv banks / "
+                        "closed-end funds) since then. Gold drops them (matches processor.py / "
+                        "signal_engine.py / boring_signals.py). (B) `recompute_symbol_signals` "
+                        "RANK CORRUPTION -- it recomputes one symbol with a single-symbol "
+                        "universe and writes rs_rank=1 for that symbol's whole history: MTL "
+                        "(5194 rows) + PIAB (51 rows). Gold recomputes over one universe -> "
+                        "self-consistent ranks. `rs_score_20` (per-symbol vs KSE-100) matches "
+                        "live EXACTLY throughout."),
             "per_date": per_date,
         }
     finally:
