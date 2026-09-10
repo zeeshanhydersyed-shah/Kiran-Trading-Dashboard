@@ -5,6 +5,11 @@
 #
 # pyarrow is already a transitive dep (pandas) and does the Parquet export.
 pyarrow>=17
+# boto3 -- S3-compatible client for the Backblaze B2 Object-Lock push
+# (archive/offsite_push.py, archive/restore_drill_archive.py). Pure Python,
+# wheels for 3.14. Not in requirements.txt: the retired Streamlit Cloud app
+# never touches B2.
+boto3>=1.35
 #
 # duckdb is the Phase 3 Medallion engine. NOTE 2026-09-09: no cp314 wheel yet
 # (this machine runs Python 3.14). Install becomes possible either when duckdb

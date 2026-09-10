@@ -19,8 +19,10 @@ earlier note in this file about the architecture.** As of 2026-09-09 the owner h
   separate gate (TR-19 graded, shadow comparison, coverage decision).
 
 **► The plan and live status tracker is [`docs/KIRAN_LOCAL_FIRST_MIGRATION.md`](KIRAN_LOCAL_FIRST_MIGRATION.md).**
-Check its §1 phase table for what is done / ongoing / pending. **State 2026-09-09: PHASE 0 —
-approved, not started. No code written. The old dual pipeline is still the live system.**
+Check its §1 phase table for what is done / ongoing / pending. **State 2026-09-10: PHASE 1
+COMPLETE** (immutable baseline built, verified, git-manifested, copied off-site under B2
+COMPLIANCE Object-Lock, restore drill PASS). **Phase 2 not started** — begins only on an explicit
+"start Phase 2". The old dual pipeline is still the live system and was not touched.
 Decision record: `docs/KIRAN_CLEANUP_AUDIT.md` §117. Per-row Trust Register impact: Amendment
 Log 2026-09-09 (LOCAL — not committed).
 

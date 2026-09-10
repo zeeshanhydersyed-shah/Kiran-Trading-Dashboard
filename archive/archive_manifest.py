@@ -34,9 +34,11 @@ MANIFEST_DIR = os.path.join(REPO_DIR, "docs", "KIRAN_LOCAL_FIRST_ARCHIVE")
 SHA_FILE = os.path.join(MANIFEST_DIR, "BASELINE_MANIFEST.sha256")
 MD_FILE = os.path.join(MANIFEST_DIR, "BASELINE_MANIFEST.md")
 
-# Transient / non-baseline paths under ARCHIVE_ROOT.
-EXCLUDE_DIRS = {".b2_cache", "restic-cache"}
-EXCLUDE_SUFFIXES = ("-wal", "-shm", "-journal", ".tmp")
+# Transient / non-baseline paths under ARCHIVE_ROOT (dot-dirs and dot-files are
+# excluded wholesale -- .offsite_state/, .offsite_push.log, etc.).
+EXCLUDE_SUFFIXES = ("-wal", "-shm", "-journal", ".tmp", ".log")
+EXCLUDE_EXACT = {"BASELINE_MANIFEST.sha256", "BASELINE_MANIFEST.md",
+                 "OFFSITE_MANIFEST.json"}
 
 
 def sha256(path: str) -> str:
@@ -50,13 +52,13 @@ def sha256(path: str) -> str:
 def walk_archive() -> list[str]:
     out = []
     for root, dirs, files in os.walk(ARCHIVE_ROOT):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         for name in files:
-            if name.endswith(EXCLUDE_SUFFIXES):
+            if name.endswith(EXCLUDE_SUFFIXES) or name.startswith("."):
                 continue
             full = os.path.join(root, name)
             rel = os.path.relpath(full, ARCHIVE_ROOT).replace("\\", "/")
-            if rel in ("BASELINE_MANIFEST.sha256", "BASELINE_MANIFEST.md"):
+            if rel in EXCLUDE_EXACT:
                 continue
             out.append(rel)
     return sorted(out)
@@ -168,11 +170,31 @@ def cmd_verify() -> int:
     return 0 if ok else 1
 
 
+def cmd_protect(readonly: bool) -> int:
+    """Set (or clear) the read-only bit on every baseline payload file, so
+    nothing modifies the archive in place. Operational metadata
+    (OFFSITE_MANIFEST.json, .offsite_state/) is left writable -- walk_archive()
+    already excludes it."""
+    import stat
+    n = 0
+    for rel in walk_archive():
+        p = os.path.join(ARCHIVE_ROOT, rel.replace("/", os.sep))
+        cur = os.stat(p).st_mode
+        os.chmod(p, (cur & ~0o222) if readonly else (cur | 0o200))
+        n += 1
+    print(f"{'read-only' if readonly else 'writable'} set on {n} files under {ARCHIVE_ROOT}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("mode", choices=["generate", "verify"])
+    ap.add_argument("mode", choices=["generate", "verify", "protect", "unprotect"])
     args = ap.parse_args()
-    return cmd_generate() if args.mode == "generate" else cmd_verify()
+    if args.mode == "generate":
+        return cmd_generate()
+    if args.mode == "verify":
+        return cmd_verify()
+    return cmd_protect(readonly=(args.mode == "protect"))
 
 
 if __name__ == "__main__":
