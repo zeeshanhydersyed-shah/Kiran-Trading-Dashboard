@@ -89,18 +89,73 @@ log appends, and leaves every Parquet file byte-identical. Tested.
 read-only) and never touches Supabase or `daily_scraper.yml`. It is a pure
 function of (frozen seed + capture files).
 
-## Tasks 3.2 / 3.3
+## Task 3.2 — Silver build (`archive/silver_build.py`)
 
-Stubs here so the cold-start protocol has the shape; detail lands with each PR.
+**Contract (tracker §5): port the corporate-action adjustment + universe-conforming
+logic; wire `ca_v2_reader` as an *available* source, gate off.**
 
-- **3.2 Silver** — `archive/silver_build.py`. Port `apply_price_adjustments.py`'s
-  corporate-action adjustment + universe-conforming (`config.py` filters) onto
-  Bronze via DuckDB → `prices_archive/silver/prices_adjusted/`. Wire
-  `ca_v2_reader.load_v2_prices` as an **available but gated-OFF** source
-  (`KIRAN_SILVER_CA_SOURCE=legacy|v2`, default `legacy`; the dashboard path is
-  untouched). Idempotency test.
-- **3.3 Gold** — `archive/gold_build.py`. 2-yr slice from Silver, run every
-  registered screener (`processor`, `weinstein`, `stock_signals`,
-  `sector_signals`, `boring_signals`, `leaders_scan`, recovery/portfolio), grade
-  every sector → `psx_serving/` (DuckDB) + JSON export. Staging build + atomic
-  swap. Idempotency test. Signal parity vs the live pipeline on a shared date.
+A full rebuild from the live Bronze store every run (Silver is disposable),
+deterministic (re-run → byte-identical), producing:
+
+- `prices_archive/silver/prices_adjusted/year=YYYY/data.parquet` — Bronze `prices`
+  with each confirmed backward CA factor (`close_after/close_before`) applied to
+  that symbol's pre-ex-date OHLC, `ROUND(_,4)` per event, oldest→newest so events
+  compound — a faithful port of `apply_price_adjustments.py`'s inner loop, on
+  **DuckDB**. Plus `hit_circuit_up/down/thin_trading_flag` from the confirmed
+  producer formula (`apply_price_adjustments.compute_circuit_flags`) — the exact
+  columns the frozen `silver/prices_adjusted` carries. Non-equity symbols
+  (`config.is_non_equity_symbol`) are dropped here (Bronze keeps them raw).
+- `prices_archive/silver/sectors/sectors.parquet` — the frozen `sectors` with
+  non-equity dropped.
+- `prices_archive/silver/stock_metadata/stock_metadata.parquet` — a port of
+  `build_stock_metadata.py`'s **idempotent UPSERT** (not drop-and-rebuild): every
+  frozen row preserved (manual/legacy rows never deleted), source-derived columns
+  refreshed for the recomputed include-set (`EXCLUDED_SECTORS` / `SECTOR_OVERRIDES`
+  / `UNIVERSE_WHITELIST`), `is_active`/`delisting_date`/`notes` kept as frozen.
+- `prices_archive/_silver_build_log.jsonl` — append-only provenance.
+- `prices_archive/_silver_parity.json` — rewritten each run (below).
+
+**Legacy CA event set** = the DROP_50/33/25 auto-confirm rows in
+`corporate_action_suspects_clean.csv` + the `CONFIRMED` rows in the **frozen
+baseline `.db`**'s `corporate_action_suspects` table. The live `psx_data.db` is
+opened read-only (`mode=ro&immutable=1`) for that one read and never for write.
+
+**CA source gate** — `--ca-source` / `KIRAN_SILVER_CA_SOURCE`, default `legacy`.
+`v2` makes `ca_v2_reader.load_v2_prices` an available Silver `close` source (it
+overwrites `close` for the symbols/dates the v2 total-return artifact covers). It
+is **off by default**; the dashboard reads none of this store yet. Wiring v2 into
+the dashboard stays a separate, Q6-gated sign-off (§9 D5 / TR-19). A missing
+`ca_v2_reader.py` is a hard `SystemExit`, never a silent fallback.
+
+### Parity vs. the frozen store — a known residual, one open owner decision
+
+Every run compares the rebuilt `prices_adjusted` to the frozen
+`silver/prices_adjusted` over the overlap (through 2026-09-08) and writes
+`_silver_parity.json`. Current result:
+
+- **row coverage exact** — 1,761,371 rows, 0 only-frozen, 0 only-new.
+- **OHLC residual: 3,576 rows, all symbol `DLL`.** DLL had a ~10.3:1 split on
+  2026-06-05 (raw 624.83 → 60.43) that the frozen `prices_adjusted` applied via
+  the Data Health page (`rebuild_symbol_adjusted`), which leaves **no recoverable
+  event record** in the baseline `.db` or the CSV. A pure rebuild-from-events
+  cannot reproduce it — this is the DR program's documented provenance gap
+  (`DATA_REHABILITATION_PROGRAM` §116 / `ZH_research/Known_Limitations.md`), not a
+  build bug.
+- **circuit-flag residual: 18 rows across 4 illiquid names** (DWAE 9, GAMON 6,
+  MWMP 2, GEMBCEM 1) — full-history single-formula recompute vs. the frozen
+  incremental (`_circuit_flags_for_new_rows`) at a trading-gap boundary. Sub-0.001 %.
+
+**Open owner decision (do not decide unattended):** whether Silver should carry
+the frozen `prices_adjusted` delta forward for symbols with no reproducible event
+record (trust the frozen store as an event source), or stay strictly
+rebuild-from-events and let the DR program resolve DLL-class events upstream.
+Until decided, Silver v1 is rebuild-pure and the frozen store (the seed) remains
+available for anything that needs the as-shipped adjustment.
+
+## Task 3.3 — Gold build (not started)
+
+`archive/gold_build.py`. 2-yr slice from Silver, run every registered screener
+(`processor`, `weinstein`, `stock_signals`, `sector_signals`, `boring_signals`,
+`leaders_scan`, recovery/portfolio), grade every sector → `psx_serving/` (DuckDB)
++ JSON export. Staging build + atomic swap. Idempotency test. Signal parity vs
+the live pipeline on a shared date.
