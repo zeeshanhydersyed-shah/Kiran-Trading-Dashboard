@@ -42,16 +42,22 @@ directories **as work completes** — never leave finished work only in chat.
 
 ## 1. STATUS AT A GLANCE
 
-**Overall: PHASE 1 COMPLETE (2026-09-09 → 2026-09-10). PHASE 2 COMPLETE (2026-09-10).** The
-immutable baseline is built, verified, git-manifested, copied off-site under B2 COMPLIANCE
-Object-Lock, and a restore drill proves it comes back. Phase 2's parallel capture path
-(`scrape_capture.yml` + `archive/scrape_capture.py`) is merged (PR #85, `b943ddf`) and **proven
-live**: the workflow scraped PSX 2026-09-09 and committed an immutable
-`data/incoming/2026-09-09.parquet` (494 rows, sha256 `e6115b80…5338`, matches the commit
-message) to the dedicated `data-captures` orphan branch; a second run was a clean `exists`
-no-op. `daily_scraper.yml` byte-unchanged and still on its schedule. **Phase 3 (Medallion
-transforms) begins only on the owner's explicit "start Phase 3".** **The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
-still the live system and is untouched** — nothing in Phase 1 or 2 wrote to `psx_data.db`,
+**Overall: PHASE 1 COMPLETE (2026-09-09 → 2026-09-10). PHASE 2 COMPLETE (2026-09-10). PHASE 3
+IN PROGRESS (2026-09-10) — Task 3.1 (Bronze ingest) DONE.** The immutable baseline is built,
+verified, git-manifested, copied off-site under B2 COMPLIANCE Object-Lock, and a restore drill
+proves it comes back. Phase 2's parallel capture path (`scrape_capture.yml` +
+`archive/scrape_capture.py`) is merged (PR #85, `b943ddf`) and proven live. Phase 3: the
+**DuckDB engine blocker is gone** — `duckdb 1.5.5` installs + runs on this machine's Python
+3.14, so §9 D1 ("DuckDB across all three layers") is executable (`requirements-archive.txt`
+updated). **Task 3.1 done:** `archive/bronze_ingest.py` seeds the live Bronze store
+(`D:\KIRAN_ARCHIVE\prices_archive\bronze\`) from the frozen `bronze/` once, then appends the
+`data-captures` capture files one trading day at a time — append-only, deduped, gap-detecting,
+each consumed file logged with its SHA-256; re-run is byte-identical. First real run ingested
+`2026-09-09` (489 stock + 5 index rows; capture sha256 `e6115b80…5338`); `archive_manifest
+verify` stays PASS (the live trees are excluded from the baseline walk). Design note:
+`docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **Tasks 3.2 (Silver) / 3.3 (Gold) not started.**
+**The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
+still the live system and is untouched** — nothing in Phase 1, 2 or 3 wrote to `psx_data.db`,
 Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…425b` unchanged).
 
 | # | Phase | Status | Since | Notes |
@@ -59,7 +65,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 | 0 | Decision & planning | ✅ DONE | 2026-09-09 | Design approved in principle; tracker + ledger/register entries written; **all 7 §9 decisions resolved by the owner 2026-09-09** |
 | 1 | Stand up the archive + execute SEQ-1 | ✅ DONE | 2026-09-10 | Archive root `D:\KIRAN_ARCHIVE\` (C: space-constrained), 92 baseline payload files, local read-only. Whole-DB baseline via SQLite Online Backup API — `psx_data_baseline_KIRAN_LFM_P1_20260909_222210.db`, 882,896,896 b, **SHA-256 `9418cb1bf98c197550e02eae663f0ab870ccc93c967dfb743c221cd3d5f70d61`**, self-contained (`journal_mode=DELETE`), `integrity_check` ok, 53/53 table counts + all substrate date spans match live; Bronze/Silver Parquet store (`SUM(volume)` reconciles exactly); DR-006 baseline (`c03a393f…`) + BI 17-file set folded into `backup_set/` + hash-verified; `BASELINE_MANIFEST.{md,sha256}` (92 files, 1,898,646,386 b) git-committed, `archive_manifest verify` PASS. **Off-site:** all 92 files in B2 `kiran-psx-archive` under **COMPLIANCE Object-Lock, 3000 days** (undeletable — verified `AccessDenied` on a locked version); big SQLite files zstd'd (~33%) for the slow uplink; `offsite_push` resumable at the 16 MB part level. `offsite_push --verify` PASS; `restore_drill_archive` PASS (baseline restored + `integrity_check` ok + 1,761,371 price rows). `restore_drill_b2.py` now runs both drills. `archive_checksum_check` for Task Scheduler. PRs #81 / #82 / #83. **NOTE:** `duckdb` has no cp314 wheel (Python 3.14) — the Parquet store is engine-neutral; the DuckDB attach layer is a Phase 3 item. The over-broad B2 key is moot (COMPLIANCE can't be bypassed); a minimal key is optional later hygiene. |
 | 2 | Rework the scrape (GitHub Actions) | ✅ DONE | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, merged PR #85 (`b943ddf`). Reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata: Actions run ID, `code_version`, `scraper_sha256`, self-reported counts, TR-14 per-sector completeness) + refreshes `latest.parquet`. Two side-by-side checkouts — `main` (code) + `data-captures` (commit target). **Commits to the dedicated `data-captures` orphan branch, not `main`** (`main` is branch-protected; owner decision 2026-09-10). Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests, suite 449. **Proven live 2026-09-10:** run `34453459820` scraped PSX 2026-09-09 (489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626) and committed `data/incoming/2026-09-09.parquet` + `latest.parquet` (494 rows, 18,922 b, sha256 `e6115b80…5338` = commit message) as `kiran-scrape-capture[bot]` → `data-captures` `dd269cc`; independent `--single-branch` clone hash-matched. Run `34453569404` = clean `exists` no-op, no new commit. `daily_scraper.yml` byte-unchanged (last touched `a7c0ce6`, 9 days prior), still scheduled. Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
-| 3 | Build the Medallion transforms | ⬜ NOT STARTED | — | Bronze ingest (capture-file lineage), Silver (port CA + conforming; wire the v2 reader as an available source, gate off), Gold (2-yr slice, screeners, grading). Idempotency tests per transform |
+| 3 | Build the Medallion transforms | 🔵 IN PROGRESS | 2026-09-10 | **3.1 Bronze ingest DONE** — `archive/bronze_ingest.py` + `tests/test_bronze_ingest.py` (6 tests); live store `D:\KIRAN_ARCHIVE\prices_archive\bronze\`, seeded from the frozen `bronze/`, `2026-09-09` capture ingested; append-only / deduped / gap-report / SHA-256 lineage log; re-run byte-identical; never opens `psx_data.db`. `archive_manifest.py` now excludes the `data-captures/` `prices_archive/` `psx_serving/` live trees (`verify` = PASS). DuckDB engine confirmed on Py3.14 (`duckdb>=1.5` in `requirements-archive.txt`). Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **3.2 Silver / 3.3 Gold not started.** |
 | 4 | Publication contract + atomic swap | ⬜ NOT STARTED | — | Four gates into the Gold build; `current_publication` with the full lineage block; staging-DB build + rename |
 | 5 | Shadow run | ⬜ NOT STARTED | — | Nightly local Gold vs current Supabase output, ≥10 trading sessions, diffs investigated |
 | 6 | Cutover | ⬜ NOT STARTED | — | Front end → Gold JSON; retire `daily_scraper.yml` / Supabase / Streamlit Cloud; delete the `_pg` path, `database_pg.py`, the stale `main.py` copies; snapshot + pin for the DR program |
@@ -173,7 +179,7 @@ revertible; the old pipeline stays live until Phase 6.
 - [x] First dated capture file observed on `data-captures`, hash-verified — workflow run `34453459820` committed `data/incoming/2026-09-09.parquet` (494 rows). An independent `git clone --branch data-captures --single-branch` gave sha256 `e6115b809240381f2ebcef3c622dcc42c95d0b29184949206ca5c6b2add25338`, matching the value in the commit message. `latest.parquet` byte-identical.
 
 ### Phase 3 — Medallion transforms
-- [ ] Bronze ingest: append-only, deduped, gap-detecting, records which dated files it consumed + hashes
+- [x] Bronze ingest: append-only, deduped, gap-detecting, records which dated files it consumed + hashes — `archive/bronze_ingest.py`, 2026-09-10. Live store `prices_archive/bronze/` seeded from frozen `bronze/`; `2026-09-09` capture ingested (489+5 rows); `_bronze_ingest_log.jsonl` records each capture file + SHA-256; re-run byte-identical + no log growth; gap report `_bronze_gaps.json`. 6 tests. `archive_manifest` excludes the live trees (`verify` PASS). `duckdb>=1.5` enabled (runs on Py3.14). Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`
 - [ ] Silver: port the corporate-action adjustment + universe-conforming logic; wire `ca_v2_reader` as an *available* source, **gate off** (dashboard still on the current path)
 - [ ] Gold: 2-yr slice, run every registered screener, grade every sector
 - [ ] Idempotency test per transform (re-run → identical output)
@@ -283,6 +289,56 @@ retained. A full rebuild of Supabase state from the archive is possible but is a
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-10 — Phase 3 STARTED: Task 3.1 Bronze ingest done
+Owner said "Start Phase 3", "strictly under the plan", and to work through 3.1 / 3.2 / 3.3 as
+far as it goes. Capture-clone location `D:\KIRAN_ARCHIVE\data-captures\` approved.
+
+**DuckDB blocker cleared.** The tracker / memory / `requirements-archive.txt` all carried a
+"no cp314 wheel" note that made §9 D1 (DuckDB engine) unexecutable on this Python 3.14 machine.
+Checked directly: `duckdb 1.5.5` installs + runs clean. `requirements-archive.txt` now pins
+`duckdb>=1.5`. Bronze ingest itself is a columnar append with no joins → pure pyarrow (the
+`build_store.py` precedent); DuckDB enters at Silver (3.2). Recorded in the new design note
+`docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md` (store layout: frozen seed vs. live store; the
+engine split; the 3.1/3.2/3.3 contracts).
+
+**Built — `archive/bronze_ingest.py` + `tests/test_bronze_ingest.py` (6 tests):**
+- **Live store** = a new tree `D:\KIRAN_ARCHIVE\prices_archive\bronze\` (Bronze), separate from
+  the frozen Phase-1 `bronze/` (which stays immutable + manifested + Object-Locked). Seeded
+  once as a byte copy of the frozen tree (read-only bit cleared on the copy), then only grows.
+- **Ingest:** `git pull --ff-only` the `data-captures` clone (skippable `--no-pull`), read each
+  `data/incoming/YYYY-MM-DD.parquet` (never `latest.parquet`), assert its `trading_date` ==
+  `source_date`, split `record_type` → `prices` / `index_prices`, append into the `year=YYYY`
+  partitions with the exact `build_store.py` sort + Parquet options. A date already present is
+  **skipped, never overwritten** (append-only / D7).
+- **Lineage:** one JSONL line per ingested file in `prices_archive/_bronze_ingest_log.jsonl` —
+  timestamp, `capture_file`, `capture_sha256`, `source_date`, capture `code_version`, rows
+  added, years touched. Plus a one-time `seed` entry carrying the frozen `STORE_MANIFEST.json`
+  hash and the seed's max date.
+- **Gap detection:** report-only. Weekdays after the frozen seed's max date with no Bronze row
+  → `missing_capture` / `nodata_or_holiday`, written to `prices_archive/_bronze_gaps.json` and
+  printed. No PSX holiday calendar exists in-repo, so a `missing_capture` weekday is surfaced
+  for human review, never auto-resolved and never fails the run.
+- **Idempotency:** a re-run with no new capture files does zero file writes + zero log appends
+  and leaves every Parquet file byte-identical (tested).
+- **Safety:** the module never opens `psx_data.db` (not even read-only), Supabase, or
+  `daily_scraper.yml` — asserted by a test. It is a pure function of (frozen seed + captures).
+
+**`archive/archive_manifest.py`:** added `EXCLUDE_TOPLEVEL = {data-captures, prices_archive,
+psx_serving}` so the baseline `verify` walk ignores the live Medallion trees. Without this the
+`data-captures` clone (owner-approved location) alone would have made `verify` report ~3
+UNTRACKED files and the scheduled `KIRAN_Archive_Checksum` job would alert. Manifest content
+unchanged (92 files); `verify` = **PASS** after the change.
+
+**First real run:** `python -m archive.bronze_ingest --no-pull` → seeded (5,360 price dates,
+seed max `2026-09-08`), then ingested `2026-09-09` (489 stock + 5 index rows). Capture sha256
+`e6115b809240381f2ebcef3c622dcc42c95d0b29184949206ca5c6b2add25338` — matches the value the
+Phase 2 run recorded. Re-run → `up_to_date`, `2026-09-09` skipped, no writes. `psx_data.db`
+untouched. Full local suite: green (was 449 → +6).
+
+**Next:** Task 3.2 — `archive/silver_build.py` (port `apply_price_adjustments.py` CA adjustment
++ universe-conforming onto Bronze via DuckDB; `ca_v2_reader` wired as available-but-gated-OFF).
+**Not started this entry.**
 
 ### 2026-09-10 — Phase 2 COMPLETE: parallel scrape-capture path merged + proven live
 Owner said "start Phase 2" and approved the 5-point approach. During the build we found `main`

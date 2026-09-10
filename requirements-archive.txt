@@ -11,8 +11,8 @@ pyarrow>=17
 # never touches B2.
 boto3>=1.35
 #
-# duckdb is the Phase 3 Medallion engine. NOTE 2026-09-09: no cp314 wheel yet
-# (this machine runs Python 3.14). Install becomes possible either when duckdb
-# ships a 3.14 wheel or the pipeline runs on a pinned 3.11/3.12 venv -- decision
-# for Phase 3. Phase 1's Parquet store is engine-neutral and does not need it.
-# duckdb>=1.1
+# duckdb is the Phase 3 Medallion engine (query/compute; pyarrow stays the
+# Parquet serializer -- see docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md).
+# 2026-09-10: duckdb 1.5.5 installs + runs clean on this machine's Python 3.14.4,
+# so the "no cp314 wheel" blocker the tracker/memory carried is resolved.
+duckdb>=1.5
