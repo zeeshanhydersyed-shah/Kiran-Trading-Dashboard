@@ -29,6 +29,31 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-09-10 — New Backblaze B2 bucket + app key for the local-first immutable baseline
+- **What:** Owner created a second B2 bucket **`kiran-psx-archive`** (S3 endpoint
+  `s3.us-east-005.backblazeb2.com`) with **Object Lock enabled** and a bucket
+  default retention of COMPLIANCE / 365 days, plus an application key stored as
+  local user env vars **`B2_ARCHIVE_KEY_ID` / `B2_ARCHIVE_KEY`** (Claude never
+  saw the values). Separate from the existing `kiran-psx-backups` restic bucket
+  and its `B2_ACCOUNT_*` key. Claude then pushed all 92 files of
+  `D:\KIRAN_ARCHIVE\` to it with **per-object COMPLIANCE Object-Lock, retain
+  3000 days** (overrides the 365 default), and set the 92 local baseline files
+  read-only. Code + tooling: **PR #83**.
+- **Why:** local-first migration Phase 1 / DR-program SEQ-1 — the immutable
+  historical baseline needs an off-site copy that no credential on this machine
+  can delete or shorten.
+- **DB writes:** none. `psx_data.db` never opened for write — live SHA-256
+  `6a3b974d…425b` before and after (D7 preservation-only).
+- **Verification:** `python -m archive.offsite_push --verify` PASS (every local
+  file has a COMPLIANCE-locked bucket version with a matching SHA-256);
+  `python -m archive.restore_drill_archive` PASS (baseline downloaded +
+  decompressed + `integrity_check` ok + 1,761,371 price rows); deleting a
+  locked object version returns `AccessDenied` (lock is real). Two test probes
+  and one 0-byte stray log were locked before exclusions were tightened —
+  hidden with delete-markers, ~$0.06 of storage over 8 years, noted in
+  `docs/KIRAN_LOCAL_FIRST_ARCHIVE/OFFSITE.md`.
+- **By:** Claude Code (owner created the bucket + key).
+
 ### 2026-09-09 — Cloud app down ~2 days: "Error installing requirements" (fixed by PR #75, then reboot)
 - **What:** The Streamlit Cloud app had been failing for ~2 days with "Error
   installing requirements" / "Oh no. Error running app." Investigated
