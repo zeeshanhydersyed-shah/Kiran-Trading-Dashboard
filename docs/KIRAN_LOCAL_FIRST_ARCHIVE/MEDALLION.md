@@ -152,10 +152,51 @@ rebuild picks it up. `_silver_parity.json`'s residual list *is* that backlog and
 should trend to zero, not be papered over. The frozen store (the seed) stays
 available for anything that needs the as-shipped adjustment. No code change.
 
-## Task 3.3 — Gold build (not started)
+## Task 3.3 — Gold build (`archive/gold_build.py`) — IN PROGRESS
 
-`archive/gold_build.py`. 2-yr slice from Silver, run every registered screener
-(`processor`, `weinstein`, `stock_signals`, `sector_signals`, `boring_signals`,
-`leaders_scan`, recovery/portfolio), grade every sector → `psx_serving/` (DuckDB)
-+ JSON export. Staging build + atomic swap. Idempotency test. Signal parity vs
-the live pipeline on a shared date.
+**Engine decision (owner, 2026-09-10): full DuckDB port.** Not a SQLite compute
+scratchpad, not a read-path-only refactor. §9 D1 governs; §8's "signal logic
+ported as-is" means *same algorithm on DuckDB*, not *same file*.
+
+**Method.** Every screener already separates a **pure compute core** (DB-agnostic
+pandas / plain Python) from thin SQLite I/O wrappers — e.g.
+`regime._compute_indicators` / `_classify` / `_pending_regime_rows`;
+`stock_signals._ema` / `_build_pivot_lookup` / `_compute_bt_vc`, and its loaders
+(`_load_kse100`, `_load_stock_prices`, …) already take a `conn`. The port:
+
+1. **reuses the pure cores by import** — one source of truth for the algorithm; a
+   later change to production signal logic flows through automatically;
+2. reimplements only the **I/O against DuckDB** (`INSERT OR REPLACE` /
+   `PRAGMA table_info` have DuckDB equivalents; loaders get a DuckDB `conn`
+   attached to the Silver Parquet);
+3. where a screener's core is **not** cleanly separable, factoring it out is part
+   of that screener's port PR — a behaviour-preserving production refactor, tested.
+
+**Gold store.** `D:\KIRAN_ARCHIVE\psx_serving\psx_serving.duckdb` — full replace
+every run, built into `psx_serving_staging.duckdb` then `os.replace`d over the
+live file (atomic swap; staging removed on failure). A deterministic Parquet
+export per table (`psx_serving/parquet/<table>.parquet`) is the idempotency-check
+form and the JSON feed. `_gold_build_log.jsonl` + `_gold_parity.json`. Serving
+window = latest Bronze `prices` date − `--window-days` (default 730 ≈ 2 yr);
+screeners compute over full history for lookback correctness, output is sliced.
+
+**Parity.** Each screener's Gold output is compared to the live `psx_data.db`
+(opened read-only). The live pipeline is incremental and has documented gaps
+(CLAUDE.md "Known Gaps"); Gold recomputes over the complete series, so it is a
+**superset on dates** and its rolling state (EMAs, `regime_days`, RS chains)
+legitimately diverges from the live one *at and after the first live gap*.
+`_gold_parity.json` reports `pre_gap_residual` (must be empty = clean) separately
+from `post_gap_expected_divergence` (knock-on of the gap-fill, expected).
+
+**Sub-tasks (one PR each):**
+
+- **3.3a — DONE (2026-09-10).** Scaffold (`GoldStore`, staging + atomic swap,
+  Parquet export, `SCREENERS` registry, parity/logging) + the **`regime`** port
+  (`market_regime`). Reuses `regime.py`'s pure functions verbatim. Parity: CLEAN
+  before the first live gap; Gold fills 2026-04-27 + 2026-07-20/21/29 and
+  re-chains from there. 6 tests, 498 window rows.
+- **3.3b** — `stock_signals` (RS ranks, base tightness, pivot/BOS, EMA stage flags).
+- **3.3c** — `sector_signals` + the four-stage sector grades (`_stage`).
+- **3.3d** — `boring_signals` + `leaders_scan` / `leaders_top_picks`.
+- **3.3e** — `signal_engine` (`recovery_signals` / `portfolio_signals`) + `setup_log` / `processor` (`trade_setups`).
+- **3.3f** — front-end JSON export, full end-to-end idempotency, consolidated parity report.

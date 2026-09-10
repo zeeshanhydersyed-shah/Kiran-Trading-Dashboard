@@ -76,7 +76,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 | 0 | Decision & planning | ✅ DONE | 2026-09-09 | Design approved in principle; tracker + ledger/register entries written; **all 7 §9 decisions resolved by the owner 2026-09-09** |
 | 1 | Stand up the archive + execute SEQ-1 | ✅ DONE | 2026-09-10 | Archive root `D:\KIRAN_ARCHIVE\` (C: space-constrained), 92 baseline payload files, local read-only. Whole-DB baseline via SQLite Online Backup API — `psx_data_baseline_KIRAN_LFM_P1_20260909_222210.db`, 882,896,896 b, **SHA-256 `9418cb1bf98c197550e02eae663f0ab870ccc93c967dfb743c221cd3d5f70d61`**, self-contained (`journal_mode=DELETE`), `integrity_check` ok, 53/53 table counts + all substrate date spans match live; Bronze/Silver Parquet store (`SUM(volume)` reconciles exactly); DR-006 baseline (`c03a393f…`) + BI 17-file set folded into `backup_set/` + hash-verified; `BASELINE_MANIFEST.{md,sha256}` (92 files, 1,898,646,386 b) git-committed, `archive_manifest verify` PASS. **Off-site:** all 92 files in B2 `kiran-psx-archive` under **COMPLIANCE Object-Lock, 3000 days** (undeletable — verified `AccessDenied` on a locked version); big SQLite files zstd'd (~33%) for the slow uplink; `offsite_push` resumable at the 16 MB part level. `offsite_push --verify` PASS; `restore_drill_archive` PASS (baseline restored + `integrity_check` ok + 1,761,371 price rows). `restore_drill_b2.py` now runs both drills. `archive_checksum_check` for Task Scheduler. PRs #81 / #82 / #83. **NOTE:** `duckdb` has no cp314 wheel (Python 3.14) — the Parquet store is engine-neutral; the DuckDB attach layer is a Phase 3 item. The over-broad B2 key is moot (COMPLIANCE can't be bypassed); a minimal key is optional later hygiene. |
 | 2 | Rework the scrape (GitHub Actions) | ✅ DONE | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, merged PR #85 (`b943ddf`). Reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata: Actions run ID, `code_version`, `scraper_sha256`, self-reported counts, TR-14 per-sector completeness) + refreshes `latest.parquet`. Two side-by-side checkouts — `main` (code) + `data-captures` (commit target). **Commits to the dedicated `data-captures` orphan branch, not `main`** (`main` is branch-protected; owner decision 2026-09-10). Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests, suite 449. **Proven live 2026-09-10:** run `34453459820` scraped PSX 2026-09-09 (489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626) and committed `data/incoming/2026-09-09.parquet` + `latest.parquet` (494 rows, 18,922 b, sha256 `e6115b80…5338` = commit message) as `kiran-scrape-capture[bot]` → `data-captures` `dd269cc`; independent `--single-branch` clone hash-matched. Run `34453569404` = clean `exists` no-op, no new commit. `daily_scraper.yml` byte-unchanged (last touched `a7c0ce6`, 9 days prior), still scheduled. Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
-| 3 | Build the Medallion transforms | 🔵 IN PROGRESS | 2026-09-10 | **3.1 Bronze ingest DONE** — `archive/bronze_ingest.py` + 6 tests; live store `prices_archive/bronze/` seeded from frozen `bronze/`, `2026-09-09` ingested; append-only / deduped / gap-report / SHA-256 lineage; re-run byte-identical. `archive_manifest.py` excludes the live trees (`verify` PASS). DuckDB confirmed on Py3.14 (`duckdb>=1.5`). **3.2 Silver build DONE** — `archive/silver_build.py` + 7 tests; DuckDB rebuild from Bronze → `silver/prices_adjusted/` (CA-adjust port of `apply_price_adjustments.py` + circuit flags), `silver/sectors/`, `silver/stock_metadata/` (upsert port of `build_stock_metadata.py`); `ca_v2_reader` wired behind `--ca-source v2`, default `legacy`; deterministic; `_silver_parity.json` vs frozen = exact rows, residual **DLL** (unrecoverable Data Health split) + 18 flag rows / 4 illiquid names. **D8 RESOLVED (owner, 2026-09-10): rebuild-pure** — residual = DR-program to-do, no code change. Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **3.3 Gold IN PROGRESS.** |
+| 3 | Build the Medallion transforms | 🔵 IN PROGRESS | 2026-09-10 | **3.1 Bronze ingest DONE** — `archive/bronze_ingest.py` + 6 tests; live store `prices_archive/bronze/` seeded from frozen `bronze/`, `2026-09-09` ingested; append-only / deduped / gap-report / SHA-256 lineage; re-run byte-identical. `archive_manifest.py` excludes the live trees (`verify` PASS). DuckDB confirmed on Py3.14 (`duckdb>=1.5`). **3.2 Silver build DONE** — `archive/silver_build.py` + 7 tests; DuckDB rebuild from Bronze → `silver/prices_adjusted/` (CA-adjust port of `apply_price_adjustments.py` + circuit flags), `silver/sectors/`, `silver/stock_metadata/` (upsert port of `build_stock_metadata.py`); `ca_v2_reader` wired behind `--ca-source v2`, default `legacy`; deterministic; `_silver_parity.json` vs frozen = exact rows, residual **DLL** (unrecoverable Data Health split) + 18 flag rows / 4 illiquid names. **D8 RESOLVED (owner, 2026-09-10): rebuild-pure** — residual = DR-program to-do, no code change. Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **3.3 Gold IN PROGRESS — full DuckDB port (owner). 3.3a DONE** (`archive/gold_build.py` + 6 tests: serving store `psx_serving.duckdb`, staging + atomic swap, deterministic Parquet export, `SCREENERS` registry; `regime` port reuses `regime.py`'s pure cores by import; parity vs live = CLEAN pre-first-gap, Gold fills 4 known live `market_regime` gaps). **3.3b–f pending.** |
 | 4 | Publication contract + atomic swap | ⬜ NOT STARTED | — | Four gates into the Gold build; `current_publication` with the full lineage block; staging-DB build + rename |
 | 5 | Shadow run | ⬜ NOT STARTED | — | Nightly local Gold vs current Supabase output, ≥10 trading sessions, diffs investigated |
 | 6 | Cutover | ⬜ NOT STARTED | — | Front end → Gold JSON; retire `daily_scraper.yml` / Supabase / Streamlit Cloud; delete the `_pg` path, `database_pg.py`, the stale `main.py` copies; snapshot + pin for the DR program |
@@ -213,7 +213,7 @@ into `psx_serving_staging.duckdb` then atomically renamed. Read-only for the fro
 
 **3.3 sub-tasks (one PR each, each with a parity check vs the live `psx_data.db` on a shared
 recent date):**
-- [ ] **3.3a** — `archive/gold_build.py` scaffold (Silver→DuckDB attach, staging + atomic swap, harvest/export skeleton) + first screener port: **`regime`** (`market_regime`).
+- [x] **3.3a** — `archive/gold_build.py` scaffold + first screener port: **`regime`** (`market_regime`), 2026-09-10. DuckDB serving store `D:\KIRAN_ARCHIVE\psx_serving\psx_serving.duckdb` (full replace, built into `psx_serving_staging.duckdb` → atomic `os.replace`), deterministic Parquet export per table (`psx_serving/parquet/<table>.parquet`), `_gold_build_log.jsonl` provenance. `SCREENERS` registry (3.3b–e append). regime port reads KSE-100 from Bronze `index_prices` via DuckDB and **reuses `regime._compute_indicators` / `_classify` / `_pending_regime_rows` verbatim by import** (they are pure); `regime_days` chained over the full series, then sliced to the 2-yr window. Parity vs live `psx_data.db` (read-only): **CLEAN** — every shared date *before the first live-pipeline gap* (`market_regime` missing 2026-04-27 + the 2026-07 Postgres-outage dates, per CLAUDE.md Known Gaps) matches exactly; Gold fills those 4 gaps and re-chains EMAs/`regime_days` across the complete series (expected, documented in `_gold_parity.json`). 6 tests. 498 regime rows in the window.
 - [ ] **3.3b** — **`stock_signals`** port (RS ranks, base tightness, pivot/BOS, EMA stage flags).
 - [ ] **3.3c** — **`sector_signals`** port + **four-stage sector grades** (the `_stage` column).
 - [ ] **3.3d** — **`boring_signals`** + **`leaders_scan`** / `leaders_top_picks` ports.
@@ -342,6 +342,37 @@ illiquid names.
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-10 — Task 3.3a: Gold build scaffold + `regime` port done
+`archive/gold_build.py` + `tests/test_gold_build.py` (6 tests).
+
+- **Serving store** `D:\KIRAN_ARCHIVE\psx_serving\psx_serving.duckdb` — full replace each run,
+  built into `psx_serving_staging.duckdb` then `os.replace`d over the live file (atomic swap;
+  staging cleaned up on failure). Plus a **deterministic Parquet export** per table
+  (`psx_serving/parquet/<table>.parquet`, `ORDER BY ALL` + fixed Parquet opts) — that is the
+  idempotency-checkable form and the future JSON feed. `_gold_build_log.jsonl` provenance.
+- **`SCREENERS` registry** — `{table: build_fn}`; 3.3b–e append entries, the scaffold
+  (windowing, swap, export, parity, logging) is shared.
+- **`regime` port** — reads KSE-100 from Bronze `index_prices` via DuckDB into a DataFrame,
+  then **calls `regime._compute_indicators` / `regime._pending_regime_rows` / `regime._classify`
+  unchanged, by import** (they are already pure — no DB I/O). `regime_days` is chained across
+  the *complete* KSE-100 history, then the result is sliced to the 2-yr serving window (so the
+  boundary row's count is right). Writes `market_regime` into the Gold DuckDB.
+- **Window anchor** = latest Bronze `prices` date − `--window-days` (default 730).
+- **Parity** vs live `psx_data.db` (opened `mode=ro&immutable=1` — the only `sqlite3.connect`
+  in the file, asserted by a test): **CLEAN.** Every shared date *before the first live-pipeline
+  gap* matches exactly. The live `market_regime` is missing 2026-04-27 and 2026-07-20/21/29
+  (the documented Postgres-dispatch outage + the 04-27 KSE-100 gap — CLAUDE.md "Known Gaps");
+  Gold fills all four and re-chains EMAs / `regime_days` across the complete series from there.
+  `_gold_parity.json` splits this into `pre_gap_residual` (empty = clean) vs
+  `post_gap_expected_divergence` (1 label, 36 `regime_days`, 31 EMA rows — all downstream of the
+  gaps, expected). This is the local-first pipeline being *more complete* than the dual one.
+- 498 `market_regime` rows in the window. Re-run → byte-identical export. `psx_data.db`
+  untouched; Bronze/Silver untouched.
+
+**Next:** 3.3b — `stock_signals` port (RS ranks, base tightness, pivot/BOS, EMA stage flags).
+`stock_signals.py`'s loaders already take a `conn`; `_ema` / `_build_pivot_lookup` /
+`_compute_bt_vc` are pure.
 
 ### 2026-09-10 — Decision D8 resolved (rebuild-pure); Task 3.3 (Gold) started + engine decision
 Owner: "go with rebuild-pure and start Task 3.3." D8 recorded in §9 — Silver stays
