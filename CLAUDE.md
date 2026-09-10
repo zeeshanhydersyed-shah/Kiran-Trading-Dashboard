@@ -21,8 +21,10 @@ earlier note in this file about the architecture.** As of 2026-09-09 the owner h
 **► The plan and live status tracker is [`docs/KIRAN_LOCAL_FIRST_MIGRATION.md`](KIRAN_LOCAL_FIRST_MIGRATION.md).**
 Check its §1 phase table for what is done / ongoing / pending. **State 2026-09-10: PHASE 1
 COMPLETE** (immutable baseline built, verified, git-manifested, copied off-site under B2
-COMPLIANCE Object-Lock, restore drill PASS). **Phase 2 not started** — begins only on an explicit
-"start Phase 2". The old dual pipeline is still the live system and was not touched.
+COMPLIANCE Object-Lock, restore drill PASS); **PHASE 2 IN PROGRESS** — the parallel capture
+path (`.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py` + `data/incoming/*.parquet`)
+is built and in review; the first real committed capture file is the remaining item. The old
+dual pipeline is still the live system and was not touched.
 Decision record: `docs/KIRAN_CLEANUP_AUDIT.md` §117. Per-row Trust Register impact: Amendment
 Log 2026-09-09 (LOCAL — not committed).
 
@@ -172,6 +174,7 @@ regenerate the CI fixture too: `python tests/fixtures/build_fixture_db.py`.
 | Workflow | Schedule | What it does |
 |----------|----------|-------------|
 | `ci.yml` | Every push/PR to `main` and `staging` | **The deploy gate** (added 2026-08-12). 3 jobs: `clean-install` (pip install + `pip check` + import all production modules on Python 3.11), `unit-tests` (`pytest tests/`), `app-boot` (renders all 15 dashboard pages via Streamlit's `AppTest` against `tests/fixtures/psx_fixture.db`). See `docs/DEPLOYMENT.md` |
+| `scrape_capture.yml` | 5 cron slots mirroring `daily_scraper.yml` + `workflow_dispatch` | **Local-first migration Phase 2 (2026-09-10).** Parallel, additive capture path: runs `python -m archive.scrape_capture`, commits an immutable `data/incoming/YYYY-MM-DD.parquet` (+ `latest.parquet`) to `main` with `[skip ci]`. Does **not** touch `psx_data.db`, Supabase, or `daily_scraper.yml`. Idempotent. Format: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
 | `daily_scraper.yml` | **5 cron slots (locked 2026-09-01, ledger §99):** 14:30 / 17:00 / 20:00 UTC Mon–Fri (19:30 / 22:00 PKT / 01:00 PKT), 14:00 UTC Sat (19:00 PKT), 12:30 UTC Mon (17:30 PKT) | Scrapes PSX prices, generates trade setups. **Redundant attempts by design** — GitHub's scheduler delays cron by +2h..+8h and drops slots entirely (observed 2026-08-26..08-31); `main.py --update` is idempotent and a cheap green no-op when nothing is new (freshness gate passes when source-date == DB-max), so extra runs are ~free (public repo). ksestocks EOD data is reliably complete ~19:30–20:00 PKT (`refresh_manager.py`'s 19:00 assumption + observed 19:40 PKT 2026-08-17 / ≤20:15 PKT 2026-09-01) — the 14:30 UTC slot is the earliest that safely catches complete data; the later slots absorb drift and dropped slots; Sat + Mon-early catch a Friday whose weekday slots all failed, inside `health_check.py`'s 4-day floor. TR-18's "run overdue" threshold is built against this schedule. Installs `playwright` explicitly — it is in `requirements-optional.txt`, not `requirements.txt` |
 | `weekly_backtest.yml` | Sunday | Runs backtest engine |
 | `weekly_ml_retrain.yml` | Manual only (`workflow_dispatch`) | Retrains kiran_model.pkl via phase4_train.py — schedule disabled 2026-07-31, model killed (see docs/KIRAN_CLEANUP_AUDIT.md §14). Installs `requirements-optional.txt` too — scikit-learn/joblib live there |

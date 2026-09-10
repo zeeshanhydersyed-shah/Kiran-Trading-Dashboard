@@ -34,6 +34,7 @@ D:\KIRAN_ARCHIVE\
 | `python -m archive.archive_manifest generate` | (Re)write `BASELINE_MANIFEST.{sha256,md}` from the current archive tree. |
 | `python -m archive.archive_manifest verify` | Re-hash every file, compare to the committed `.sha256`. Exit 1 on drift. |
 | `python -m archive.archive_checksum_check` | `verify` + ntfy alert on drift. For Task Scheduler (`KIRAN_Archive_Checksum`, weekly). |
+| `python -m archive.scrape_capture [--date YYYY-MM-DD] [--force]` | **Phase 2.** Fetch the current PSX source date and write an immutable `data/incoming/YYYY-MM-DD.parquet` capture file (+ refresh `latest.parquet`). Reuses `scraper.py`'s fetch/parse; idempotent; never touches `psx_data.db`. Run by `.github/workflows/scrape_capture.yml`. Format: [`../docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md`](../docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md). |
 
 ## Deps
 
