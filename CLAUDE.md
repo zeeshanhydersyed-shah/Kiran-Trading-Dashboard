@@ -21,13 +21,14 @@ earlier note in this file about the architecture.** As of 2026-09-09 the owner h
 **► The plan and live status tracker is [`docs/KIRAN_LOCAL_FIRST_MIGRATION.md`](KIRAN_LOCAL_FIRST_MIGRATION.md).**
 Check its §1 phase table for what is done / ongoing / pending. **State 2026-09-10: PHASE 1
 COMPLETE** (immutable baseline built, verified, git-manifested, copied off-site under B2
-COMPLIANCE Object-Lock, restore drill PASS); **PHASE 2 IN PROGRESS** — the parallel capture
-path (`.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, committing to the
-dedicated **`data-captures` orphan branch**) is built and in review (PR #85); the first real
-committed capture file is the remaining item. The old dual pipeline is still the live system
-and was not touched. **Note:** `main` now HAS branch protection (required checks +
-`enforce_admins`) — the "How changes go live" / DEPLOYMENT §3 note that it's not yet enabled is
-stale.
+COMPLIANCE Object-Lock, restore drill PASS); **PHASE 2 COMPLETE** — `scrape_capture.yml` +
+`archive/scrape_capture.py` (merged PR #85, `b943ddf`) commit an immutable
+`data/incoming/YYYY-MM-DD.parquet` per PSX day to the dedicated **`data-captures` orphan
+branch**; proven live 2026-09-10 (run captured 2026-09-09, hash-verified; a re-run was a clean
+no-op). The old dual pipeline is still the live system and was not touched. **Phase 3 (Medallion
+transforms) begins only on an explicit "start Phase 3".** **Note:** `main` now HAS branch
+protection (required checks + `enforce_admins`) — the "How changes go live" / DEPLOYMENT §3 note
+that it's not yet enabled is stale.
 Decision record: `docs/KIRAN_CLEANUP_AUDIT.md` §117. Per-row Trust Register impact: Amendment
 Log 2026-09-09 (LOCAL — not committed).
 
