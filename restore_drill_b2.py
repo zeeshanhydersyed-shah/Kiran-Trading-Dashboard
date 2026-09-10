@@ -152,6 +152,20 @@ def main() -> int:
         except Exception as exc:
             checks.append((f"{name} readable as text", False, str(exc)))
 
+    # --- Local-First archive (Object-Lock B2 copy) -- the widened backup set ---
+    # Separate mechanism from the restic daily backup above: the immutable
+    # baseline + Parquet store + folded-in DR-006/BI sets live in
+    # kiran-psx-archive under COMPLIANCE Object-Lock, not in this restic repo.
+    # Fold its drill result into the overall verdict so "run the drill" stays
+    # one command. Skipped (not failed) if that archive isn't set up yet.
+    if os.environ.get("B2_ARCHIVE_KEY_ID") and os.environ.get("B2_ARCHIVE_KEY"):
+        print("\n--- Local-First archive restore drill ---")
+        rc = subprocess.run([sys.executable, "-m", "archive.restore_drill_archive"],
+                            cwd=_PROJECT_DIR).returncode
+        checks.append(("Local-First archive restore drill (see output above)", rc == 0, ""))
+    else:
+        print("\n(Local-First archive drill skipped -- B2_ARCHIVE_KEY_ID/KEY not set)")
+
     print()
     print("=== Restoration drill results ===")
     all_ok = True
