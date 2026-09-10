@@ -196,6 +196,30 @@ revertible; the old pipeline stays live until Phase 6.
 - [ ] Idempotency test per transform (re-run → identical output)
 - [ ] Signal parity check: Gold screeners vs the current pipeline on a shared date, differences explained
 
+**Task 3.3 — engine decision (owner, 2026-09-10): FULL DuckDB port. No SQLite compute
+scratchpad, no read-path-only middle option.** §9 D1 ("DuckDB across all three layers") governs;
+§8 "signal logic ported as-is" means *same algorithm on DuckDB*, not *same file*. Method: each
+screener already separates a **pure compute core** (pandas / plain Python, DB-agnostic — e.g.
+`regime._compute_indicators` / `_classify` / `_pending_regime_rows`; `stock_signals._ema` /
+`_build_pivot_lookup` / `_compute_bt_vc`) from thin SQLite I/O wrappers. The port **reuses the
+pure cores by import** (one source of truth for the algorithm) and reimplements only the I/O
+against DuckDB (loaders already take a `conn`; `INSERT OR REPLACE` / `PRAGMA table_info` have
+DuckDB equivalents). Where a screener's core is not cleanly separable, factoring it out is part
+of that screener's port PR (a behaviour-preserving production refactor, tested). No SQLite in
+the Gold path.
+
+**Gold store:** `D:\KIRAN_ARCHIVE\psx_serving\psx_serving.duckdb` — full replace each run, built
+into `psx_serving_staging.duckdb` then atomically renamed. Read-only for the front end.
+
+**3.3 sub-tasks (one PR each, each with a parity check vs the live `psx_data.db` on a shared
+recent date):**
+- [ ] **3.3a** — `archive/gold_build.py` scaffold (Silver→DuckDB attach, staging + atomic swap, harvest/export skeleton) + first screener port: **`regime`** (`market_regime`).
+- [ ] **3.3b** — **`stock_signals`** port (RS ranks, base tightness, pivot/BOS, EMA stage flags).
+- [ ] **3.3c** — **`sector_signals`** port + **four-stage sector grades** (the `_stage` column).
+- [ ] **3.3d** — **`boring_signals`** + **`leaders_scan`** / `leaders_top_picks` ports.
+- [ ] **3.3e** — **`signal_engine`** (`recovery_signals` / `portfolio_signals`) + **`setup_log`** / `processor` (`trade_setups`) ports.
+- [ ] **3.3f** — JSON export for the front end, full end-to-end idempotency, consolidated signal-parity report.
+
 ### Phase 4 — Publication contract + atomic swap
 - [ ] Port the four gates (freshness / completeness / hook coverage / coherence) into the Gold build
 - [ ] `current_publication` table with the full lineage block (Q2)
@@ -276,7 +300,7 @@ retained. A full rebuild of Supabase state from the archive is possible but is a
 
 | # | Decision | Resolution (owner, 2026-09-09) | Resolved? |
 |---|---|---|---|
-| 1 | Serving engine for Gold | **DuckDB across all three layers** (Bronze, Silver, Gold) | ✅ |
+| 1 | Serving engine for Gold | **DuckDB across all three layers** (Bronze, Silver, Gold). **Reaffirmed 2026-09-10 for Task 3.3:** the screener compute is a **full DuckDB port** — no SQLite compute scratchpad, no read-path-only middle option. "Signal logic ported as-is" (§8) = same algorithm on DuckDB (pure compute cores reused by import), not same file. | ✅ |
 | 2 | Front end serve mechanism | **Static files + `http.server`** as the initial mechanism; an API added **only if a real requirement emerges** | ✅ |
 | 3 | Fixed local pipeline schedule | **Fixed nightly Task Scheduler trigger** with **explicit catch-up-on-wake** and **no-duplicate execution semantics** | ✅ |
 | 4 | Dated-capture retention | **Prune to `psx-data-archive` after ~90 days**, but only **after the archive is verified** — copy check + SHA-256 + retrieval test + manifest evidence — **before any prune** | ✅ |
@@ -319,13 +343,25 @@ illiquid names.
 
 ## 10. Running log (newest first)
 
-### 2026-09-10 — Decision D8 resolved (rebuild-pure); Task 3.3 (Gold) started
+### 2026-09-10 — Decision D8 resolved (rebuild-pure); Task 3.3 (Gold) started + engine decision
 Owner: "go with rebuild-pure and start Task 3.3." D8 recorded in §9 — Silver stays
 rebuild-from-events; the `_silver_parity.json` residual (DLL + 4 illiquid names) is the DR
 program's backlog of corporate actions still owed a reproducible event record, tracked there,
-not worked around in `silver_build.py`. No code change. Doc-only commit.
+not worked around in `silver_build.py`. No code change. Doc-only commit (PR #90, `237bb57`).
 
-Task 3.3 (Gold) now IN PROGRESS — see the next entry once the approach is set.
+**Task 3.3 engine — owner, 2026-09-10:** "If the original design carried port every screener to
+DuckDB, we stick to the plan. No mid-way plumbing." So: **full DuckDB port**, not the SQLite
+compute-scratchpad approach and not a read-path-only refactor. §9 D1 reaffirmed with that
+clarification. §5 now carries the 3.3a–3.3f sub-task breakdown (one PR each, each with a live
+parity check). Method: the screeners already separate a pure compute core (DB-agnostic pandas /
+plain Python) from thin SQLite I/O wrappers — the port **reuses the pure cores by import** and
+reimplements only the I/O against DuckDB; where a core isn't cleanly separable, factoring it out
+is part of that screener's PR. Gold store: `D:\KIRAN_ARCHIVE\psx_serving\psx_serving.duckdb`,
+full replace + staging + atomic rename.
+
+**Next:** 3.3a — `archive/gold_build.py` scaffold + the `regime` port (smallest, self-contained
+on KSE-100 index prices; `regime._compute_indicators` / `_classify` / `_pending_regime_rows` are
+already pure and get reused verbatim).
 
 ### 2026-09-10 — Phase 3 Task 3.2: Silver build done
 Same session as 3.1, continuing "as far as you get, strictly under the plan".
