@@ -42,14 +42,15 @@ directories **as work completes** — never leave finished work only in chat.
 
 ## 1. STATUS AT A GLANCE
 
-**Overall: PHASE 1 COMPLETE (2026-09-09 → 2026-09-10). PHASE 2 IN PROGRESS (started
-2026-09-10).** The immutable baseline is built, verified, git-manifested, copied off-site under
-B2 COMPLIANCE Object-Lock (undeletable by anyone, incl. the key holder and Backblaze, for 3000
-days), and a restore drill proves it comes back. Phase 2's parallel capture path (new workflow
-`scrape_capture.yml` + `archive/scrape_capture.py`, committing to the dedicated `data-captures`
-orphan branch) is built and in review (PR #85); confirming `daily_scraper.yml` still runs in
-parallel and observing the first real committed capture file are the remaining Phase 2 items,
-after merge. **The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
+**Overall: PHASE 1 COMPLETE (2026-09-09 → 2026-09-10). PHASE 2 COMPLETE (2026-09-10).** The
+immutable baseline is built, verified, git-manifested, copied off-site under B2 COMPLIANCE
+Object-Lock, and a restore drill proves it comes back. Phase 2's parallel capture path
+(`scrape_capture.yml` + `archive/scrape_capture.py`) is merged (PR #85, `b943ddf`) and **proven
+live**: the workflow scraped PSX 2026-09-09 and committed an immutable
+`data/incoming/2026-09-09.parquet` (494 rows, sha256 `e6115b80…5338`, matches the commit
+message) to the dedicated `data-captures` orphan branch; a second run was a clean `exists`
+no-op. `daily_scraper.yml` byte-unchanged and still on its schedule. **Phase 3 (Medallion
+transforms) begins only on the owner's explicit "start Phase 3".** **The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
 still the live system and is untouched** — nothing in Phase 1 or 2 wrote to `psx_data.db`,
 Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…425b` unchanged).
 
@@ -57,7 +58,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 |---|---|---|---|---|
 | 0 | Decision & planning | ✅ DONE | 2026-09-09 | Design approved in principle; tracker + ledger/register entries written; **all 7 §9 decisions resolved by the owner 2026-09-09** |
 | 1 | Stand up the archive + execute SEQ-1 | ✅ DONE | 2026-09-10 | Archive root `D:\KIRAN_ARCHIVE\` (C: space-constrained), 92 baseline payload files, local read-only. Whole-DB baseline via SQLite Online Backup API — `psx_data_baseline_KIRAN_LFM_P1_20260909_222210.db`, 882,896,896 b, **SHA-256 `9418cb1bf98c197550e02eae663f0ab870ccc93c967dfb743c221cd3d5f70d61`**, self-contained (`journal_mode=DELETE`), `integrity_check` ok, 53/53 table counts + all substrate date spans match live; Bronze/Silver Parquet store (`SUM(volume)` reconciles exactly); DR-006 baseline (`c03a393f…`) + BI 17-file set folded into `backup_set/` + hash-verified; `BASELINE_MANIFEST.{md,sha256}` (92 files, 1,898,646,386 b) git-committed, `archive_manifest verify` PASS. **Off-site:** all 92 files in B2 `kiran-psx-archive` under **COMPLIANCE Object-Lock, 3000 days** (undeletable — verified `AccessDenied` on a locked version); big SQLite files zstd'd (~33%) for the slow uplink; `offsite_push` resumable at the 16 MB part level. `offsite_push --verify` PASS; `restore_drill_archive` PASS (baseline restored + `integrity_check` ok + 1,761,371 price rows). `restore_drill_b2.py` now runs both drills. `archive_checksum_check` for Task Scheduler. PRs #81 / #82 / #83. **NOTE:** `duckdb` has no cp314 wheel (Python 3.14) — the Parquet store is engine-neutral; the DuckDB attach layer is a Phase 3 item. The over-broad B2 key is moot (COMPLIANCE can't be bypassed); a minimal key is optional later hygiene. |
-| 2 | Rework the scrape (GitHub Actions) | 🔵 IN PROGRESS | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py` built; reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata incl. Actions run ID, `code_version`, per-sector completeness) + refreshes `latest.parquet`. **Commits to the dedicated `data-captures` orphan branch, not `main`** (`main` is branch-protected — a data-only commit can't pass the required checks; owner decision 2026-09-10). Workflow checks out `main` (code) + `data-captures` (target) side by side. `data-captures` created 2026-09-10 (orphan, README-only init commit, pushed). Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests + 2 live smoke runs PASS (2026-09-09 source date: 489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626, ~18.8 KB). `daily_scraper.yml` byte-unchanged. **PR #85; remaining items = confirm `daily_scraper.yml` still runs in parallel + first real committed capture file hash-verified, both after merge.** Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
+| 2 | Rework the scrape (GitHub Actions) | ✅ DONE | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, merged PR #85 (`b943ddf`). Reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata: Actions run ID, `code_version`, `scraper_sha256`, self-reported counts, TR-14 per-sector completeness) + refreshes `latest.parquet`. Two side-by-side checkouts — `main` (code) + `data-captures` (commit target). **Commits to the dedicated `data-captures` orphan branch, not `main`** (`main` is branch-protected; owner decision 2026-09-10). Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests, suite 449. **Proven live 2026-09-10:** run `34453459820` scraped PSX 2026-09-09 (489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626) and committed `data/incoming/2026-09-09.parquet` + `latest.parquet` (494 rows, 18,922 b, sha256 `e6115b80…5338` = commit message) as `kiran-scrape-capture[bot]` → `data-captures` `dd269cc`; independent `--single-branch` clone hash-matched. Run `34453569404` = clean `exists` no-op, no new commit. `daily_scraper.yml` byte-unchanged (last touched `a7c0ce6`, 9 days prior), still scheduled. Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
 | 3 | Build the Medallion transforms | ⬜ NOT STARTED | — | Bronze ingest (capture-file lineage), Silver (port CA + conforming; wire the v2 reader as an available source, gate off), Gold (2-yr slice, screeners, grading). Idempotency tests per transform |
 | 4 | Publication contract + atomic swap | ⬜ NOT STARTED | — | Four gates into the Gold build; `current_publication` with the full lineage block; staging-DB build + rename |
 | 5 | Shadow run | ⬜ NOT STARTED | — | Nightly local Gold vs current Supabase output, ≥10 trading sessions, diffs investigated |
@@ -166,10 +167,10 @@ revertible; the old pipeline stays live until Phase 6.
 - [x] Wire a scheduled checksum check + extend `restore_drill_b2.py` to the widened backup set; run the drill once, PASS — checksum check `archive/archive_checksum_check.py` (Task Scheduler `KIRAN_Archive_Checksum`); `restore_drill_b2.py` now also runs `archive/restore_drill_archive.py`; drill **PASS 2026-09-10** (baseline restored, `integrity_check` ok, 1,761,371 price rows, MAX(date)=2026-09-08, every object COMPLIANCE-locked)
 
 ### Phase 2 — Rework the scrape
-- [x] New GitHub Actions workflow: fetch → commit `data/incoming/YYYY-MM-DD.parquet` + refresh `latest.parquet` — `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, 2026-09-10 (PR #85). Reuses `scraper.py`; commits to the dedicated `data-captures` orphan branch (created 2026-09-10); idempotent; 12 unit tests + 2 live smoke runs PASS
-- [x] Commit message carries the Actions run ID + self-reported row/sector counts — commit step in `scrape_capture.yml` builds the message from `steps.capture.outputs.*` (source date, stock/index/sector counts, coverage status, capture sha256, run URL + attempt); the same facts are also embedded as Parquet file-level metadata
-- [ ] Old `daily_scraper.yml` confirmed still running in parallel (not touched) — byte-unchanged in the PR diff; live parallel-run confirmation is a post-merge observation
-- [ ] First dated capture file observed on `data-captures`, hash-verified — after merge, on the next scheduled slot or a `workflow_dispatch`
+- [x] New GitHub Actions workflow: fetch → commit `data/incoming/YYYY-MM-DD.parquet` + refresh `latest.parquet` — `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, merged PR #85 (`b943ddf`). Reuses `scraper.py`; commits to the dedicated `data-captures` orphan branch (created 2026-09-10); idempotent; 12 unit tests, suite 449; two live workflow runs (one `written`, one `exists`)
+- [x] Commit message carries the Actions run ID + self-reported row/sector counts — verified on `data-captures` `dd269cc`: subject `PSX 2026-09-09 -- 489 stocks, 5 indices, 36 sectors, coverage COMPLETE`, body carries the Actions run URL + attempt + `capture sha256`; the same facts are also embedded as Parquet file-level metadata
+- [x] Old `daily_scraper.yml` confirmed still running in parallel (not touched) — byte-identical `86cdfb9..b943ddf` (empty diff); last touched `a7c0ce6` (9 days prior); still an active workflow on its 5-slot schedule
+- [x] First dated capture file observed on `data-captures`, hash-verified — workflow run `34453459820` committed `data/incoming/2026-09-09.parquet` (494 rows). An independent `git clone --branch data-captures --single-branch` gave sha256 `e6115b809240381f2ebcef3c622dcc42c95d0b29184949206ca5c6b2add25338`, matching the value in the commit message. `latest.parquet` byte-identical.
 
 ### Phase 3 — Medallion transforms
 - [ ] Bronze ingest: append-only, deduped, gap-detecting, records which dated files it consumed + hashes
@@ -283,14 +284,14 @@ retained. A full rebuild of Supabase state from the archive is possible but is a
 
 ## 10. Running log (newest first)
 
-### 2026-09-10 — Phase 2 STARTED: parallel scrape-capture path built (PR pending)
+### 2026-09-10 — Phase 2 COMPLETE: parallel scrape-capture path merged + proven live
 Owner said "start Phase 2" and approved the 5-point approach. During the build we found `main`
 now carries branch protection (`enforce_admins: true`, `strict: true`, 3 required checks:
 `Clean install on Python 3.11` / `Unit tests` / `App boot smoke test`) — so the original "commit
 to `main` with `[skip ci]`" cannot work (a checkless commit produces none of the required
 checks; `enforce_admins` blocks even an admin/bot push). **Owner decision 2026-09-10: use a
 dedicated `data-captures` orphan branch.** CLAUDE.md's stale "no branch protection yet" note
-should be corrected in a later pass.
+was corrected in the same PR.
 
 Built:
 - **`archive/scrape_capture.py`** — reuses `scraper.py`'s `get_source_date` / `scrape_date` /
@@ -322,42 +323,41 @@ Built:
   idempotency, `--force` data-stability, nodata/unreachable, `latest.parquet` tracking + no
   backfill regression, INCOMPLETE coverage, `$GITHUB_OUTPUT` emission, no `psx_data.db` touch).
 
-Verified locally: full test suite **449 passed**; two live smoke runs against ksestocks for
-source date 2026-09-09 each produced a ~494-row / ~18.8 KB file (489 stocks, 5 indices, 36
-sectors, coverage COMPLETE 626/626); an immediate re-run returned `exists` (no rewrite); a run
-writing into the real `data-captures` worktree staged cleanly (not committed — kept the branch
-at its init commit for the workflow to produce the first real capture).
+**`data-captures` branch protection (owner, 2026-09-10):** a rule for pattern `data-captures`
+with *allow force pushes* + *allow deletions* checked, nothing else — no required checks/reviews,
+no push restrictions, `enforce_admins` off. Permissive enough for the workflow's `GITHUB_TOKEN`
+(`contents: write`) to push directly. (A stricter rule blocking force-push/deletion would suit
+the "immutable record" intent, but the workflow only ever fast-forwards — fine to start.)
 
-**`data-captures` branch protection (owner, 2026-09-10):** a rule was added for pattern
-`data-captures` with *allow force pushes* + *allow deletions* checked, nothing else — no
-required checks, no required reviews, no push restrictions, `enforce_admins` off. Permissive
-enough for the workflow's `GITHUB_TOKEN` (`contents: write`) to push directly. (A stricter rule
-that blocks force-push/deletion would be better for the "immutable record" intent, but the
-workflow only ever fast-forwards, so this is fine to start.)
+**Merge friction (one-time).** `pull_request` CI does **not** auto-fire for a PR that adds a
+file under `.github/workflows/` (GitHub's workflow-injection guard — proven with throwaway probe
+PR #86: an identical PR touching no workflow file got CI in seconds; #85 got none across 3
+commits). Also `push`-CI didn't fire on the squash-merge commit `b943ddf` for the same reason.
+Worked around: `ci.yml` dispatched manually — green on the merged tree (`0f3faf9` as a PR run at
+08:02, and `b943ddf` on `main` by dispatch). The owner unchecked *Include administrators* on the
+`main` rule to merge (**⚠ still off as of this entry — owner to re-check it**). Future edits to
+`scrape_capture.yml` itself will hit the same guard; routine capture runs never touch a workflow
+file, so day-to-day is unaffected.
 
-**CI on PR #85 — confirmed root cause.** `pull_request` CI **never auto-fires** for this PR
-because it adds a file under `.github/workflows/` — GitHub's workflow-injection guard. Proven
-2026-09-10 with a throwaway probe PR (#86, since closed): an identical-shaped PR touching no
-workflow file got a `pull_request` CI run within seconds; PR #85 got zero across 3 commits + a
-close/reopen. There is no `action_required` run to approve — GitHub simply doesn't create one
-until the workflow is on the default branch. Worked around with a manual `workflow_dispatch` of
-`ci.yml` on the branch: **all 3 required contexts are `success` as check-runs on head SHA
-`0f3faf9`** (`gh api commits/0f3faf9/check-runs`), and the single check-suite on that SHA
-(`github-actions`, linked to PR #85) is `success`. But `main`'s protection has
-`enforce_admins: true` + `strict: true`, and GitHub's merge gate does not accept
-`workflow_dispatch`-sourced checks as satisfying the PR requirement → `mergeable_state: blocked`.
+**Merged + proven live 2026-09-10:**
+- PR #85 squash-merged → `main` `b943ddf`.
+- `gh workflow run scrape_capture.yml` (run `34453459820`, 38 s, success). It checked out `main`
+  (code) + `data-captures` (target), scraped ksestocks for source date **2026-09-09**, and
+  committed `data/incoming/2026-09-09.parquet` + `latest.parquet` to `data-captures` as
+  `kiran-scrape-capture[bot]` (`dd269cc`). Commit subject: `PSX 2026-09-09 -- 489 stocks, 5
+  indices, 36 sectors, coverage COMPLETE`; body carries the run URL + attempt + `capture
+  sha256`.
+- **Hash-verified independently:** `git clone --branch data-captures --single-branch` → file
+  sha256 `e6115b809240381f2ebcef3c622dcc42c95d0b29184949206ca5c6b2add25338`, matches the commit
+  message; 494 rows (489 stock + 5 index), 18,922 b; metadata carries `actions_run_id`,
+  `code_version=b943ddf`, `scraper_sha256`, `expected_total=626`/`parsed_total=626`.
+- **Idempotent:** a second `gh workflow run` (run `34453569404`) → outcome `exists`, the commit
+  step skipped, `data-captures` still at `dd269cc`.
+- `daily_scraper.yml` byte-identical `86cdfb9..b943ddf`; still an active workflow on its schedule.
 
-**To merge PR #85:** the owner unchecks *Include administrators* on the `main` branch-protection
-rule (or adds a bypass), merges #85 (checks are genuinely green on the SHA), then re-checks it.
-An admin cannot merge past `enforce_admins` without that toggle. Once `scrape_capture.yml` is on
-`main`, routine capture runs never touch a workflow file, so this is a one-time merge friction;
-any *future* edit to the workflow itself will hit the same guard and need the same dispatch +
-admin-merge.
-
-**Not done (post-merge):** dispatch `scrape_capture.yml` to prove the `data-captures` push
-works; confirm `daily_scraper.yml` still runs in parallel; observe the first real
-workflow-produced capture file on `data-captures`, hash-verified. Front end (parallel from
-Phase 2) not started — this session was scoped to the capture path.
+**Not done:** the front-end build (parallel track from Phase 2) — not started; this work was
+scoped to the capture path. Owner to re-enable *Include administrators* on `main`. **Phase 3
+(Medallion transforms) begins only on an explicit "start Phase 3".**
 
 ### 2026-09-10 (earlier) — Phase 1 COMPLETE: off-site Object-Lock copy + restore drill
 Owner created the B2 bucket `kiran-psx-archive` (Object Lock enabled) and an app key
