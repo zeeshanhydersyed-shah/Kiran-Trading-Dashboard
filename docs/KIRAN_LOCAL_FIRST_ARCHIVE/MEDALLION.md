@@ -145,12 +145,12 @@ Every run compares the rebuilt `prices_adjusted` to the frozen
   MWMP 2, GEMBCEM 1) — full-history single-formula recompute vs. the frozen
   incremental (`_circuit_flags_for_new_rows`) at a trading-gap boundary. Sub-0.001 %.
 
-**Open owner decision (do not decide unattended):** whether Silver should carry
-the frozen `prices_adjusted` delta forward for symbols with no reproducible event
-record (trust the frozen store as an event source), or stay strictly
-rebuild-from-events and let the DR program resolve DLL-class events upstream.
-Until decided, Silver v1 is rebuild-pure and the frozen store (the seed) remains
-available for anything that needs the as-shipped adjustment.
+**Owner decision D8 (2026-09-10): rebuild-pure.** Silver stays strictly
+rebuild-from-events. DLL-class events are the DR program's to resolve upstream —
+add a real `CONFIRMED` suspect row / CSV entry with the factor, and the next
+rebuild picks it up. `_silver_parity.json`'s residual list *is* that backlog and
+should trend to zero, not be papered over. The frozen store (the seed) stays
+available for anything that needs the as-shipped adjustment. No code change.
 
 ## Task 3.3 — Gold build (not started)
 
