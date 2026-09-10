@@ -199,21 +199,24 @@ from `post_gap_expected_divergence` (knock-on of the gap-fill, expected).
   `stock_signals.py`'s `_load_*` / `_build_pivot_lookup` / `_process_trading_dates`
   **verbatim by import** (loaders already take a `conn` + `?` params → DuckDB
   works unchanged; `_process_trading_dates(conn=None, write_fn=…)` is the PG
-  port's zero-SQLite path). Full Silver universe (468), whole 2-yr window every
-  run, output sliced to the window; also materialises `stock_metadata` +
-  `sectors` into the serving DB. ~208 k rows, deterministic. Price-history
-  lookback = `KIRAN_SS_LOOKBACK_DAYS` (default 1050 cal ≈ 720 trading days —
-  ~4 min/run; keeps this 7.6 GB box out of swap. `stock_signals.py`'s own 2015
-  floor thrashes it). Parity **`status: clean` (port verified):** `rs_score_20`
-  + `base_tightness` / `pivot_*` / `bos_flag` / `avg_vol_10d` byte-exact vs
-  live, `only_live` = 0, Gold ranks self-consistent. `lookback_flag_residual` =
-  EMA-stack boolean flags NULL/flipped for thin names at the shallow default —
-  a load-depth artifact, raise the env var on adequate RAM. **Finding →
-  `KIRAN_CLEANUP_AUDIT.md` §118:** live's historical `stock_signals` universe
-  was ~290 symbols through 2026-07-31, then +131 **forward-only** on 2026-08-03
-  — every pre-2026-08-03 rank over a ~32%-truncated pool; Gold ranks the full
-  universe, self-consistently (live has ≥1 rank/score inconsistency per
-  historical date, e.g. `MTL` 2025-09-08 `rs_rank=1` at score −6.07). 4 tests.
+  port's zero-SQLite path). Universe = Silver `stock_metadata` **minus
+  `config.EXCLUDED_SECTORS` + `is_non_equity_symbol`** (`_load_universe` itself
+  doesn't filter — §118 Defect A). Whole 2-yr window every run, output sliced;
+  also materialises `stock_metadata` + `sectors` into the serving DB. ~208 k
+  rows, deterministic. Price-history lookback = `KIRAN_SS_LOOKBACK_DAYS` (default
+  1050 cal ≈ 720 trading days — ~4 min/run; keeps this 7.6 GB box out of swap;
+  `stock_signals.py`'s own 2015 floor thrashes it). Parity **`status: clean`
+  (port verified):** `rs_score_20` + `base_tightness` / `pivot_*` / `bos_flag` /
+  `avg_vol_10d` byte-exact vs live, genuine `only_live` = 0, Gold ranks
+  self-consistent. `lookback_flag_residual` = EMA-stack flags NULL/flipped for
+  thin names at the shallow default (load-depth, raise the env var).
+  **Finding → `KIRAN_CLEANUP_AUDIT.md` §118 (2 live defects, owner: fix in the
+  migration only — dashboard not in use):** (A) `_load_universe` never filtered
+  `EXCLUDED_SECTORS`; live's `stock_metadata` grew ~150 excluded-sector rows on
+  2026-08-03 → live has ranked ~128 untradeable stocks since (setup_log ~22 %,
+  Explorer/Leaders). Gold drops them. (B) `recompute_symbol_signals` writes
+  `rs_rank=1` for its symbol's whole history — `MTL` (5194) + `PIAB` (51). Gold
+  recomputes over one universe → correct. 5 tests.
 - **3.3c** — `sector_signals` + the four-stage sector grades (`_stage`).
 - **3.3d** — `boring_signals` + `leaders_scan` / `leaders_top_picks`.
 - **3.3e** — `signal_engine` (`recovery_signals` / `portfolio_signals`) + `setup_log` / `processor` (`trade_setups`).

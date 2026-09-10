@@ -60,11 +60,13 @@ def _write_prices_anchor(root, max_date):
     pq.write_table(t, fp, **bronze_ingest.PARQUET_OPTS)
 
 
-def _write_silver(root, bars):
+def _write_silver(root, bars, extra_syms=()):
     """Per-symbol prices_adjusted derived from the KSE bars (each symbol a
-    slightly different multiple), plus sectors + stock_metadata."""
+    slightly different multiple), plus sectors + stock_metadata. `extra_syms` =
+    list of (symbol, sector) to add on top of _SYMS (e.g. an excluded sector)."""
+    syms = list(_SYMS) + list(extra_syms)
     rows_by_year: dict[str, list] = {}
-    for si, (sym, sec) in enumerate(_SYMS):
+    for si, (sym, sec) in enumerate(syms):
         mult = 0.001 * (1 + si)          # HBL ~70, OGDC ~140, ...
         for bi, (ds, hi, lo, cl, op) in enumerate(bars):
             c = cl * mult + 3 * math.sin((bi + si) / 7)
@@ -79,15 +81,15 @@ def _write_silver(root, bars):
         fp.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(t, fp, **bronze_ingest.PARQUET_OPTS)
 
-    sct = pa.table({"symbol": [s for s, _ in _SYMS], "sector": [x for _, x in _SYMS]},
+    sct = pa.table({"symbol": [s for s, _ in syms], "sector": [x for _, x in syms]},
                    schema=pa.schema([("symbol", pa.string()), ("sector", pa.string())]))
     (root / "prices_archive" / "silver" / "sectors").mkdir(parents=True, exist_ok=True)
     pq.write_table(sct, root / "prices_archive" / "silver" / "sectors" / "sectors.parquet",
                    **bronze_ingest.PARQUET_OPTS)
 
-    n = len(_SYMS)
-    mt = pa.table({"symbol": [s for s, _ in _SYMS], "company_name": [s for s, _ in _SYMS],
-                   "sector": [x for _, x in _SYMS], "listing_date": [bars[0][0]] * n,
+    n = len(syms)
+    mt = pa.table({"symbol": [s for s, _ in syms], "company_name": [s for s, _ in syms],
+                   "sector": [x for _, x in syms], "listing_date": [bars[0][0]] * n,
                    "delisting_date": [None] * n, "is_active": [1] * n,
                    "in_kse100": [1] * n, "notes": [None] * n},
                   schema=pa.schema([
@@ -283,7 +285,8 @@ def test_stock_signals_parity_clean_when_live_matches(env):
     assert ss["rs_score_20_mismatch_total"] == 0
     assert ss["hard_column_mismatch_total"] == 0
     assert ss["lookback_flag_flip_total"] == 0
-    assert ss["only_live_total"] == 0
+    assert ss["only_live_genuine_total"] == 0
+    assert ss["live_excluded_sector_ranked"]["total"] == 0
     assert ss["gold_rank_self_inconsistencies_total"] == 0
 
 
@@ -303,3 +306,49 @@ def test_stock_signals_parity_flags_rs_score_diff(env):
     ss = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())["stock_signals"]
     assert ss["status"] == "residual"
     assert ss["rs_score_20_mismatch_total"] >= 1
+
+
+def test_stock_signals_excludes_excluded_sectors(tmp_path, monkeypatch):
+    """§118 Defect A: Gold's build_stock_signals must drop config.EXCLUDED_SECTORS
+    (which live's _load_universe does not filter). An excluded-sector symbol in
+    Silver stock_metadata + prices must NOT get a stock_signals row, and the
+    parity check must classify a live-ranked excluded symbol as
+    `live_excluded_sector`, not a genuine `only_live`."""
+    import config
+    root = tmp_path / "KIRAN_ARCHIVE"
+    (root / "psx_serving").mkdir(parents=True)
+    monkeypatch.setattr(bronze_ingest, "ARCHIVE_ROOT", root)
+    monkeypatch.setattr(gold_build, "ARCHIVE_ROOT", root)
+    live = tmp_path / "psx_data.db"
+    monkeypatch.setattr(gold_build, "LIVE_DB", live)
+
+    bars = _bars()
+    excl_sector = sorted(config.EXCLUDED_SECTORS)[0]
+    _write_index(root, bars)
+    _write_prices_anchor(root, bars[-1][0])
+    _write_silver(root, bars, extra_syms=[("ZEXC", excl_sector)])
+
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=False)
+    import duckdb
+    c = duckdb.connect(str(root / "psx_serving" / "psx_serving.duckdb"), read_only=True)
+    zexc = c.execute("SELECT count(*) FROM stock_signals WHERE symbol = 'ZEXC'").fetchone()[0]
+    c.close()
+    assert zexc == 0, "excluded-sector symbol must not be ranked in Gold"
+
+    # live has ZEXC ranked (like live post-2026-08-03) -> parity: excluded, not genuine
+    def _add_zexc(rows, cols):
+        di, si = cols.index("date"), cols.index("symbol")
+        seen = {}
+        for r in list(rows):
+            d = r[di]
+            if d not in seen:
+                seen[d] = list(r)
+                seen[d][si] = "ZEXC"
+                rows.append(seen[d])
+
+    _seed_live_ss_from_gold(root, live, mutate=_add_zexc)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=True)
+    ss = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())["stock_signals"]
+    assert ss["status"] == "clean", ss
+    assert ss["only_live_genuine_total"] == 0
+    assert ss["live_excluded_sector_ranked"]["total"] >= 1
