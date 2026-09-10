@@ -46,8 +46,9 @@ directories **as work completes** — never leave finished work only in chat.
 2026-09-10).** The immutable baseline is built, verified, git-manifested, copied off-site under
 B2 COMPLIANCE Object-Lock (undeletable by anyone, incl. the key holder and Backblaze, for 3000
 days), and a restore drill proves it comes back. Phase 2's parallel capture path (new workflow
-`scrape_capture.yml` + `archive/scrape_capture.py` + `data/incoming/`) is built and in review
-(PR pending); the first real committed capture file is the remaining Phase 2 item, observed
+`scrape_capture.yml` + `archive/scrape_capture.py`, committing to the dedicated `data-captures`
+orphan branch) is built and in review (PR #85); confirming `daily_scraper.yml` still runs in
+parallel and observing the first real committed capture file are the remaining Phase 2 items,
 after merge. **The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
 still the live system and is untouched** — nothing in Phase 1 or 2 wrote to `psx_data.db`,
 Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…425b` unchanged).
@@ -56,7 +57,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 |---|---|---|---|---|
 | 0 | Decision & planning | ✅ DONE | 2026-09-09 | Design approved in principle; tracker + ledger/register entries written; **all 7 §9 decisions resolved by the owner 2026-09-09** |
 | 1 | Stand up the archive + execute SEQ-1 | ✅ DONE | 2026-09-10 | Archive root `D:\KIRAN_ARCHIVE\` (C: space-constrained), 92 baseline payload files, local read-only. Whole-DB baseline via SQLite Online Backup API — `psx_data_baseline_KIRAN_LFM_P1_20260909_222210.db`, 882,896,896 b, **SHA-256 `9418cb1bf98c197550e02eae663f0ab870ccc93c967dfb743c221cd3d5f70d61`**, self-contained (`journal_mode=DELETE`), `integrity_check` ok, 53/53 table counts + all substrate date spans match live; Bronze/Silver Parquet store (`SUM(volume)` reconciles exactly); DR-006 baseline (`c03a393f…`) + BI 17-file set folded into `backup_set/` + hash-verified; `BASELINE_MANIFEST.{md,sha256}` (92 files, 1,898,646,386 b) git-committed, `archive_manifest verify` PASS. **Off-site:** all 92 files in B2 `kiran-psx-archive` under **COMPLIANCE Object-Lock, 3000 days** (undeletable — verified `AccessDenied` on a locked version); big SQLite files zstd'd (~33%) for the slow uplink; `offsite_push` resumable at the 16 MB part level. `offsite_push --verify` PASS; `restore_drill_archive` PASS (baseline restored + `integrity_check` ok + 1,761,371 price rows). `restore_drill_b2.py` now runs both drills. `archive_checksum_check` for Task Scheduler. PRs #81 / #82 / #83. **NOTE:** `duckdb` has no cp314 wheel (Python 3.14) — the Parquet store is engine-neutral; the DuckDB attach layer is a Phase 3 item. The over-broad B2 key is moot (COMPLIANCE can't be bypassed); a minimal key is optional later hygiene. |
-| 2 | Rework the scrape (GitHub Actions) | 🔵 IN PROGRESS | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py` + `data/incoming/` built; reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata incl. Actions run ID, `code_version`, per-sector completeness) + refreshes `latest.parquet`; commits to `main` with `[skip ci]`, message carries run ID + self-reported counts. Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests + a live smoke run PASS (2026-09-09 source date: 489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626, 18.8 KB). `daily_scraper.yml` byte-unchanged. **PR pending; remaining item = first real committed capture file, hash-verified, after merge.** Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
+| 2 | Rework the scrape (GitHub Actions) | 🔵 IN PROGRESS | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py` built; reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata incl. Actions run ID, `code_version`, per-sector completeness) + refreshes `latest.parquet`. **Commits to the dedicated `data-captures` orphan branch, not `main`** (`main` is branch-protected — a data-only commit can't pass the required checks; owner decision 2026-09-10). Workflow checks out `main` (code) + `data-captures` (target) side by side. `data-captures` created 2026-09-10 (orphan, README-only init commit, pushed). Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests + 2 live smoke runs PASS (2026-09-09 source date: 489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626, ~18.8 KB). `daily_scraper.yml` byte-unchanged. **PR #85; remaining items = confirm `daily_scraper.yml` still runs in parallel + first real committed capture file hash-verified, both after merge.** Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
 | 3 | Build the Medallion transforms | ⬜ NOT STARTED | — | Bronze ingest (capture-file lineage), Silver (port CA + conforming; wire the v2 reader as an available source, gate off), Gold (2-yr slice, screeners, grading). Idempotency tests per transform |
 | 4 | Publication contract + atomic swap | ⬜ NOT STARTED | — | Four gates into the Gold build; `current_publication` with the full lineage block; staging-DB build + rename |
 | 5 | Shadow run | ⬜ NOT STARTED | — | Nightly local Gold vs current Supabase output, ≥10 trading sessions, diffs investigated |
@@ -101,8 +102,9 @@ Trust Register amendment 2026-09-09).
 *Engine decided 2026-09-09 (§9 D1): **DuckDB across all three layers** (Bronze, Silver, Gold).*
 
 **Data flow:** GitHub Actions scrapes → commits `data/incoming/YYYY-MM-DD.parquet` (immutable,
-one per date) + refreshes `latest.parquet` → local pipeline `git pull` → append to Bronze
-(deduped, gap-detecting) → Silver (CA-adjust, conform, indicators) → Gold (2-yr slice,
+one per date) + refreshes `latest.parquet` **to the dedicated `data-captures` orphan branch**
+(not `main` — Phase 2, owner decision 2026-09-10) → local pipeline `git pull origin data-captures`
+→ append to Bronze (deduped, gap-detecting) → Silver (CA-adjust, conform, indicators) → Gold (2-yr slice,
 screeners, sector grades, publication gate) → JSON export → static front end. Research and the
 DR loops attach **read-only** to Bronze/Silver, exactly as today.
 
@@ -146,7 +148,7 @@ Full detail in the design doc §9.
 | **Q4 — offline** | 1 day / 1 week: automatic catch-up (dated files + rolling pointer). 1 month: ingest backfills from the permanent dated files; one-line `--backfill` only if a dated file is missing. The gate withholds on any incompleteness, so a partial catch-up is never served. |
 | **Q5 — DR coexistence** | DR loops + CA build stay read-only consumers of the archive (`mode=ro&immutable=1`). Bronze append-only → any past DR loop re-verifiable. Frozen DR-006 baseline untouched. The migration must **not** wire v2 into the dashboard as a side effect. |
 | **Q6 — authoritative vs provisional** | Authority is **scoped and declared**: one compute path, one served state, for the 2-yr window + screened universe. CA provenance in force is recorded per segment and shown per-symbol on Explorer (`adjusted_v2` / `raw`). The provisional deep history sits outside the serving window — a research/DR problem, not a current-authority problem. |
-| **Q7 — `latest.parquet` overwrite** | Fixed: GitHub Actions commits one immutable `YYYY-MM-DD.parquet` per scrape date (the audit record) plus a freely-overwritten `latest.parquet` pointer. Gives contemporaneous capture — the evidence standard the DR program found missing for 2005–2019. |
+| **Q7 — `latest.parquet` overwrite** | Fixed: GitHub Actions commits one immutable `YYYY-MM-DD.parquet` per scrape date (the audit record) plus a freely-overwritten `latest.parquet` pointer, to the `data-captures` branch (Phase 2). Gives contemporaneous capture — the evidence standard the DR program found missing for 2005–2019. |
 
 ---
 
@@ -164,10 +166,10 @@ revertible; the old pipeline stays live until Phase 6.
 - [x] Wire a scheduled checksum check + extend `restore_drill_b2.py` to the widened backup set; run the drill once, PASS — checksum check `archive/archive_checksum_check.py` (Task Scheduler `KIRAN_Archive_Checksum`); `restore_drill_b2.py` now also runs `archive/restore_drill_archive.py`; drill **PASS 2026-09-10** (baseline restored, `integrity_check` ok, 1,761,371 price rows, MAX(date)=2026-09-08, every object COMPLIANCE-locked)
 
 ### Phase 2 — Rework the scrape
-- [x] New GitHub Actions workflow: fetch → commit `data/incoming/YYYY-MM-DD.parquet` + refresh `latest.parquet` — `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, 2026-09-10 (PR pending). Reuses `scraper.py`; idempotent; 12 unit tests + live smoke PASS
+- [x] New GitHub Actions workflow: fetch → commit `data/incoming/YYYY-MM-DD.parquet` + refresh `latest.parquet` — `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, 2026-09-10 (PR #85). Reuses `scraper.py`; commits to the dedicated `data-captures` orphan branch (created 2026-09-10); idempotent; 12 unit tests + 2 live smoke runs PASS
 - [x] Commit message carries the Actions run ID + self-reported row/sector counts — commit step in `scrape_capture.yml` builds the message from `steps.capture.outputs.*` (source date, stock/index/sector counts, coverage status, capture sha256, run URL + attempt); the same facts are also embedded as Parquet file-level metadata
 - [ ] Old `daily_scraper.yml` confirmed still running in parallel (not touched) — byte-unchanged in the PR diff; live parallel-run confirmation is a post-merge observation
-- [ ] First dated capture file observed in the repo, hash-verified — after merge, on the next scheduled slot or a `workflow_dispatch`
+- [ ] First dated capture file observed on `data-captures`, hash-verified — after merge, on the next scheduled slot or a `workflow_dispatch`
 
 ### Phase 3 — Medallion transforms
 - [ ] Bronze ingest: append-only, deduped, gap-detecting, records which dated files it consumed + hashes
@@ -282,10 +284,13 @@ retained. A full rebuild of Supabase state from the archive is possible but is a
 ## 10. Running log (newest first)
 
 ### 2026-09-10 — Phase 2 STARTED: parallel scrape-capture path built (PR pending)
-Owner said "start Phase 2" and approved the 5-point approach (capture script in `archive/`;
-one Parquet table per source date with stock + index rows + file-level metadata;
-`latest.parquet` a freely-overwritten pointer; schedule mirrors `daily_scraper.yml`'s 5 slots;
-commit to `main` with `[skip ci]`).
+Owner said "start Phase 2" and approved the 5-point approach. During the build we found `main`
+now carries branch protection (`enforce_admins: true`, `strict: true`, 3 required checks:
+`Clean install on Python 3.11` / `Unit tests` / `App boot smoke test`) — so the original "commit
+to `main` with `[skip ci]`" cannot work (a checkless commit produces none of the required
+checks; `enforce_admins` blocks even an admin/bot push). **Owner decision 2026-09-10: use a
+dedicated `data-captures` orphan branch.** CLAUDE.md's stale "no branch protection yet" note
+should be corrected in a later pass.
 
 Built:
 - **`archive/scrape_capture.py`** — reuses `scraper.py`'s `get_source_date` / `scrape_date` /
@@ -296,47 +301,41 @@ Built:
   TR-14 per-sector completeness (`expected_total` / `parsed_total` / `coverage_status`).
   Refreshes `latest.parquet` only when the captured date is the newest (a `--date` backfill of
   an older gap never regresses it). Idempotent — outcomes `written` / `exists` / `nodata` /
-  `unreachable`, all exit 0 (a missed capture is a detectable gap in `data/incoming/`, matching
-  `daily_scraper.yml`'s redundant-attempts design). Never opens `psx_data.db`.
+  `unreachable`, all exit 0 (a missed capture is a detectable gap, matching `daily_scraper.yml`'s
+  redundant-attempts design). Branch-agnostic — only writes into `--out-dir`. Never opens
+  `psx_data.db`.
+- **`data-captures` orphan branch** — created 2026-09-10 (`git checkout --orphan`), no shared
+  history with `main`, README-only init commit (`bbda122`), pushed. Holds only
+  `data/incoming/*.parquet` + a README. **Recommended (owner, later): protect it against
+  force-push + deletion.**
 - **`.github/workflows/scrape_capture.yml`** — 5 cron slots mirroring `daily_scraper.yml` +
-  `workflow_dispatch` (with an optional `date` input for backfill). `concurrency` group,
-  `contents: write`, `fetch-depth: 0`, pull-rebase-retry (5×) on push. The commit message
-  carries the run ID + self-reported counts + capture sha256; `[skip ci]` keeps data commits
-  off the deploy gate. `daily_scraper.yml` (`schedule` + `workflow_dispatch` only) is never
-  triggered by a push, so the capture commits cannot perturb the live pipeline.
-- **`data/incoming/README.md`**, **`docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md`** (format),
+  `workflow_dispatch` (optional `date` input for backfill). Two side-by-side checkouts: `main`
+  → `code/` (scraper code), `data-captures` → `captures/` (commit target). Runs the script with
+  `--out-dir captures/data/incoming`, then commits + pushes from the `captures/` checkout.
+  `concurrency` group, `contents: write`, pull-rebase-retry (5×). Commit message carries the run
+  ID + self-reported counts + capture sha256. `ci.yml` triggers on `main`/`staging` only, so the
+  `data-captures` commits run no CI; `daily_scraper.yml` is never triggered by a push.
+- **`docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md`** (format + the `data-captures` rationale),
+  `.gitignore` (`data/incoming/*.parquet` — keep local test runs off code branches),
   `archive/__init__.py` + `archive/README.md` notes.
 - **`tests/test_scrape_capture.py`** — 12 tests (schema, row content, embedded metadata,
   idempotency, `--force` data-stability, nodata/unreachable, `latest.parquet` tracking + no
   backfill regression, INCOMPLETE coverage, `$GITHUB_OUTPUT` emission, no `psx_data.db` touch).
 
-Verified locally: full test suite green; a live smoke run against ksestocks for source date
-2026-09-09 produced a 494-row / 18.8 KB file — 489 stocks, 5 indices, 36 sectors, coverage
-COMPLETE (626/626) — and an immediate re-run returned `exists` (no rewrite).
+Verified locally: full test suite **449 passed**; two live smoke runs against ksestocks for
+source date 2026-09-09 each produced a ~494-row / ~18.8 KB file (489 stocks, 5 indices, 36
+sectors, coverage COMPLETE 626/626); an immediate re-run returned `exists` (no rewrite); a run
+writing into the real `data-captures` worktree staged cleanly (not committed — kept the branch
+at its init commit for the workflow to produce the first real capture).
 
-**⚠ Blocker found — needs an owner decision before the workflow can run.** `main` now has
-branch protection (`enforce_admins: true`, `strict: true`, 3 required checks:
-`Clean install on Python 3.11` / `Unit tests` / `App boot smoke test`) — CLAUDE.md's "no branch
-protection yet" note is stale. The approved design (workflow pushes `data/incoming/*.parquet`
-commits straight to `main` with `[skip ci]`) **cannot work**: a checkless `[skip ci]` commit
-produces none of the 3 required checks, and `enforce_admins` means even an admin/bot push to
-`main` is rejected without them. **Recommended fix:** commit captures to a dedicated,
-unprotected long-lived branch (e.g. `data-captures`) instead of `main`; Phase 3's Bronze ingest
-does `git pull origin data-captures`. Keeps the same repo, immutable history, and every design
-property — only the commit target moves off the protected branch. Alternative: a PR-per-capture
-flow with a path-filtered CI shim that still reports the 3 required contexts on data-only
-changes. **Not changed unilaterally — the owner approved "commit to main".**
+**CI on PR #85:** GitHub did not auto-run CI because the head commit modifies
+`.github/workflows/`. A manual `workflow_dispatch` of `ci.yml` on the branch ran green (all 3
+required contexts `success` on `d639a6a`), but a later doc commit changed the head — the merge
+will need a fresh CI dispatch and likely an admin-merge / brief `enforce_admins` relaxation.
 
-Secondary: GitHub did not auto-run CI for PR #85 because its head commit modifies
-`.github/workflows/`. A manual `workflow_dispatch` of `ci.yml` on the branch ran green — all 3
-required contexts are `success` on head SHA `d639a6a` — but the PR still shows `BLOCKED`
-(`enforce_admins` + the dispatched-vs-pull_request check-run source). The owner may need to
-admin-merge or briefly relax `enforce_admins` to land it.
-
-**Not done (post-merge):** the last two §5 boxes — a live confirmation that `daily_scraper.yml`
-still runs in parallel, and the first real committed capture file observed + hash-verified. The
-front-end build (parallel from Phase 2) was **not** started — this session was scoped to the
-capture path.
+**Not done (post-merge):** confirm `daily_scraper.yml` still runs in parallel; observe the first
+real workflow-produced capture file on `data-captures`, hash-verified. Front end (parallel from
+Phase 2) not started — this session was scoped to the capture path.
 
 ### 2026-09-10 (earlier) — Phase 1 COMPLETE: off-site Object-Lock copy + restore drill
 Owner created the B2 bucket `kiran-psx-archive` (Object Lock enabled) and an app key

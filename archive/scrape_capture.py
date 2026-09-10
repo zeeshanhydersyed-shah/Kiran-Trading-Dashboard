@@ -12,6 +12,11 @@ This is the contemporaneous capture log the Data Rehabilitation program found
 missing for 2005-2019 (PG-4): a timestamped, hash-verifiable record of exactly
 what the source served on the day, committed to git as it happened.
 
+``.github/workflows/scrape_capture.yml`` runs this and commits the result to the
+dedicated ``data-captures`` orphan branch (not ``main`` -- ``main`` is
+branch-protected). This script only writes files into ``--out-dir``; it is
+branch-agnostic.
+
 It does NOT touch ``psx_data.db``, Supabase, or the existing ``daily_scraper.yml``
 pipeline -- those keep running unchanged until the migration's Phase 6 cutover
 (tracker: docs/KIRAN_LOCAL_FIRST_MIGRATION.md).

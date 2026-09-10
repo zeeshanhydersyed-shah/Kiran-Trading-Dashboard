@@ -75,7 +75,7 @@ to `$GITHUB_OUTPUT`. `outcome` is one of:
 
 | outcome | meaning | workflow action |
 |---|---|---|
-| `written` | a new dated file was created | commit + push to `main` (`[skip ci]`) |
+| `written` | a new dated file was created | commit + push to the `data-captures` branch |
 | `exists` | the file for this source date already exists | nothing |
 | `nodata` | source date resolved but it is a holiday / weekend | nothing (`::notice::`) |
 | `unreachable` | ksestocks could not be reached / no source date parsed | nothing (`::warning::`) |
@@ -84,13 +84,31 @@ Exit code is `0` for all four — a missed capture surfaces later as a gap in
 `data/incoming/`, which the Phase 3 Bronze ingest gap-detects. This mirrors
 `daily_scraper.yml`'s "redundant attempts, not one perfectly-timed run" design.
 
-## Coexistence assumptions
+## Where captures are committed — the `data-captures` branch
 
-- The workflow pushes directly to `main` with the default `GITHUB_TOKEN`. This
-  works while `main` has **no branch protection** (see `docs/DEPLOYMENT.md` §3).
-  If protection is enabled later, this workflow needs an explicit bypass actor or
-  must switch to opening PRs.
-- `[skip ci]` in the commit subject keeps the data commits from triggering
-  `ci.yml` (the deploy gate) or any other push-triggered workflow.
-- `daily_scraper.yml` is `schedule` + `workflow_dispatch` only — a push to `main`
-  never triggers it, so the capture commits cannot perturb the live pipeline.
+Captures go to a dedicated **`data-captures` orphan branch**, never `main`:
+
+- `main` is branch-protected — required status checks, `enforce_admins` on. A
+  data-only commit produces none of those checks, so a push to `main` (even a
+  bot's, even `[skip ci]`) is rejected. `data-captures` is unprotected, so the
+  workflow never fights branch protection.
+- The branch shares **no history with `main`** and holds only
+  `data/incoming/*.parquet` + a README. Code history on `main` stays clean.
+- `scrape_capture.yml` checks out `main` (into `code/`) for the scraper code and
+  `data-captures` (into `captures/`) for the commit target, side by side. The
+  script writes into `captures/data/incoming/`; the commit + push happens from
+  that checkout.
+- **Phase 3 Bronze ingest** reads this branch — `git pull origin data-captures`
+  in its own checkout, or a `git clone --branch data-captures --single-branch`.
+- **Recommended (not yet done):** protect `data-captures` against force-push and
+  deletion — it aligns with the "immutable capture record" intent. Requires an
+  owner repo-settings change.
+- `daily_scraper.yml` is `schedule` + `workflow_dispatch` only — nothing here can
+  perturb the live pipeline. `ci.yml` triggers on `main` / `staging` only, so the
+  `data-captures` commits run no CI.
+
+### First-run prerequisite
+
+The `data-captures` branch must exist before the workflow runs. It was created
+2026-09-10 as an orphan branch with an initial README-only commit
+(`git checkout --orphan data-captures`).
