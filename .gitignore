@@ -90,6 +90,11 @@ backups/
 market_breadth_oscillator.png
 twitter_output/
 
+# Local-first migration Phase 2: scrape captures live on the `data-captures`
+# orphan branch, never on `main`. A local `python -m archive.scrape_capture` run
+# writes here for testing -- keep those out of code branches.
+data/incoming/*.parquet
+
 # Internal production-trust control document — kept local by standing decision.
 # Never been in the repo. To publish it is a separate, deliberate call (use `git add -f`).
 docs/KIRAN_BORING_STATE_TRUST_REGISTER.md

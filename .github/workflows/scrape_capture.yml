@@ -1,0 +1,132 @@
+name: PSX Scrape Capture (local-first Phase 2)
+
+# A SECOND, parallel scrape path for the local-first migration (tracker:
+# docs/KIRAN_LOCAL_FIRST_MIGRATION.md, Phase 2). It fetches the ksestocks.com
+# Market Summary and commits the raw result as an immutable
+# data/incoming/YYYY-MM-DD.parquet capture file -- the contemporaneous capture
+# log the Data Rehabilitation program found missing for 2005-2019.
+#
+# Captures are committed to the dedicated **data-captures** orphan branch, NOT
+# main: main is branch-protected (required checks, admins included) and a
+# data-only commit cannot satisfy those checks. This job checks out `main` for
+# the code and `data-captures` for the commit target, side by side.
+#
+# It does NOT touch psx_data.db, Supabase, or daily_scraper.yml. daily_scraper.yml
+# keeps running unchanged until the migration's Phase 6 cutover.
+#
+# Schedule mirrors daily_scraper.yml's 5 redundant slots (see its comment for the
+# rationale -- GitHub drops/delays cron by hours). `python -m archive.scrape_capture`
+# is idempotent: if the file for the current source date already exists it is a
+# clean no-op, so extra attempts are ~free on a public repo.
+
+on:
+  schedule:
+    - cron: "30 14 * * 1-5"   # 19:30 PKT -- primary attempt
+    - cron: "0 17 * * 1-5"    # 22:00 PKT -- backup
+    - cron: "0 20 * * 1-5"    # 01:00 PKT -- same-day safety net
+    - cron: "0 14 * * 6"      # Sat 19:00 PKT -- catch a Friday whose weekday slots all failed
+    - cron: "30 12 * * 1"     # Mon 17:30 PKT -- last-resort catch-up
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Optional YYYY-MM-DD to capture a specific past date (backfill). Blank = current source date."
+        required: false
+        default: ""
+
+concurrency:
+  group: scrape-capture
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # push the capture commit to the data-captures branch
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code (main)
+        uses: actions/checkout@v4
+        with:
+          path: code
+
+      - name: Checkout the data-captures branch
+        uses: actions/checkout@v4
+        with:
+          ref: data-captures
+          path: captures
+          fetch-depth: 0   # tiny data-only branch; full history keeps the rebase-before-push clean
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: code
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Capture the PSX scrape
+        id: capture
+        working-directory: code
+        env:
+          CAPTURE_DATE: ${{ github.event.inputs.date }}
+          OUT_DIR: ${{ github.workspace }}/captures/data/incoming
+        run: |
+          set -euo pipefail
+          if [ -n "${CAPTURE_DATE:-}" ]; then
+            python -m archive.scrape_capture --out-dir "$OUT_DIR" --date "$CAPTURE_DATE"
+          else
+            python -m archive.scrape_capture --out-dir "$OUT_DIR"
+          fi
+
+      - name: Commit the capture file
+        if: steps.capture.outputs.outcome == 'written'
+        working-directory: captures
+        run: |
+          set -euo pipefail
+          git config user.name  "kiran-scrape-capture[bot]"
+          git config user.email "kiran-scrape-capture@users.noreply.github.com"
+          git add data/incoming/*.parquet
+          if git diff --cached --quiet; then
+            echo "::notice::nothing staged after a 'written' outcome -- skipping commit"
+            exit 0
+          fi
+          printf '%s\n\n%s\n%s\n%s\n' \
+            "PSX ${{ steps.capture.outputs.source_date }} -- ${{ steps.capture.outputs.stock_rows }} stocks, ${{ steps.capture.outputs.index_rows }} indices, ${{ steps.capture.outputs.sector_count }} sectors, coverage ${{ steps.capture.outputs.coverage_status }}" \
+            "Actions run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} (attempt ${{ github.run_attempt }})" \
+            "capture sha256: ${{ steps.capture.outputs.sha256 }}" \
+            "Local-first Phase 2 capture -- does not touch psx_data.db, Supabase, or daily_scraper.yml." \
+            > "$RUNNER_TEMP/commit_msg.txt"
+          git commit -F "$RUNNER_TEMP/commit_msg.txt"
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin data-captures && git push origin HEAD:data-captures; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push attempt $attempt failed; backing off"
+            sleep $(( (RANDOM % 10) + 5 ))
+          done
+          echo "::error::could not push the capture commit after 5 attempts"
+          exit 1
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### PSX scrape capture"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| outcome | \`${{ steps.capture.outputs.outcome }}\` |"
+            echo "| source date | ${{ steps.capture.outputs.source_date }} |"
+            echo "| stock rows | ${{ steps.capture.outputs.stock_rows }} |"
+            echo "| index rows | ${{ steps.capture.outputs.index_rows }} |"
+            echo "| sector count | ${{ steps.capture.outputs.sector_count }} |"
+            echo "| coverage | ${{ steps.capture.outputs.coverage_status }} |"
+            echo "| sha256 | \`${{ steps.capture.outputs.sha256 }}\` |"
+            echo "| committed to | \`data-captures\` branch |"
+          } >> "$GITHUB_STEP_SUMMARY"
