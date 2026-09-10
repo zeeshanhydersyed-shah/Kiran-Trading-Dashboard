@@ -7332,3 +7332,34 @@ Documented in the reviewed design artifact (private; summarised in `docs/KIRAN_L
 No code. No pipeline change. No DB write. No migration phase started. Awaiting the owner's resolution of the 7 open decisions (migration tracker §9), then Phase 1 begins on authorization.
 
 **Kiran production verdict unchanged: NOT VERIFIED — DO NOT TRADE** — and stays that way until the cutover gate (migration tracker §6) passes and burn-in completes.
+
+---
+
+## 118. <span style="color:#dc2626;">🔴 Live `stock_signals` — historical universe truncation + rank/score inconsistency: surfaced by the local-first Gold build's parity check (2026-09-10)</span>
+
+**One-line:** Task 3.3b of the local-first migration ported `stock_signals` to DuckDB and ran its Gold output against live `psx_data.db`. `rs_score_20` (the per-symbol RS signal) matches **exactly**. But the parity check surfaced **two pre-existing live-data defects** the clean rebuild fixes by construction. Read-only investigation; nothing in production touched.
+
+### 118.1 Defect A — historical universe truncation (forward-only backfill)
+
+Live `stock_signals`'s ranked universe was **~227 symbols in 2020, growing organically to 292 by 2026-07-31**, then **jumped to 423 on 2026-08-03** and has stayed ~423–425 since. The ~131 symbols added on 2026-08-03 (`AABS`, `AATM`, `ADAMS`, `AGSML`, `AHL`, … — all with years of `prices_adjusted` history) were added **going forward only** — no backfill into the historical `stock_signals`.
+
+Consequence: **every `rs_rank`, `sector_rs_rank`, `rank_change`, and every RS-leader / RS-based setup signal in live `stock_signals` before 2026-08-03 was computed over a universe missing ~32 % of the symbols** that should have been in the ranked pool. A symbol's cross-sectional standing (e.g. "top-20 RS leader", "sector RS ≤ 3") on any historical date is against the wrong population. `rs_score_20` / `rs_score_50` (each symbol vs KSE-100, not cross-sectional) are unaffected — confirmed byte-identical between Gold and live for every shared symbol on every sample date.
+
+Measured (`stock_signals` row counts per date): 2020-06 → 227 · 2022-06 → 240 · 2024-06 → 279 · 2025-06 → 286 · 2026-07-31 → 292 · **2026-08-03 → 423** · 2026-09-08 → 425.
+
+### 118.2 Defect B — rank not consistent with score
+
+On **every historical sample date** checked (2024-12-02, 2025-03-05, 2025-06-02, 2025-09-08, 2026-03-03, 2026-06-02) live `stock_signals` has **≥ 1 symbol whose `rs_rank` is better than a symbol with a strictly higher `rs_score_20`** — the rank column is not a faithful ordering of the score column. Concrete: **`MTL` on 2025-09-08 has live `rs_rank = 1`, `sector_rs_rank = 1`, with `rs_score_20 = −6.07`** (bottom-tier — the true rank is ~250). Post-2026-08-03 dates (2026-08-05, 2026-09-08) show **0** such inconsistencies, so this is tied to the same pre-backfill era. Not yet root-caused (candidate: a stale `rs_rank` carried from a partial/aborted incremental append, or the `rs_rank_prev` write path). Gold's ranks are self-consistent by construction (0 inconsistencies on every date).
+
+### 118.3 What Gold does
+
+`archive/gold_build.py`'s `build_stock_signals` reuses `stock_signals.py`'s pure compute (`_load_*`, `_build_pivot_lookup`, `_process_trading_dates` with `write_fn`) **verbatim by import**, over the **complete Silver universe** for the whole 2-yr serving window every run. Result: ~208 k rows, ranks over the full population, self-consistent, `rs_score_20` + `base_tightness` / `pivot_*` / `bos_flag` / `avg_vol_10d` all **byte-exact vs live**, `only_live` = 0 → parity `status: clean` (port verified). Price-history lookback is `KIRAN_SS_LOOKBACK_DAYS` (default 1050 cal ≈ 720 trading days — this dev box has 7.6 GB RAM and swaps loading `stock_signals.py`'s full 2015-01-01 history in memory). At the shallow default a handful of EMA-stack boolean flags (`stage2_bull` / `close_above_ema150` / `overhead_clear` / `ema*_slope_pos`) come back NULL or flipped for thinly-traded names with < ~200 in-window bars — a **load-depth artifact, not a logic diff**, recorded as `lookback_flag_residual` and cleared by raising the env var on adequate RAM (or a future streaming-compute refactor).
+
+### 118.4 Disposition
+
+- **Do NOT backfill live `stock_signals`.** The local-first migration replaces this table wholesale at cutover; a corrective backfill of the doomed table is wasted effort and a production write for no lasting benefit.
+- **Trading impact of the historical truncation is bounded:** it distorts *historical* RS ranks (backtests, the History/Analytics pages over pre-2026-08-03 windows). The *current* live signal (post-2026-08-03) ranks the full ~425 universe and is not affected by Defect A. Defect B's current status: 0 inconsistencies observed post-backfill.
+- **Defect B root cause** is an open follow-up (small, pre-cutover-optional) — worth a look in case the mechanism also touches the post-backfill path under some condition.
+- Cross-refs: migration tracker §5 (Task 3.3b), `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`, `D:\KIRAN_ARCHIVE\psx_serving\_gold_parity.json`.
+
+**Kiran production verdict unchanged: NOT VERIFIED — DO NOT TRADE.**
