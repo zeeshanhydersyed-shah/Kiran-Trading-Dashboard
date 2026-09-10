@@ -314,10 +314,29 @@ Verified locally: full test suite green; a live smoke run against ksestocks for 
 2026-09-09 produced a 494-row / 18.8 KB file — 489 stocks, 5 indices, 36 sectors, coverage
 COMPLETE (626/626) — and an immediate re-run returned `exists` (no rewrite).
 
+**⚠ Blocker found — needs an owner decision before the workflow can run.** `main` now has
+branch protection (`enforce_admins: true`, `strict: true`, 3 required checks:
+`Clean install on Python 3.11` / `Unit tests` / `App boot smoke test`) — CLAUDE.md's "no branch
+protection yet" note is stale. The approved design (workflow pushes `data/incoming/*.parquet`
+commits straight to `main` with `[skip ci]`) **cannot work**: a checkless `[skip ci]` commit
+produces none of the 3 required checks, and `enforce_admins` means even an admin/bot push to
+`main` is rejected without them. **Recommended fix:** commit captures to a dedicated,
+unprotected long-lived branch (e.g. `data-captures`) instead of `main`; Phase 3's Bronze ingest
+does `git pull origin data-captures`. Keeps the same repo, immutable history, and every design
+property — only the commit target moves off the protected branch. Alternative: a PR-per-capture
+flow with a path-filtered CI shim that still reports the 3 required contexts on data-only
+changes. **Not changed unilaterally — the owner approved "commit to main".**
+
+Secondary: GitHub did not auto-run CI for PR #85 because its head commit modifies
+`.github/workflows/`. A manual `workflow_dispatch` of `ci.yml` on the branch ran green — all 3
+required contexts are `success` on head SHA `d639a6a` — but the PR still shows `BLOCKED`
+(`enforce_admins` + the dispatched-vs-pull_request check-run source). The owner may need to
+admin-merge or briefly relax `enforce_admins` to land it.
+
 **Not done (post-merge):** the last two §5 boxes — a live confirmation that `daily_scraper.yml`
-still runs in parallel, and the first real committed capture file observed + hash-verified
-(next scheduled slot or a `workflow_dispatch` after the owner merges the PR). The front-end
-build (parallel from Phase 2) was **not** started — this session was scoped to the capture path.
+still runs in parallel, and the first real committed capture file observed + hash-verified. The
+front-end build (parallel from Phase 2) was **not** started — this session was scoped to the
+capture path.
 
 ### 2026-09-10 (earlier) — Phase 1 COMPLETE: off-site Object-Lock copy + restore drill
 Owner created the B2 bucket `kiran-psx-archive` (Object Lock enabled) and an app key
