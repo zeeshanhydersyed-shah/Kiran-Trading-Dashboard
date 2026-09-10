@@ -219,3 +219,5 @@ Stated plainly so nobody reads more assurance into a green build than is there.
   any check: `daily_scraper.yml` called `playwright install` after playwright
   had been removed from `requirements.txt`, and `weekly_ml_retrain.yml` lost
   scikit-learn the same way. Both fixed; nothing yet *prevents* the next one.
+
+# ci-trigger probe 1789027271
