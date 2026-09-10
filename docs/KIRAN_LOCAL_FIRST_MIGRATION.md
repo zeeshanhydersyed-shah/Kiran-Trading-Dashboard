@@ -328,13 +328,35 @@ sectors, coverage COMPLETE 626/626); an immediate re-run returned `exists` (no r
 writing into the real `data-captures` worktree staged cleanly (not committed — kept the branch
 at its init commit for the workflow to produce the first real capture).
 
-**CI on PR #85:** GitHub did not auto-run CI because the head commit modifies
-`.github/workflows/`. A manual `workflow_dispatch` of `ci.yml` on the branch ran green (all 3
-required contexts `success` on `d639a6a`), but a later doc commit changed the head — the merge
-will need a fresh CI dispatch and likely an admin-merge / brief `enforce_admins` relaxation.
+**`data-captures` branch protection (owner, 2026-09-10):** a rule was added for pattern
+`data-captures` with *allow force pushes* + *allow deletions* checked, nothing else — no
+required checks, no required reviews, no push restrictions, `enforce_admins` off. Permissive
+enough for the workflow's `GITHUB_TOKEN` (`contents: write`) to push directly. (A stricter rule
+that blocks force-push/deletion would be better for the "immutable record" intent, but the
+workflow only ever fast-forwards, so this is fine to start.)
 
-**Not done (post-merge):** confirm `daily_scraper.yml` still runs in parallel; observe the first
-real workflow-produced capture file on `data-captures`, hash-verified. Front end (parallel from
+**CI on PR #85 — confirmed root cause.** `pull_request` CI **never auto-fires** for this PR
+because it adds a file under `.github/workflows/` — GitHub's workflow-injection guard. Proven
+2026-09-10 with a throwaway probe PR (#86, since closed): an identical-shaped PR touching no
+workflow file got a `pull_request` CI run within seconds; PR #85 got zero across 3 commits + a
+close/reopen. There is no `action_required` run to approve — GitHub simply doesn't create one
+until the workflow is on the default branch. Worked around with a manual `workflow_dispatch` of
+`ci.yml` on the branch: **all 3 required contexts are `success` as check-runs on head SHA
+`0f3faf9`** (`gh api commits/0f3faf9/check-runs`), and the single check-suite on that SHA
+(`github-actions`, linked to PR #85) is `success`. But `main`'s protection has
+`enforce_admins: true` + `strict: true`, and GitHub's merge gate does not accept
+`workflow_dispatch`-sourced checks as satisfying the PR requirement → `mergeable_state: blocked`.
+
+**To merge PR #85:** the owner unchecks *Include administrators* on the `main` branch-protection
+rule (or adds a bypass), merges #85 (checks are genuinely green on the SHA), then re-checks it.
+An admin cannot merge past `enforce_admins` without that toggle. Once `scrape_capture.yml` is on
+`main`, routine capture runs never touch a workflow file, so this is a one-time merge friction;
+any *future* edit to the workflow itself will hit the same guard and need the same dispatch +
+admin-merge.
+
+**Not done (post-merge):** dispatch `scrape_capture.yml` to prove the `data-captures` push
+works; confirm `daily_scraper.yml` still runs in parallel; observe the first real
+workflow-produced capture file on `data-captures`, hash-verified. Front end (parallel from
 Phase 2) not started — this session was scoped to the capture path.
 
 ### 2026-09-10 (earlier) — Phase 1 COMPLETE: off-site Object-Lock copy + restore drill
