@@ -2,3 +2,9 @@
 # or the daily pipeline. Install on top of requirements.txt:
 #   pip install -r requirements.txt -r requirements-dev.txt
 pytest==9.1.1
+# duckdb: the local-first migration's Phase 3 Medallion engine
+# (archive/silver_build.py). Needed here so CI's unit-tests job can import
+# tests/test_silver_build.py. Not in requirements.txt -- the retired Streamlit
+# Cloud app never touches it. See requirements-archive.txt / MEDALLION.md.
+duckdb>=1.5
+

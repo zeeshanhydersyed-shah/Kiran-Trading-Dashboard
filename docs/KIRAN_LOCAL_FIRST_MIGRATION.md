@@ -43,7 +43,8 @@ directories **as work completes** — never leave finished work only in chat.
 ## 1. STATUS AT A GLANCE
 
 **Overall: PHASE 1 COMPLETE (2026-09-09 → 2026-09-10). PHASE 2 COMPLETE (2026-09-10). PHASE 3
-IN PROGRESS (2026-09-10) — Task 3.1 (Bronze ingest) DONE.** The immutable baseline is built,
+IN PROGRESS (2026-09-10) — Tasks 3.1 (Bronze ingest) + 3.2 (Silver build) DONE; 3.3 (Gold) not
+started.** The immutable baseline is built,
 verified, git-manifested, copied off-site under B2 COMPLIANCE Object-Lock, and a restore drill
 proves it comes back. Phase 2's parallel capture path (`scrape_capture.yml` +
 `archive/scrape_capture.py`) is merged (PR #85, `b943ddf`) and proven live. Phase 3: the
@@ -55,7 +56,16 @@ updated). **Task 3.1 done:** `archive/bronze_ingest.py` seeds the live Bronze st
 each consumed file logged with its SHA-256; re-run is byte-identical. First real run ingested
 `2026-09-09` (489 stock + 5 index rows; capture sha256 `e6115b80…5338`); `archive_manifest
 verify` stays PASS (the live trees are excluded from the baseline walk). Design note:
-`docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **Tasks 3.2 (Silver) / 3.3 (Gold) not started.**
+`docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **Task 3.2 done:** `archive/silver_build.py`
+rebuilds the Silver layer from Bronze on DuckDB — `silver/prices_adjusted/` (port of
+`apply_price_adjustments.py`'s CA-adjustment + circuit flags), `silver/sectors/`,
+`silver/stock_metadata/` (port of `build_stock_metadata.py`'s idempotent upsert); `ca_v2_reader`
+wired behind `--ca-source v2`, **off by default**. Deterministic re-run. Parity vs the frozen
+store: exact row coverage, **one known OHLC residual — symbol DLL** (a ~10:1 split adjusted via
+the Data Health page with no recoverable event record; DR-program provenance gap, not a build
+bug) + 18 circuit-flag rows on 4 illiquid names. **One open owner decision** (§9-style, not
+decided unattended): carry the frozen `prices_adjusted` delta forward for events with no
+reproducible record, or stay rebuild-pure. **Task 3.3 (Gold) not started.**
 **The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
 still the live system and is untouched** — nothing in Phase 1, 2 or 3 wrote to `psx_data.db`,
 Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…425b` unchanged).
@@ -65,7 +75,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 | 0 | Decision & planning | ✅ DONE | 2026-09-09 | Design approved in principle; tracker + ledger/register entries written; **all 7 §9 decisions resolved by the owner 2026-09-09** |
 | 1 | Stand up the archive + execute SEQ-1 | ✅ DONE | 2026-09-10 | Archive root `D:\KIRAN_ARCHIVE\` (C: space-constrained), 92 baseline payload files, local read-only. Whole-DB baseline via SQLite Online Backup API — `psx_data_baseline_KIRAN_LFM_P1_20260909_222210.db`, 882,896,896 b, **SHA-256 `9418cb1bf98c197550e02eae663f0ab870ccc93c967dfb743c221cd3d5f70d61`**, self-contained (`journal_mode=DELETE`), `integrity_check` ok, 53/53 table counts + all substrate date spans match live; Bronze/Silver Parquet store (`SUM(volume)` reconciles exactly); DR-006 baseline (`c03a393f…`) + BI 17-file set folded into `backup_set/` + hash-verified; `BASELINE_MANIFEST.{md,sha256}` (92 files, 1,898,646,386 b) git-committed, `archive_manifest verify` PASS. **Off-site:** all 92 files in B2 `kiran-psx-archive` under **COMPLIANCE Object-Lock, 3000 days** (undeletable — verified `AccessDenied` on a locked version); big SQLite files zstd'd (~33%) for the slow uplink; `offsite_push` resumable at the 16 MB part level. `offsite_push --verify` PASS; `restore_drill_archive` PASS (baseline restored + `integrity_check` ok + 1,761,371 price rows). `restore_drill_b2.py` now runs both drills. `archive_checksum_check` for Task Scheduler. PRs #81 / #82 / #83. **NOTE:** `duckdb` has no cp314 wheel (Python 3.14) — the Parquet store is engine-neutral; the DuckDB attach layer is a Phase 3 item. The over-broad B2 key is moot (COMPLIANCE can't be bypassed); a minimal key is optional later hygiene. |
 | 2 | Rework the scrape (GitHub Actions) | ✅ DONE | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, merged PR #85 (`b943ddf`). Reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata: Actions run ID, `code_version`, `scraper_sha256`, self-reported counts, TR-14 per-sector completeness) + refreshes `latest.parquet`. Two side-by-side checkouts — `main` (code) + `data-captures` (commit target). **Commits to the dedicated `data-captures` orphan branch, not `main`** (`main` is branch-protected; owner decision 2026-09-10). Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests, suite 449. **Proven live 2026-09-10:** run `34453459820` scraped PSX 2026-09-09 (489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626) and committed `data/incoming/2026-09-09.parquet` + `latest.parquet` (494 rows, 18,922 b, sha256 `e6115b80…5338` = commit message) as `kiran-scrape-capture[bot]` → `data-captures` `dd269cc`; independent `--single-branch` clone hash-matched. Run `34453569404` = clean `exists` no-op, no new commit. `daily_scraper.yml` byte-unchanged (last touched `a7c0ce6`, 9 days prior), still scheduled. Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
-| 3 | Build the Medallion transforms | 🔵 IN PROGRESS | 2026-09-10 | **3.1 Bronze ingest DONE** — `archive/bronze_ingest.py` + `tests/test_bronze_ingest.py` (6 tests); live store `D:\KIRAN_ARCHIVE\prices_archive\bronze\`, seeded from the frozen `bronze/`, `2026-09-09` capture ingested; append-only / deduped / gap-report / SHA-256 lineage log; re-run byte-identical; never opens `psx_data.db`. `archive_manifest.py` now excludes the `data-captures/` `prices_archive/` `psx_serving/` live trees (`verify` = PASS). DuckDB engine confirmed on Py3.14 (`duckdb>=1.5` in `requirements-archive.txt`). Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **3.2 Silver / 3.3 Gold not started.** |
+| 3 | Build the Medallion transforms | 🔵 IN PROGRESS | 2026-09-10 | **3.1 Bronze ingest DONE** — `archive/bronze_ingest.py` + 6 tests; live store `prices_archive/bronze/` seeded from frozen `bronze/`, `2026-09-09` ingested; append-only / deduped / gap-report / SHA-256 lineage; re-run byte-identical. `archive_manifest.py` excludes the live trees (`verify` PASS). DuckDB confirmed on Py3.14 (`duckdb>=1.5`). **3.2 Silver build DONE** — `archive/silver_build.py` + 7 tests; DuckDB rebuild from Bronze → `silver/prices_adjusted/` (CA-adjust port of `apply_price_adjustments.py` + circuit flags), `silver/sectors/`, `silver/stock_metadata/` (upsert port of `build_stock_metadata.py`); `ca_v2_reader` wired behind `--ca-source v2`, default `legacy`; deterministic; `_silver_parity.json` vs frozen = exact rows, residual **DLL** (unrecoverable Data Health split) + 18 flag rows / 4 illiquid names. **Open owner decision: carry frozen `prices_adjusted` delta forward vs. rebuild-pure.** Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **3.3 Gold not started.** |
 | 4 | Publication contract + atomic swap | ⬜ NOT STARTED | — | Four gates into the Gold build; `current_publication` with the full lineage block; staging-DB build + rename |
 | 5 | Shadow run | ⬜ NOT STARTED | — | Nightly local Gold vs current Supabase output, ≥10 trading sessions, diffs investigated |
 | 6 | Cutover | ⬜ NOT STARTED | — | Front end → Gold JSON; retire `daily_scraper.yml` / Supabase / Streamlit Cloud; delete the `_pg` path, `database_pg.py`, the stale `main.py` copies; snapshot + pin for the DR program |
@@ -180,7 +190,7 @@ revertible; the old pipeline stays live until Phase 6.
 
 ### Phase 3 — Medallion transforms
 - [x] Bronze ingest: append-only, deduped, gap-detecting, records which dated files it consumed + hashes — `archive/bronze_ingest.py`, 2026-09-10. Live store `prices_archive/bronze/` seeded from frozen `bronze/`; `2026-09-09` capture ingested (489+5 rows); `_bronze_ingest_log.jsonl` records each capture file + SHA-256; re-run byte-identical + no log growth; gap report `_bronze_gaps.json`. 6 tests. `archive_manifest` excludes the live trees (`verify` PASS). `duckdb>=1.5` enabled (runs on Py3.14). Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`
-- [ ] Silver: port the corporate-action adjustment + universe-conforming logic; wire `ca_v2_reader` as an *available* source, **gate off** (dashboard still on the current path)
+- [x] Silver: port the corporate-action adjustment + universe-conforming logic; wire `ca_v2_reader` as an *available* source, **gate off** (dashboard still on the current path) — `archive/silver_build.py`, 2026-09-10. DuckDB full rebuild from Bronze → `prices_archive/silver/{prices_adjusted,sectors,stock_metadata}/`. CA-adjust = faithful port of `apply_price_adjustments.py` (per-event `ROUND(_,4)`, compounding), events from the CSV auto-confirm cats + the frozen baseline's CONFIRMED suspects (read-only). Circuit flags via `compute_circuit_flags`. Universe = port of `build_stock_metadata.py`'s idempotent upsert (frozen rows preserved). `ca_v2_reader` behind `--ca-source v2` / `KIRAN_SILVER_CA_SOURCE`, default `legacy`, hard-fails on a missing reader (no silent fallback). Deterministic (byte-identical re-run). `_silver_parity.json`: 0 only-frozen / 0 only-new, OHLC residual = **DLL only** (3,576 rows — a Data Health `rebuild_symbol_adjusted` split with no recoverable event record; DR §116 provenance gap) + 18 circuit-flag rows / 4 illiquid names. 7 tests. **→ §9-style open owner decision (below).**
 - [ ] Gold: 2-yr slice, run every registered screener, grade every sector
 - [ ] Idempotency test per transform (re-run → identical output)
 - [ ] Signal parity check: Gold screeners vs the current pipeline on a shared date, differences explained
@@ -286,9 +296,77 @@ retained. A full rebuild of Supabase state from the archive is possible but is a
   historical row. Any rehabilitation of the substrate remains the separate DR program's work
   under its own authorization.
 
+### Open decision raised in Phase 3 (Task 3.2) — NOT decided unattended
+
+**D8 — Silver `prices_adjusted`: rebuild-pure vs. carry the frozen delta forward.** Task 3.2's
+Silver build reproduces the frozen `silver/prices_adjusted` exactly on row coverage, but 3,576
+rows for symbol **DLL** differ: DLL had a ~10.3:1 split on 2026-06-05 that the frozen store
+adjusted via the Data Health page (`rebuild_symbol_adjusted`), and that correction left **no
+event record** in the baseline `.db` or `corporate_action_suspects_clean.csv`, so a pure
+rebuild-from-events cannot reproduce it. Options: (a) **rebuild-pure** — Silver only reflects
+adjustments with a reproducible event record; DLL-class events are the DR program's job to
+resolve upstream (add a real CONFIRMED suspect row / CSV entry); (b) **carry-forward** — Silver
+seeds `prices_adjusted` from the frozen store (which has DLL baked in) and applies only new
+events, trusting the frozen store as an event source of last resort. Current state: **(a)**,
+and the frozen store remains available as the seed. Owner to choose before Gold (3.3) consumes
+Silver for anything capital-facing.
+
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-10 — Phase 3 Task 3.2: Silver build done
+Same session as 3.1, continuing "as far as you get, strictly under the plan".
+
+**Built — `archive/silver_build.py` + `tests/test_silver_build.py` (7 tests):**
+- Full deterministic rebuild from the live Bronze store every run (Silver is disposable, §3):
+  `prices_archive/silver/prices_adjusted/` + `sectors/` + `stock_metadata/`.
+- **CA adjustment** — a faithful port of `apply_price_adjustments.py`: copy Bronze `prices` into
+  a DuckDB table, then per confirmed event apply `close_after/close_before` to the symbol's
+  pre-ex-date OHLC with `ROUND(_,4)` **per event**, events oldest→newest so they compound.
+  Event set = the DROP_50/33/25 auto-confirm rows in `corporate_action_suspects_clean.csv`
+  (613) + the `CONFIRMED` rows in the **frozen baseline `.db`** (1: MTL). The live `psx_data.db`
+  is opened **read-only** (`mode=ro&immutable=1`) for that one read, never for write — asserted
+  by a test (`sqlite3.connect` appears exactly once, always with the ro URI).
+- **Circuit flags** — `hit_circuit_up/down/thin_trading_flag` via
+  `apply_price_adjustments.compute_circuit_flags` (the confirmed producer formula), computed on
+  the adjusted series. Non-equity symbols (`config.is_non_equity_symbol`) dropped from Silver
+  `prices_adjusted` (Bronze keeps them raw).
+- **Universe conforming** — `sectors` = frozen `sectors` minus non-equity. `stock_metadata` = a
+  port of `build_stock_metadata.py`'s **idempotent UPSERT** semantics: every frozen row kept
+  (manual/legacy/now-excluded never deleted), source-derived columns (sector, in_kse100,
+  listing_date) refreshed for the recomputed include-set (`EXCLUDED_SECTORS` /
+  `SECTOR_OVERRIDES` / `UNIVERSE_WHITELIST`), `is_active`/`delisting_date`/`notes` left as
+  frozen. Row count matches the frozen 468 (an earlier draft that only wrote the include-set
+  gave 319 — fixed).
+- **CA source gate** — `--ca-source` / `KIRAN_SILVER_CA_SOURCE`, default `legacy`. `v2` imports
+  `ca_v2_reader` from the CA-pipeline dir and overwrites `close` with its `close_tr` total-return
+  series for the symbols/dates it covers. **Off by default; the dashboard reads none of this
+  store.** A missing `ca_v2_reader.py` → hard `SystemExit`, never a silent fallback (tested).
+- **Determinism** — a re-run rewrites 24 byte-identical Parquet files (tested).
+- **Engine** — DuckDB does the copy + per-event `UPDATE`; pandas runs the circuit-flag formula;
+  pyarrow serializes with the standard options + `ORDER BY (symbol,date)`.
+- `_silver_build_log.jsonl` (append-only provenance) + `_silver_parity.json` (rewritten each
+  run).
+
+**Parity vs the frozen `silver/prices_adjusted` (overlap through 2026-09-08):**
+- Row coverage **exact** — 1,761,371 rows, 0 only-frozen, 0 only-new.
+- **OHLC residual: 3,576 rows, all `DLL`.** DLL split ~10.3:1 on 2026-06-05 (raw 624.83 →
+  60.43); the frozen store applied factor 0.0967 to every pre-2026-06-08 DLL row via the Data
+  Health page, and that `rebuild_symbol_adjusted` correction left **no event record** in the
+  baseline or the CSV. A rebuild-from-events cannot reproduce it — the DR program's documented
+  provenance gap (§116 / `Known_Limitations.md`), not a build bug. → **new §9 open decision D8**
+  (rebuild-pure vs. carry-forward) — flagged, not decided.
+- Circuit-flag residual: 18 rows across DWAE/GAMON/MWMP/GEMBCEM — full-history recompute vs. the
+  frozen incremental at a trading-gap boundary. Sub-0.001 %.
+
+**Not touched:** `psx_data.db` (read-only baseline read only), Supabase, `daily_scraper.yml`,
+the dashboard. `archive_manifest verify` still PASS (92 files; the live trees stay excluded).
+Full local suite: green.
+
+**Next:** Task 3.3 — `archive/gold_build.py` (2-yr slice, every screener, sector grades →
+`psx_serving/` DuckDB + JSON, staging + atomic swap, signal parity vs the live pipeline).
+**Not started.**
 
 ### 2026-09-10 — Phase 3 STARTED: Task 3.1 Bronze ingest done
 Owner said "Start Phase 3", "strictly under the plan", and to work through 3.1 / 3.2 / 3.3 as

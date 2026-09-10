@@ -24,13 +24,18 @@ COMPLETE** (immutable baseline built, verified, git-manifested, copied off-site 
 COMPLIANCE Object-Lock, restore drill PASS); **PHASE 2 COMPLETE** — `scrape_capture.yml` +
 `archive/scrape_capture.py` (merged PR #85, `b943ddf`) commit an immutable
 `data/incoming/YYYY-MM-DD.parquet` per PSX day to the dedicated **`data-captures` orphan
-branch**; proven live 2026-09-10. **PHASE 3 IN PROGRESS** — Task 3.1 (Bronze ingest,
-`archive/bronze_ingest.py`) done: the live Medallion store `D:\KIRAN_ARCHIVE\prices_archive\`
-is seeded from the frozen `bronze/` and grows one trading day per capture file (append-only,
-deduped, SHA-256 lineage log, gap report). DuckDB confirmed on Py3.14 (`duckdb>=1.5`). Silver
-(3.2) / Gold (3.3) not started. The old dual pipeline is still the live system and was not
-touched (`psx_data.db` never opened for write). **Phase 3 tasks proceed only under the plan +
-explicit go.** **Note:** `main` now HAS branch
+branch**; proven live 2026-09-10. **PHASE 3 IN PROGRESS** — Tasks 3.1 (Bronze ingest) + 3.2
+(Silver build) done. `archive/bronze_ingest.py`: the live Medallion store
+`D:\KIRAN_ARCHIVE\prices_archive\` is seeded from the frozen `bronze/` and grows one trading
+day per capture file (append-only, deduped, SHA-256 lineage, gap report).
+`archive/silver_build.py`: DuckDB full rebuild from Bronze → `silver/{prices_adjusted,sectors,
+stock_metadata}/` (ports of `apply_price_adjustments.py` + `build_stock_metadata.py`);
+`ca_v2_reader` wired behind `--ca-source v2`, off by default; parity vs the frozen store exact
+except **DLL** (a Data Health split with no recoverable event record — DR §116; open owner
+decision D8 in the tracker §9). DuckDB confirmed on Py3.14 (`duckdb>=1.5`). Gold (3.3) not
+started. The old dual pipeline is still the live system and was not touched (`psx_data.db`
+never opened for write; the baseline `.db` is read-only-only). **Phase 3 tasks proceed only
+under the plan + explicit go.** **Note:** `main` now HAS branch
 protection (required checks + `enforce_admins`) — the "How changes go live" / DEPLOYMENT §3 note
 that it's not yet enabled is stale.
 Decision record: `docs/KIRAN_CLEANUP_AUDIT.md` §117. Per-row Trust Register impact: Amendment
