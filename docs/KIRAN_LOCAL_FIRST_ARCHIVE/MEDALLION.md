@@ -283,4 +283,20 @@ from `post_gap_expected_divergence` (knock-on of the gap-fill, expected).
   `status: clean` on a real scoped build against live production data: `recovery_signals`
   (2/2 rows, 16 cols), `portfolio_signals` (308/308 rows, 16 cols), `setup_log` (2,755/2,755
   rows across 41 dates, 15 cols) — 0 mismatches each. 1 test (14 total). Full detail: tracker §10.
-- **3.3f** — front-end JSON export, full end-to-end idempotency, consolidated parity report.
+- **3.3f — DONE (2026-09-11). Task 3.3 (and Phase 3) fully complete.** Full end-to-end
+  idempotency + consolidated signal-parity report. Front-end JSON export DEFERRED (owner
+  decision) — no consumer code exists yet to validate a schema against, and its planned
+  `meta.json` VERIFIED field depends on Phase 4's publication gate, not built yet. New
+  `test_full_pipeline_idempotent_all_screeners` is the first test to run `build(screeners=None)`
+  (the whole `SCREENERS` registry, not a `--only`-scoped subset) twice and SHA-256-diff every
+  table's Parquet export — byte-identical; its fixture combines every prior screener test's
+  special-shape requirement into one universe so every table gets real rows, not an
+  idempotent-because-empty pass, which surfaced and fixed one real bug (a test-fixture symbol
+  with a non-overlapping calendar range vs the rest of the synthetic universe). New
+  `write_consolidated_parity_report()` renders `_gold_parity.json` into a one-row-per-screener
+  Markdown table; `build(..., run_parity=True)` now writes it automatically
+  (`_gold_parity_report.md`) alongside the JSON. First genuine full-registry run against live
+  production data (default 730-day window, all 8 screeners together): 7/8 `status: clean`
+  (`market_regime`'s `residual` is the one documented, expected post-gap-divergence exception);
+  `stock_signals` flips from `residual` at a shortened smoke-build lookback to `clean` at the
+  real default lookback. 2 tests (16 total). Full detail: tracker §10.
