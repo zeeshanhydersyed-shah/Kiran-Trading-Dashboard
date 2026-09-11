@@ -64,6 +64,7 @@ class GoldStore:
         self.parquet_dir = root / "parquet"
         self.log_path = root / "_gold_build_log.jsonl"
         self.parity_path = root / "_gold_parity.json"
+        self.parity_report_path = root / "_gold_parity_report.md"
 
     def silver_glob(self, name: str) -> str:
         return (self.silver / name / "**" / "*.parquet").as_posix()
@@ -2084,6 +2085,70 @@ PARITY = {
 }
 
 
+# ------------------------------------------------------- consolidated parity report
+
+def _render_parity_report_md(parity_doc: dict) -> str:
+    """Render a short human-readable Markdown summary from a `_gold_parity.json`
+    -shaped dict (`{"generated": ..., <table>: <parity report>, ...}`).
+
+    `_gold_parity.json` already aggregates every active screener's parity
+    result into one JSON file, written every `build()` run -- this just makes
+    it reviewable without reading raw JSON (Phase 3's "signal parity check
+    ... differences explained" checklist item, closed as its own artifact in
+    3.3f). Field access is defensive (`.get`) since every `_parity_*`
+    function shapes its own report differently: a `skipped` report carries a
+    `reason` instead of `rows_compared`/`method`; `leaders_scan`'s report
+    nests its two sub-tables (`leaders_scan`/`leaders_top_picks`) rather than
+    exposing a flat `rows_compared`; `sector_signals` counts `cells_compared`;
+    `stock_signals` is sampled per-date (`sample_dates`) with no single
+    row/cell count at all.
+    """
+    generated = parity_doc.get("generated", "?")
+    lines = [
+        "# Gold build -- consolidated signal-parity report",
+        "",
+        f"Generated: {generated}",
+        "",
+        "| Screener | Status | Rows compared | Method / notes |",
+        "|---|---|---|---|",
+    ]
+    for table, rep in parity_doc.items():
+        if table == "generated":
+            continue
+        status = rep.get("status", "?")
+        if status == "skipped":
+            rows, note = "--", rep.get("reason", "")
+        elif table == "leaders_scan":
+            ls, tp = rep.get("leaders_scan", {}), rep.get("leaders_top_picks", {})
+            rows = f"{ls.get('rows_compared', '?')} + {tp.get('rows_compared', '?')} (top picks)"
+            note = rep.get("method", "")
+        elif table == "stock_signals":
+            rows = f"{len(rep.get('sample_dates', []))} sample dates"
+            note = rep.get("verdict", rep.get("finding", ""))
+        else:
+            rows = rep.get("rows_compared", rep.get("cells_compared", rep.get("shared_dates", "?")))
+            note = rep.get("method", rep.get("note", ""))
+        lines.append(f"| `{table}` | {status} | {rows} | {note} |")
+    return "\n".join(lines) + "\n"
+
+
+def write_consolidated_parity_report(store_root: Path, out_path: Path | None = None) -> str:
+    """Read `<store_root>/_gold_parity.json` (written by the most recent
+    `build(..., run_parity=True)`) and (re)render the Markdown summary above
+    -- `build()` already does this automatically as part of every parity run
+    (`GoldStore.parity_report_path`); this standalone entry point is for
+    regenerating the report on demand (CLI / a Python session) without a full
+    rebuild, e.g. after manually inspecting or annotating `_gold_parity.json`.
+    Writes to `out_path` (default: `GoldStore.parity_report_path`) and
+    returns the text.
+    """
+    store = GoldStore(Path(store_root))
+    parity_doc = json.loads(store.parity_path.read_text(encoding="utf-8"))
+    text = _render_parity_report_md(parity_doc)
+    (out_path if out_path is not None else store.parity_report_path).write_text(text, encoding="utf-8")
+    return text
+
+
 # --------------------------------------------------------------------- build
 
 def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
@@ -2146,7 +2211,9 @@ def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
                     parity[table] = pfn(gcon, LIVE_DB)
         finally:
             gcon.close()
-        store.parity_path.write_text(json.dumps({"generated": _now(), **parity}, indent=2, default=str) + "\n")
+        parity_doc = {"generated": _now(), **parity}
+        store.parity_path.write_text(json.dumps(parity_doc, indent=2, default=str) + "\n")
+        store.parity_report_path.write_text(_render_parity_report_md(parity_doc), encoding="utf-8")
 
     entry = {
         "ts": _now(), "action": "gold_build",

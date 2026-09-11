@@ -545,13 +545,13 @@ def _recovery_symbol_rows(symbol="RCVSYM", n=320, start="2024-01-01"):
     return rows
 
 
-def _write_recovery_symbol(root, symbol="RCVSYM", sector="COMMERCIAL BANKS", n=320):
+def _write_recovery_symbol(root, symbol="RCVSYM", sector="COMMERCIAL BANKS", n=320, start="2024-01-01"):
     """Append `symbol` to Bronze `prices` + Silver `prices_adjusted`/
     `sectors`/`stock_metadata` on top of whatever `_write_prices_anchor`/
     `_write_silver` already wrote -- must run AFTER those."""
     from archive import silver_build
 
-    rows = _recovery_symbol_rows(symbol=symbol, n=n)
+    rows = _recovery_symbol_rows(symbol=symbol, n=n, start=start)
     by_year: dict[str, list] = {}
     for r in rows:
         by_year.setdefault(r[1][:4], []).append(r)
@@ -651,3 +651,96 @@ def test_recovery_portfolio_setup_log_built_and_parity(env):
         assert rep["only_gold"] == [] and rep["only_recompute"] == [], (t, rep)
         assert all(v == 0 for v in rep["column_mismatch_totals"].values()), (t, rep["column_mismatch_totals"])
         assert rep["rows_compared"] > 0, (t, rep)
+
+
+# --------------------------------------------- full-pipeline idempotency (3.3f)
+
+def test_full_pipeline_idempotent_all_screeners(tmp_path, monkeypatch):
+    """3.3f: "Idempotency test per transform (re-run -> identical output)" --
+    closes that Phase 3 checklist item for every registered screener in ONE
+    combined run, not just the two (`market_regime`/`stock_signals`) that had
+    a dedicated hash-comparison test before this task. Also exercises "Gold:
+    2-yr slice, run every registered screener, grade every sector" for real --
+    every earlier 3.3x test built a SUBSET of `SCREENERS` (via `--only`), for
+    speed or to isolate one port; this is the first test that runs
+    `screeners=None` (the full registry, in its real dependency order) end to
+    end, on the default 730-day window.
+
+    Combines every special fixture requirement from the individual screener
+    tests into one universe: `_jump_bars()` (boring_signals needs a genuine
+    Donchian breakout), `_write_recovery_symbol()` (recovery_signals needs a
+    >=30% decline + volume-shaped base), and `leaders_scan.MIN_PICK_SCORE`
+    lowered (the tiny synthetic universe never reaches the real threshold) --
+    so every one of the 8 tables actually gets non-trivial rows, not just an
+    idempotent-because-empty pass.
+    """
+    import hashlib
+    import leaders_scan as lsc
+
+    root = tmp_path / "KIRAN_ARCHIVE"
+    (root / "psx_serving").mkdir(parents=True)
+    monkeypatch.setattr(bronze_ingest, "ARCHIVE_ROOT", root)
+    monkeypatch.setattr(gold_build, "ARCHIVE_ROOT", root)
+    live = tmp_path / "psx_data.db"
+    monkeypatch.setattr(gold_build, "LIVE_DB", live)
+    monkeypatch.setattr(lsc, "MIN_PICK_SCORE", 1)
+
+    bars = _jump_bars()
+    _write_index(root, bars)
+    _write_prices_anchor(root, bars)
+    _write_silver(root, bars)
+    # _write_recovery_symbol's own defaults (start="2024-01-01", n=320) match
+    # _bars() -- must be overridden here to match _jump_bars()'s actual date
+    # range (start="2025-01-01", n=450), or RCVSYM's history sits in a
+    # calendar period none of the other 5 symbols ever trade in.
+    _write_recovery_symbol(root, start="2025-01-01", n=450)
+
+    tables = list(gold_build.SCREENERS) + gold_build.REFERENCE_TABLES
+
+    def _hashes():
+        return {
+            t: hashlib.sha256((root / "psx_serving" / "parquet" / f"{t}.parquet").read_bytes()).hexdigest()
+            for t in tables
+        }
+
+    r1 = gold_build.build(root / "psx_serving", window_days=730, run_parity=False, screeners=None)
+    assert set(r1["screeners"]) == set(gold_build.SCREENERS)
+    h1 = _hashes()
+
+    r2 = gold_build.build(root / "psx_serving", window_days=730, run_parity=False, screeners=None)
+    h2 = _hashes()
+
+    assert h1 == h2, {t: (h1[t], h2[t]) for t in tables if h1[t] != h2[t]}
+    # a genuinely non-trivial run, not idempotent-because-every-table-is-empty
+    assert all(r2["rows"].get(t, 0) > 0 for t in tables), r2["rows"]
+
+
+# ------------------------------------- consolidated signal-parity report (3.3f)
+
+def test_consolidated_parity_report_covers_every_active_screener(env):
+    """3.3f: `build(..., run_parity=True)` auto-writes a Markdown consolidated
+    parity report (`GoldStore.parity_report_path`, `_gold_parity_report.md`)
+    alongside `_gold_parity.json` -- closes Phase 3's "signal parity check ...
+    differences explained" checklist item as its own reviewable artifact,
+    without the owner needing to read raw JSON. Must cover every screener
+    that actually ran (one row each) -- not silently drop a table whose
+    parity function returned an unusual shape (`skipped`, or `leaders_scan`'s
+    nested sub-report). `gold_build.write_consolidated_parity_report()` (the
+    standalone regenerate-on-demand entry point) must reproduce the same text
+    from the same `_gold_parity.json`.
+    """
+    root, live, bars = env
+    scr = ["market_regime", "stock_signals", "sector_signals"]
+    gold_build.build(root / "psx_serving", window_days=15, run_parity=True, screeners=scr)
+
+    store = gold_build.GoldStore(root / "psx_serving")
+    assert store.parity_report_path.exists()
+    text = store.parity_report_path.read_text(encoding="utf-8")
+
+    for t in scr:
+        assert f"`{t}`" in text
+    assert "clean" in text
+
+    regenerated = gold_build.write_consolidated_parity_report(root / "psx_serving")
+    assert regenerated == text
+    assert "clean" in text
