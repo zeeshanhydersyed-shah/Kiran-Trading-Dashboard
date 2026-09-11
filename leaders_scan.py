@@ -148,13 +148,15 @@ def _nearest_overhead_pct(con, symbol, scan_date, pivot_high):
     % distance from pivot_high to the nearest historical HIGH above it
     in the last 120 calendar days. Returns None if no overhead exists.
     """
+    import datetime as _dt
+    _floor = (_dt.date.fromisoformat(scan_date) - _dt.timedelta(days=120)).isoformat()
     row = con.execute("""
         SELECT MIN(high) FROM prices
         WHERE symbol = ?
           AND date < ?
-          AND date >= date(?, '-120 days')
+          AND date >= ?
           AND high > ?
-    """, (symbol, scan_date, scan_date, pivot_high)).fetchone()
+    """, (symbol, scan_date, _floor, pivot_high)).fetchone()
     if row and row[0]:
         return round((row[0] - pivot_high) / pivot_high * 100, 2)
     return None
@@ -357,6 +359,17 @@ def _compute_penalty(row_dict, setup_type, n_sectors=23):
     return penalty, flag_str
 
 
+def _int_disp(x):
+    """Format a whole-number-valued field for display as a plain int string
+    regardless of whether the source column is SQLite INTEGER (`4`) or --
+    Kiran local-first Gold build, 3.3d -- DuckDB DOUBLE (`4.0`, needed there
+    so an occasional NaN doesn't reject into an INTEGER column). Without
+    this, the exact same pick's key_reason text differs cosmetically
+    ("rank 4/24" vs "rank 4.0/24") purely from which engine wrote the row,
+    not from any real difference in the value."""
+    return x if x is None or pd.isna(x) else int(x)
+
+
 def _build_key_reason(row_dict, setup_type, n_sectors=23):
     """One-line human-readable reason why this pick was selected.
 
@@ -366,7 +379,7 @@ def _build_key_reason(row_dict, setup_type, n_sectors=23):
     parts = []
 
     if row_dict.get('rs_inflection'):
-        parts.append(f"sector inflecting (rank {row_dict.get('sector_rank')}/{n_sectors})")
+        parts.append(f"sector inflecting (rank {_int_disp(row_dict.get('sector_rank'))}/{n_sectors})")
 
     rs20 = row_dict.get('rs_score_20')
     if rs20 is not None:
@@ -381,12 +394,20 @@ def _build_key_reason(row_dict, setup_type, n_sectors=23):
     elif vr and setup_type == 'BREAKOUT' and vr >= 1.5:
         parts.append(f"breakout vol {vr:.1f}x")
 
-    if row_dict.get('nearest_overhead_pct') is None:
+    # pd.isna(), not `is None`: `row_dict` can come from a DataFrame row
+    # (save_top_picks() reads leaders_scan back with pd.read_sql_query before
+    # calling this). When that result mixes real and NULL nearest_overhead_pct
+    # values, DuckDB's pandas conversion represents the missing ones as float
+    # NaN, not None (SQLite's pd.read_sql_query always gives None here) --
+    # `NaN is None` is False, so an `is None` check alone silently drops
+    # "clean overhead" from the reason string on a DuckDB `conn`. pd.isna()
+    # is True for both None and NaN, so it's correct on both engines.
+    if pd.isna(row_dict.get('nearest_overhead_pct')):
         parts.append("clean overhead")
 
     rc = row_dict.get('rank_change')
     if rc and rc > 30:
-        parts.append(f"RS accelerating (+{rc})")
+        parts.append(f"RS accelerating (+{_int_disp(rc)})")
 
     return "; ".join(parts[:3]) if parts else "meets all criteria"
 
@@ -625,26 +646,35 @@ def _append_leaders_scan_pg(scan_date=None) -> None:
                 """, insert_rows)
 
 
-def append_leaders_scan(db_path=None, scan_date=None):
+def append_leaders_scan(db_path=None, scan_date=None, conn=None):
     """
     Build leaders_scan for today. Pulls stock_signals + sector_signals + prices,
     applies filters (base_tightness<7; not-extended for BO), scores each
     candidate, writes results. Idempotent — safe to re-run same day.
+
+    conn: an already-open connection to use instead of opening `db_path`
+    (Kiran local-first Gold build, 3.3d — passes its own DuckDB connection,
+    schema pre-created by the caller, closed by the caller). When given, the
+    `_PG_URL` branch is bypassed and `ensure_tables` is skipped.
     """
-    if _PG_URL:
+    if conn is None and _PG_URL:
         _append_leaders_scan_pg(scan_date)
         return
 
-    if db_path is None:
-        db_path = config.DB_PATH
-
-    con = sqlite3.connect(db_path)
-    ensure_tables(con)
+    _own_conn = conn is None
+    if _own_conn:
+        if db_path is None:
+            db_path = config.DB_PATH
+        con = sqlite3.connect(db_path)
+        ensure_tables(con)
+    else:
+        con = conn
 
     if scan_date is None:
         scan_date = con.execute("SELECT MAX(date) FROM stock_signals").fetchone()[0]
     if not scan_date:
-        con.close()
+        if _own_conn:
+            con.close()
         return
 
     con.execute("DELETE FROM leaders_scan WHERE scan_date = ?", (scan_date,))
@@ -773,7 +803,8 @@ def append_leaders_scan(db_path=None, scan_date=None):
             """, insert_rows)
             con.commit()
 
-    con.close()
+    if _own_conn:
+        con.close()
 
 
 # ── Top picks writer ──────────────────────────────────────────────────────────
@@ -846,7 +877,7 @@ def _save_top_picks_pg(scan_date=None) -> None:
                 ))
 
 
-def save_top_picks(db_path=None, scan_date=None):
+def save_top_picks(db_path=None, scan_date=None, conn=None):
     """
     From leaders_scan, select up to top 3 per setup_type (final_score >= MIN_PICK_SCORE)
     and write to leaders_top_picks. If fewer than 3 qualify, write only those that do.
@@ -860,19 +891,26 @@ def save_top_picks(db_path=None, scan_date=None):
     gap documented in docs/KIRAN_CLEANUP_AUDIT.md §29.9. The per-date write is a
     DELETE-by-scan_date + re-insert against the UNIQUE(scan_date, setup_type,
     rank) key (§29.8), so it is idempotent and safe to re-run.
+
+    conn: see append_leaders_scan's matching parameter (Kiran local-first
+    Gold build, 3.3d).
     """
-    if _PG_URL:
+    if conn is None and _PG_URL:
         _save_top_picks_pg(scan_date=scan_date)
         return
 
-    if db_path is None:
-        db_path = config.DB_PATH
-
-    con = sqlite3.connect(db_path)
+    _own_conn = conn is None
+    if _own_conn:
+        if db_path is None:
+            db_path = config.DB_PATH
+        con = sqlite3.connect(db_path)
+    else:
+        con = conn
     if scan_date is None:
         scan_date = con.execute("SELECT MAX(scan_date) FROM leaders_scan").fetchone()[0]
     if not scan_date:
-        con.close()
+        if _own_conn:
+            con.close()
         return
 
     con.execute("DELETE FROM leaders_top_picks WHERE scan_date = ?", (scan_date,))
@@ -893,6 +931,14 @@ def save_top_picks(db_path=None, scan_date=None):
         for rank_idx, (_, row) in enumerate(df.iterrows(), start=1):
             r = row.to_dict()
             key_reason = _build_key_reason(r, setup_type, n_sectors=n_sectors)
+            # pd.isna(), not the raw DataFrame value: `df` (the top-3 pool for
+            # this date/setup_type) can mix rows with a real `flag` string and
+            # rows with a NULL one -- DuckDB's pandas conversion represents
+            # the NULL ones as float NaN in that mix (SQLite's pd.read_sql_query
+            # always gives None here), and inserting a bare NaN into this TEXT
+            # column stores it as the literal string "nan". Same root cause as
+            # `fill_leaders_forward_returns`'s triggered/trigger_date fix above.
+            flag_val = None if pd.isna(r['flag']) else r['flag']
 
             # Breakouts are already triggered on scan day
             triggered    = 1 if setup_type == 'BREAKOUT' else None
@@ -908,12 +954,13 @@ def save_top_picks(db_path=None, scan_date=None):
                 scan_date, setup_type, rank_idx,
                 r['symbol'], r['sector'], r['sector_rank'],
                 r['entry_trigger'], r['stop_loss'], r['sl_pct'],
-                r['vol_ratio_today'], key_reason, r['flag'],
+                r['vol_ratio_today'], key_reason, flag_val,
                 triggered, trigger_date
             ))
 
     con.commit()
-    con.close()
+    if _own_conn:
+        con.close()
 
 
 # ── Forward return filler ─────────────────────────────────────────────────────
@@ -1003,28 +1050,40 @@ def _fill_leaders_forward_returns_pg() -> None:
             """, (triggered, trigger_date, r5, r10, r20, outcome, pid))
 
 
-def fill_leaders_forward_returns(db_path=None):
+def fill_leaders_forward_returns(db_path=None, conn=None):
     """
     Fill fwd_return_5d/10d/20d and outcome_label for picks whose window has closed.
     Also sets triggered/trigger_date for PRE_BREAKOUT picks.
     Called daily — skips picks already fully labelled.
+
+    conn: see append_leaders_scan's matching parameter (Kiran local-first
+    Gold build, 3.3d). The `-4 days` floor is computed in Python either way
+    (not SQLite's `date('now', ...)`, which DuckDB rejects) -- SQLite's
+    `now`/`date('now')` is UTC, so this uses `utcnow()` too, to give the
+    identical value on both backends rather than a dialect-neutral but
+    behaviourally-different local-time one.
     """
-    if _PG_URL:
+    if conn is None and _PG_URL:
         _fill_leaders_forward_returns_pg()
         return
 
-    if db_path is None:
-        db_path = config.DB_PATH
+    _own_conn = conn is None
+    if _own_conn:
+        if db_path is None:
+            db_path = config.DB_PATH
+        con = sqlite3.connect(db_path)
+    else:
+        con = conn
 
-    con = sqlite3.connect(db_path)
-
+    import datetime as _dt
+    _floor_date = (_dt.datetime.now(_dt.timezone.utc).date() - _dt.timedelta(days=4)).isoformat()
     picks = pd.read_sql_query("""
         SELECT id, scan_date, setup_type, symbol, entry_trigger,
                triggered, trigger_date, fwd_return_20d, outcome_label
         FROM leaders_top_picks
         WHERE outcome_label IN ('OPEN', 'NOT_TRIGGERED')
-          AND scan_date < date('now', '-4 days')
-    """, con)
+          AND scan_date < ?
+    """, con, params=(_floor_date,))
 
     for _, pick in picks.iterrows():
         pid        = int(pick['id'])
@@ -1043,8 +1102,18 @@ def fill_leaders_forward_returns(db_path=None):
         if fwd.empty:
             continue
 
-        triggered    = pick['triggered']
-        trigger_date = pick['trigger_date']
+        # pd.isna(), not a bare None/falsy check: when this query's result mix
+        # includes both real (BREAKOUT, already-triggered) and unset
+        # (PRE_BREAKOUT, not yet triggered) rows, DuckDB's pandas conversion
+        # represents the unset ones as float NaN, not None (SQLite's
+        # pd.read_sql_query always gives plain None here) -- `not float('nan')`
+        # is False, so the un-normalised check below would treat an unset
+        # value as already truthy-triggered on a DuckDB `conn` and go on to
+        # write the NaN straight into `trigger_date` (a TEXT column -- stored
+        # as the literal string "nan"). Normalising to real None immediately
+        # keeps every check below (`not triggered`) correct on both engines.
+        triggered    = None if pd.isna(pick['triggered']) else pick['triggered']
+        trigger_date = None if pd.isna(pick['trigger_date']) else pick['trigger_date']
 
         # Determine trigger for PRE_BREAKOUT
         if setup_type == 'PRE_BREAKOUT' and not triggered:
@@ -1089,7 +1158,8 @@ def fill_leaders_forward_returns(db_path=None):
         """, (triggered, trigger_date, r5, r10, r20, outcome, pid))
 
     con.commit()
-    con.close()
+    if _own_conn:
+        con.close()
 
 
 # ── Single entry point for main.py ───────────────────────────────────────────

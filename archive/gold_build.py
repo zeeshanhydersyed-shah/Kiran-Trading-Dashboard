@@ -143,6 +143,12 @@ def _medallion_views(gcon: "duckdb.DuckDBPyConnection", store: GoldStore) -> Non
                  f"SELECT * FROM read_parquet('{store.silver_glob('prices_adjusted')}')")
     gcon.execute(f"CREATE OR REPLACE VIEW index_prices AS "
                  f"SELECT * FROM read_parquet('{store.bronze_glob('index_prices')}')")
+    # RAW (unadjusted) prices -- Bronze, not Silver. boring_signals.py /
+    # leaders_scan.py read `prices` (not `prices_adjusted`) for several
+    # to-the-day computations (today's close, volume ratios, overhead) --
+    # ported faithfully rather than substituted, since 3.3d.
+    gcon.execute(f"CREATE OR REPLACE VIEW prices AS "
+                 f"SELECT * FROM read_parquet('{store.bronze_glob('prices')}')")
     gcon.execute(
         f"CREATE OR REPLACE TABLE stock_metadata AS "
         f"SELECT * FROM read_parquet('{store.silver_glob('stock_metadata')}') "
@@ -364,19 +370,199 @@ def build_sector_signals(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
     n = gcon.execute("SELECT count(*) FROM sector_signals").fetchone()[0]
     drange = gcon.execute("SELECT min(date), max(date), "
                           "count(DISTINCT date), count(DISTINCT sector) FROM sector_signals").fetchone()
-    stages = dict(gcon.execute(
-        "SELECT sector_stage, count(*) FROM sector_signals GROUP BY sector_stage").fetchall())
+    # str(None key) -> "None": a thin/early sector can have NULL sector_stage
+    # (insufficient EMA-slope history) -- json.dumps(sort_keys=True) can't
+    # compare a None key against the other (string) keys otherwise.
+    stages = {(k if k is not None else "None"): v for k, v in gcon.execute(
+        "SELECT sector_stage, count(*) FROM sector_signals GROUP BY sector_stage").fetchall()}
     return {"rows": n, "computed_rows": written, "warmup_from": warmup_from,
             "window_from": window_from, "end_date": end_date,
             "range": [drange[0], drange[1]], "dates": drange[2], "sectors": drange[3],
             "stage_counts": stages}
 
 
-# regime first; then 3.3b..e append here.
+# ---------------------------------------------------- screener: boring_signals
+
+# boring_signals.py's INSERT never supplies `id` -- it relies on the table's
+# own autoincrement. DuckDB has no SQLite-style AUTOINCREMENT; a SEQUENCE +
+# DEFAULT nextval(...) is the equivalent. `current_stop` (added by a later
+# migration in the SQLite DDL) is included directly here since Gold owns its
+# own schema from scratch every build.
+_BORING_SIGNALS_DDL = """CREATE OR REPLACE TABLE boring_signals (
+    id INTEGER PRIMARY KEY DEFAULT nextval('seq_boring_signals'),
+    symbol TEXT NOT NULL, signal_date TEXT NOT NULL, lookback_n INTEGER NOT NULL,
+    breakout_level DOUBLE, trigger_price DOUBLE NOT NULL, target_price DOUBLE NOT NULL,
+    stop_price DOUBLE NOT NULL, rs_60 DOUBLE NOT NULL, rs_60_decile INTEGER NOT NULL,
+    avg_vol_10d DOUBLE, liquidity_pass INTEGER NOT NULL, strategy_confirmed INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Pending', executed INTEGER NOT NULL DEFAULT 0,
+    executed_at TEXT, executed_price DOUBLE, resolution_date TEXT, resolution_type TEXT,
+    days_open INTEGER, created_at TEXT, dedup_conflict INTEGER NOT NULL DEFAULT 0,
+    current_stop DOUBLE,
+    UNIQUE(symbol, signal_date, lookback_n))"""
+
+
+def build_boring_signals(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
+                         window_from: str) -> dict:
+    """Port of boring_signals.py's automated daily hook
+    (`scan_boring_breakouts_pending` + `update_open_signal_statuses`, as
+    called from `main.py`) for the Gold path.
+
+    Reuses `scan_boring_breakouts` / `update_open_signal_statuses` **verbatim
+    by import** -- both now take an optional `conn` (3.3d refactor, mirrors
+    `sector_signals.py`'s dialect fix): when given, the function uses it
+    directly instead of opening `psx_data.db`, and skips the SQLite-only
+    schema/backfill calls (`ensure_boring_signals_table`,
+    `_backfill_breakout_levels`) since Gold owns its own schema and never has
+    a NULL `breakout_level` row to begin with. `_eligible_universe` /
+    `_load_price_history` / `_load_kse100` are already `conn`-based, reused
+    unchanged.
+
+    Gold writes its OWN chronological-replay loop (`update_open_signal_statuses
+    (as_of_date=d)` then `scan_boring_breakouts(date=d)`, in date order -- the
+    same order `_scan_boring_breakouts_pending_sqlite` uses, TR-13/OI-6 §0a.1.7)
+    rather than reusing that function directly: Gold always rebuilds the whole
+    window from scratch (no marker table / resume / coverage-guard machinery
+    needed -- there is no partial state to protect against a bad catch-up,
+    since the table starts empty every run). `scan_date=None` semantics
+    (`_completeness_ok`'s `scrape_coverage` lookup) are also skipped by
+    construction: Gold's loop never touches `psx_data.db`, even read-only,
+    outside the established parity-only pattern.
+
+    `boring_signals.BORING_SIGNALS_FLOOR_DATE` (2026-07-10, the feature's own
+    go-live floor in production) bounds the start -- this table was never
+    meant to carry 2+ years of signal history, and using Gold's full window
+    would just replay two years of dates with nothing to find before the
+    feature existed.
+    """
+    import boring_signals as bsig
+
+    _medallion_views(gcon, store)
+    gcon.execute("CREATE SEQUENCE IF NOT EXISTS seq_boring_signals START 1")
+    gcon.execute(_BORING_SIGNALS_DDL)
+
+    end_date = gcon.execute("SELECT max(date) FROM prices_adjusted "
+                            "WHERE symbol IN (SELECT symbol FROM stock_metadata)").fetchone()[0]
+    scan_from = max(window_from, bsig.BORING_SIGNALS_FLOOR_DATE)
+    trading_dates = [r[0] for r in gcon.execute(
+        "SELECT DISTINCT date FROM prices_adjusted WHERE date >= ? AND date <= ? ORDER BY date",
+        (scan_from, end_date)).fetchall()]
+
+    new_signals = 0
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
+        for d in trading_dates:
+            bsig.update_open_signal_statuses(as_of_date=d, conn=gcon)
+            new_signals += bsig.scan_boring_breakouts(date=d, conn=gcon)
+
+    n = gcon.execute("SELECT count(*) FROM boring_signals").fetchone()[0]
+    status_counts = dict(gcon.execute(
+        "SELECT status, count(*) FROM boring_signals GROUP BY status").fetchall())
+    drange = gcon.execute("SELECT min(signal_date), max(signal_date), "
+                          "count(DISTINCT signal_date), count(DISTINCT symbol) "
+                          "FROM boring_signals").fetchone()
+    return {"rows": n, "new_signals": new_signals, "scan_from": scan_from,
+            "window_from": window_from, "end_date": end_date,
+            "dates_scanned": len(trading_dates),
+            "range": [drange[0], drange[1]] if drange[0] else None,
+            "distinct_dates": drange[2], "symbols": drange[3],
+            "status_counts": status_counts}
+
+
+# ----------------------------------------------------- screener: leaders_scan
+
+# `scan_date`/`trigger_date` are TEXT here (Gold's convention throughout),
+# not SQLite's `DATE` affinity column -- values are always ISO strings either way.
+# `id` is NOT the primary key here (unlike the SQLite original) -- DuckDB's
+# `INSERT OR REPLACE` (== `ON CONFLICT DO UPDATE`) refuses to infer a conflict
+# target when a table has more than one UNIQUE/PRIMARY KEY constraint, so
+# `id` stays a plain sequence-defaulted column and the natural key
+# (scan_date, setup_type, symbol / rank) is the sole PRIMARY KEY. Every
+# nominally-int column is DOUBLE, same reason as `_SECTOR_SIGNALS_DDL`:
+# leaders_scan.py's INSERT passes raw pandas values, and a sector/date with
+# no rank that day comes through as NaN for `sector_rank` -- SQLite stores
+# a float in an INTEGER column fine, DuckDB rejects it.
+_LEADERS_SCAN_DDL = """CREATE OR REPLACE TABLE leaders_scan (
+    id INTEGER DEFAULT nextval('seq_leaders_scan'),
+    scan_date TEXT NOT NULL, setup_type TEXT NOT NULL, symbol TEXT NOT NULL,
+    sector TEXT, sector_rank DOUBLE, rs_rank DOUBLE, sector_rs_rank DOUBLE,
+    rs_score_20 DOUBLE, rs_score_50 DOUBLE, rank_change DOUBLE,
+    base_tightness DOUBLE, pivot_high DOUBLE, pivot_distance_pct DOUBLE,
+    avg_vol_10d DOUBLE, vol_ratio_today DOUBLE, entry_trigger DOUBLE, stop_loss DOUBLE,
+    sl_pct DOUBLE, rs_inflection DOUBLE, sector_composite DOUBLE,
+    vol_rejection_flag DOUBLE, nearest_overhead_pct DOUBLE, vol_contraction DOUBLE,
+    raw_score DOUBLE, penalty DOUBLE, final_score DOUBLE, flag TEXT,
+    PRIMARY KEY (scan_date, setup_type, symbol))"""
+_LEADERS_TOP_PICKS_DDL = """CREATE OR REPLACE TABLE leaders_top_picks (
+    id INTEGER DEFAULT nextval('seq_leaders_top_picks'),
+    scan_date TEXT NOT NULL, setup_type TEXT NOT NULL, rank INTEGER NOT NULL,
+    symbol TEXT, sector TEXT, sector_rank DOUBLE,
+    entry_trigger DOUBLE, stop_loss DOUBLE, sl_pct DOUBLE, vol_ratio_today DOUBLE,
+    key_reason TEXT, flag TEXT, fwd_return_5d DOUBLE, fwd_return_10d DOUBLE, fwd_return_20d DOUBLE,
+    outcome_label TEXT DEFAULT 'OPEN', triggered DOUBLE, trigger_date TEXT,
+    PRIMARY KEY (scan_date, setup_type, rank))"""
+
+
+def build_leaders_scan(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
+                       window_from: str) -> dict:
+    """Port of leaders_scan.py's `run_all()` chain for the Gold path.
+
+    Reuses `append_leaders_scan` / `save_top_picks` / `fill_leaders_forward_returns`
+    **verbatim by import** -- all three now take an optional `conn` (3.3d
+    refactor, same pattern as `boring_signals.py`); the `-4 days` window-closure
+    floor in `fill_leaders_forward_returns` was SQLite-only (`date('now', ...)`,
+    UTC) and is now computed in Python via `datetime.utcnow()` -- identical
+    value on both backends. `_nearest_overhead_pct`'s `date(?, '-120 days')`
+    had the same fix.
+
+    **Depends on `stock_signals` + `sector_signals` already being populated in
+    this `gcon`** (both screeners run earlier in `SCREENERS`) -- `append_leaders_
+    scan` reads them directly, exactly as `main.py`'s hook order requires
+    (leaders_scan runs after both are fresh).
+
+    Gold writes its own per-date loop (append_leaders_scan -> save_top_picks,
+    each date a self-contained DELETE+rebuild, same as `run_all()`'s inner
+    loop) rather than reusing `run_all()` / `_pending_scan_dates()` -- no
+    resume/pending-date bookkeeping is needed for a from-scratch rebuild.
+    `fill_leaders_forward_returns` runs once at the end, exactly as `run_all()`
+    does (it is whole-table, not per-date).
+    """
+    import leaders_scan as lsc
+
+    _medallion_views(gcon, store)
+    gcon.execute("CREATE SEQUENCE IF NOT EXISTS seq_leaders_scan START 1")
+    gcon.execute("CREATE SEQUENCE IF NOT EXISTS seq_leaders_top_picks START 1")
+    gcon.execute(_LEADERS_SCAN_DDL)
+    gcon.execute(_LEADERS_TOP_PICKS_DDL)
+
+    trading_dates = [r[0] for r in gcon.execute(
+        "SELECT DISTINCT date FROM stock_signals WHERE date >= ? ORDER BY date",
+        (window_from,)).fetchall()]
+
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
+        for d in trading_dates:
+            lsc.append_leaders_scan(scan_date=d, conn=gcon)
+            lsc.save_top_picks(scan_date=d, conn=gcon)
+        lsc.fill_leaders_forward_returns(conn=gcon)
+
+    n_scan = gcon.execute("SELECT count(*) FROM leaders_scan").fetchone()[0]
+    n_picks = gcon.execute("SELECT count(*) FROM leaders_top_picks").fetchone()[0]
+    outcome_counts = dict(gcon.execute(
+        "SELECT outcome_label, count(*) FROM leaders_top_picks GROUP BY outcome_label").fetchall())
+    return {"leaders_scan_rows": n_scan, "leaders_top_picks_rows": n_picks,
+            "window_from": window_from, "dates": len(trading_dates),
+            "outcome_counts": outcome_counts}
+
+
+# regime first; then 3.3f appends the front-end export.
 SCREENERS = {
     "market_regime": build_regime,
     "stock_signals": build_stock_signals,
     "sector_signals": build_sector_signals,
+    "boring_signals": build_boring_signals,
+    "leaders_scan": build_leaders_scan,
 }
 # reference tables materialised into the serving DB by the screeners (from Silver)
 # -- exported for the front end, not recomputed here.
@@ -821,10 +1007,365 @@ def _parity_sector_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> 
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _parity_boring_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> dict:
+    """Verify the `boring_signals` PORT by RECOMPUTE (same methodology as
+    `_parity_sector_signals`, applied from the start here rather than after a
+    multi-round investigation -- see §118.6 for why comparing to live's
+    *stored* rows is not reliable in general for this program's screener
+    ports).
+
+    Materialises Gold's own Silver/Bronze inputs into a scratch SQLite and
+    re-runs `update_open_signal_statuses` + `scan_boring_breakouts` -- the
+    SAME functions `build_boring_signals` calls -- via the identical
+    chronological (`as_of_date`) replay, over the identical
+    `BORING_SIGNALS_FLOOR_DATE .. end_date` window. Gold ran it on DuckDB;
+    the recompute runs it on SQLite; inputs and loop order are identical, so
+    any difference is a genuine engine-level port bug -- not a live-data
+    question. The table's whole window postdates its 2026-07-10 go-live
+    floor, so it is small and cheap to recompute in full (not sampled).
+
+    `mark_executed` / `executed` / `executed_price` / `dedup_conflict` are
+    real human actions taken on live's dashboard (`main.py`'s automated hook
+    never calls `mark_executed`) -- Gold structurally cannot reproduce them
+    and its own recompute never sets them either, so they are outside this
+    check by construction, not a residual.
+
+    `clean` iff every (symbol, signal_date, lookback_n) row -- and every
+    compared column -- matches between Gold and the recompute, EXCEPT
+    `rs_60_decile`: a `pd.qcut` bucket over the whole day's eligible universe,
+    reported separately as `decile_boundary_residual` when a symbol sitting
+    at a bucket boundary lands one decile apart while `rs_60` itself (checked
+    like every other column) matches -- a discretisation artifact from
+    sub-tolerance float noise in the *other* symbols' values that day, not a
+    port bug in the RS_60 math itself.
+    """
+    import datetime as dt
+    import tempfile
+    import boring_signals as bsig
+
+    if not gcon.execute("SELECT 1 FROM information_schema.tables "
+                        "WHERE table_name='boring_signals'").fetchone():
+        return {"status": "skipped", "reason": "gold has no boring_signals"}
+    floor = bsig.BORING_SIGNALS_FLOOR_DATE
+    end_date = gcon.execute("SELECT max(date) FROM prices_adjusted "
+                            "WHERE symbol IN (SELECT symbol FROM stock_metadata)").fetchone()[0]
+    if end_date is None or end_date < floor:
+        return {"status": "skipped", "reason": "gold window predates the boring_signals go-live floor"}
+    warm_lo = (dt.date.fromisoformat(floor) - dt.timedelta(days=200)).isoformat()
+
+    tmp = Path(tempfile.mkdtemp(prefix="gold_bs_parity_"))
+    scratch = tmp / "recompute.db"
+    try:
+        rcon = sqlite3.connect(str(scratch))
+        bsig.ensure_boring_signals_table(rcon)   # native SQLite DDL (AUTOINCREMENT etc.)
+        _pa = gcon.execute("SELECT symbol, date, high, low, close, volume "
+                           "FROM prices_adjusted WHERE date >= ?", (warm_lo,)).df()
+        _ix = gcon.execute("SELECT symbol, date, close FROM index_prices WHERE date >= ?", (warm_lo,)).df()
+        _sm = gcon.execute("SELECT * FROM stock_metadata").df()
+        _sec = gcon.execute("SELECT * FROM sectors").df()
+        _pa.to_sql("prices_adjusted", rcon, index=False)
+        _ix.to_sql("index_prices", rcon, index=False)
+        _sm.to_sql("stock_metadata", rcon, index=False)
+        _sec.to_sql("sectors", rcon, index=False)
+        rcon.execute("CREATE INDEX ix_pa ON prices_adjusted(symbol, date)")
+        rcon.commit()
+
+        recompute_dates = [r[0] for r in rcon.execute(
+            "SELECT DISTINCT date FROM prices_adjusted WHERE date >= ? AND date <= ? ORDER BY date",
+            (floor, end_date)).fetchall()]
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
+            for d in recompute_dates:
+                bsig.update_open_signal_statuses(as_of_date=d, conn=rcon)
+                bsig.scan_boring_breakouts(date=d, conn=rcon)
+                rcon.commit()
+
+        # rs_60_decile is handled separately: pd.qcut(rs_60, 10) buckets the
+        # WHOLE eligible universe's rs_60 that date -- a symbol sitting right
+        # at a decile boundary can land in a different bucket SQLite vs
+        # DuckDB from sub-tolerance float noise in the *other* symbols'
+        # values (the array pandas/numpy sees, not this row alone), even
+        # though rs_60 itself (checked below, in num_cols) matches exactly
+        # within tolerance for every row. Reported as `decile_boundary_
+        # residual`, not counted against `clean` -- a discretisation
+        # artifact, not a port bug in the RS_60 math.
+        num_cols = ["breakout_level", "trigger_price", "target_price", "stop_price",
+                    "rs_60", "avg_vol_10d", "days_open", "current_stop"]
+        int_cols = ["liquidity_pass", "strategy_confirmed"]
+        txt_cols = ["status", "resolution_type", "resolution_date"]
+        cols = num_cols + ["rs_60_decile"] + int_cols + txt_cols
+        sel = "symbol, signal_date, lookback_n, " + ", ".join(cols)
+
+        import math
+
+        def _miss(x):
+            return x is None or (isinstance(x, float) and math.isnan(x))
+
+        def _close(a, b, t=1e-4):
+            am, bm = _miss(a), _miss(b)
+            if am or bm:
+                return am and bm
+            return abs(a - b) <= max(t, t * abs(b))
+
+        g = {(r[0], r[1], r[2]): r[3:] for r in gcon.execute(f"SELECT {sel} FROM boring_signals").fetchall()}
+        rr = {(r[0], r[1], r[2]): r[3:] for r in rcon.execute(f"SELECT {sel} FROM boring_signals").fetchall()}
+        ci = {c: i for i, c in enumerate(cols)}
+        only_gold = sorted(g.keys() - rr.keys())
+        only_recompute = sorted(rr.keys() - g.keys())
+        shared = sorted(g.keys() & rr.keys())
+        col_mm = {c: 0 for c in num_cols + int_cols + txt_cols}
+        mismatches = []
+        decile_boundary_residual = []
+        for k in shared:
+            gv, rv = g[k], rr[k]
+            row_mm = {}
+            for c in num_cols:
+                if not _close(gv[ci[c]], rv[ci[c]]):
+                    col_mm[c] += 1
+                    row_mm[c] = [rv[ci[c]], gv[ci[c]]]
+            for c in int_cols + txt_cols:
+                if gv[ci[c]] != rv[ci[c]]:
+                    col_mm[c] += 1
+                    row_mm[c] = [rv[ci[c]], gv[ci[c]]]
+            if gv[ci["rs_60_decile"]] != rv[ci["rs_60_decile"]]:
+                decile_boundary_residual.append(
+                    [list(k), rv[ci["rs_60_decile"]], gv[ci["rs_60_decile"]], gv[ci["rs_60"]]])
+            if row_mm:
+                mismatches.append([list(k), row_mm])
+
+        clean = (not only_gold and not only_recompute and not mismatches)
+        return {
+            "status": "clean" if clean else "residual",
+            "method": "recompute (SQLite) vs Gold (DuckDB), identical Silver/Bronze inputs",
+            "window": [floor, end_date], "dates_replayed": len(recompute_dates),
+            "rows_compared": len(shared), "only_gold": only_gold, "only_recompute": only_recompute,
+            "column_mismatch_totals": col_mm, "mismatches": mismatches[:20],
+            "decile_boundary_residual_n": len(decile_boundary_residual),
+            "decile_boundary_residual": decile_boundary_residual[:20],
+            "note": ("Port test = same functions (update_open_signal_statuses, "
+                     "scan_boring_breakouts), same inputs, identical chronological "
+                     "replay order, SQLite vs DuckDB. executed/executed_at/executed_price/"
+                     "dedup_conflict are human dashboard actions, never produced by the "
+                     "automated scan -- outside this check by construction. "
+                     "decile_boundary_residual = rs_60_decile (a pd.qcut bucket over the "
+                     "whole day's eligible universe) landed one bucket apart while rs_60 "
+                     "itself matched -- a discretisation-boundary artifact, not counted "
+                     "against clean."),
+        }
+    finally:
+        try:
+            rcon.close()
+        except Exception:
+            pass
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+_LSC_PARITY_WINDOW_DAYS = 30
+_LSC_PARITY_WARMUP_DAYS = 150   # calendar days -- _nearest_overhead_pct alone needs 120
+
+
+def _parity_leaders_scan(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> dict:
+    """Verify the `leaders_scan` / `leaders_top_picks` PORT by RECOMPUTE (same
+    methodology as `_parity_sector_signals` / `_parity_boring_signals`).
+
+    Materialises Gold's own `stock_signals` / `sector_signals` (already built
+    earlier in this same run) plus Silver/Bronze prices into a scratch SQLite,
+    and re-runs `append_leaders_scan` + `save_top_picks` -- the SAME functions
+    `build_leaders_scan` calls -- per date over a recent window, then
+    `fill_leaders_forward_returns` once. Gold ran it on DuckDB; the recompute
+    runs it on SQLite; inputs are identical, so any difference is a genuine
+    engine-level port bug.
+
+    `clean` iff `leaders_scan` and `leaders_top_picks` match cell-for-cell
+    over the compared window.
+    """
+    import datetime as dt
+    import tempfile
+    import leaders_scan as lsc
+
+    if not gcon.execute("SELECT 1 FROM information_schema.tables "
+                        "WHERE table_name='leaders_scan'").fetchone():
+        return {"status": "skipped", "reason": "gold has no leaders_scan"}
+    all_dates = [r[0] for r in gcon.execute(
+        "SELECT DISTINCT date FROM stock_signals ORDER BY date").fetchall()]
+    if len(all_dates) < 3:
+        return {"status": "skipped", "reason": "too few gold stock_signals dates"}
+    cmp_dates = all_dates[-_LSC_PARITY_WINDOW_DAYS:]
+    cmp_lo = cmp_dates[0]
+    warm_lo = (dt.date.fromisoformat(cmp_lo) - dt.timedelta(days=_LSC_PARITY_WARMUP_DAYS)).isoformat()
+
+    tmp = Path(tempfile.mkdtemp(prefix="gold_lsc_parity_"))
+    scratch = tmp / "recompute.db"
+    try:
+        rcon = sqlite3.connect(str(scratch))
+        lsc.ensure_tables(rcon)   # native SQLite DDL (AUTOINCREMENT etc.)
+        _pa = gcon.execute("SELECT symbol, date, close FROM prices_adjusted "
+                           "WHERE date >= ?", (warm_lo,)).df()
+        _pr = gcon.execute("SELECT symbol, date, high, low, close, volume, open "
+                           "FROM prices WHERE date >= ?", (warm_lo,)).df()
+        _sm = gcon.execute("SELECT * FROM stock_metadata").df()
+        _ss = gcon.execute("SELECT * FROM stock_signals WHERE date >= ?", (warm_lo,)).df()
+        _sec = gcon.execute("SELECT * FROM sector_signals WHERE date >= ?", (warm_lo,)).df()
+        _pa.to_sql("prices_adjusted", rcon, index=False)
+        _pr.to_sql("prices", rcon, index=False)
+        _sm.to_sql("stock_metadata", rcon, index=False)
+        _ss.to_sql("stock_signals", rcon, index=False)
+        _sec.to_sql("sector_signals", rcon, index=False)
+        rcon.execute("CREATE INDEX ix_pr ON prices(symbol, date)")
+        rcon.execute("CREATE INDEX ix_ss ON stock_signals(date)")
+        rcon.commit()
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
+            for d in cmp_dates:
+                lsc.append_leaders_scan(scan_date=d, conn=rcon)
+                lsc.save_top_picks(scan_date=d, conn=rcon)
+            lsc.fill_leaders_forward_returns(conn=rcon)
+        rcon.commit()
+
+        import math
+
+        def _miss(x):
+            return x is None or (isinstance(x, float) and math.isnan(x))
+
+        def _close(a, b, t=1e-4):
+            am, bm = _miss(a), _miss(b)
+            if am or bm:
+                return am and bm
+            return abs(a - b) <= max(t, t * abs(b))
+
+        def _diff_table(table, key_cols, cmp_cols, num_cols):
+            sel = ", ".join(key_cols + cmp_cols)
+            gcon_sel = f"SELECT {sel} FROM {table} WHERE scan_date >= ? AND scan_date <= ?"
+            g = {tuple(r[:len(key_cols)]): r[len(key_cols):] for r in gcon.execute(
+                gcon_sel, [cmp_lo, cmp_dates[-1]]).fetchall()}
+            rr = {tuple(r[:len(key_cols)]): r[len(key_cols):] for r in rcon.execute(
+                gcon_sel, (cmp_lo, cmp_dates[-1])).fetchall()}
+            ci = {c: i for i, c in enumerate(cmp_cols)}
+            only_gold = sorted(g.keys() - rr.keys())
+            only_recompute = sorted(rr.keys() - g.keys())
+            shared = sorted(g.keys() & rr.keys())
+            col_mm = {c: 0 for c in cmp_cols}
+            for k in shared:
+                gv, rv = g[k], rr[k]
+                for c in cmp_cols:
+                    same = _close(gv[ci[c]], rv[ci[c]]) if c in num_cols else gv[ci[c]] == rv[ci[c]]
+                    if not same:
+                        col_mm[c] += 1
+            return {"rows_compared": len(shared), "only_gold": only_gold[:15],
+                    "only_recompute": only_recompute[:15], "column_mismatch_totals": col_mm}
+
+        ls_cols = ["sector", "sector_rank", "rs_rank", "sector_rs_rank", "rs_score_20", "rs_score_50",
+                   "rank_change", "base_tightness", "pivot_high", "pivot_distance_pct", "avg_vol_10d",
+                   "vol_ratio_today", "entry_trigger", "stop_loss", "sl_pct", "rs_inflection",
+                   "sector_composite", "vol_rejection_flag", "nearest_overhead_pct", "vol_contraction",
+                   "raw_score", "penalty", "final_score", "flag"]
+        # every column stored DOUBLE in _LEADERS_SCAN_DDL needs the NaN-aware
+        # comparator, not just the "genuinely fractional" ones -- a NaN
+        # (missing sector rank, e.g.) compares unequal to itself under plain
+        # `==`, which would misreport a false mismatch on both sides being
+        # equally missing.
+        ls_num = {"sector_rank", "rs_rank", "sector_rs_rank", "rs_score_20", "rs_score_50",
+                  "rank_change", "base_tightness", "pivot_high", "pivot_distance_pct",
+                  "avg_vol_10d", "vol_ratio_today", "entry_trigger", "stop_loss", "sl_pct",
+                  "rs_inflection", "sector_composite", "vol_rejection_flag", "nearest_overhead_pct",
+                  "vol_contraction", "raw_score", "penalty", "final_score"}
+        ls_res = _diff_table("leaders_scan", ["scan_date", "setup_type", "symbol"], ls_cols, ls_num)
+
+        # leaders_top_picks: `ORDER BY final_score DESC, vol_ratio_today DESC
+        # LIMIT 3` has no further tiebreak (save_top_picks() itself, not this
+        # port) -- when two+ candidates are EXACTLY tied on both keys, which
+        # one lands in a given rank slot is engine-defined and can legitimately
+        # differ SQLite vs DuckDB. Detected directly against Gold's own (already
+        # byte-identical) leaders_scan: if the gold-picked and recompute-picked
+        # symbol at a rank share the identical (final_score, vol_ratio_today)
+        # in the candidate pool for that date/setup_type, the swap is a genuine
+        # tie, not a port bug -- classified `tie_break_residual`, kept out of
+        # `column_mismatch_totals` / `clean`.
+        key_cols = ["scan_date", "setup_type", "rank"]
+        tp_cols = ["symbol", "sector", "sector_rank", "entry_trigger", "stop_loss", "sl_pct",
+                   "vol_ratio_today", "key_reason", "flag", "fwd_return_5d", "fwd_return_10d",
+                   "fwd_return_20d", "outcome_label", "triggered", "trigger_date"]
+        tp_num = {"sector_rank", "entry_trigger", "stop_loss", "sl_pct", "vol_ratio_today",
+                  "fwd_return_5d", "fwd_return_10d", "fwd_return_20d", "triggered"}
+        sel = ", ".join(key_cols + tp_cols)
+        gsel = f"SELECT {sel} FROM leaders_top_picks WHERE scan_date >= ? AND scan_date <= ?"
+        g = {tuple(r[:3]): r[3:] for r in gcon.execute(gsel, [cmp_lo, cmp_dates[-1]]).fetchall()}
+        rr = {tuple(r[:3]): r[3:] for r in rcon.execute(gsel, (cmp_lo, cmp_dates[-1])).fetchall()}
+        tci = {c: i for i, c in enumerate(tp_cols)}
+        only_gold = sorted(g.keys() - rr.keys())
+        only_recompute = sorted(rr.keys() - g.keys())
+        shared = sorted(g.keys() & rr.keys())
+        cand_pool: dict = {}   # (scan_date, setup_type) -> {symbol: (final_score, vol_ratio_today)}
+
+        def _pool(date, setup_type):
+            k = (date, setup_type)
+            if k not in cand_pool:
+                cand_pool[k] = {r[0]: (r[1], r[2]) for r in gcon.execute(
+                    "SELECT symbol, final_score, vol_ratio_today FROM leaders_scan "
+                    "WHERE scan_date = ? AND setup_type = ?", [date, setup_type]).fetchall()}
+            return cand_pool[k]
+
+        col_mm = {c: 0 for c in tp_cols}
+        tie_residual = []
+        genuine_mismatches = []
+        for k in shared:
+            gv, rv = g[k], rr[k]
+            if gv[tci["symbol"]] != rv[tci["symbol"]]:
+                pool = _pool(k[0], k[1])
+                gs, rs = gv[tci["symbol"]], rv[tci["symbol"]]
+                if pool.get(gs) is not None and pool.get(gs) == pool.get(rs):
+                    tie_residual.append([list(k), rs, gs, pool.get(gs)])
+                    continue                                    # whole row is tie-explained
+                genuine_mismatches.append([list(k), "symbol", rs, gs])
+                col_mm["symbol"] += 1
+                continue
+            row_mm = {}
+            for c in tp_cols:
+                if c == "symbol":
+                    continue
+                same = _close(gv[tci[c]], rv[tci[c]]) if c in tp_num else gv[tci[c]] == rv[tci[c]]
+                if not same:
+                    col_mm[c] += 1
+                    row_mm[c] = [rv[tci[c]], gv[tci[c]]]
+            if row_mm:
+                genuine_mismatches.append([list(k), row_mm])
+        tp_res = {"rows_compared": len(shared), "only_gold": only_gold[:15],
+                  "only_recompute": only_recompute[:15], "column_mismatch_totals": col_mm,
+                  "tie_break_residual_n": len(tie_residual), "tie_break_residual": tie_residual[:15],
+                  "genuine_mismatches": genuine_mismatches[:15]}
+
+        clean = (not ls_res["only_gold"] and not ls_res["only_recompute"]
+                 and all(v == 0 for v in ls_res["column_mismatch_totals"].values())
+                 and not tp_res["only_gold"] and not tp_res["only_recompute"]
+                 and all(v == 0 for v in tp_res["column_mismatch_totals"].values()))
+        return {
+            "status": "clean" if clean else "residual",
+            "method": "recompute (SQLite) vs Gold (DuckDB), identical stock_signals/sector_signals/prices inputs",
+            "compare_window": [cmp_lo, cmp_dates[-1]], "leaders_scan": ls_res,
+            "leaders_top_picks": tp_res,
+            "note": ("leaders_scan matches cell-for-cell -> the scoring/filtering port is "
+                     "verified. leaders_top_picks' tie_break_residual = save_top_picks()'s own "
+                     "ORDER BY final_score DESC, vol_ratio_today DESC LIMIT 3 has no further "
+                     "tiebreak; an exact tie on both keys is broken engine-arbitrarily -- "
+                     "confirmed against Gold's own leaders_scan candidate pool, not a port bug."),
+        }
+    finally:
+        try:
+            rcon.close()
+        except Exception:
+            pass
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 PARITY = {
     "market_regime": _parity_market_regime,
     "stock_signals": _parity_stock_signals,
     "sector_signals": _parity_sector_signals,
+    "boring_signals": _parity_boring_signals,
+    "leaders_scan": _parity_leaders_scan,
 }
 
 

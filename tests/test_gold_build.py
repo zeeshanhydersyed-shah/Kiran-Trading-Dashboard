@@ -50,14 +50,26 @@ _SYMS = [("HBL", "COMMERCIAL BANKS"), ("OGDC", "OIL & GAS"),
          ("LUCK", "CEMENT"), ("ENGRO", "FERTILIZER"), ("PSO", "OIL & GAS")]
 
 
-def _write_prices_anchor(root, max_date):
-    """gold_build reads bronze/prices only for the window anchor (max date)."""
-    t = pa.table({"symbol": ["HBL"], "date": [max_date], "close": [100.0],
-                  "volume": [1], "high": [101.0], "low": [99.0], "open": [100.0]},
-                 schema=bronze_ingest.PRICES_SCHEMA)
-    fp = root / "prices_archive" / "bronze" / "prices" / f"year={max_date[:4]}" / "data.parquet"
-    fp.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(t, fp, **bronze_ingest.PARQUET_OPTS)
+def _write_prices_anchor(root, bars):
+    """Bronze `prices` (RAW, unadjusted) for every _SYMS symbol across the full
+    bar series -- same per-symbol multiple as _write_silver's prices_adjusted
+    (no synthetic CA event, so raw == adjusted here). gold_build reads this for
+    the window anchor (max date) AND, since 3.3d, for boring_signals/
+    leaders_scan's raw-price reads (today's close, volume ratios, overhead)."""
+    rows_by_year: dict[str, list] = {}
+    for si, (sym, _sec) in enumerate(_SYMS):
+        mult = 0.001 * (1 + si)
+        for bi, (ds, hi, lo, cl, op) in enumerate(bars):
+            c = cl * mult + 3 * math.sin((bi + si) / 7)
+            rows_by_year.setdefault(ds[:4], []).append(
+                (sym, ds, round(c, 4), 500_000 + (bi * 37 + si * 991) % 300_000,
+                 round(c * 1.01, 4), round(c * 0.99, 4), round(c, 4)))
+    for year, rs in rows_by_year.items():
+        t = pa.table({k: [r[i] for r in rs] for i, k in enumerate(bronze_ingest.PRICES_COLUMNS)},
+                     schema=bronze_ingest.PRICES_SCHEMA)
+        fp = root / "prices_archive" / "bronze" / "prices" / f"year={year}" / "data.parquet"
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(t, fp, **bronze_ingest.PARQUET_OPTS)
 
 
 def _write_silver(root, bars, extra_syms=()):
@@ -111,7 +123,7 @@ def env(tmp_path, monkeypatch):
 
     bars = _bars()
     _write_index(root, bars)
-    _write_prices_anchor(root, bars[-1][0])
+    _write_prices_anchor(root, bars)
     _write_silver(root, bars)
 
     live = tmp_path / "psx_data.db"
@@ -331,7 +343,7 @@ def test_stock_signals_excludes_excluded_sectors(tmp_path, monkeypatch):
     bars = _bars()
     excl_sector = sorted(config.EXCLUDED_SECTORS)[0]
     _write_index(root, bars)
-    _write_prices_anchor(root, bars[-1][0])
+    _write_prices_anchor(root, bars)
     _write_silver(root, bars, extra_syms=[("ZEXC", excl_sector)])
 
     gold_build.build(root / "psx_serving", window_days=200, run_parity=False, screeners=["market_regime", "stock_signals"])
@@ -397,3 +409,93 @@ def test_sector_signals_built_stages_windowed_and_parity(env):
     assert rep["sector_set_mismatch_dates"] == []
     assert all(v == 0 for v in rep["column_mismatch_totals"].values()), rep["column_mismatch_totals"]
     assert rep["cells_compared"] > 0
+
+
+# ---------------------------------------- boring_signals + leaders_scan (3.3d)
+
+def _jump_bars(start="2025-01-01", n=450, jump_from="2026-07-17", factor=1.08):
+    """Like _bars(), but with a sustained multiplicative jump from `jump_from`
+    onward -- boring_signals' RS_60-conditioned Donchian breakout needs a
+    genuine >1% break above the rolling N-day high to fire at all; a smooth
+    drift+sine series alone (as used by every earlier 3.3x test) never
+    produces one once the trend has been running a while."""
+    bars = _bars(start=start, n=n)
+    out = []
+    for ds, hi, lo, cl, op in bars:
+        f = factor if ds >= jump_from else 1.0
+        out.append((ds, hi * f, lo * f, cl * f, op * f))
+    return out
+
+
+def test_boring_signals_and_leaders_scan_built_and_parity(tmp_path, monkeypatch):
+    """3.3d: build_boring_signals / build_leaders_scan reuse boring_signals.py's
+    / leaders_scan.py's compute verbatim by import (both now take an optional
+    `conn`, mirroring sector_signals.py's dialect fix). Parity is
+    recompute-based from the start (the 3.3c lesson -- live's stored rows are
+    not a reliable comparison target in general for this program)."""
+    import config
+    import leaders_scan as lsc
+
+    root = tmp_path / "KIRAN_ARCHIVE"
+    (root / "psx_serving").mkdir(parents=True)
+    monkeypatch.setattr(bronze_ingest, "ARCHIVE_ROOT", root)
+    monkeypatch.setattr(gold_build, "ARCHIVE_ROOT", root)
+    live = tmp_path / "psx_data.db"
+    monkeypatch.setattr(gold_build, "LIVE_DB", live)
+    # the 5-symbol synthetic universe rarely reaches leaders_scan's real
+    # MIN_PICK_SCORE (tuned for a 300+ stock population) -- lower it so
+    # save_top_picks()'s selection path is actually exercised, not just a
+    # documented-empty "nothing qualified" no-op.
+    monkeypatch.setattr(lsc, "MIN_PICK_SCORE", 1)
+
+    bars = _jump_bars()
+    _write_index(root, bars)
+    _write_prices_anchor(root, bars)
+    _write_silver(root, bars)
+
+    scr = ["market_regime", "stock_signals", "sector_signals", "boring_signals", "leaders_scan"]
+    r = gold_build.build(root / "psx_serving", window_days=730, run_parity=True, screeners=scr)
+    assert "boring_signals" in r["rows"] and "leaders_scan" in r["rows"]
+
+    import duckdb
+    c = duckdb.connect(str(root / "psx_serving" / "psx_serving.duckdb"), read_only=True)
+    try:
+        bs_rows = c.execute(
+            "SELECT symbol, signal_date, lookback_n, status, resolution_type, strategy_confirmed "
+            "FROM boring_signals ORDER BY signal_date, symbol, lookback_n").fetchall()
+        ls_rows = c.execute("SELECT scan_date, setup_type, symbol FROM leaders_scan").fetchall()
+        floor_min = c.execute("SELECT min(signal_date) FROM boring_signals").fetchone()[0]
+    finally:
+        c.close()
+
+    # the injected jump fires at least one breakout, on/after the go-live floor
+    assert bs_rows, "expected at least one boring_signals row from the injected jump"
+    assert floor_min >= "2026-07-10"
+    assert {r[3] for r in bs_rows} <= {"Pending", "Stopped"}     # never "Executed" -- no mark_executed in Gold
+    assert ls_rows
+    assert (root / "psx_serving" / "parquet" / "boring_signals.parquet").exists()
+    assert (root / "psx_serving" / "parquet" / "leaders_scan.parquet").exists()
+
+    parity = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())
+
+    bsp = parity["boring_signals"]
+    assert bsp["status"] == "clean", bsp
+    assert bsp["only_gold"] == [] and bsp["only_recompute"] == []
+    assert all(v == 0 for v in bsp["column_mismatch_totals"].values()), bsp["column_mismatch_totals"]
+    assert bsp["rows_compared"] > 0
+
+    lsp = parity["leaders_scan"]
+    assert lsp["status"] == "clean", lsp
+    ls_rep = lsp["leaders_scan"]
+    assert ls_rep["only_gold"] == [] and ls_rep["only_recompute"] == []
+    assert all(v == 0 for v in ls_rep["column_mismatch_totals"].values()), ls_rep["column_mismatch_totals"]
+    assert ls_rep["rows_compared"] > 0
+    tp_rep = lsp["leaders_top_picks"]
+    assert tp_rep["only_gold"] == [] and tp_rep["only_recompute"] == []
+    assert all(v == 0 for v in tp_rep["column_mismatch_totals"].values()), tp_rep["column_mismatch_totals"]
+    # the tiny synthetic universe produces exact-tie candidates (final_score,
+    # vol_ratio_today) that save_top_picks()'s own ORDER BY has no further
+    # tiebreak for -- confirmed engine-arbitrary against Gold's own
+    # leaders_scan pool, not counted against `clean`. Just confirm the
+    # classifier actually ran (a non-negative count), not a specific number.
+    assert tp_rep["tie_break_residual_n"] >= 0
