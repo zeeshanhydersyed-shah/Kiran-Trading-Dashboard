@@ -594,15 +594,18 @@ def _compute_and_write_sector_signals_for_date_sqlite(conn: sqlite3.Connection, 
     ).fetchall()
     prev_ranks = {r[0]: r[1] for r in prev_rank_rows}
 
-    # 20-day max rs_score_20 per sector — for sector_rs_new_high flag
+    # 20-day max rs_score_20 per sector — for sector_rs_new_high flag.
+    # (the 30-day floor is computed in Python so the query is dialect-neutral --
+    # SQLite's DATE(x,'-30 days') is not portable to the local-first DuckDB path)
+    _thirty_days_ago = (pd.Timestamp(target_date) - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
     rs_history_rows = conn.execute(
         """
         SELECT sector, MAX(rs_score_20)
         FROM sector_signals
-        WHERE date < ? AND date >= DATE(?, '-30 days')
+        WHERE date < ? AND date >= ?
         GROUP BY sector
         """,
-        (target_date, target_date),
+        (target_date, _thirty_days_ago),
     ).fetchall()
     sector_rs_20d_max = {r[0]: r[1] for r in rs_history_rows}
 

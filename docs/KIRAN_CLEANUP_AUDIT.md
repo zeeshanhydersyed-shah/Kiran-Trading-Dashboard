@@ -7354,6 +7354,7 @@ No code. No pipeline change. No DB write. No migration phase started. Awaiting t
 - `leaders_scan` / `leaders_top_picks` — no filter either, would be polluted, but the table stopped updating 2026-08-17.
 - **NOT affected:** `trade_setups` (`processor.py` re-filters), recovery / portfolio (`signal_engine.py` re-filters), `boring_signals` (filters). Actionable setups are clean; only the rank *context* around them is off.
 - `rs_score_20` / `rs_score_50` (per-symbol vs KSE-100, not cross-sectional) — unaffected, byte-exact vs Gold on every date.
+- **Same pattern at the sector level:** live `sector_signals` had **23 distinct sectors on every date through 2026-07-31**, then **35 from 2026-08-03** — `MODARABAS`, `TEXTILE SPINNING/WEAVING`, `INV. BANKS`, `CLOSE - END MUTUAL FUND`, etc. joined once `stock_metadata` grew (`sector_signals`'s stock JOIN inherits whatever's in `stock_metadata`). So every sector `rs_rank`, `composite_score`, and **four-stage `sector_stage` grade** since 2026-08-03 is over a polluted sector set, and the Sector Grading view grades untradeable sectors. Fixed in Gold the same way (3.3c): `_medallion_views` materialises `stock_metadata` conformed, so `sector_signals` only computes tradeable sectors.
 
 ### 118.2 Defect B — `recompute_symbol_signals` writes a garbage rank for the symbol it recomputes
 
@@ -7373,5 +7374,64 @@ Owner: *"I am not using the dashboard anyway. Go with the proposed fix as per th
 - **Defect A — FIXED in the migration (2026-09-10, 3.3b follow-up):** `archive/gold_build.py` `build_stock_signals` now drops `config.EXCLUDED_SECTORS` + `config.is_non_equity_symbol` from the universe before ranking, matching every downstream consumer. `stock_signals._load_universe()` in production is left as-is (no sign-off spent on a table being retired). The parity check classifies live's excluded-sector rows as `live_excluded_sector_ranked` (expected), not a residual.
 - **Defect B — no action:** `recompute_symbol_signals`'s single-symbol rank write corrupts only `MTL` + `PIAB`, in a table being retired, read only by the unused dashboard. Gold recomputes them correctly over one universe. Noted here for the record; a production fix (don't write `rs_rank`/`sector_rs_rank` from a single-symbol pass) is available if `recompute_symbol_signals` outlives the migration.
 - Cross-refs: migration tracker §5 (Task 3.3b), `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md` (§118 addendum), `D:\KIRAN_ARCHIVE\psx_serving\_gold_parity.json`.
+
+### 118.5 Task 3.3c (`sector_signals` port) — three more live-side universe/lineage findings, same family
+
+Task 3.3c ported `sector_signals` (incl. the four-stage `sector_stage` grade) to the
+Gold path — reusing `sector_signals._compute_and_write_sector_signals_for_date_sqlite`
+**verbatim by import**. Port faithfulness is verified by **recompute**: Gold's own
+Silver/Bronze inputs are materialised into a scratch SQLite and the *same function* is
+re-run on SQLite (Gold ran it on DuckDB) over a 45-trading-day window — **every
+sector-cell matches** (`sector_stage`, `sector_ema50/above/`, `rs_score_20/50`,
+`breadth_score`, `vol_ratio`, `adv_dec_ratio`, `composite_score`, `rs_rank`). Separately,
+`sector_stage` also matches live's *stored* rows byte-exact in live's current-code window.
+Three live-side issues were separated out (Gold is the corrected version in each; no
+production touch):
+
+1. **Legacy stage backfill — `sector_stage` before ~2026-06-19 is from superseded code.**
+   Live's `sector_signals` has `sector_stage` non-NULL for all 64,705 rows (2015→) but
+   `sector_ema50` / `sector_above_ema` non-NULL for only **1,469 rows, from 2026-06-19**.
+   So every historical `sector_stage` live serves (and the Sector Grading view shows for
+   past dates) was written by an earlier backfill path that pre-dates the current
+   EMA/slope stage logic — a different computation, not what the live pipeline now runs
+   for new dates. Gold recomputes the whole 2-yr window with the current code. Divergence
+   before 2026-06-19 is expected (parity scopes the strict comparison to live's
+   current-code window, exactly as the `market_regime` parity scopes to before the first
+   live gap).
+
+2. **Legacy universe omissions — `symbol_active_dates` permanently drops 5 live equities.**
+   `active_stocks_on_date` is a VIEW over `symbol_active_dates` (`symbol, date`), a
+   hand-curated point-in-time universe table with **no builder anywhere in the repo** and
+   **stale since 2026-07-31**. For every date it equals {had a price bar} ∩ {in
+   `stock_metadata`, non-excluded sector} **minus a fixed set of 5 symbols: `BML`, `FCL`,
+   `WAVESAPP`, `SYM`, `IMAGE`** — all legitimate equities in tradeable sectors, all with
+   `company_name` NULL in `stock_metadata` (the structural signature — they were added to
+   `stock_metadata` from the sector map / price data but never folded into the legacy
+   universe table). Consequence in live `sector_signals`: no `APPAREL` sector at all (its
+   only name is `IMAGE`), and a slightly wrong breadth / `rs_score_20` / `composite_score`
+   / `rs_rank` for `COMMERCIAL BANKS` (`BML`), `CABLE & ELECTRICAL GOODS` (`FCL`,
+   `WAVESAPP`) and `TECHNOLOGY & COMMUNICATION` (`SYM`). Gold rebuilds
+   `active_stocks_on_date` **pure and point-in-time** — traded-on-D ∩ conformed universe —
+   so it is a strict superset of live's and grades `APPAREL` too.
+
+3. **§118.6 — live's stored `sector_signals` derived columns are STALE.** `sector_stage`
+   for pre-2026-06-19 dates is from the superseded backfill (finding 1) — but the
+   *derived* columns (`rs_score_20`, `composite_score`, `rs_rank`, `breadth_score`,
+   `vol_ratio`) are **not reproducible by the current `sector_signals.py` on *any* date**.
+   A current-code recompute against live's *own* raw data (`prices_adjusted`,
+   `index_prices`, `stock_market_cap`, `active_stocks_on_date`) yields `rs_score_20`
+   **byte-identical to Gold** on every non-universe-affected sector, while live's *stored*
+   `rs_score_20` differs on ~15 sectors/date. Only `sector_ema50` / `sector_above_ema`
+   (2026-06-19+) were ever written by the code the live pipeline now runs. So live's
+   stored `sector_signals` cannot be used as a parity reference for the port — Task 3.3c's
+   parity is recompute-based instead (see §118.5 head). Root cause not fully traced (an
+   older backfill, or the `_pg` path with different min-max behaviour, or a formula
+   change) — moot: the table is replaced wholesale at cutover.
+
+**Disposition — same as Defect A (owner decision 2026-09-10, dashboard not in use):**
+migration-only. No backfill of live `sector_signals`; `symbol_active_dates` is not
+rebuilt in production (a table being retired at cutover). Gold's parity is **`clean`**
+(recompute: every sector-cell matches over the 45-day window). Cross-refs: migration
+tracker §5 (Task 3.3c), `_gold_parity.json` → `sector_signals`.
 
 **Kiran production verdict unchanged: NOT VERIFIED — DO NOT TRADE.**

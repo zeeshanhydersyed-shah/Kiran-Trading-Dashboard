@@ -217,7 +217,29 @@ from `post_gap_expected_divergence` (knock-on of the gap-fill, expected).
   Explorer/Leaders). Gold drops them. (B) `recompute_symbol_signals` writes
   `rs_rank=1` for its symbol's whole history — `MTL` (5194) + `PIAB` (51). Gold
   recomputes over one universe → correct. 5 tests.
-- **3.3c** — `sector_signals` + the four-stage sector grades (`_stage`).
+- **3.3c — DONE (2026-09-10).** `sector_signals` port + the four-stage
+  `sector_stage` grades. `build_sector_signals` reuses
+  `sector_signals._compute_and_write_sector_signals_for_date_sqlite` **verbatim
+  by import** (`pd.read_sql_query(conn)` + `conn.execute("INSERT OR REPLACE …")`
+  both work on DuckDB). **One tiny dialect-neutral refactor to
+  `sector_signals.py`:** `WHERE date >= DATE(?, '-30 days')` (SQLite-only) →
+  Python-computed floor date passed as a param; behaviour identical.
+  `_medallion_views` materialises `stock_metadata` **conformed** (`EXCLUDED_SECTORS`
+  + non-equity dropped); `active_stocks_on_date` is **rebuilt pure + point-in-time**
+  (traded-on-D ∩ conformed universe) — a strict superset of live's stale
+  hand-curated `symbol_active_dates`; `stock_market_cap` from the frozen baseline.
+  `build(--only …)` param added. ~4 min/run. **Parity = RECOMPUTE-based (`clean`):**
+  live's *stored* `sector_signals` derived columns are stale — not reproducible by
+  current `sector_signals.py` (only `sector_ema50` 2026-06-19+ was; §118.6) — so
+  `_parity_sector_signals` materialises Gold's own Silver/Bronze inputs into a
+  scratch SQLite and re-runs the *same function* on SQLite (Gold ran DuckDB) over a
+  45-day window: every sector-cell matches (`sector_stage`, `sector_ema50/above`,
+  `rs_score_20/50`, `breadth_score`, `vol_ratio`, `adv_dec_ratio`, `composite_score`,
+  `rs_rank`). Separately `sector_stage` matches live's stored values byte-exact in
+  live's current-code window. Three live-side findings classified EXPECTED
+  (KIRAN_CLEANUP_AUDIT.md §118.5/§118.6): pre-2026-06-19 legacy stage backfill;
+  §118 Defect A EXCLUDED sectors from 2026-08-03; legacy universe omissions
+  (`BML`/`FCL`/`WAVESAPP`/`SYM`/`IMAGE` — Gold grades `APPAREL` too). 1 test (12 total).
 - **3.3d** — `boring_signals` + `leaders_scan` / `leaders_top_picks`.
 - **3.3e** — `signal_engine` (`recovery_signals` / `portfolio_signals`) + `setup_log` / `processor` (`trade_setups`).
 - **3.3f** — front-end JSON export, full end-to-end idempotency, consolidated parity report.
