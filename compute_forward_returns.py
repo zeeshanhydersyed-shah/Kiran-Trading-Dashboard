@@ -153,12 +153,18 @@ def _main_pg(dry_run_symbols=None):
             )
 
 
-def main(dry_run_symbols=None):
-    if _PG_URL:
+def main(dry_run_symbols=None, conn=None):
+    """conn: an already-open connection to use instead of opening `DB_PATH`
+    (Kiran local-first Gold build, 3.3e -- mirrors boring_signals.py's /
+    leaders_scan.py's matching parameter). When given, the `_PG_URL` branch
+    is bypassed and the connection is not closed here (caller owns it)."""
+    if conn is None and _PG_URL:
         _main_pg(dry_run_symbols=dry_run_symbols)
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    _own_conn = conn is None
+    if _own_conn:
+        conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     # Fetch all distinct symbols to process
@@ -247,7 +253,8 @@ def main(dry_run_symbols=None):
         conn.commit()
         total_updated += len(batch)
 
-    conn.close()
+    if _own_conn:
+        conn.close()
 
     print(f"\nSummary:")
     print(f"  Rows updated : {total_updated}")

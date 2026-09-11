@@ -542,6 +542,221 @@ def _last_recovery_as_of():
         return None
 
 
+def _scan_recovery_candidates(all_df: pd.DataFrame, all_dates: list,
+                              kse_regime_ok: bool,
+                              last_recovery_as_of) -> tuple[list, list]:
+    """Pure recovery-base scan -- factored out of run_recovery_signals() so it
+    has no DB dependency (Kiran local-first Gold build, 3.3e; same "factor
+    out a pure core where one isn't cleanly separable" move used for the
+    other screener ports). Every line of the scan logic itself is verbatim,
+    unchanged -- only the DB read for the trigger-window lookback
+    (_last_recovery_as_of(), a live-only concept: "how far back did the
+    last recovery_signals write reach") is now a parameter instead of a call
+    made from inside this function, so the same scan can run against any
+    already-loaded, already-filtered `all_df` (Gold's own Silver/Bronze
+    frame, or live's `database.get_sector_price_data_300d_active()` one).
+
+    all_df: date/symbol/sector/open/high/low/close/volume rows, ALREADY
+      filtered exactly like run_recovery_signals() does before calling this
+      (EXCLUDED_SECTORS dropped, symbols matching '^P\\d' dropped, close>=5).
+    all_dates: sorted distinct dates in all_df (non-empty).
+    last_recovery_as_of: MAX(as_of_date) already recorded for this table, or
+      None -- feeds _recovery_trigger_window()'s catch-up sizing.
+
+    Returns (triggered_rows, watchlist_rows) -- the exact row-dict shapes
+    run_recovery_signals() writes to recovery_signals.
+    """
+    latest_date = all_dates[-1]
+    trig_dates, trig_window = _recovery_trigger_window(
+        all_dates, last_recovery_as_of)
+    today_dt = pd.Timestamp(latest_date).date()
+    log.info("run_recovery_signals: trigger scan window = %d session(s)",
+             trig_window)
+
+    def _base_scan(c, from_idx, thr=0.20, max_lb=90):
+        hi = lo = c[from_idx]
+        start = from_idx
+        for i in range(
+            from_idx - 1,
+            max(from_idx - max_lb, 0) - 1, -1
+        ):
+            nh = max(hi, c[i])
+            nl = min(lo, c[i])
+            if (nh - nl) / nl >= thr:
+                break
+            hi, lo, start = nh, nl, i
+        return start
+
+    watchlist_rows = []
+    triggered_rows = []
+    triggered_syms = set()
+
+    for sym, grp in all_df.groupby("symbol", sort=False):
+        grp = grp.reset_index(drop=True)
+        n   = len(grp)
+        if n < 60:
+            continue
+
+        closes  = grp["close"].values.astype(float)
+        opens   = grp["open"].values.astype(float)
+        highs   = grp["high"].values.astype(float)
+        lows    = grp["low"].values.astype(float)
+        volumes = grp["volume"].values.astype(float)
+        dates   = grp["date"].values
+        sector  = grp["sector"].iloc[0]
+
+        avg_vol_20d = (volumes[-20:].mean()
+                      if n >= 20 else volumes.mean())
+        if avg_vol_20d < 800_000:
+            continue
+
+        vol_s    = pd.Series(volumes)
+        vol_ma50 = vol_s.rolling(50, min_periods=30).mean().values
+        if np.isnan(vol_ma50[-1]) or vol_ma50[-1] <= 0:
+            continue
+
+        trigger_hit = None
+        for t in range(max(1, n - trig_window), n):
+            if dates[t] not in trig_dates:
+                continue
+            prev = t - 1
+            if prev < 15:
+                continue
+            bs     = _base_scan(closes, prev)
+            b_days = prev - bs + 1
+            if b_days < 8:
+                continue
+            b_closes = closes[bs : prev + 1]
+            b_high   = b_closes.max()
+            b_low    = b_closes.min()
+            b_range  = (b_high - b_low) / b_low
+            pre      = closes[max(0, bs - 90) : bs]
+            if len(pre) < 5:
+                continue
+            pre_high = pre.max()
+            drawdown = (pre_high - closes[bs]) / pre_high
+            if drawdown < 0.30:
+                continue
+            # FIX 1: base-relative volume baseline (replaces vol_ma50 in Gates 8 & 9)
+            # Use median of the first half (≤10 bars) of the base as baseline,
+            # so the denominator reflects volume AFTER the decline stopped, not during it.
+            bv        = volumes[bs : prev + 1]
+            half_len  = min(10, b_days // 2)
+            early_bars = max(1, half_len)
+            base_vol_baseline = np.median(volumes[bs : bs + early_bars])
+            if base_vol_baseline <= 0:
+                continue
+            # Gate 8: volume contraction in last 5 base bars vs base_vol_baseline
+            l5v = bv[-5:]
+            l5r = l5v / base_vol_baseline
+            if not (l5r.mean() < 0.50 and (l5r < 0.60).sum() >= 3):
+                continue
+            # Gate 9: prior volume surge within base vs base_vol_baseline
+            all_br = bv / base_vol_baseline
+            if (all_br > 1.5).sum() < 2:
+                continue
+            if vol_ma50[t] <= 0:
+                continue
+            vr      = volumes[t] / vol_ma50[t]
+            day_rng = highs[t] - lows[t]
+            # FIX 2: remove close>open (open is structurally NULL in this dataset);
+            # replaced by close>b_high + close in upper 40% of range, which are retained.
+            if not (
+                vr >= 2.5
+                and closes[t] > b_high
+                and day_rng > 0
+                and (closes[t] - lows[t]) / day_rng >= 0.40
+            ):
+                continue
+            trigger_hit = dict(
+                t_date       = pd.Timestamp(dates[t]).date(),
+                t_close      = round(closes[t], 2),
+                t_vol_ratio  = round(vr, 2),
+                b_days       = b_days,
+                b_range_pct  = round(b_range * 100, 1),
+                drawdown_pct = round(drawdown * 100, 1),
+                pre_high     = round(pre_high, 2),
+                current      = round(closes[-1], 2),
+            )
+            break
+
+        if trigger_hit:
+            triggered_rows.append(dict(
+                symbol         = sym,
+                sector         = sector,
+                list_type      = "TRIGGERED",
+                close          = trigger_hit["current"],
+                drawdown_pct   = trigger_hit["drawdown_pct"],
+                base_days      = trigger_hit["b_days"],
+                base_range_pct = trigger_hit["b_range_pct"],
+                avg_vol_m      = round(avg_vol_20d / 1e6, 2),
+                triggered_date = str(trigger_hit["t_date"]),
+                fresh          = int(trigger_hit["t_date"] == today_dt),
+                trigger_close  = trigger_hit["t_close"],
+                trigger_vol_x  = trigger_hit["t_vol_ratio"],
+                current_close  = trigger_hit["current"],
+                move_pct       = round(
+                    (trigger_hit["current"] - trigger_hit["t_close"])
+                    / trigger_hit["t_close"] * 100, 1),
+                pre_high       = trigger_hit["pre_high"],
+                kse_regime_ok  = int(kse_regime_ok),
+            ))
+            triggered_syms.add(sym)
+            continue
+
+        bs     = _base_scan(closes, n - 1)
+        b_days = n - bs
+        if b_days < 8:
+            continue
+        b_closes = closes[bs:]
+        b_high   = b_closes.max()
+        b_low    = b_closes.min()
+        b_range  = (b_high - b_low) / b_low
+        pre      = closes[max(0, bs - 90) : bs]
+        if len(pre) < 5:
+            continue
+        pre_high = pre.max()
+        drawdown = (pre_high - closes[bs]) / pre_high
+        if drawdown < 0.30:
+            continue
+        # FIX 1 (WATCHLIST path): same base-relative baseline as TRIGGERED path
+        bv        = volumes[bs:]
+        half_len  = min(10, b_days // 2)
+        early_bars = max(1, half_len)
+        base_vol_baseline = np.median(volumes[bs : bs + early_bars])
+        if base_vol_baseline <= 0:
+            continue
+        # Gate 8: contraction in last 5 base bars
+        l5v = bv[-5:]
+        l5r = l5v / base_vol_baseline
+        if not (l5r.mean() < 0.50 and (l5r < 0.60).sum() >= 3):
+            continue
+        # Gate 9: prior surge within base
+        all_br = bv / base_vol_baseline
+        if (all_br > 1.5).sum() < 2:
+            continue
+        cur_vr = (volumes[-1] / vol_ma50[-1]
+                  if vol_ma50[-1] > 0 else 0.0)
+
+        watchlist_rows.append(dict(
+            symbol          = sym,
+            sector          = sector,
+            list_type       = "WATCHLIST",
+            close           = round(closes[-1], 2),
+            drawdown_pct    = round(drawdown * 100, 1),
+            base_days       = b_days,
+            base_range_pct  = round(b_range * 100, 1),
+            vol_ratio_today = round(cur_vr, 2),
+            base_high       = round(b_high, 2),
+            dist_pct        = round(
+                (b_high - closes[-1]) / closes[-1] * 100, 1),
+            avg_vol_m       = round(avg_vol_20d / 1e6, 2),
+            kse_regime_ok   = int(kse_regime_ok),
+        ))
+
+    return triggered_rows, watchlist_rows
+
+
 def run_recovery_signals() -> dict:
     """
     Compute Recovery Bases signals and write to recovery_signals table.
@@ -603,193 +818,8 @@ def run_recovery_signals() -> dict:
             return {"status": "ok", "as_of_date": as_of_date,
                     "triggered": 0, "watchlist": 0}
 
-        latest_date  = all_dates[-1]
-        trig_dates, trig_window = _recovery_trigger_window(
-            all_dates, _last_recovery_as_of())
-        today_dt     = pd.Timestamp(latest_date).date()
-        log.info("run_recovery_signals: trigger scan window = %d session(s)",
-                 trig_window)
-
-        def _base_scan(c, from_idx, thr=0.20, max_lb=90):
-            hi = lo = c[from_idx]
-            start = from_idx
-            for i in range(
-                from_idx - 1,
-                max(from_idx - max_lb, 0) - 1, -1
-            ):
-                nh = max(hi, c[i])
-                nl = min(lo, c[i])
-                if (nh - nl) / nl >= thr:
-                    break
-                hi, lo, start = nh, nl, i
-            return start
-
-        watchlist_rows = []
-        triggered_rows = []
-        triggered_syms = set()
-
-        for sym, grp in all_df.groupby("symbol", sort=False):
-            grp = grp.reset_index(drop=True)
-            n   = len(grp)
-            if n < 60:
-                continue
-
-            closes  = grp["close"].values.astype(float)
-            opens   = grp["open"].values.astype(float)
-            highs   = grp["high"].values.astype(float)
-            lows    = grp["low"].values.astype(float)
-            volumes = grp["volume"].values.astype(float)
-            dates   = grp["date"].values
-            sector  = grp["sector"].iloc[0]
-
-            avg_vol_20d = (volumes[-20:].mean()
-                          if n >= 20 else volumes.mean())
-            if avg_vol_20d < 800_000:
-                continue
-
-            vol_s    = pd.Series(volumes)
-            vol_ma50 = vol_s.rolling(50, min_periods=30).mean().values
-            if np.isnan(vol_ma50[-1]) or vol_ma50[-1] <= 0:
-                continue
-
-            trigger_hit = None
-            for t in range(max(1, n - trig_window), n):
-                if dates[t] not in trig_dates:
-                    continue
-                prev = t - 1
-                if prev < 15:
-                    continue
-                bs     = _base_scan(closes, prev)
-                b_days = prev - bs + 1
-                if b_days < 8:
-                    continue
-                b_closes = closes[bs : prev + 1]
-                b_high   = b_closes.max()
-                b_low    = b_closes.min()
-                b_range  = (b_high - b_low) / b_low
-                pre      = closes[max(0, bs - 90) : bs]
-                if len(pre) < 5:
-                    continue
-                pre_high = pre.max()
-                drawdown = (pre_high - closes[bs]) / pre_high
-                if drawdown < 0.30:
-                    continue
-                # FIX 1: base-relative volume baseline (replaces vol_ma50 in Gates 8 & 9)
-                # Use median of the first half (≤10 bars) of the base as baseline,
-                # so the denominator reflects volume AFTER the decline stopped, not during it.
-                bv        = volumes[bs : prev + 1]
-                half_len  = min(10, b_days // 2)
-                early_bars = max(1, half_len)
-                base_vol_baseline = np.median(volumes[bs : bs + early_bars])
-                if base_vol_baseline <= 0:
-                    continue
-                # Gate 8: volume contraction in last 5 base bars vs base_vol_baseline
-                l5v = bv[-5:]
-                l5r = l5v / base_vol_baseline
-                if not (l5r.mean() < 0.50 and (l5r < 0.60).sum() >= 3):
-                    continue
-                # Gate 9: prior volume surge within base vs base_vol_baseline
-                all_br = bv / base_vol_baseline
-                if (all_br > 1.5).sum() < 2:
-                    continue
-                if vol_ma50[t] <= 0:
-                    continue
-                vr      = volumes[t] / vol_ma50[t]
-                day_rng = highs[t] - lows[t]
-                # FIX 2: remove close>open (open is structurally NULL in this dataset);
-                # replaced by close>b_high + close in upper 40% of range, which are retained.
-                if not (
-                    vr >= 2.5
-                    and closes[t] > b_high
-                    and day_rng > 0
-                    and (closes[t] - lows[t]) / day_rng >= 0.40
-                ):
-                    continue
-                trigger_hit = dict(
-                    t_date       = pd.Timestamp(dates[t]).date(),
-                    t_close      = round(closes[t], 2),
-                    t_vol_ratio  = round(vr, 2),
-                    b_days       = b_days,
-                    b_range_pct  = round(b_range * 100, 1),
-                    drawdown_pct = round(drawdown * 100, 1),
-                    pre_high     = round(pre_high, 2),
-                    current      = round(closes[-1], 2),
-                )
-                break
-
-            if trigger_hit:
-                triggered_rows.append(dict(
-                    symbol         = sym,
-                    sector         = sector,
-                    list_type      = "TRIGGERED",
-                    close          = trigger_hit["current"],
-                    drawdown_pct   = trigger_hit["drawdown_pct"],
-                    base_days      = trigger_hit["b_days"],
-                    base_range_pct = trigger_hit["b_range_pct"],
-                    avg_vol_m      = round(avg_vol_20d / 1e6, 2),
-                    triggered_date = str(trigger_hit["t_date"]),
-                    fresh          = int(trigger_hit["t_date"] == today_dt),
-                    trigger_close  = trigger_hit["t_close"],
-                    trigger_vol_x  = trigger_hit["t_vol_ratio"],
-                    current_close  = trigger_hit["current"],
-                    move_pct       = round(
-                        (trigger_hit["current"] - trigger_hit["t_close"])
-                        / trigger_hit["t_close"] * 100, 1),
-                    pre_high       = trigger_hit["pre_high"],
-                    kse_regime_ok  = int(kse_regime_ok),
-                ))
-                triggered_syms.add(sym)
-                continue
-
-            bs     = _base_scan(closes, n - 1)
-            b_days = n - bs
-            if b_days < 8:
-                continue
-            b_closes = closes[bs:]
-            b_high   = b_closes.max()
-            b_low    = b_closes.min()
-            b_range  = (b_high - b_low) / b_low
-            pre      = closes[max(0, bs - 90) : bs]
-            if len(pre) < 5:
-                continue
-            pre_high = pre.max()
-            drawdown = (pre_high - closes[bs]) / pre_high
-            if drawdown < 0.30:
-                continue
-            # FIX 1 (WATCHLIST path): same base-relative baseline as TRIGGERED path
-            bv        = volumes[bs:]
-            half_len  = min(10, b_days // 2)
-            early_bars = max(1, half_len)
-            base_vol_baseline = np.median(volumes[bs : bs + early_bars])
-            if base_vol_baseline <= 0:
-                continue
-            # Gate 8: contraction in last 5 base bars
-            l5v = bv[-5:]
-            l5r = l5v / base_vol_baseline
-            if not (l5r.mean() < 0.50 and (l5r < 0.60).sum() >= 3):
-                continue
-            # Gate 9: prior surge within base
-            all_br = bv / base_vol_baseline
-            if (all_br > 1.5).sum() < 2:
-                continue
-            cur_vr = (volumes[-1] / vol_ma50[-1]
-                      if vol_ma50[-1] > 0 else 0.0)
-
-            watchlist_rows.append(dict(
-                symbol          = sym,
-                sector          = sector,
-                list_type       = "WATCHLIST",
-                close           = round(closes[-1], 2),
-                drawdown_pct    = round(drawdown * 100, 1),
-                base_days       = b_days,
-                base_range_pct  = round(b_range * 100, 1),
-                vol_ratio_today = round(cur_vr, 2),
-                base_high       = round(b_high, 2),
-                dist_pct        = round(
-                    (b_high - closes[-1]) / closes[-1] * 100, 1),
-                avg_vol_m       = round(avg_vol_20d / 1e6, 2),
-                kse_regime_ok   = int(kse_regime_ok),
-            ))
+        triggered_rows, watchlist_rows = _scan_recovery_candidates(
+            all_df, all_dates, kse_regime_ok, _last_recovery_as_of())
 
         log.info(f"run_recovery_signals: as_of_date={as_of_date} "
                  f"triggered={len(triggered_rows)} "

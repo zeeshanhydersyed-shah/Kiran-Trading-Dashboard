@@ -263,5 +263,24 @@ from `post_gap_expected_divergence` (knock-on of the gap-fill, expected).
   `tie_break_residual`, not counted against `clean` — a pre-existing query characteristic, not
   a port bug. `mark_executed`/`executed`/`dedup_conflict` are human dashboard actions outside
   Gold's automated build by construction. 1 test (13 total).
-- **3.3e** — `signal_engine` (`recovery_signals` / `portfolio_signals`) + `setup_log` / `processor` (`trade_setups`).
+- **3.3e — DONE (2026-09-11).** `recovery_signals` + `portfolio_signals` + `setup_log`.
+  `trade_setups`/`processor.py` deliberately NOT ported — `processor.run_analysis()` hardcodes
+  `support_setups = []` since 2026-07-23 (Support Reversal killed, -1.88% net full-history
+  retest); its only automated writer is dead code, nothing live to port. Neither
+  `run_recovery_signals()` nor `run_portfolio_signals()` is `conn`-based (unlike every other
+  3.3x port target) — an **extract-method** refactor pulled `signal_engine.py`'s pure per-symbol
+  recovery scan out into `_scan_recovery_candidates(all_df, all_dates, kse_regime_ok,
+  last_recovery_as_of)`; a **parameter-injection** refactor gave `portfolio.py`'s
+  `compute_portfolio_candidates()` optional `prices_df=`/`kse_df=` (every existing caller
+  omits them, unchanged behaviour). `backfill_setup_log._insert_setup_log_for_date` needed zero
+  logic changes (already `cur`-based) but one portability guard (`if rows:` before
+  `executemany` — DuckDB raises on an empty parameter list, SQLite no-ops); `compute_forward_
+  returns.main()` got the same `conn=` injection as 3.3d's targets. **Scope decision:
+  `recovery_signals`/`portfolio_signals` compute the LATEST date only**, not a window backfill
+  — the reused functions have no target-date parameter, and live's own tables (checked directly)
+  hold only 23 sparse `as_of_date`s over 3 months, not a dense daily series;
+  `dashboard.py` only ever reads `MAX(as_of_date)`. Parity = RECOMPUTE-based for all three,
+  `status: clean` on a real scoped build against live production data: `recovery_signals`
+  (2/2 rows, 16 cols), `portfolio_signals` (308/308 rows, 16 cols), `setup_log` (2,755/2,755
+  rows across 41 dates, 15 cols) — 0 mismatches each. 1 test (14 total). Full detail: tracker §10.
 - **3.3f** — front-end JSON export, full end-to-end idempotency, consolidated parity report.

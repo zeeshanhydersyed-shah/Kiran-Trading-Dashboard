@@ -556,13 +556,393 @@ def build_leaders_scan(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
             "outcome_counts": outcome_counts}
 
 
-# regime first; then 3.3f appends the front-end export.
+# ----------------------------------------------------- screener: setup_log
+
+# setup_log has TWO unique constraints (id PK + the natural key) -- same
+# shape as `_BORING_SIGNALS_DDL` -- but `_insert_setup_log_for_date` only
+# ever issues `INSERT OR IGNORE` (`ON CONFLICT DO NOTHING`), which 3.3d
+# already confirmed has no conflict-target-inference problem with two
+# constraints (unlike `INSERT OR REPLACE`).
+_SETUP_LOG_DDL = """CREATE OR REPLACE TABLE setup_log (
+    id INTEGER PRIMARY KEY DEFAULT nextval('seq_setup_log'),
+    symbol TEXT NOT NULL, setup_date TEXT NOT NULL, setup_type TEXT NOT NULL,
+    regime TEXT, rs_rank DOUBLE, sector_rs_rank DOUBLE, rank_change DOUBLE,
+    rs_score_20 DOUBLE, base_tightness DOUBLE, vol_contraction DOUBLE,
+    pivot_distance_pct DOUBLE, bos_flag DOUBLE, sector TEXT,
+    fwd_return_5d DOUBLE, fwd_return_10d DOUBLE, fwd_return_20d DOUBLE,
+    outcome_label TEXT, outcome_tagged_date TEXT,
+    UNIQUE(symbol, setup_date, setup_type))"""
+
+
+def build_setup_log(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
+                    window_from: str) -> dict:
+    """Port of `backfill_setup_log.append_setup_log_today()`'s automated
+    daily hook for the Gold path -- MINUS `trade_setups` (see module
+    docstring / tracker: `processor.run_analysis()` hardcodes
+    `support_setups = []` since 2026-07-23, -1.88% net full-history retest;
+    the only automated writer of `trade_setups` is permanently dead code, so
+    there is nothing live to port).
+
+    Reuses `backfill_setup_log._insert_setup_log_for_date(cur, target_date)`
+    and `compute_forward_returns.main(conn=...)` **verbatim by import** --
+    both are already `cur`/`conn`-based with `?` params, zero changes needed
+    (`_insert_setup_log_for_date`) or a 3.3e conn-injection refactor
+    (`compute_forward_returns.main`, mirrors `boring_signals.py`'s pattern).
+
+    Gold writes its own per-date loop over every `stock_signals` date in the
+    window (the four `_DAILY_QUERIES_SQLITE` rules, transition-day-only
+    BREAKOUT -- same rules `append_setup_log_today()` uses), then
+    `compute_forward_returns.main(conn=gcon)` once (whole-table, exactly as
+    the live hook does), then the SAME outcome-labelling UPDATE the live
+    hook's STEP 3 runs. No resume/pending-date bookkeeping needed -- Gold
+    always rebuilds the whole window from scratch. `cur.rowcount` inside
+    `_insert_setup_log_for_date` is not relied on for Gold's own stats (it
+    is always -1 on DuckDB, per the established rowcount gotcha) -- a
+    before/after `COUNT(*)` diff is used instead.
+    """
+    import backfill_setup_log as sl
+    import compute_forward_returns as cfr
+
+    _medallion_views(gcon, store)
+    gcon.execute("CREATE SEQUENCE IF NOT EXISTS seq_setup_log START 1")
+    gcon.execute(_SETUP_LOG_DDL)
+
+    dates = [r[0] for r in gcon.execute(
+        "SELECT DISTINCT date FROM stock_signals WHERE date >= ? ORDER BY date",
+        (window_from,)).fetchall()]
+
+    before = gcon.execute("SELECT count(*) FROM setup_log").fetchone()[0]
+    for d in dates:
+        sl._insert_setup_log_for_date(gcon, d)
+    inserted = gcon.execute("SELECT count(*) FROM setup_log").fetchone()[0] - before
+
+    cfr.main(conn=gcon)
+
+    gcon.execute("""
+        UPDATE setup_log SET outcome_label = CASE
+            WHEN fwd_return_10d > 0 THEN 'WINNER'
+            WHEN fwd_return_10d < 0 THEN 'LOSER'
+            ELSE 'BREAKEVEN' END
+        WHERE fwd_return_10d IS NOT NULL
+          AND (outcome_label = 'BREAKEVEN' OR outcome_label IS NULL)
+    """)
+
+    n = gcon.execute("SELECT count(*) FROM setup_log").fetchone()[0]
+    type_counts = dict(gcon.execute(
+        "SELECT setup_type, count(*) FROM setup_log GROUP BY setup_type").fetchall())
+    outcome_counts = dict(gcon.execute(
+        "SELECT outcome_label, count(*) FROM setup_log GROUP BY outcome_label").fetchall())
+    return {"rows": n, "inserted": inserted, "window_from": window_from,
+            "dates_scanned": len(dates), "type_counts": type_counts,
+            "outcome_counts": outcome_counts}
+
+
+# ------------------------------------------------- shared engine-agnostic helpers
+
+_KSE_CLOSE_SQL = ("SELECT date, close FROM index_prices "
+                  "WHERE symbol = 'KSE-100' AND close IS NOT NULL ORDER BY date")
+
+
+def _fetch_df(con, is_duckdb: bool, sql: str, params=None):
+    """Run `sql` on either a DuckDB or a sqlite3 connection, return a
+    DataFrame -- shared by the recovery_signals/portfolio_signals builds and
+    their parity recomputes so the identical SQL text runs on both engines."""
+    import pandas as pd
+    if is_duckdb:
+        return con.execute(sql, params).df() if params is not None else con.execute(sql).df()
+    return pd.read_sql_query(sql, con, params=params)
+
+
+# -------------------------------------------------- screener: recovery_signals
+
+# `signal_engine.run_recovery_signals()` has NO target-date parameter -- it
+# always computes "today's" state from whatever's the latest date in the
+# loaded price frame, then DELETE+INSERTs just that one as_of_date (confirmed
+# live: 23 distinct as_of_dates over 2026-06-15..2026-09-10 -- sparse/
+# irregular, one per day the hook actually ran, NOT a dense per-trading-day
+# series). Unlike `stock_signals`/`sector_signals` (a `_process_trading_
+# dates`-style per-date loop) or `boring_signals`/`leaders_scan` (whose
+# single-date functions take an explicit `date=`/`scan_date=` parameter),
+# nothing in `signal_engine.py` is parameterized by an arbitrary target date
+# -- the per-symbol scan is a full-universe groupby over ~90+ bars of
+# lookback, expensive to replay per date over a 2-year window. Gold therefore
+# computes recovery_signals for the LATEST available date only (mirroring
+# exactly what one live run does), not a window backfill -- consistent with
+# `dashboard.py` reading it via `MAX(as_of_date)` then filtering to that one
+# date (confirmed: nothing downstream ever reads an older as_of_date).
+_RECOVERY_SIGNALS_DDL = """CREATE OR REPLACE TABLE recovery_signals (
+    id INTEGER PRIMARY KEY DEFAULT nextval('seq_recovery_signals'),
+    as_of_date TEXT NOT NULL, symbol TEXT NOT NULL, sector TEXT, list_type TEXT NOT NULL,
+    close DOUBLE, drawdown_pct DOUBLE, base_days DOUBLE, base_range_pct DOUBLE,
+    vol_ratio_today DOUBLE, base_high DOUBLE, dist_pct DOUBLE, avg_vol_m DOUBLE,
+    triggered_date TEXT, fresh DOUBLE, trigger_close DOUBLE, trigger_vol_x DOUBLE,
+    current_close DOUBLE, move_pct DOUBLE, pre_high DOUBLE, kse_regime_ok DOUBLE)"""
+
+# Same shape as `database.get_sector_price_data_300d_active()`'s live query
+# (COALESCE(open/high/low, close), sm.is_active=1) -- no dialect-specific SQL
+# here, so the SAME text is used on both engines in the parity recompute
+# below and any difference is a genuine bug, not an engine quirk. Joins
+# Gold's CONFORMED `stock_metadata` (EXCLUDED_SECTORS + non-equity already
+# dropped by `_medallion_views`) rather than the raw table live's SQL joins
+# -- live's own Python-side filter drops EXCLUDED_SECTORS anyway (mirrored
+# below), so the end result is the same set for that filter; Gold
+# additionally excludes NON_EQUITY_SYMBOLS/futures/preference-share patterns
+# live's SQL never did, consistent with this program's "Gold's conformed
+# universe is correct-by-construction" position (§118 Defect A) rather than
+# a silent divergence.
+_RECOVERY_PRICE_SQL = """
+    SELECT p.symbol, s.sector, p.date,
+           COALESCE(p.open, p.close) AS open,
+           COALESCE(p.high, p.close) AS high,
+           COALESCE(p.low, p.close) AS low,
+           p.close,
+           COALESCE(p.volume, 0) AS volume
+    FROM prices p
+    JOIN sectors s ON s.symbol = p.symbol
+    JOIN stock_metadata sm ON sm.symbol = p.symbol
+    WHERE sm.is_active = 1 AND p.date >= ?
+    ORDER BY p.symbol, p.date
+"""
+
+
+def _recovery_scan(con, is_duckdb: bool):
+    """Load + filter the recovery-screener price frame and run the scan --
+    shared by `build_recovery_signals` (DuckDB `gcon`) and its parity
+    recompute (SQLite `rcon`) so both exercise the IDENTICAL filter chain;
+    only the engine underneath `con` differs, isolating genuine dialect bugs
+    from live-data questions (same methodology as `_parity_boring_signals`/
+    `_parity_leaders_scan` calling one reused function against two engines).
+
+    Mirrors `run_recovery_signals()`'s own filter chain verbatim: EXCLUDED_
+    SECTORS dropped, `^P\\d` symbols dropped, close>=5, then
+    `signal_engine._scan_recovery_candidates()` (the pure per-symbol scan
+    factored out for this port). `last_recovery_as_of` is always `None` here
+    -- Gold's `recovery_signals` is fresh every build, so the minimum
+    (5-session) trigger-catch-up window is the correct "first run" semantics.
+
+    Returns (as_of_date, triggered_rows, watchlist_rows); as_of_date is None
+    if there is no price data at all.
+    """
+    import datetime as dt
+    import pandas as pd
+    import signal_engine as se
+
+    end_date = con.execute(
+        "SELECT max(date) FROM prices WHERE symbol IN "
+        "(SELECT symbol FROM stock_metadata WHERE is_active = 1)").fetchone()[0]
+    if end_date is None:
+        return None, [], []
+    price_cutoff = (dt.date.fromisoformat(end_date) - dt.timedelta(days=420)).isoformat()
+
+    all_df = _fetch_df(con, is_duckdb, _RECOVERY_PRICE_SQL, (price_cutoff,))
+    if all_df.empty:
+        return end_date, [], []
+    all_df["date"] = pd.to_datetime(all_df["date"])
+    for col in ("open", "high", "low", "close"):
+        all_df[col] = pd.to_numeric(all_df[col], errors="coerce")
+    all_df["volume"] = pd.to_numeric(all_df["volume"], errors="coerce").fillna(0)
+    as_of_date = all_df["date"].max().strftime("%Y-%m-%d")
+
+    kse_regime_ok = True
+    kse_df = _fetch_df(con, is_duckdb, _KSE_CLOSE_SQL)
+    if len(kse_df) >= 12:
+        kse_df = kse_df.sort_values("date")
+        kse_regime_ok = float(kse_df["close"].iloc[-1]) >= float(kse_df["close"].iloc[-11])
+
+    all_df = all_df[~all_df["sector"].isin(se.EXCLUDED_SECTORS)]
+    all_df = all_df[~all_df["symbol"].str.match(r"^P\d", na=False)]
+    all_df = all_df[all_df["close"] >= 5.0]
+
+    all_dates = sorted(all_df["date"].unique())
+    if not all_dates:
+        return as_of_date, [], []
+
+    triggered_rows, watchlist_rows = se._scan_recovery_candidates(
+        all_df, all_dates, kse_regime_ok, None)
+    return as_of_date, triggered_rows, watchlist_rows
+
+
+def build_recovery_signals(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
+                           window_from: str) -> dict:
+    """Port of `signal_engine.run_recovery_signals()` for the Gold path.
+
+    See `_recovery_scan()`'s docstring for the "latest date only" scope
+    decision. `window_from` is accepted for the common SCREENERS call
+    signature but unused here -- the 420-day price lookback is computed from
+    the data's own latest date, exactly as `run_recovery_signals()` does.
+    """
+    _medallion_views(gcon, store)
+    gcon.execute("CREATE SEQUENCE IF NOT EXISTS seq_recovery_signals START 1")
+    gcon.execute(_RECOVERY_SIGNALS_DDL)
+
+    as_of_date, triggered_rows, watchlist_rows = _recovery_scan(gcon, is_duckdb=True)
+    if as_of_date is None:
+        return {"status": "no_data", "window_from": window_from}
+
+    cols = ["symbol", "sector", "list_type", "close", "drawdown_pct",
+            "base_days", "base_range_pct", "vol_ratio_today", "base_high", "dist_pct",
+            "avg_vol_m", "triggered_date", "fresh", "trigger_close", "trigger_vol_x",
+            "current_close", "move_pct", "pre_high", "kse_regime_ok"]
+    rows = [tuple([as_of_date] + [r.get(c) for c in cols])
+            for r in triggered_rows + watchlist_rows]
+    if rows:
+        all_cols = ["as_of_date"] + cols
+        gcon.executemany(
+            f"INSERT INTO recovery_signals ({','.join(all_cols)}) "
+            f"VALUES ({','.join(['?'] * len(all_cols))})", rows)
+
+    n = gcon.execute("SELECT count(*) FROM recovery_signals").fetchone()[0]
+    list_counts = dict(gcon.execute(
+        "SELECT list_type, count(*) FROM recovery_signals GROUP BY list_type").fetchall())
+    return {"status": "ok", "as_of_date": as_of_date, "rows": n,
+            "triggered": len(triggered_rows), "watchlist": len(watchlist_rows),
+            "window_from": window_from, "list_counts": list_counts}
+
+
+# ------------------------------------------------- screener: portfolio_signals
+
+_PORTFOLIO_SIGNALS_DDL = """CREATE OR REPLACE TABLE portfolio_signals (
+    id INTEGER PRIMARY KEY DEFAULT nextval('seq_portfolio_signals'),
+    as_of_date TEXT NOT NULL, symbol TEXT NOT NULL, sector TEXT,
+    latest_close DOUBLE, latest_date TEXT, ma10w DOUBLE, ma30w DOUBLE,
+    dist_from_30w_pct DOUBLE, stage DOUBLE, stage_label TEXT,
+    rs_30d DOUBLE, rs_10d DOUBLE, rs_trend TEXT, sector_rank DOUBLE,
+    sector_momentum TEXT, composite_score DOUBLE, recommendation TEXT, rank DOUBLE)"""
+
+# Matches `portfolio._get_price_history()`'s SQLite-mode query -- live filters
+# EXCLUDED_SECTORS via a literal `sector NOT IN (?...)` against the raw
+# `sectors`/`stock_metadata`; Gold relies on the JOIN to its own CONFORMED
+# `stock_metadata` to achieve the identical end filtering (same simplification
+# as `_RECOVERY_PRICE_SQL` above), so this text is portable unchanged to the
+# parity recompute's scratch SQLite (whose `stock_metadata` is also Gold's own
+# conformed copy).
+_PORTFOLIO_PRICE_SQL = """
+    SELECT p.symbol, s.sector, p.date, p.close
+    FROM prices p
+    JOIN sectors s ON s.symbol = p.symbol
+    JOIN stock_metadata sm ON sm.symbol = p.symbol
+    WHERE sm.is_active = 1 AND p.close IS NOT NULL AND p.close > 0
+    ORDER BY p.symbol, p.date
+"""
+
+
+def _portfolio_sector_df(con, is_duckdb: bool):
+    """Build the `sector_df` that `run_portfolio_signals()`'s STEP A passes
+    into `compute_portfolio_candidates()` -- reads (Gold's own, already-built)
+    `sector_signals` at its latest date, renames `rs_rank`->`rank`, derives
+    `momentum` via the SAME composite_score tercile split STEP A uses. Shared
+    by `build_portfolio_signals` and its parity recompute.
+
+    Returns (sector_df, sector_latest_date).
+    """
+    import pandas as pd
+    latest = con.execute("SELECT max(date) FROM sector_signals").fetchone()[0]
+    if latest is None:
+        return pd.DataFrame(), None
+    sql = ("SELECT sector, rs_rank, composite_score FROM sector_signals "
+          "WHERE date = ? ORDER BY rs_rank")
+    sector_df = _fetch_df(con, is_duckdb, sql, (latest,))
+    if not sector_df.empty:
+        sector_df = sector_df.rename(columns={"rs_rank": "rank"})
+        q33 = sector_df["composite_score"].quantile(0.33)
+        q66 = sector_df["composite_score"].quantile(0.66)
+        sector_df["momentum"] = sector_df["composite_score"].apply(
+            lambda s: "Heating Up" if s >= q66 else ("Cooling" if s <= q33 else "Neutral"))
+    return sector_df, latest
+
+
+def build_portfolio_signals(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
+                            window_from: str) -> dict:
+    """Port of `signal_engine.run_portfolio_signals()` for the Gold path.
+
+    STEP A (sector_df) and STEP C (write) are reimplemented fresh against
+    Gold's own tables -- `run_portfolio_signals()` itself is not reused (its
+    STEP A/C are thin DB orchestration around `get_conn()`, not worth a
+    conn-injection/extract-method refactor). STEP B -- `portfolio.
+    compute_portfolio_candidates()` -- IS reused verbatim by import (3.3e
+    parameter-injection refactor: `prices_df`/`kse_df` bypass the module's
+    own hardcoded `_get_price_history`/`_get_index_history`).
+
+    **Depends on `sector_signals` already being populated in this `gcon`**
+    (`build_sector_signals` runs earlier in `SCREENERS`). Computes for the
+    LATEST available date only -- same reasoning as `build_recovery_signals`
+    (the reused compute has no target-date parameter; live's own table is a
+    sparse per-run snapshot, not a dense daily series; the dashboard only
+    ever reads `MAX(as_of_date)`).
+    """
+    import pandas as pd
+    import portfolio as port
+
+    _medallion_views(gcon, store)
+    gcon.execute("CREATE SEQUENCE IF NOT EXISTS seq_portfolio_signals START 1")
+    gcon.execute(_PORTFOLIO_SIGNALS_DDL)
+
+    sector_df, sector_latest = _portfolio_sector_df(gcon, is_duckdb=True)
+    prices_df = _fetch_df(gcon, True, _PORTFOLIO_PRICE_SQL)
+    prices_df["date"] = pd.to_datetime(prices_df["date"])
+    kse_df = _fetch_df(gcon, True, _KSE_CLOSE_SQL)
+    kse_df["date"] = pd.to_datetime(kse_df["date"])
+    kse_series = kse_df.set_index("date")["close"]
+
+    port_df = port.compute_portfolio_candidates(
+        sector_df=sector_df, prices_df=prices_df, kse_df=kse_series)
+
+    if port_df.empty:
+        return {"status": "empty", "sector_latest": sector_latest, "window_from": window_from}
+
+    as_of_date = str(port_df["latest_date"].max())[:10]
+    cols = ["as_of_date", "symbol", "sector", "latest_close", "latest_date",
+            "ma10w", "ma30w", "dist_from_30w_pct", "stage", "stage_label",
+            "rs_30d", "rs_10d", "rs_trend", "sector_rank", "sector_momentum",
+            "composite_score", "recommendation", "rank"]
+    rows = []
+    for _, row in port_df.iterrows():
+        rows.append((
+            as_of_date,
+            str(row["symbol"]),
+            str(row["sector"])            if pd.notna(row.get("sector"))            else None,
+            float(row["latest_close"])    if pd.notna(row.get("latest_close"))      else None,
+            str(row["latest_date"])       if pd.notna(row.get("latest_date"))       else None,
+            float(row["ma10w"])           if pd.notna(row.get("ma10w"))             else None,
+            float(row["ma30w"])           if pd.notna(row.get("ma30w"))             else None,
+            float(row["dist_from_30w_pct"]) if pd.notna(row.get("dist_from_30w_pct")) else None,
+            float(row["stage"])           if pd.notna(row.get("stage"))             else None,
+            str(row["stage_label"])       if pd.notna(row.get("stage_label"))       else None,
+            float(row["rs_30d"])          if pd.notna(row.get("rs_30d"))            else None,
+            float(row["rs_10d"])          if pd.notna(row.get("rs_10d"))            else None,
+            str(row["rs_trend"])          if pd.notna(row.get("rs_trend"))          else None,
+            float(row["sector_rank"])     if pd.notna(row.get("sector_rank"))       else None,
+            str(row["sector_momentum"])   if pd.notna(row.get("sector_momentum"))   else None,
+            float(row["composite_score"]) if pd.notna(row.get("composite_score"))   else None,
+            str(row["recommendation"])    if pd.notna(row.get("recommendation"))    else None,
+            float(row["rank"])            if pd.notna(row.get("rank"))              else None,
+        ))
+    gcon.executemany(
+        f"INSERT INTO portfolio_signals ({','.join(cols)}) "
+        f"VALUES ({','.join(['?'] * len(cols))})", rows)
+
+    n = gcon.execute("SELECT count(*) FROM portfolio_signals").fetchone()[0]
+    stage_counts = dict(gcon.execute(
+        "SELECT stage_label, count(*) FROM portfolio_signals GROUP BY stage_label").fetchall())
+    return {"status": "ok", "as_of_date": as_of_date, "rows": n,
+            "sector_latest": sector_latest, "window_from": window_from,
+            "stage_counts": stage_counts}
+
+
+# regime first; then 3.3f appends the front-end export. `recovery_signals` is
+# independent of the other screeners (needs only prices/sectors/stock_metadata/
+# index_prices); `portfolio_signals` depends on `sector_signals`; `setup_log`
+# depends on `stock_signals` + `market_regime` -- all three already built by
+# this point in dict-insertion order.
 SCREENERS = {
     "market_regime": build_regime,
     "stock_signals": build_stock_signals,
     "sector_signals": build_sector_signals,
     "boring_signals": build_boring_signals,
     "leaders_scan": build_leaders_scan,
+    "recovery_signals": build_recovery_signals,
+    "portfolio_signals": build_portfolio_signals,
+    "setup_log": build_setup_log,
 }
 # reference tables materialised into the serving DB by the screeners (from Silver)
 # -- exported for the front end, not recomputed here.
@@ -1360,12 +1740,347 @@ def _parity_leaders_scan(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> di
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _parity_recovery_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> dict:
+    """Verify the `recovery_signals` PORT by RECOMPUTE (same methodology as
+    `_parity_boring_signals`/`_parity_leaders_scan`): materialize Gold's own
+    Silver/Bronze inputs into a scratch SQLite, then call the SAME
+    `_recovery_scan()` helper `build_recovery_signals` used -- which itself
+    calls `signal_engine._scan_recovery_candidates`, the exact reused pure
+    scan -- against the scratch connection instead of `gcon`. The
+    `_RECOVERY_PRICE_SQL` text and the Python filter chain are IDENTICAL
+    between the two calls; only the engine underneath differs, so any
+    difference is a genuine query/filter-construction bug, not a live-data
+    staleness question.
+    """
+    import tempfile
+
+    if not gcon.execute("SELECT 1 FROM information_schema.tables "
+                        "WHERE table_name='recovery_signals'").fetchone():
+        return {"status": "skipped", "reason": "gold has no recovery_signals"}
+
+    tmp = Path(tempfile.mkdtemp(prefix="gold_rs_parity_"))
+    scratch = tmp / "recompute.db"
+    try:
+        rcon = sqlite3.connect(str(scratch))
+        _pr = gcon.execute("SELECT symbol, date, open, high, low, close, volume FROM prices").df()
+        _ix = gcon.execute("SELECT symbol, date, close FROM index_prices").df()
+        _sm = gcon.execute("SELECT * FROM stock_metadata").df()
+        _sec = gcon.execute("SELECT * FROM sectors").df()
+        _pr.to_sql("prices", rcon, index=False)
+        _ix.to_sql("index_prices", rcon, index=False)
+        _sm.to_sql("stock_metadata", rcon, index=False)
+        _sec.to_sql("sectors", rcon, index=False)
+        rcon.execute("CREATE INDEX ix_pr ON prices(symbol, date)")
+        rcon.commit()
+
+        r_as_of, r_trig, r_watch = _recovery_scan(rcon, is_duckdb=False)
+        g_as_of = gcon.execute("SELECT max(as_of_date) FROM recovery_signals").fetchone()[0]
+        if r_as_of != g_as_of:
+            return {"status": "residual", "reason": "as_of_date mismatch",
+                    "gold_as_of_date": g_as_of, "recompute_as_of_date": r_as_of}
+
+        num_cols = ["close", "drawdown_pct", "base_days", "base_range_pct", "vol_ratio_today",
+                   "base_high", "dist_pct", "avg_vol_m", "fresh", "trigger_close",
+                   "trigger_vol_x", "current_close", "move_pct", "pre_high", "kse_regime_ok"]
+        txt_cols = ["triggered_date"]
+        cols = num_cols + txt_cols
+
+        g_rows = {(r[0], r[1]): r[2:] for r in gcon.execute(
+            f"SELECT symbol, list_type, {','.join(cols)} FROM recovery_signals "
+            "WHERE as_of_date = ?", (g_as_of,)).fetchall()}
+        r_rows = {(r.get("symbol"), r.get("list_type")): tuple(r.get(c) for c in cols)
+                 for r in (r_trig + r_watch)}
+        ci = {c: i for i, c in enumerate(cols)}
+
+        only_gold = sorted(g_rows.keys() - r_rows.keys())
+        only_recompute = sorted(r_rows.keys() - g_rows.keys())
+        shared = sorted(g_rows.keys() & r_rows.keys())
+
+        import math
+
+        def _miss(x):
+            return x is None or (isinstance(x, float) and math.isnan(x))
+
+        def _close(a, b, t=1e-4):
+            am, bm = _miss(a), _miss(b)
+            if am or bm:
+                return am and bm
+            return abs(a - b) <= max(t, t * abs(b))
+
+        col_mm = {c: 0 for c in cols}
+        mismatches = []
+        for k in shared:
+            gv, rv = g_rows[k], r_rows[k]
+            row_mm = {}
+            for c in cols:
+                a, b = gv[ci[c]], rv[ci[c]]
+                same = a == b if c in txt_cols else _close(a, b)
+                if not same:
+                    col_mm[c] += 1
+                    row_mm[c] = [b, a]
+            if row_mm:
+                mismatches.append([list(k), row_mm])
+
+        clean = not only_gold and not only_recompute and not mismatches
+        return {
+            "status": "clean" if clean else "residual",
+            "method": "recompute (SQLite) vs Gold (DuckDB), identical Silver/Bronze inputs",
+            "as_of_date": g_as_of, "rows_compared": len(shared),
+            "only_gold": [list(k) for k in only_gold], "only_recompute": [list(k) for k in only_recompute],
+            "column_mismatch_totals": col_mm, "mismatches": mismatches[:20],
+        }
+    finally:
+        try:
+            rcon.close()
+        except Exception:
+            pass
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _parity_portfolio_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> dict:
+    """Verify `portfolio_signals` by RECOMPUTE (same methodology as
+    `_parity_recovery_signals`): materialize Gold's own `sector_signals` +
+    Silver/Bronze prices into a scratch SQLite, rebuild sector_df/prices_df/
+    kse_df with the SAME `_portfolio_sector_df`/`_fetch_df` helpers
+    `build_portfolio_signals` used, and call `portfolio.
+    compute_portfolio_candidates()` -- the SAME reused function -- against
+    the scratch data. Any difference is a genuine query/filter bug.
+    """
+    import tempfile
+    import pandas as pd
+    import portfolio as port
+
+    if not gcon.execute("SELECT 1 FROM information_schema.tables "
+                        "WHERE table_name='portfolio_signals'").fetchone():
+        return {"status": "skipped", "reason": "gold has no portfolio_signals"}
+
+    tmp = Path(tempfile.mkdtemp(prefix="gold_ps_parity_"))
+    scratch = tmp / "recompute.db"
+    try:
+        rcon = sqlite3.connect(str(scratch))
+        _pr = gcon.execute("SELECT symbol, date, close FROM prices").df()
+        _sm = gcon.execute("SELECT * FROM stock_metadata").df()
+        _sec = gcon.execute("SELECT * FROM sectors").df()
+        _ix = gcon.execute("SELECT symbol, date, close FROM index_prices").df()
+        _ssig = gcon.execute("SELECT * FROM sector_signals").df()
+        _pr.to_sql("prices", rcon, index=False)
+        _sm.to_sql("stock_metadata", rcon, index=False)
+        _sec.to_sql("sectors", rcon, index=False)
+        _ix.to_sql("index_prices", rcon, index=False)
+        _ssig.to_sql("sector_signals", rcon, index=False)
+        rcon.execute("CREATE INDEX ix_pr ON prices(symbol, date)")
+        rcon.commit()
+
+        r_sector_df, r_sector_latest = _portfolio_sector_df(rcon, is_duckdb=False)
+        r_prices_df = _fetch_df(rcon, False, _PORTFOLIO_PRICE_SQL)
+        r_prices_df["date"] = pd.to_datetime(r_prices_df["date"])
+        r_kse_df = _fetch_df(rcon, False, _KSE_CLOSE_SQL)
+        r_kse_df["date"] = pd.to_datetime(r_kse_df["date"])
+        r_kse_series = r_kse_df.set_index("date")["close"]
+
+        r_port_df = port.compute_portfolio_candidates(
+            sector_df=r_sector_df, prices_df=r_prices_df, kse_df=r_kse_series)
+
+        g_as_of = gcon.execute("SELECT max(as_of_date) FROM portfolio_signals").fetchone()[0]
+        r_as_of = str(r_port_df["latest_date"].max())[:10] if not r_port_df.empty else None
+        if r_as_of != g_as_of:
+            return {"status": "residual", "reason": "as_of_date mismatch",
+                    "gold_as_of_date": g_as_of, "recompute_as_of_date": r_as_of}
+
+        num_cols = ["latest_close", "ma10w", "ma30w", "dist_from_30w_pct", "stage",
+                   "rs_30d", "rs_10d", "sector_rank", "composite_score", "rank"]
+        txt_cols = ["sector", "latest_date", "stage_label", "rs_trend",
+                   "sector_momentum", "recommendation"]
+        cols = num_cols + txt_cols
+        sel = ",".join(cols)
+        ci = {c: i for i, c in enumerate(cols)}
+
+        g = {r[0]: r[1:] for r in gcon.execute(
+            f"SELECT symbol, {sel} FROM portfolio_signals WHERE as_of_date = ?", (g_as_of,)).fetchall()}
+        rr = {str(row["symbol"]): tuple(
+            (float(row[c]) if pd.notna(row.get(c)) else None) if c in num_cols
+            else (str(row[c]) if pd.notna(row.get(c)) else None)
+            for c in cols) for _, row in r_port_df.iterrows()}
+
+        only_gold = sorted(set(g) - set(rr))
+        only_recompute = sorted(set(rr) - set(g))
+        shared = sorted(set(g) & set(rr))
+
+        import math
+
+        def _miss(x):
+            return x is None or (isinstance(x, float) and math.isnan(x))
+
+        def _close(a, b, t=1e-4):
+            am, bm = _miss(a), _miss(b)
+            if am or bm:
+                return am and bm
+            return abs(a - b) <= max(t, t * abs(b))
+
+        col_mm = {c: 0 for c in cols}
+        mismatches = []
+        for sym in shared:
+            gv, rv = g[sym], rr[sym]
+            row_mm = {}
+            for c in cols:
+                a, b = gv[ci[c]], rv[ci[c]]
+                same = a == b if c in txt_cols else _close(a, b)
+                if not same:
+                    col_mm[c] += 1
+                    row_mm[c] = [b, a]
+            if row_mm:
+                mismatches.append([sym, row_mm])
+
+        clean = not only_gold and not only_recompute and not mismatches
+        return {
+            "status": "clean" if clean else "residual",
+            "method": "recompute (SQLite) vs Gold (DuckDB), identical sector_signals/Silver/Bronze inputs",
+            "as_of_date": g_as_of, "rows_compared": len(shared),
+            "only_gold": only_gold[:15], "only_recompute": only_recompute[:15],
+            "column_mismatch_totals": col_mm, "mismatches": mismatches[:20],
+        }
+    finally:
+        try:
+            rcon.close()
+        except Exception:
+            pass
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _parity_setup_log(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> dict:
+    """Verify `setup_log` by RECOMPUTE (same methodology as the other 3.3e/d
+    screeners): materialize Gold's own `stock_signals`/`market_regime`/
+    `stock_metadata`/`prices_adjusted` into a scratch SQLite with the real
+    production DDL, replay `backfill_setup_log._insert_setup_log_for_date` --
+    the SAME function `build_setup_log` calls, unmodified -- per date, then
+    `compute_forward_returns.main(conn=...)` and the SAME outcome-labelling
+    UPDATE. The reused insert/forward-return functions are DB-agnostic
+    `cur`-based SQL; only the engine under `gcon` vs `rcon` differs, so any
+    difference is a genuine port bug.
+    """
+    import tempfile
+    import backfill_setup_log as sl
+    import compute_forward_returns as cfr
+
+    if not gcon.execute("SELECT 1 FROM information_schema.tables "
+                        "WHERE table_name='setup_log'").fetchone():
+        return {"status": "skipped", "reason": "gold has no setup_log"}
+    dates = [r[0] for r in gcon.execute(
+        "SELECT DISTINCT date FROM stock_signals ORDER BY date").fetchall()]
+    if not dates:
+        return {"status": "skipped", "reason": "no gold stock_signals dates"}
+
+    tmp = Path(tempfile.mkdtemp(prefix="gold_sl_parity_"))
+    scratch = tmp / "recompute.db"
+    try:
+        rcon = sqlite3.connect(str(scratch))
+        rcon.execute("""CREATE TABLE setup_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL, setup_date DATE NOT NULL, setup_type TEXT NOT NULL,
+            regime TEXT, rs_rank INTEGER, sector_rs_rank INTEGER, rank_change INTEGER,
+            rs_score_20 REAL, base_tightness REAL, vol_contraction REAL,
+            pivot_distance_pct REAL, bos_flag INTEGER, sector TEXT,
+            fwd_return_5d REAL, fwd_return_10d REAL, fwd_return_20d REAL,
+            outcome_label TEXT, outcome_tagged_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(symbol, setup_date, setup_type))""")
+        rcon.execute("CREATE INDEX idx_sl_sym_date ON setup_log (symbol, setup_date)")
+
+        _ss = gcon.execute("SELECT * FROM stock_signals").df()
+        _mr = gcon.execute("SELECT * FROM market_regime").df()
+        _sm = gcon.execute("SELECT * FROM stock_metadata").df()
+        _pa = gcon.execute("SELECT symbol, date, close FROM prices_adjusted").df()
+        _ss.to_sql("stock_signals", rcon, index=False)
+        _mr.to_sql("market_regime", rcon, index=False)
+        _sm.to_sql("stock_metadata", rcon, index=False)
+        _pa.to_sql("prices_adjusted", rcon, index=False)
+        rcon.execute("CREATE INDEX ix_ss_date ON stock_signals(date)")
+        rcon.execute("CREATE INDEX ix_ss_sym ON stock_signals(symbol, date)")
+        rcon.execute("CREATE INDEX ix_pa_sym ON prices_adjusted(symbol)")
+        rcon.commit()
+
+        rcur = rcon.cursor()   # sqlite3.Connection has no .rowcount -- needs a real cursor
+        for d in dates:
+            sl._insert_setup_log_for_date(rcur, d)
+        rcon.commit()
+        cfr.main(conn=rcon)
+        rcon.execute("""
+            UPDATE setup_log SET outcome_label = CASE
+                WHEN fwd_return_10d > 0 THEN 'WINNER'
+                WHEN fwd_return_10d < 0 THEN 'LOSER'
+                ELSE 'BREAKEVEN' END
+            WHERE fwd_return_10d IS NOT NULL
+              AND (outcome_label = 'BREAKEVEN' OR outcome_label IS NULL)
+        """)
+        rcon.commit()
+
+        cols = ["regime", "rs_rank", "sector_rs_rank", "rank_change", "rs_score_20",
+                "base_tightness", "vol_contraction", "pivot_distance_pct", "bos_flag",
+                "sector", "fwd_return_5d", "fwd_return_10d", "fwd_return_20d",
+                "outcome_label", "outcome_tagged_date"]
+        sel = "symbol, setup_date, setup_type, " + ", ".join(cols)
+        g = {r[:3]: r[3:] for r in gcon.execute(f"SELECT {sel} FROM setup_log").fetchall()}
+        rr = {r[:3]: r[3:] for r in rcon.execute(f"SELECT {sel} FROM setup_log").fetchall()}
+        ci = {c: i for i, c in enumerate(cols)}
+        num_cols = {"rs_rank", "sector_rs_rank", "rank_change", "rs_score_20",
+                   "base_tightness", "vol_contraction", "pivot_distance_pct", "bos_flag",
+                   "fwd_return_5d", "fwd_return_10d", "fwd_return_20d"}
+
+        only_gold = sorted(g.keys() - rr.keys())
+        only_recompute = sorted(rr.keys() - g.keys())
+        shared = sorted(g.keys() & rr.keys())
+
+        import math
+
+        def _miss(x):
+            return x is None or (isinstance(x, float) and math.isnan(x))
+
+        def _close(a, b, t=1e-4):
+            am, bm = _miss(a), _miss(b)
+            if am or bm:
+                return am and bm
+            return abs(a - b) <= max(t, t * abs(b))
+
+        col_mm = {c: 0 for c in cols}
+        mismatches = []
+        for k in shared:
+            gv, rv = g[k], rr[k]
+            row_mm = {}
+            for c in cols:
+                a, b = gv[ci[c]], rv[ci[c]]
+                same = _close(a, b) if c in num_cols else a == b
+                if not same:
+                    col_mm[c] += 1
+                    row_mm[c] = [b, a]
+            if row_mm:
+                mismatches.append([list(k), row_mm])
+
+        clean = not only_gold and not only_recompute and not mismatches
+        return {
+            "status": "clean" if clean else "residual",
+            "method": "recompute (SQLite) vs Gold (DuckDB), identical stock_signals/market_regime inputs",
+            "dates_replayed": len(dates), "rows_compared": len(shared),
+            "only_gold": [list(k) for k in only_gold[:20]],
+            "only_recompute": [list(k) for k in only_recompute[:20]],
+            "column_mismatch_totals": col_mm, "mismatches": mismatches[:20],
+        }
+    finally:
+        try:
+            rcon.close()
+        except Exception:
+            pass
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 PARITY = {
     "market_regime": _parity_market_regime,
     "stock_signals": _parity_stock_signals,
     "sector_signals": _parity_sector_signals,
     "boring_signals": _parity_boring_signals,
     "leaders_scan": _parity_leaders_scan,
+    "recovery_signals": _parity_recovery_signals,
+    "portfolio_signals": _parity_portfolio_signals,
+    "setup_log": _parity_setup_log,
 }
 
 
