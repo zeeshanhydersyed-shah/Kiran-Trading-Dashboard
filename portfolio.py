@@ -111,7 +111,9 @@ def _classify_stage(close: float, ma30w: float, ma30w_4wk: float,
     return 1, "Stage 1 — Basing"
 
 
-def compute_portfolio_candidates(sector_df: pd.DataFrame = None) -> pd.DataFrame:
+def compute_portfolio_candidates(sector_df: pd.DataFrame = None,
+                                 prices_df: pd.DataFrame = None,
+                                 kse_df: pd.Series = None) -> pd.DataFrame:
     """
     Main entry point. Returns a ranked DataFrame of all scoreable stocks.
 
@@ -122,9 +124,19 @@ def compute_portfolio_candidates(sector_df: pd.DataFrame = None) -> pd.DataFrame
         rs_30d, rs_10d, rs_trend,
         sector_rank, sector_momentum,
         composite_score, recommendation
+
+    prices_df / kse_df: pre-loaded DataFrames (Kiran local-first Gold build,
+    3.3e) -- when given, used directly instead of calling _get_price_history()
+    / _get_index_history(), which hardcode a SQLite/Postgres connection via
+    database.py and so can't be pointed at Gold's DuckDB store. Must match
+    those functions' output shape exactly: prices_df columns
+    symbol/sector/date(datetime64)/close, one row per symbol per trading day;
+    kse_df a Series of close indexed by datetime64 date, ascending. Every
+    existing caller (dashboard.py, run_portfolio_signals() below) omits both
+    and keeps the original SQLite/Postgres-backed behaviour unchanged.
     """
-    prices   = _get_price_history()
-    kse100   = _get_index_history()
+    prices   = prices_df if prices_df is not None else _get_price_history()
+    kse100   = kse_df if kse_df is not None else _get_index_history()
 
     if prices.empty or kse100.empty:
         logger.warning("portfolio.py: insufficient data")

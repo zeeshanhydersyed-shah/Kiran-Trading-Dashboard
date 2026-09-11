@@ -499,3 +499,155 @@ def test_boring_signals_and_leaders_scan_built_and_parity(tmp_path, monkeypatch)
     # leaders_scan pool, not counted against `clean`. Just confirm the
     # classifier actually ran (a non-negative count), not a specific number.
     assert tp_rep["tie_break_residual_n"] >= 0
+
+
+# --------------------------- recovery_signals + portfolio_signals + setup_log (3.3e)
+
+def _recovery_symbol_rows(symbol="RCVSYM", n=320, start="2024-01-01"):
+    """One extra symbol shaped to trigger `signal_engine._scan_recovery_
+    candidates`'s WATCHLIST gates: a long flat pre-history (pre_high=100), a
+    sharp >=30% decline, then a short flat base with a volume-contraction-
+    then-surge shape (Gates 8/9). The shared `_bars()`/`_write_prices_
+    anchor()` fixtures never decline this much and keep volume under the
+    800k avg_vol_20d floor (500k-799k range), so recovery_signals never
+    fires on them. The base is kept well under `_base_scan`'s own `max_lb=90`
+    lookback cap (a longer flat base gets silently truncated to the last 90
+    bars by that cap, regardless of price flatness beyond it, which pushes a
+    surge/contraction shape placed further back out of the detected window --
+    found by a failed first attempt at a 110-day base). Uses the SAME
+    (start, n) as `_bars()` so the weekday-skipped dates line up exactly with
+    the rest of the synthetic universe.
+    """
+    rows, d, day = [], dt.date.fromisoformat(start), 0
+    decline_from = n - 40   # 5-session decline + 35-session base at the end
+    base_from = decline_from + 5
+    while len(rows) < n:
+        if d.weekday() < 5:
+            if day < decline_from:
+                price, vol = 100.0, 900_000
+            elif day < base_from:
+                price = 100.0 - (day - decline_from) * 8.0     # 100 -> 60 over 5 sessions
+                vol = 900_000
+            else:
+                bd = day - base_from
+                base_len = n - base_from
+                price = 60.0 + 0.2 * math.sin(bd)
+                if bd >= base_len - 5:
+                    vol = 350_000            # Gate 8: contraction in the last 5 base bars
+                elif 10 <= bd < 15:
+                    vol = 2_000_000          # Gate 9: a prior surge within the base
+                else:
+                    vol = 1_000_000
+            rows.append((symbol, d.isoformat(), round(price, 4), vol,
+                        round(price + 0.5, 4), round(price - 0.5, 4), round(price, 4)))
+            day += 1
+        d += dt.timedelta(days=1)
+    return rows
+
+
+def _write_recovery_symbol(root, symbol="RCVSYM", sector="COMMERCIAL BANKS", n=320):
+    """Append `symbol` to Bronze `prices` + Silver `prices_adjusted`/
+    `sectors`/`stock_metadata` on top of whatever `_write_prices_anchor`/
+    `_write_silver` already wrote -- must run AFTER those."""
+    from archive import silver_build
+
+    rows = _recovery_symbol_rows(symbol=symbol, n=n)
+    by_year: dict[str, list] = {}
+    for r in rows:
+        by_year.setdefault(r[1][:4], []).append(r)
+    for year, rs in by_year.items():
+        t = pa.table({k: [r[i] for r in rs] for i, k in enumerate(bronze_ingest.PRICES_COLUMNS)},
+                     schema=bronze_ingest.PRICES_SCHEMA)
+        fp = root / "prices_archive" / "bronze" / "prices" / f"year={year}" / "data_recovery.parquet"
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(t, fp, **bronze_ingest.PARQUET_OPTS)
+
+        adj_rs = [(sym, ds, cl, vol, hi, lo, op, 0, 0, 0) for sym, ds, cl, vol, hi, lo, op in rs]
+        t2 = pa.table({k: [r[i] for r in adj_rs] for i, k in enumerate(silver_build.PRICES_ADJ_COLUMNS)},
+                      schema=silver_build.PRICES_ADJ_SCHEMA)
+        fp2 = root / "prices_archive" / "silver" / "prices_adjusted" / f"year={year}" / "data_recovery.parquet"
+        fp2.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(t2, fp2, **bronze_ingest.PARQUET_OPTS)
+
+    # sectors + stock_metadata are small single-file tables -- rewrite whole,
+    # extended with the new symbol (same shape _write_silver itself writes).
+    sct = pa.table({"symbol": [s for s, _ in _SYMS] + [symbol],
+                    "sector": [x for _, x in _SYMS] + [sector]},
+                   schema=pa.schema([("symbol", pa.string()), ("sector", pa.string())]))
+    pq.write_table(sct, root / "prices_archive" / "silver" / "sectors" / "sectors.parquet",
+                   **bronze_ingest.PARQUET_OPTS)
+
+    syms = list(_SYMS) + [(symbol, sector)]
+    n_syms = len(syms)
+    mt = pa.table({"symbol": [s for s, _ in syms], "company_name": [s for s, _ in syms],
+                  "sector": [x for _, x in syms], "listing_date": ["2024-01-01"] * n_syms,
+                  "delisting_date": [None] * n_syms, "is_active": [1] * n_syms,
+                  "in_kse100": [1] * n_syms, "notes": [None] * n_syms},
+                 schema=pa.schema([
+                     ("symbol", pa.string()), ("company_name", pa.string()),
+                     ("sector", pa.string()), ("listing_date", pa.string()),
+                     ("delisting_date", pa.string()), ("is_active", pa.int64()),
+                     ("in_kse100", pa.int64()), ("notes", pa.string())]))
+    pq.write_table(mt, root / "prices_archive" / "silver" / "stock_metadata" / "stock_metadata.parquet",
+                   **bronze_ingest.PARQUET_OPTS)
+
+
+def test_recovery_portfolio_setup_log_built_and_parity(env):
+    """3.3e: `build_recovery_signals` / `build_portfolio_signals` port
+    `signal_engine.py`'s recovery/portfolio screeners (extract-method +
+    parameter-injection refactors -- `_scan_recovery_candidates` /
+    `compute_portfolio_candidates` reused verbatim); `build_setup_log` ports
+    `backfill_setup_log.py`'s daily hook (`_insert_setup_log_for_date` /
+    `compute_forward_returns.main` reused verbatim). All three pass
+    RECOMPUTE parity (same reused functions/queries, SQLite vs DuckDB).
+
+    `trade_setups` is deliberately NOT ported -- see `build_setup_log`'s
+    docstring (`processor.run_analysis()` hardcodes `support_setups = []`
+    since 2026-07-23; the only automated writer of `trade_setups` is
+    permanently dead code, so there is nothing live to port).
+    """
+    root, live, bars = env
+    _write_recovery_symbol(root)
+
+    scr = ["market_regime", "stock_signals", "sector_signals",
+          "recovery_signals", "portfolio_signals", "setup_log"]
+    r = gold_build.build(root / "psx_serving", window_days=730, run_parity=True, screeners=scr)
+    for t in ("recovery_signals", "portfolio_signals", "setup_log"):
+        assert t in r["rows"], r
+
+    assert "trade_setups" not in gold_build.SCREENERS
+    assert "trade_setups" not in gold_build.PARITY
+
+    import duckdb
+    c = duckdb.connect(str(root / "psx_serving" / "psx_serving.duckdb"), read_only=True)
+    try:
+        rs_rows = c.execute("SELECT as_of_date, symbol, list_type FROM recovery_signals").fetchall()
+        ps_rows = c.execute("SELECT DISTINCT as_of_date FROM portfolio_signals").fetchall()
+        sl_types = c.execute("SELECT DISTINCT setup_type FROM setup_log").fetchall()
+    finally:
+        c.close()
+
+    # the injected decline+base fires at least one WATCHLIST/TRIGGERED row
+    assert rs_rows, "expected at least one recovery_signals row from the injected decline+base"
+    assert {row[2] for row in rs_rows} <= {"TRIGGERED", "WATCHLIST"}
+    assert any(row[1] == "RCVSYM" for row in rs_rows)
+    # "latest date only" scope (see build_recovery_signals's docstring) -- a
+    # single as_of_date, not a per-trading-day backfill.
+    assert len({row[0] for row in rs_rows}) == 1
+
+    assert ps_rows, "expected portfolio_signals rows (320 bars >= MIN_HISTORY)"
+    assert len(ps_rows) == 1, "latest-date-only scope, same as recovery_signals"
+
+    assert sl_types, "expected at least one setup_log row"
+
+    assert (root / "psx_serving" / "parquet" / "recovery_signals.parquet").exists()
+    assert (root / "psx_serving" / "parquet" / "portfolio_signals.parquet").exists()
+    assert (root / "psx_serving" / "parquet" / "setup_log.parquet").exists()
+
+    parity = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())
+    for t in ("recovery_signals", "portfolio_signals", "setup_log"):
+        rep = parity[t]
+        assert rep["status"] == "clean", (t, rep)
+        assert rep["only_gold"] == [] and rep["only_recompute"] == [], (t, rep)
+        assert all(v == 0 for v in rep["column_mismatch_totals"].values()), (t, rep["column_mismatch_totals"])
+        assert rep["rows_compared"] > 0, (t, rep)

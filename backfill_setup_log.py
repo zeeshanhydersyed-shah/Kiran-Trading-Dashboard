@@ -437,11 +437,18 @@ _DAILY_QUERIES_SQLITE = [
 
 
 def _insert_setup_log_for_date(cur, target_date) -> int:
-    """Run all four daily setup queries for one date. Does not commit."""
+    """Run all four daily setup queries for one date. Does not commit.
+
+    `if rows:` guards the executemany -- SQLite treats an empty parameter
+    list as a silent no-op, but DuckDB's DBAPI raises InvalidInputException
+    on it (Kiran local-first Gold build, 3.3e port). No behavior change on
+    SQLite; makes this cur-based function portable to a DuckDB connection.
+    """
     inserted = 0
     for _setup_type, select_sql in _DAILY_QUERIES_SQLITE:
         rows = cur.execute(select_sql, (target_date,)).fetchall()
-        cur.executemany(_DAILY_SETUP_INSERT_SQLITE, rows)
+        if rows:
+            cur.executemany(_DAILY_SETUP_INSERT_SQLITE, rows)
         inserted += cur.rowcount
     return inserted
 
