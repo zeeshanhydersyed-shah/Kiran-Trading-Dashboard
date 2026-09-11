@@ -130,7 +130,7 @@ def _gold_regime(root):
 
 def test_build_produces_regime_and_export(env):
     root, live, bars = env
-    res = gold_build.build(root / "psx_serving", window_days=730, run_parity=False)
+    res = gold_build.build(root / "psx_serving", window_days=730, run_parity=False, screeners=["market_regime"])
     assert res["outcome"] == "built"
     assert (root / "psx_serving" / "psx_serving.duckdb").exists()
     assert not (root / "psx_serving" / "psx_serving_staging.duckdb").exists()  # swapped
@@ -143,7 +143,7 @@ def test_build_produces_regime_and_export(env):
 
 def test_window_slice(env):
     root, live, bars = env
-    gold_build.build(root / "psx_serving", window_days=90, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=90, run_parity=False, screeners=["market_regime"])
     rows = _gold_regime(root)
     anchor = dt.date.fromisoformat(bars[-1][0])
     assert all(dt.date.fromisoformat(d) >= anchor - dt.timedelta(days=90) for d, _, _ in rows)
@@ -154,16 +154,16 @@ def test_window_slice(env):
 def test_idempotent(env):
     root, live, bars = env
     import hashlib
-    gold_build.build(root / "psx_serving", window_days=730, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=730, run_parity=False, screeners=["market_regime"])
     h1 = hashlib.sha256((root / "psx_serving" / "parquet" / "market_regime.parquet").read_bytes()).hexdigest()
-    gold_build.build(root / "psx_serving", window_days=730, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=730, run_parity=False, screeners=["market_regime"])
     h2 = hashlib.sha256((root / "psx_serving" / "parquet" / "market_regime.parquet").read_bytes()).hexdigest()
     assert h1 == h2
 
 
 def test_parity_clean_when_live_is_a_gapless_subset(env):
     root, live, bars = env
-    gold_build.build(root / "psx_serving", window_days=730, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=730, run_parity=False, screeners=["market_regime"])
     gold = _gold_regime(root)
     # seed a live market_regime with the same rows minus the last 3 (a trailing
     # gap, not an interior one) -> Gold is a clean superset
@@ -174,7 +174,7 @@ def test_parity_clean_when_live_is_a_gapless_subset(env):
                     [(d, r, dd, None, None) for d, r, dd in gold[:-3]])
     con.commit(); con.close()
 
-    res = gold_build.build(root / "psx_serving", window_days=730, run_parity=True)
+    res = gold_build.build(root / "psx_serving", window_days=730, run_parity=True, screeners=["market_regime"])
     rep = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())
     assert rep["market_regime"]["status"] == "clean"
     assert rep["market_regime"]["only_live"] == []
@@ -183,7 +183,7 @@ def test_parity_clean_when_live_is_a_gapless_subset(env):
 
 def test_interior_disagreement_is_residual(env):
     root, live, bars = env
-    gold_build.build(root / "psx_serving", window_days=730, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=730, run_parity=False, screeners=["market_regime"])
     gold = _gold_regime(root)
     con = sqlite3.connect(live)
     con.execute("CREATE TABLE market_regime (date TEXT PRIMARY KEY, regime TEXT, "
@@ -194,7 +194,7 @@ def test_interior_disagreement_is_residual(env):
     con.executemany("INSERT INTO market_regime VALUES (?,?,?,?,?)", rows)
     con.commit(); con.close()
 
-    gold_build.build(root / "psx_serving", window_days=730, run_parity=True)
+    gold_build.build(root / "psx_serving", window_days=730, run_parity=True, screeners=["market_regime"])
     rep = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())
     assert rep["market_regime"]["status"] == "residual"
     assert rep["market_regime"]["pre_gap_residual"] == [gold[50][0]]
@@ -203,13 +203,19 @@ def test_interior_disagreement_is_residual(env):
 def test_never_writes_psx_data_db(env):
     root, live, bars = env
     before = live.read_bytes() if live.exists() else None
-    gold_build.build(root / "psx_serving", window_days=730, run_parity=True)
+    gold_build.build(root / "psx_serving", window_days=730, run_parity=True, screeners=["market_regime"])
     assert (live.read_bytes() if live.exists() else None) == before
     text = open(gold_build.__file__).read()
-    # every sqlite3.connect in the module is the read-only parity reference
+    # every sqlite3.connect that touches a REAL db (live psx_data.db for parity,
+    # frozen baseline for stock_market_cap) opens it strictly read-only; the only
+    # writable connect is the throwaway recompute scratch under tempfile.mkdtemp.
     n = text.count("sqlite3.connect")
     assert n >= 1
-    assert text.count('sqlite3.connect(f"file:{live_db}?mode=ro&immutable=1"') == n
+    ro = (text.count('sqlite3.connect(f"file:{live_db}?mode=ro&immutable=1"')
+          + text.count('sqlite3.connect(f"file:{baseline_db}?mode=ro&immutable=1"'))
+    scratch = text.count("sqlite3.connect(str(scratch))")
+    assert ro + scratch == n, f"{n - ro - scratch} sqlite3.connect call(s) touch a real db writable"
+    assert "tempfile.mkdtemp" in text and 'scratch = tmp / "recompute.db"' in text
 
 
 # ------------------------------------------------------- stock_signals (3.3b)
@@ -235,7 +241,7 @@ _SS_LIVE_DDL = """CREATE TABLE stock_signals (
 
 def test_stock_signals_built_and_windowed(env):
     root, live, bars = env
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=False, screeners=["market_regime", "stock_signals"])
     rows = _gold_ss(root)
     assert rows
     anchor = dt.date.fromisoformat(bars[-1][0])
@@ -253,9 +259,9 @@ def test_stock_signals_built_and_windowed(env):
 def test_stock_signals_idempotent(env):
     root, live, bars = env
     import hashlib
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=False, screeners=["market_regime", "stock_signals"])
     h1 = hashlib.sha256((root / "psx_serving" / "parquet" / "stock_signals.parquet").read_bytes()).hexdigest()
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=False, screeners=["market_regime", "stock_signals"])
     h2 = hashlib.sha256((root / "psx_serving" / "parquet" / "stock_signals.parquet").read_bytes()).hexdigest()
     assert h1 == h2
 
@@ -277,9 +283,9 @@ def _seed_live_ss_from_gold(root, live, mutate=None):
 
 def test_stock_signals_parity_clean_when_live_matches(env):
     root, live, bars = env
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=False, screeners=["market_regime", "stock_signals"])
     _seed_live_ss_from_gold(root, live)
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=True)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=True, screeners=["market_regime", "stock_signals"])
     ss = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())["stock_signals"]
     assert ss["status"] == "clean", ss
     assert ss["rs_score_20_mismatch_total"] == 0
@@ -292,7 +298,7 @@ def test_stock_signals_parity_clean_when_live_matches(env):
 
 def test_stock_signals_parity_flags_rs_score_diff(env):
     root, live, bars = env
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=False, screeners=["market_regime", "stock_signals"])
 
     def _bump_one_score(rows, cols):
         si, ci = cols.index("symbol"), cols.index("rs_score_20")
@@ -302,7 +308,7 @@ def test_stock_signals_parity_flags_rs_score_diff(env):
                 r[ci] = r[ci] + 5.0        # shared symbol, now disagrees with Gold
 
     _seed_live_ss_from_gold(root, live, mutate=_bump_one_score)
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=True)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=True, screeners=["market_regime", "stock_signals"])
     ss = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())["stock_signals"]
     assert ss["status"] == "residual"
     assert ss["rs_score_20_mismatch_total"] >= 1
@@ -328,7 +334,7 @@ def test_stock_signals_excludes_excluded_sectors(tmp_path, monkeypatch):
     _write_prices_anchor(root, bars[-1][0])
     _write_silver(root, bars, extra_syms=[("ZEXC", excl_sector)])
 
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=False)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=False, screeners=["market_regime", "stock_signals"])
     import duckdb
     c = duckdb.connect(str(root / "psx_serving" / "psx_serving.duckdb"), read_only=True)
     zexc = c.execute("SELECT count(*) FROM stock_signals WHERE symbol = 'ZEXC'").fetchone()[0]
@@ -347,8 +353,47 @@ def test_stock_signals_excludes_excluded_sectors(tmp_path, monkeypatch):
                 rows.append(seen[d])
 
     _seed_live_ss_from_gold(root, live, mutate=_add_zexc)
-    gold_build.build(root / "psx_serving", window_days=200, run_parity=True)
+    gold_build.build(root / "psx_serving", window_days=200, run_parity=True, screeners=["market_regime", "stock_signals"])
     ss = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())["stock_signals"]
     assert ss["status"] == "clean", ss
     assert ss["only_live_genuine_total"] == 0
     assert ss["live_excluded_sector_ranked"]["total"] >= 1
+
+
+# ------------------------------------------------------- sector_signals (3.3c)
+
+def test_sector_signals_built_stages_windowed_and_parity(env):
+    """3.3c: build_sector_signals reuses sector_signals._compute_and_write_
+    sector_signals_for_date_sqlite verbatim, produces the four-stage `sector_stage`
+    grade per sector, drops EXCLUDED_SECTORS, windows the output, and passes
+    RECOMPUTE parity (same function, same inputs, SQLite vs DuckDB)."""
+    import config
+    root, live, bars = env
+    scr = ["market_regime", "stock_signals", "sector_signals"]
+
+    r = gold_build.build(root / "psx_serving", window_days=15, run_parity=True, screeners=scr)
+    assert "sector_signals" in r["rows"]
+
+    import duckdb
+    c = duckdb.connect(str(root / "psx_serving" / "psx_serving.duckdb"), read_only=True)
+    rows = c.execute("SELECT date, sector, rs_rank, sector_stage, composite_score "
+                     "FROM sector_signals ORDER BY date, rs_rank").fetchall()
+    sectors = {s for _, s, *_ in rows}
+    stages = {st for *_, st, _ in rows if st is not None}
+    c.close()
+
+    assert rows
+    anchor = dt.date.fromisoformat(bars[-1][0])
+    assert all(dt.date.fromisoformat(d) >= anchor - dt.timedelta(days=15) for d, *_ in rows)
+    # only tradeable sectors (env's _SYMS sectors), none excluded
+    assert sectors <= {s for _, s in _SYMS}
+    assert not (sectors & config.EXCLUDED_SECTORS)
+    # the four-stage grade is populated (>=200 synthetic bars -> real stages)
+    assert stages and stages <= {"Stage 1", "Stage 2", "Stage 3", "Stage 4"}
+    assert (root / "psx_serving" / "parquet" / "sector_signals.parquet").exists()
+
+    rep = json.loads((root / "psx_serving" / "_gold_parity.json").read_text())["sector_signals"]
+    assert rep["status"] == "clean", rep
+    assert rep["sector_set_mismatch_dates"] == []
+    assert all(v == 0 for v in rep["column_mismatch_totals"].values()), rep["column_mismatch_totals"]
+    assert rep["cells_compared"] > 0

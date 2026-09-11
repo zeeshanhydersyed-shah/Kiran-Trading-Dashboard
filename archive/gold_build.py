@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import sys
 from pathlib import Path
@@ -41,6 +42,14 @@ from archive.bronze_ingest import ARCHIVE_ROOT, PARQUET_OPTS, _now
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIVE_DB = REPO_ROOT / "psx_data.db"           # parity reference only, opened read-only
 DEFAULT_WINDOW_DAYS = 730  # ~2 trading years -- the Gold serving window
+
+
+def _baseline_db() -> Path | None:
+    d = ARCHIVE_ROOT / "baseline"
+    if not d.exists():
+        return None
+    cands = sorted(d.glob("psx_data_baseline_KIRAN_LFM_P1_*.db"))
+    return cands[-1] if cands else None
 
 
 # --------------------------------------------------------------------- layout
@@ -118,14 +127,28 @@ def build_regime(store: GoldStore, gcon: "duckdb.DuckDBPyConnection", window_fro
 def _medallion_views(gcon: "duckdb.DuckDBPyConnection", store: GoldStore) -> None:
     """Expose the live Silver/Bronze Parquet under the table names the ported
     screeners' loaders expect. The big price series stay VIEWS (read straight
-    from Parquet); the small reference sets are materialised as TABLES in the
-    serving DB -- the front end and `sector_signals` (3.3c) read them there."""
+    from Parquet); the small reference sets are materialised as TABLES.
+
+    `stock_metadata` is materialised **CONFORMED** -- `config.EXCLUDED_SECTORS`
+    and non-equity symbols dropped -- so the screeners that read it
+    (`stock_signals._load_universe`, `sector_signals`'s stock JOIN) and the
+    front end all see the tradeable universe by construction (§118 Defect A:
+    `_load_universe` itself never filtered, and live's stock_metadata grew
+    ~150 excluded-sector rows on 2026-08-03). `sectors` stays the FULL
+    symbol->sector map (parity needs to know the excluded sectors)."""
+    import config
+    _excl = ", ".join("'" + s.replace("'", "''") + "'" for s in sorted(config.EXCLUDED_SECTORS))
+    _ne = ", ".join("'" + s.replace("'", "''") + "'" for s in sorted(config.NON_EQUITY_SYMBOLS))
     gcon.execute(f"CREATE OR REPLACE VIEW prices_adjusted AS "
                  f"SELECT * FROM read_parquet('{store.silver_glob('prices_adjusted')}')")
     gcon.execute(f"CREATE OR REPLACE VIEW index_prices AS "
                  f"SELECT * FROM read_parquet('{store.bronze_glob('index_prices')}')")
-    gcon.execute(f"CREATE OR REPLACE TABLE stock_metadata AS "
-                 f"SELECT * FROM read_parquet('{store.silver_glob('stock_metadata')}')")
+    gcon.execute(
+        f"CREATE OR REPLACE TABLE stock_metadata AS "
+        f"SELECT * FROM read_parquet('{store.silver_glob('stock_metadata')}') "
+        f"WHERE sector NOT IN ({_excl}) AND symbol NOT IN ({_ne}) "
+        f"AND NOT regexp_matches(symbol, '^[A-Z0-9]+-C?(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]?$') "
+        f"AND NOT regexp_matches(symbol, '^P\\d{{2}}[A-Z]{{3}}\\d{{6}}$')")
     gcon.execute(f"CREATE OR REPLACE TABLE sectors AS "
                  f"SELECT * FROM read_parquet('{store.silver_glob('sectors')}')")
 
@@ -202,13 +225,9 @@ def build_stock_signals(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
     deep_from = (dt.date.fromisoformat(warmup_from)
                  - dt.timedelta(days=_SS_LOOKBACK_CAL_DAYS)).isoformat()
 
-    # ss._load_universe() is `SELECT symbol, sector FROM stock_metadata` with NO
-    # EXCLUDED_SECTORS filter -- it relied on stock_metadata only ever holding
-    # tradeable symbols. Since 2026-08-03 the live stock_metadata carries ~150
-    # preserved excluded-sector rows, so live stock_signals now ranks untradeable
-    # stocks (KIRAN_CLEANUP_AUDIT.md §118). Gold conforms the universe the way
-    # every downstream consumer already does (processor.py / signal_engine.py /
-    # boring_signals.py): drop config.EXCLUDED_SECTORS + non-equity here.
+    # `_medallion_views` already materialised `stock_metadata` conformed
+    # (EXCLUDED_SECTORS + non-equity dropped -- §118 Defect A); this belt-and-
+    # suspenders filter keeps `build_stock_signals` correct even if that changes.
     import config
     symbol_sector = {s: sec for s, sec in ss._load_universe(gcon).items()
                      if sec not in config.EXCLUDED_SECTORS
@@ -249,10 +268,115 @@ def build_stock_signals(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
             "range": [dates[0], dates[-1]] if dates else None}
 
 
-# regime first; 3.3b..e append here.
+# ---------------------------------------------------- screener: sector_signals
+
+# `sector_signals.py`'s INSERT passes raw pandas values -- a sector with too
+# little data on a date comes through with float NaN for rank / flag columns
+# (SQLite stores it fine; DuckDB rejects NaN in an INTEGER column). Every
+# nominally-int column is DOUBLE here (rank 2.0 / flag 1.0 read fine, NaN/NULL
+# for missing); parity coerces. sector_stage (the four-stage grade) is TEXT.
+_SECTOR_SIGNALS_DDL = """CREATE OR REPLACE TABLE sector_signals (
+    date TEXT, sector TEXT, rs_score_20 DOUBLE, rs_score_50 DOUBLE,
+    rs_rank DOUBLE, rs_rank_prev DOUBLE, breadth_score DOUBLE,
+    adv_dec_ratio DOUBLE, vol_ratio DOUBLE, rs_inflection DOUBLE,
+    regime TEXT, composite_score DOUBLE,
+    flow_smart_net_5d DOUBLE, flow_smart_net_20d DOUBLE,
+    flow_retail_net_5d DOUBLE, flow_retail_net_20d DOUBLE, flow_direction TEXT,
+    sector_ema50 DOUBLE, sector_above_ema DOUBLE, sector_ema_slope DOUBLE,
+    sector_stage TEXT, sector_pivot_dist_pct DOUBLE, sector_rs_new_high DOUBLE,
+    PRIMARY KEY (date, sector))"""
+# ~100 cal days (~68 trading) before window_from: sector_signals reads a
+# 60-trading-day price window for the sector EMA/pivot + a 30-day rs_history +
+# chains rs_rank_prev off its own prior rows.
+_SEC_WARMUP_CAL_DAYS = 100
+
+
+def build_sector_signals(store: GoldStore, gcon: "duckdb.DuckDBPyConnection",
+                         window_from: str) -> dict:
+    """Port of sector_signals.append_latest_sector_signals for the Gold path.
+
+    Reuses `sector_signals._compute_and_write_sector_signals_for_date_sqlite`
+    **verbatim by import** -- it takes a `conn`, uses `pd.read_sql_query(conn,
+    params=...)` + `conn.execute("INSERT OR REPLACE ...")`, all of which work
+    against a DuckDB connection. `stock_metadata` is already conformed by
+    `_medallion_views`, so no excluded sector is computed. `active_stocks_on_date`
+    is rebuilt pure + point-in-time (traded-on-D AND in the conformed universe),
+    a strict superset of live's hand-curated legacy table. `stock_market_cap` is
+    materialised from the frozen baseline (weights are "today's, applied to the
+    whole series" -- the snapshot is fine).
+
+    The four-stage sector grade is `sector_stage` (Stage 1-4), computed inside
+    that function -- "grade every sector" (tracker §5) is its output.
+    """
+    import datetime as dt
+    import sector_signals as sig
+
+    _medallion_views(gcon, store)                 # ensure the views/tables exist
+    gcon.execute(_SECTOR_SIGNALS_DDL)
+    # `active_stocks_on_date` in live is a VIEW: stock_metadata JOIN
+    # symbol_active_dates (a hand-curated point-in-time universe table, no
+    # builder in the repo, stale since 2026-07-31). Gold rebuilds it pure and
+    # point-in-time: a symbol is "active on date D" iff it actually traded on D
+    # AND is in the conformed universe. Strict superset of live's (live's table
+    # omits 5 legit equities -- BML/FCL/WAVESAPP/SYM/IMAGE, all company_name
+    # NULL in stock_metadata -- see KIRAN_CLEANUP_AUDIT.md §118).
+    gcon.execute(
+        "CREATE OR REPLACE TABLE active_stocks_on_date AS "
+        "SELECT pa.symbol AS symbol, pa.date AS trading_date "
+        "FROM prices_adjusted pa JOIN stock_metadata sm ON sm.symbol = pa.symbol "
+        "WHERE pa.close IS NOT NULL AND pa.close > 0")
+    baseline_db = _baseline_db()
+    if baseline_db is not None and baseline_db.exists():
+        bcon = sqlite3.connect(f"file:{baseline_db}?mode=ro&immutable=1", uri=True)
+        try:
+            import pandas as pd
+            mcap = pd.read_sql_query(
+                "SELECT symbol, shares_m, market_cap_m, cap_date FROM stock_market_cap", bcon)
+        finally:
+            bcon.close()
+        gcon.register("_mcap_df", mcap)
+        gcon.execute("CREATE OR REPLACE TABLE stock_market_cap AS SELECT * FROM _mcap_df")
+        gcon.unregister("_mcap_df")
+    else:
+        gcon.execute("CREATE OR REPLACE TABLE stock_market_cap "
+                     "(symbol TEXT, shares_m DOUBLE, market_cap_m DOUBLE, cap_date TEXT)")
+
+    # market_regime must exist (build_regime runs first in SCREENERS); it is
+    # windowed, so warm-up dates get regime=NULL -- fine, they are sliced out.
+    end_date = gcon.execute("SELECT max(date) FROM prices_adjusted").fetchone()[0]
+    warmup_from = (dt.date.fromisoformat(window_from)
+                   - dt.timedelta(days=_SEC_WARMUP_CAL_DAYS)).isoformat()
+    trading_dates = [r[0] for r in gcon.execute(
+        "SELECT DISTINCT date FROM prices_adjusted WHERE date >= ? AND date <= ? ORDER BY date",
+        (warmup_from, end_date)).fetchall()]
+
+    written = 0
+    import warnings
+    with warnings.catch_warnings():
+        # sector_signals.py uses pd.read_sql_query on the DuckDB connection --
+        # pandas warns it is "untested" for non-SQLAlchemy DBAPI, but it works
+        # (verified in the port + tests). One warning per read per date otherwise.
+        warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
+        for d in trading_dates:
+            written += sig._compute_and_write_sector_signals_for_date_sqlite(gcon, d)
+
+    gcon.execute("DELETE FROM sector_signals WHERE date < ?", (window_from,))
+    n = gcon.execute("SELECT count(*) FROM sector_signals").fetchone()[0]
+    drange = gcon.execute("SELECT min(date), max(date), "
+                          "count(DISTINCT date), count(DISTINCT sector) FROM sector_signals").fetchone()
+    stages = dict(gcon.execute(
+        "SELECT sector_stage, count(*) FROM sector_signals GROUP BY sector_stage").fetchall())
+    return {"rows": n, "computed_rows": written, "warmup_from": warmup_from,
+            "window_from": window_from, "end_date": end_date,
+            "range": [drange[0], drange[1]], "dates": drange[2], "sectors": drange[3],
+            "stage_counts": stages}
+
+
+# regime first; then 3.3b..e append here.
 SCREENERS = {
     "market_regime": build_regime,
     "stock_signals": build_stock_signals,
+    "sector_signals": build_sector_signals,
 }
 # reference tables materialised into the serving DB by the screeners (from Silver)
 # -- exported for the front end, not recomputed here.
@@ -377,7 +501,9 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
 
         cols, ci = _SS_COLS, {c: i for i, c in enumerate(_SS_COLS)}
         sel = ",".join(cols)
-        sec_of = dict(gcon.execute("SELECT symbol, sector FROM stock_metadata").fetchall())
+        # `sectors` is the FULL symbol->sector map (stock_metadata is conformed);
+        # need the excluded sectors to classify live's excluded-sector rows.
+        sec_of = dict(gcon.execute("SELECT symbol, sector FROM sectors").fetchall())
 
         def _monotonic_break(rows_by_rank):
             """count symbols whose rs_score_20 is HIGHER than the symbol one rank
@@ -536,18 +662,179 @@ def _parity_stock_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> d
         lcon.close()
 
 
+_SEC_STAGE_COL = "sector_stage"
+
+
+_SEC_PARITY_WINDOW_DAYS = 45          # trading dates to compare
+_SEC_PARITY_WARMUP_DAYS = 95          # extra cal-day warmup for the recompute chain
+
+
+def _parity_sector_signals(gcon: "duckdb.DuckDBPyConnection", live_db: Path) -> dict:
+    """Verify the `sector_signals` PORT by RECOMPUTE, not by comparing to live's
+    stored rows.
+
+    Live's stored `sector_signals` derived columns (`rs_score_20`,
+    `composite_score`, `rs_rank`) are **stale** -- not reproducible by the
+    current `sector_signals.py`; only `sector_ema50` (2026-06-19+) was ever
+    written by the code Gold reuses (KIRAN_CLEANUP_AUDIT.md §118.6). So a
+    stored-row diff proves nothing about the port.
+
+    Instead: materialise Gold's own Silver/Bronze inputs into a scratch SQLite
+    and run `_compute_and_write_sector_signals_for_date_sqlite` -- the *same
+    function* `build_sector_signals` calls -- over a contiguous recent window.
+    Gold ran it on DuckDB; the recompute runs it on SQLite; the inputs are
+    identical. Any difference is a genuine engine-level port bug.
+
+    `clean` iff every sector-cell (`sector_stage`, `sector_ema50`,
+    `sector_above_ema`, `rs_score_20/50`, `breadth_score`, `vol_ratio`,
+    `adv_dec_ratio`, `composite_score`, `rs_rank`) matches within float tol on
+    the compare window, and the sector sets are identical.
+    """
+    import datetime as dt
+    import tempfile
+    import pandas as pd
+    import sector_signals as sig
+
+    if not gcon.execute("SELECT 1 FROM information_schema.tables WHERE table_name='sector_signals'").fetchone():
+        return {"status": "skipped", "reason": "gold has no sector_signals"}
+    gmin, gmax = gcon.execute("SELECT min(date), max(date) FROM sector_signals").fetchone()
+    all_dates = [r[0] for r in gcon.execute(
+        "SELECT DISTINCT date FROM sector_signals ORDER BY date").fetchall()]
+    if len(all_dates) < 5:
+        return {"status": "skipped", "reason": "too few gold sector_signals dates"}
+    cmp_dates = all_dates[-_SEC_PARITY_WINDOW_DAYS:]
+    cmp_lo = cmp_dates[0]
+    warm_lo = (dt.date.fromisoformat(cmp_lo) - dt.timedelta(days=_SEC_PARITY_WARMUP_DAYS)).isoformat()
+
+    tmp = Path(tempfile.mkdtemp(prefix="gold_sec_parity_"))
+    scratch = tmp / "recompute.db"
+    try:
+        rcon = sqlite3.connect(str(scratch))
+        # materialise Gold's inputs (Silver prices, Bronze index, conformed meta,
+        # baseline mcap, Gold regime, Gold's pure active_stocks_on_date)
+        _pa = gcon.execute("SELECT symbol, date, close, volume FROM prices_adjusted "
+                           "WHERE date >= ?", (warm_lo,)).df()
+        _ix = gcon.execute("SELECT symbol, date, close FROM index_prices WHERE date >= ?", (warm_lo,)).df()
+        _sm = gcon.execute("SELECT * FROM stock_metadata").df()
+        _mc = gcon.execute("SELECT * FROM stock_market_cap").df() \
+            if gcon.execute("SELECT 1 FROM information_schema.tables WHERE table_name='stock_market_cap'").fetchone() \
+            else pd.DataFrame(columns=["symbol", "shares_m", "market_cap_m", "cap_date"])
+        _rg = gcon.execute("SELECT * FROM market_regime WHERE date >= ?", (warm_lo,)).df() \
+            if gcon.execute("SELECT 1 FROM information_schema.tables WHERE table_name='market_regime'").fetchone() \
+            else pd.DataFrame(columns=["date", "regime"])
+        _as = gcon.execute("SELECT symbol, trading_date FROM active_stocks_on_date "
+                           "WHERE trading_date >= ?", (warm_lo,)).df()
+        _pa.to_sql("prices_adjusted", rcon, index=False)
+        _ix.to_sql("index_prices", rcon, index=False)
+        _sm.to_sql("stock_metadata", rcon, index=False)
+        _mc.to_sql("stock_market_cap", rcon, index=False)
+        _rg.to_sql("market_regime", rcon, index=False)
+        _as.to_sql("active_stocks_on_date", rcon, index=False)
+        rcon.execute("CREATE INDEX ix_pa ON prices_adjusted(date)")
+        rcon.execute("CREATE INDEX ix_pa_s ON prices_adjusted(symbol, date)")
+        rcon.execute("CREATE INDEX ix_as ON active_stocks_on_date(trading_date)")
+        rcon.execute(_SECTOR_SIGNALS_DDL.replace("CREATE OR REPLACE TABLE", "CREATE TABLE"))
+        rcon.commit()
+
+        recompute_dates = [r[0] for r in rcon.execute(
+            "SELECT DISTINCT date FROM prices_adjusted WHERE date >= ? AND date <= ? ORDER BY date",
+            (warm_lo, cmp_dates[-1])).fetchall()]
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            for d in recompute_dates:
+                try:
+                    sig._compute_and_write_sector_signals_for_date_sqlite(rcon, d)
+                except Exception as e:                     # flow enrichment needs market_flows -> ok
+                    if "market_flows" not in str(e):
+                        raise
+                rcon.commit()
+
+        num_cols = ["rs_score_20", "rs_score_50", "breadth_score", "vol_ratio",
+                    "adv_dec_ratio", "composite_score", "rs_rank",
+                    "sector_ema50", "sector_above_ema"]
+        sel = "sector, sector_stage, " + ", ".join(num_cols)
+        tol = {c: 1e-4 for c in num_cols}
+        tol.update({"breadth_score": 1e-2, "vol_ratio": 1e-3, "sector_ema50": 1e-2,
+                    "composite_score": 1e-3, "rs_rank": 0.5})
+
+        import math
+
+        def _miss(x):
+            return x is None or (isinstance(x, float) and math.isnan(x))
+
+        def _close(a, b, t):
+            am, bm = _miss(a), _miss(b)          # NULL (SQLite) == NaN (DuckDB) == missing
+            if am or bm:
+                return am and bm
+            return abs(a - b) <= max(t, t * abs(b))
+
+        per_date = {}
+        cells = 0
+        col_mm = {c: 0 for c in ["sector_stage"] + num_cols}
+        set_mm_dates = []
+        for d in cmp_dates:
+            gg = {r[0]: r for r in gcon.execute(
+                f"SELECT {sel} FROM sector_signals WHERE date = ?", (d,)).fetchall()}
+            rr = {r[0]: r for r in rcon.execute(
+                f"SELECT {sel} FROM sector_signals WHERE date = ?", (d,)).fetchall()}
+            if set(gg) != set(rr):
+                set_mm_dates.append(d)
+            shared = sorted(set(gg) & set(rr))
+            cells += len(shared)
+            dd = {}
+            for s in shared:
+                if gg[s][1] != rr[s][1]:
+                    col_mm["sector_stage"] += 1
+                    dd.setdefault("sector_stage", []).append([s, rr[s][1], gg[s][1]])
+                for i, c in enumerate(num_cols, start=2):
+                    if not _close(gg[s][i], rr[s][i], tol[c]):
+                        col_mm[c] += 1
+                        dd.setdefault(c, []).append([s, rr[s][i], gg[s][i]])
+            if dd or set(gg) != set(rr):
+                per_date[d] = {"only_gold": sorted(set(gg) - set(rr)),
+                               "only_recompute": sorted(set(rr) - set(gg)), **dd}
+
+        clean = not set_mm_dates and all(v == 0 for v in col_mm.values())
+        return {
+            "status": "clean" if clean else "residual",
+            "method": "recompute (SQLite) vs Gold (DuckDB), identical Silver/Bronze inputs",
+            "compare_window": [cmp_lo, cmp_dates[-1]], "compare_dates": len(cmp_dates),
+            "recompute_dates": len(recompute_dates), "cells_compared": cells,
+            "gold_window": [gmin, gmax],
+            "sector_set_mismatch_dates": set_mm_dates,
+            "column_mismatch_totals": col_mm,
+            "note": ("Port test = same function (`_compute_and_write_sector_signals_for_"
+                     "date_sqlite`), same inputs, SQLite vs DuckDB. Live's STORED "
+                     "sector_signals is not the comparison target -- its derived columns "
+                     "predate the current code (KIRAN_CLEANUP_AUDIT.md §118.6); its "
+                     "four-stage `sector_stage` in live's current-code window "
+                     "(sector_ema50 IS NOT NULL, 2026-06-19+) does match Gold byte-exact, "
+                     "checked separately."),
+            "per_date": per_date,
+        }
+    finally:
+        try:
+            rcon.close()
+        except Exception:
+            pass
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 PARITY = {
     "market_regime": _parity_market_regime,
     "stock_signals": _parity_stock_signals,
+    "sector_signals": _parity_sector_signals,
 }
 
 
 # --------------------------------------------------------------------- build
 
 def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
-          run_parity: bool = True) -> dict:
+          run_parity: bool = True, screeners: list[str] | None = None) -> dict:
     import datetime as dt
 
+    active = {k: v for k, v in SCREENERS.items() if screeners is None or k in screeners}
     store = GoldStore(store_root)
     store.root.mkdir(parents=True, exist_ok=True)
     store.parquet_dir.mkdir(parents=True, exist_ok=True)
@@ -565,7 +852,7 @@ def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
     gcon = duckdb.connect(str(store.staging))
     built: dict[str, dict] = {}
     try:
-        for table, fn in SCREENERS.items():
+        for table, fn in active.items():
             built[table] = fn(store, gcon, window_from)
         gcon.close()
     except Exception:
@@ -583,7 +870,7 @@ def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
     gcon = duckdb.connect(str(store.db), read_only=True)
     have = {r[0] for r in gcon.execute("SELECT table_name FROM information_schema.tables").fetchall()}
     exported = {}
-    for table in list(SCREENERS) + REFERENCE_TABLES:
+    for table in list(active) + REFERENCE_TABLES:
         if table not in have:
             continue
         t = gcon.execute(f"SELECT * FROM {table} ORDER BY ALL").to_arrow_table()
@@ -599,7 +886,8 @@ def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
         gcon = duckdb.connect(str(store.db), read_only=True)
         try:
             for table, pfn in PARITY.items():
-                parity[table] = pfn(gcon, LIVE_DB)
+                if table in active:
+                    parity[table] = pfn(gcon, LIVE_DB)
         finally:
             gcon.close()
         store.parity_path.write_text(json.dumps({"generated": _now(), **parity}, indent=2, default=str) + "\n")
@@ -612,7 +900,7 @@ def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
     with open(store.log_path, "a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(entry, default=str, sort_keys=True) + "\n")
 
-    return {"outcome": "built", "window_from": window_from, "screeners": list(SCREENERS),
+    return {"outcome": "built", "window_from": window_from, "screeners": list(active),
             "rows": exported, "parity": {k: v.get("status") for k, v in parity.items()}}
 
 
@@ -625,11 +913,14 @@ def main(argv: list[str] | None = None) -> int:
                          "(default %d; env KIRAN_SS_LOOKBACK_DAYS). Higher = byte parity on "
                          "EMA-stack flags for thin names, at more RAM." % _SS_LOOKBACK_CAL_DAYS)
     ap.add_argument("--no-parity", action="store_true")
+    ap.add_argument("--only", help="comma-separated screener table names to build "
+                    "(default: all -- %s)" % ", ".join(SCREENERS))
     args = ap.parse_args(argv)
     if args.ss_lookback_days is not None:
         globals()["_SS_LOOKBACK_CAL_DAYS"] = args.ss_lookback_days
     result = build(Path(args.store_root), window_days=args.window_days,
-                   run_parity=not args.no_parity)
+                   run_parity=not args.no_parity,
+                   screeners=args.only.split(",") if args.only else None)
     print(json.dumps(result, indent=2, sort_keys=True, default=str))
     return 0
 
