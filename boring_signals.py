@@ -523,7 +523,7 @@ def _breakout_fires(by_symbol: dict, symbol: str, date: str, n: int):
     return (close_t, breakout_level) if close_t > breakout_level else None
 
 
-def scan_boring_breakouts(date: str | None = None) -> int:
+def scan_boring_breakouts(date: str | None = None, conn=None) -> int:
     """
     Evaluate the RS_60-conditioned Donchian breakout for a single trading
     date across the full eligible universe, for both locked lookbacks
@@ -531,16 +531,30 @@ def scan_boring_breakouts(date: str | None = None) -> int:
     signal_date, lookback_n) plus INSERT OR IGNORE (SQLite) / ON CONFLICT DO
     NOTHING (Postgres) means re-running for an already-scanned date is a
     no-op. Returns the number of new rows inserted.
+
+    conn: an already-open connection to use instead of opening `DB_PATH`
+    (Kiran local-first Gold build, 3.3d -- passes its own DuckDB connection,
+    schema pre-created by the caller). When given, the `_PG_URL` branch is
+    bypassed -- injecting a connection is an explicit "use exactly this
+    engine" choice.
     """
+    if conn is not None:
+        return _scan_boring_breakouts_sqlite(date, conn=conn)
     if _PG_URL:
         return _scan_boring_breakouts_pg(date)
     return _scan_boring_breakouts_sqlite(date)
 
 
-def _scan_boring_breakouts_sqlite(date: str | None = None) -> int:
-    with sqlite3.connect(DB_PATH) as conn:
-        ensure_boring_signals_table(conn)
-        _backfill_breakout_levels(conn)
+def _scan_boring_breakouts_sqlite(date: str | None = None, conn=None) -> int:
+    _own_conn = conn is None
+    if _own_conn:
+        conn = sqlite3.connect(DB_PATH)
+    try:
+        if _own_conn:
+            # an externally-supplied conn (Gold) owns its own schema + a fresh
+            # table with no NULL breakout_level rows to backfill -- skip both.
+            ensure_boring_signals_table(conn)
+            _backfill_breakout_levels(conn)
         universe = _eligible_universe(conn)
         by_symbol = _load_price_history(conn, universe)
         kse = _load_kse100(conn)
@@ -590,8 +604,14 @@ def _scan_boring_breakouts_sqlite(date: str | None = None) -> int:
         rs_lookup = rs_df.set_index("symbol")[
             ["rs_60", "avg_vol_10d", "liquidity_pass", "rs_60_decile"]].to_dict("index")
 
-        inserted = 0
         cur = conn.cursor()
+        # count-diff, not cur.rowcount accumulation -- DuckDB's DBAPI cursor
+        # always reports rowcount -1 (not tracked, unlike SQLite's real 0/1
+        # per statement), so a per-insert tally silently produced garbage
+        # once this function started being reused against a DuckDB conn
+        # (Kiran local-first Gold build, 3.3d). A before/after COUNT(*) gives
+        # the same net-new-rows answer on both engines.
+        count_before = cur.execute("SELECT COUNT(*) FROM boring_signals").fetchone()[0]
         # DEDUP GATE: a symbol with any currently-open (Pending/Executed) row is
         # ineligible to fire a new signal on ANY lookback until that row resolves
         # (Target Hit / Stopped / Expired). Single upfront query per scan -- not
@@ -624,12 +644,15 @@ def _scan_boring_breakouts_sqlite(date: str | None = None) -> int:
                          trigger_price * (1 + STOP_PCT), rs_60, decile, avg_vol_10d,
                          liquidity_pass, strategy_confirmed),
                     )
-                    inserted += cur.rowcount
                 except sqlite3.Error:
                     logger.exception("boring_signals: insert failed for %s %s N=%d", sym, date, n)
+        inserted = cur.execute("SELECT COUNT(*) FROM boring_signals").fetchone()[0] - count_before
         conn.commit()
         logger.info("boring_signals: scanned %s, inserted %d new signal(s)", date, inserted)
         return inserted
+    finally:
+        if _own_conn:
+            conn.close()
 
 
 def _backfill_breakout_levels_pg(cur) -> int:
@@ -1272,7 +1295,7 @@ def seed_scanned_window(through_date: str, run_id: str = "SEED-audit") -> int:
     return len(window)
 
 
-def update_open_signal_statuses(as_of_date: str | None = None) -> int:
+def update_open_signal_statuses(as_of_date: str | None = None, conn=None) -> int:
     """
     Advances status for every row not yet in a terminal state (Stopped).
 
@@ -1314,7 +1337,13 @@ def update_open_signal_statuses(as_of_date: str | None = None) -> int:
     on D -- not ones that resolved weeks later. Default None = resolve
     through all available history (the daily / standalone contract, unchanged
     for every existing caller).
+
+    conn: an already-open connection to use instead of opening `DB_PATH`
+    (Kiran local-first Gold build, 3.3d). See `scan_boring_breakouts`'s
+    matching parameter.
     """
+    if conn is not None:
+        return _update_open_signal_statuses_sqlite(as_of_date, conn=conn)
     if _PG_URL:
         return _update_open_signal_statuses_pg(as_of_date)
     return _update_open_signal_statuses_sqlite(as_of_date)
@@ -1329,9 +1358,13 @@ def _walk_end_index(dates, as_of_date) -> int:
     return int(np.searchsorted(dates, as_of_date, side="right"))
 
 
-def _update_open_signal_statuses_sqlite(as_of_date: str | None = None) -> int:
-    with sqlite3.connect(DB_PATH) as conn:
-        ensure_boring_signals_table(conn)
+def _update_open_signal_statuses_sqlite(as_of_date: str | None = None, conn=None) -> int:
+    _own_conn = conn is None
+    if _own_conn:
+        conn = sqlite3.connect(DB_PATH)
+    try:
+        if _own_conn:
+            ensure_boring_signals_table(conn)
         open_rows = pd.read_sql_query(
             "SELECT * FROM boring_signals WHERE status IN ('Pending','Executed')", conn
         )
@@ -1380,6 +1413,9 @@ def _update_open_signal_statuses_sqlite(as_of_date: str | None = None) -> int:
         conn.commit()
         logger.info("boring_signals: updated %d signal statuses", updated)
         return updated
+    finally:
+        if _own_conn:
+            conn.close()
 
 
 def _update_open_signal_statuses_pg(as_of_date: str | None = None) -> int:

@@ -240,6 +240,28 @@ from `post_gap_expected_divergence` (knock-on of the gap-fill, expected).
   (KIRAN_CLEANUP_AUDIT.md §118.5/§118.6): pre-2026-06-19 legacy stage backfill;
   §118 Defect A EXCLUDED sectors from 2026-08-03; legacy universe omissions
   (`BML`/`FCL`/`WAVESAPP`/`SYM`/`IMAGE` — Gold grades `APPAREL` too). 1 test (12 total).
-- **3.3d** — `boring_signals` + `leaders_scan` / `leaders_top_picks`.
+- **3.3d — DONE (2026-09-11).** `boring_signals` + `leaders_scan` / `leaders_top_picks`.
+  Both modules hardcoded `sqlite3.connect(DB_PATH)` internally (unlike `sector_signals.py`'s
+  already-`conn`-based per-date function) — a small conn-injection refactor
+  (`scan_boring_breakouts` / `update_open_signal_statuses` / `append_leaders_scan` /
+  `save_top_picks` / `fill_leaders_forward_returns` all take an optional `conn=`, default
+  behaviour unchanged) makes them reusable **verbatim by import** the same way. Two dialect
+  fixes (`date('now','-4 days')`, `date(?,'-120 days')` → Python-computed) + one
+  engine-robustness fix (`cur.rowcount` is always `-1` on DuckDB's DBAPI, unlike SQLite's real
+  0/1 — replaced with a before/after `COUNT(*)` diff). `_medallion_views` gained a `prices`
+  (Bronze, raw/unadjusted) VIEW — both modules read raw prices for several to-the-day
+  computations. Gold owns its own DuckDB DDL (SEQUENCE-backed `id`, DOUBLE not INTEGER for
+  nominally-int columns, natural key as the sole PRIMARY KEY — DuckDB's `INSERT OR REPLACE`
+  can't infer a conflict target with two unique constraints). `boring_signals` scans from its
+  own 2026-07-10 go-live floor, not Gold's full window; `leaders_scan` depends on
+  `stock_signals` + `sector_signals` already built in the same run. **Parity = RECOMPUTE-based
+  for both (the method 3.3c needed, applied here from the start), `status: clean`:**
+  `boring_signals` full-window recompute, every column matches; `leaders_scan` 30-day-window
+  recompute, cell-for-cell match; `leaders_top_picks`' one residual class (a symbol swap from
+  an exact `(final_score, vol_ratio_today)` tie in `save_top_picks()`'s own `ORDER BY`, which
+  has no further tiebreak) is confirmed against Gold's own `leaders_scan` pool and classified
+  `tie_break_residual`, not counted against `clean` — a pre-existing query characteristic, not
+  a port bug. `mark_executed`/`executed`/`dedup_conflict` are human dashboard actions outside
+  Gold's automated build by construction. 1 test (13 total).
 - **3.3e** — `signal_engine` (`recovery_signals` / `portfolio_signals`) + `setup_log` / `processor` (`trade_setups`).
 - **3.3f** — front-end JSON export, full end-to-end idempotency, consolidated parity report.
