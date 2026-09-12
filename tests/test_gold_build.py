@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import math
 import sqlite3
+from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -744,3 +745,224 @@ def test_consolidated_parity_report_covers_every_active_screener(env):
     regenerated = gold_build.write_consolidated_parity_report(root / "psx_serving")
     assert regenerated == text
     assert "clean" in text
+
+
+# ============================================================================
+# Phase 4 -- publication gate (gold_build.publish / evaluate_gates)
+#
+# publish() builds into staging exactly like build(), then evaluates the four
+# gates (freshness / completeness / hook coverage / coherence) BEFORE
+# swapping. build() itself is untouched -- unconditional promote, no gate, no
+# publication row, still the entry point every test above this section uses.
+# ============================================================================
+
+def _full_registry_env(tmp_path, monkeypatch):
+    """A full-registry (screeners=None) universe for the publication-gate
+    tests. Deliberately the PLAIN, short `_bars(n=50)` fixture, not
+    `_jump_bars()`/`_write_recovery_symbol()` -- gate tests only need every
+    one of the 8 screeners to RUN without raising (hook_coverage/coherence
+    don't care whether boring_signals/recovery_signals/leaders_scan produce
+    real vs. zero rows, unlike 3.3d/e/f's parity-focused tests). A 50-day
+    fixture keeps a full-registry `publish()` call to ~20s instead of
+    several minutes -- `stock_signals`/`sector_signals`/`setup_log`'s
+    per-trading-date loops dominate runtime and scale with date count, not
+    symbol count, so this matters a lot for CI's 20-minute job budget.
+    Also monkeypatches `_post_ntfy` to a recorder (`calls`) so no test ever
+    makes a real network call."""
+    root = tmp_path / "KIRAN_ARCHIVE"
+    (root / "psx_serving").mkdir(parents=True)
+    monkeypatch.setattr(bronze_ingest, "ARCHIVE_ROOT", root)
+    monkeypatch.setattr(gold_build, "ARCHIVE_ROOT", root)
+    live = tmp_path / "psx_data.db"
+    monkeypatch.setattr(gold_build, "LIVE_DB", live)
+
+    bars = _bars(n=50)
+    _write_index(root, bars)
+    _write_prices_anchor(root, bars)
+    _write_silver(root, bars)
+
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(gold_build, "_post_ntfy", lambda title, body: calls.append((title, body)))
+    return root, live, bars, calls
+
+
+def _publication_rows(root):
+    import duckdb
+    store = gold_build.GoldStore(root / "psx_serving")
+    con = duckdb.connect(str(gold_build._publication_db_path(store)), read_only=True)
+    try:
+        cols = [r[1] for r in con.execute("PRAGMA table_info(current_publication)").fetchall()]
+        rows = con.execute("SELECT * FROM current_publication ORDER BY promoted_at").fetchall()
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        con.close()
+
+
+def test_publish_promotes_and_records_lineage_when_all_gates_pass(tmp_path, monkeypatch):
+    root, live, bars, calls = _full_registry_env(tmp_path, monkeypatch)
+    anchor = dt.date.fromisoformat(bars[-1][0])
+
+    result = gold_build.publish(root / "psx_serving", window_days=730, run_parity=False, now=anchor)
+
+    assert result["outcome"] == "published"
+    assert result["gates"]["promoted"] is True
+    assert result["gates"]["freshness"]["status"] == "VERIFIED"
+    assert result["gates"]["completeness"]["status"] == "UNKNOWN"  # no ingest log in this fixture
+    assert result["gates"]["hook_coverage"]["status"] == "COMPLETE"
+    assert result["gates"]["coherence"]["status"] == "COHERENT"
+    assert not calls, "no alert should fire on a clean promote"
+    assert (root / "psx_serving" / "psx_serving.duckdb").exists()
+
+    latest = gold_build.latest_promoted_publication(root / "psx_serving")
+    assert latest is not None
+    assert latest["promoted"] is True
+    assert latest["bronze_max"] == bars[-1][0]
+    assert latest["run_id"] == result["run_id"]
+    assert latest["withheld_reason"] is None
+
+
+def test_publish_withholds_and_raises_on_mid_build_exception(tmp_path, monkeypatch):
+    """Phase 4 checklist: "force a mid-run failure -> last good Gold served
+    unchanged, withheld row written." A screener itself raising mid-build
+    aborts before the staging DB is even checkable -- no gate evaluation is
+    possible, so the withheld row carries a build_exception reason with no
+    gate detail, and the exception still propagates (a scheduler must see
+    this as a failed run, not a silent withhold)."""
+    root, live, bars, calls = _full_registry_env(tmp_path, monkeypatch)
+    anchor = dt.date.fromisoformat(bars[-1][0])
+
+    r1 = gold_build.publish(root / "psx_serving", window_days=730, run_parity=False, now=anchor)
+    assert r1["outcome"] == "published"
+    good = (root / "psx_serving" / "psx_serving.duckdb").read_bytes()
+
+    def _boom(store, gcon, window_from):
+        raise RuntimeError("synthetic boring_signals failure")
+    monkeypatch.setitem(gold_build.SCREENERS, "boring_signals", _boom)
+    calls.clear()
+
+    with pytest.raises(RuntimeError, match="synthetic boring_signals failure"):
+        gold_build.publish(root / "psx_serving", window_days=730, run_parity=False, now=anchor)
+
+    # last good Gold untouched
+    assert (root / "psx_serving" / "psx_serving.duckdb").read_bytes() == good
+    assert not (root / "psx_serving" / "psx_serving_staging.duckdb").exists()
+    assert calls, "ntfy alert should have fired on the withheld build_exception row"
+
+    rows = _publication_rows(root)
+    assert len(rows) == 2
+    assert rows[0]["promoted"] is True and rows[0]["withheld_reason"] is None
+    assert rows[1]["promoted"] is False
+    assert rows[1]["withheld_reason"].startswith("build_exception: RuntimeError")
+    assert rows[1]["freshness_status"] is None  # no gate could be evaluated
+
+
+def test_publish_withholds_on_stale_freshness(tmp_path, monkeypatch):
+    root, live, bars, calls = _full_registry_env(tmp_path, monkeypatch)
+    anchor = dt.date.fromisoformat(bars[-1][0])
+
+    r1 = gold_build.publish(root / "psx_serving", window_days=730, run_parity=False, now=anchor)
+    assert r1["outcome"] == "published"
+    good = (root / "psx_serving" / "psx_serving.duckdb").read_bytes()
+    calls.clear()
+
+    r2 = gold_build.publish(root / "psx_serving", window_days=730, run_parity=False,
+                             now=anchor + dt.timedelta(days=30))
+
+    assert r2["outcome"] == "withheld"
+    assert "freshness=STALE" in r2["reason"]
+    assert (root / "psx_serving" / "psx_serving.duckdb").read_bytes() == good  # last good Gold unchanged
+    assert calls, "ntfy alert should have fired"
+
+    rows = _publication_rows(root)
+    assert rows[-1]["promoted"] is False
+    assert rows[-1]["freshness_status"] == "STALE"
+
+
+def test_publish_withholds_on_incomplete_capture_coverage(tmp_path, monkeypatch):
+    root, live, bars, calls = _full_registry_env(tmp_path, monkeypatch)
+    anchor = dt.date.fromisoformat(bars[-1][0])
+
+    r1 = gold_build.publish(root / "psx_serving", window_days=730, run_parity=False, now=anchor)
+    assert r1["outcome"] == "published"
+    good = (root / "psx_serving" / "psx_serving.duckdb").read_bytes()
+
+    ingest_log = root / "prices_archive" / "_bronze_ingest_log.jsonl"
+    ingest_log.parent.mkdir(parents=True, exist_ok=True)
+    entry = {"action": "ingest", "source_date": bars[-1][0],
+             "capture_file": f"{bars[-1][0]}.parquet", "capture_coverage_status": "INCOMPLETE"}
+    with open(ingest_log, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+    calls.clear()
+
+    r2 = gold_build.publish(root / "psx_serving", window_days=730, run_parity=False, now=anchor)
+
+    assert r2["outcome"] == "withheld"
+    assert "completeness=PARTIAL" in r2["reason"]
+    assert (root / "psx_serving" / "psx_serving.duckdb").read_bytes() == good
+    assert calls
+
+    rows = _publication_rows(root)
+    assert rows[-1]["completeness_status"] == "PARTIAL"
+
+
+def test_publish_withholds_on_scoped_build_hook_coverage(tmp_path, monkeypatch):
+    root, live, bars, calls = _full_registry_env(tmp_path, monkeypatch)
+    anchor = dt.date.fromisoformat(bars[-1][0])
+
+    r1 = gold_build.publish(root / "psx_serving", window_days=730, run_parity=False, now=anchor)
+    assert r1["outcome"] == "published"
+    good = (root / "psx_serving" / "psx_serving.duckdb").read_bytes()
+    calls.clear()
+
+    r2 = gold_build.publish(root / "psx_serving", window_days=730, run_parity=False, now=anchor,
+                             screeners=["market_regime", "stock_signals", "sector_signals"])
+
+    assert r2["outcome"] == "withheld"
+    assert "hook_coverage=PARTIAL" in r2["reason"]
+    assert (root / "psx_serving" / "psx_serving.duckdb").read_bytes() == good
+    assert calls
+
+    rows = _publication_rows(root)
+    assert rows[-1]["hook_coverage_status"] == "PARTIAL"
+
+
+def test_coherence_status_flags_a_mismatched_table():
+    """Unit-level: coherence is checked against the staging DB's own table
+    contents, independent of the rest of the pipeline -- easiest to prove
+    directly rather than contriving a full pipeline run with one screener's
+    output deliberately lagging."""
+    import tempfile
+    import duckdb as ddb
+
+    with tempfile.TemporaryDirectory() as td:
+        db = Path(td) / "staging.duckdb"
+        con = ddb.connect(str(db))
+        con.execute("CREATE TABLE market_regime (date VARCHAR)")
+        con.execute("INSERT INTO market_regime VALUES ('2026-01-10')")
+        con.execute("CREATE TABLE stock_signals (date VARCHAR)")
+        con.execute("INSERT INTO stock_signals VALUES ('2026-01-10')")
+        con.execute("CREATE TABLE sector_signals (date VARCHAR)")
+        con.execute("INSERT INTO sector_signals VALUES ('2026-01-09')")  # one day behind
+        con.close()
+
+        active_all = {"market_regime": None, "stock_signals": None, "sector_signals": None}
+        status, detail = gold_build._coherence_status(db, "2026-01-10", active_all)
+        assert status == "INCOHERENT"
+        assert "sector_signals" in detail
+
+        # a build that never touched the lagging table can't be blamed for it
+        active_partial = {"market_regime": None, "stock_signals": None}
+        status2, _ = gold_build._coherence_status(db, "2026-01-10", active_partial)
+        assert status2 == "COHERENT"
+
+
+def test_build_still_unconditional_and_ungated(env):
+    """build() itself -- the pre-Phase-4 entry point every other test in this
+    file uses -- must stay completely unaffected by publish()'s existence: no
+    gate check, no current_publication row, unconditional promote even when
+    the fixture data is arbitrarily stale relative to wall-clock `today`."""
+    root, live, bars = env
+    res = gold_build.build(root / "psx_serving", window_days=730, run_parity=False,
+                            screeners=["market_regime"])
+    assert res["outcome"] == "built"
+    assert not gold_build._publication_db_path(gold_build.GoldStore(root / "psx_serving")).exists()

@@ -26,11 +26,14 @@ Design:  docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import duckdb
@@ -42,6 +45,11 @@ from archive.bronze_ingest import ARCHIVE_ROOT, PARQUET_OPTS, _now
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIVE_DB = REPO_ROOT / "psx_data.db"           # parity reference only, opened read-only
 DEFAULT_WINDOW_DAYS = 730  # ~2 trading years -- the Gold serving window
+
+# Phase 4 -- publication gate (docs/KIRAN_LOCAL_FIRST_MIGRATION.md Phase 4)
+FRESHNESS_MAX_STALE_DAYS = 4  # matches the old system's health_check.py 4-day floor
+NTFY_TOPIC = "kiran-psx-alerts-7g3k9qx2mp"  # reused from TR-18 / backup_to_b2.py / archive_checksum_check.py
+COHERENCE_GOLD_TABLES: tuple[str, ...] = ("market_regime", "stock_signals", "sector_signals")
 
 
 def _baseline_db() -> Path | None:
@@ -2151,12 +2159,16 @@ def write_consolidated_parity_report(store_root: Path, out_path: Path | None = N
 
 # --------------------------------------------------------------------- build
 
-def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
-          run_parity: bool = True, screeners: list[str] | None = None) -> dict:
-    import datetime as dt
-
+def _run_screeners_to_staging(store: GoldStore, window_days: int,
+                               screeners: list[str] | None) -> tuple[dict, str, str, dict]:
+    """Build every requested screener into a fresh staging DB. Returns
+    ``(active, window_from, bronze_max, built)``; the staging DB is left in
+    place at ``store.staging`` (never swapped) for the caller to inspect,
+    gate, or discard. On any screener exception the staging DB is removed
+    and the exception re-raised -- unchanged from ``build()``'s original
+    (pre-Phase-4) behaviour.
+    """
     active = {k: v for k, v in SCREENERS.items() if screeners is None or k in screeners}
-    store = GoldStore(store_root)
     store.root.mkdir(parents=True, exist_ok=True)
     store.parquet_dir.mkdir(parents=True, exist_ok=True)
     if store.staging.exists():
@@ -2181,7 +2193,15 @@ def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
         if store.staging.exists():
             store.staging.unlink()
         raise
+    return active, window_from, bmax, built
 
+
+def _finalize_promoted(store: GoldStore, active: dict, window_days: int, window_from: str,
+                        bmax: str, built: dict, run_parity: bool) -> dict:
+    """Swap the already-built staging DB into place, export deterministic
+    Parquet, run parity, and append the build-log entry. Shared by
+    ``build()`` (always promotes -- ad hoc/manual/test entry point) and
+    ``publish()`` (promotes only once the Phase 4 gates pass)."""
     # atomic swap
     if store.db.exists():
         store.db.unlink()
@@ -2227,6 +2247,322 @@ def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
             "rows": exported, "parity": {k: v.get("status") for k, v in parity.items()}}
 
 
+def build(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS,
+          run_parity: bool = True, screeners: list[str] | None = None) -> dict:
+    """Full replace, unconditional promote -- no publication gate. The
+    pre-Phase-4 behaviour, kept as the ad hoc/manual/test entry point. The
+    nightly gated path is ``publish()``."""
+    store = GoldStore(store_root)
+    active, window_from, bmax, built = _run_screeners_to_staging(store, window_days, screeners)
+    return _finalize_promoted(store, active, window_days, window_from, bmax, built, run_parity)
+
+
+# ------------------------------------------------------- Phase 4: publication gate
+#
+# The four gates that decide whether a build gets PROMOTED (atomically swapped
+# into psx_serving.duckdb) or WITHHELD (staging discarded, last-good Gold keeps
+# serving). Ports the old dual-pipeline system's freshness/completeness/hook-
+# coverage/coherence checks (data_health.py: decide_and_record_publication /
+# mandatory_hooks_completed_for_run / mandatory_tables_coherence) onto the
+# local-first signal sources: the Bronze ingest log's per-date capture
+# metadata, the Gold build's own screener-success record, and the just-built
+# (pre-swap) staging DB's own table contents. Unlike the old system, coherence
+# DOES gate promotion here (tracker §3: "any of the first four fails ->
+# withhold") -- the old system recorded it but never gated on it.
+
+
+def _freshness_status(bmax: str | None, now: dt.date) -> tuple[str, str]:
+    """VERIFIED iff the Bronze window anchor is within FRESHNESS_MAX_STALE_DAYS
+    of `now`. Fail-closed: no bmax, or bmax in the future (a clock/fixture
+    problem), is CANNOT_VERIFY, never a pass."""
+    if not bmax:
+        return "CANNOT_VERIFY", "no Bronze prices rows"
+    age = (now - dt.date.fromisoformat(bmax)).days
+    if age < 0:
+        return "CANNOT_VERIFY", f"bronze_max {bmax} is in the future relative to {now.isoformat()}"
+    if age <= FRESHNESS_MAX_STALE_DAYS:
+        return "VERIFIED", f"bronze_max {bmax}, {age}d old"
+    return "STALE", f"bronze_max {bmax}, {age}d old (> {FRESHNESS_MAX_STALE_DAYS}d floor)"
+
+
+def _completeness_status(store: GoldStore, bmax: str | None) -> tuple[str, str]:
+    """COMPLETE/PARTIAL from the Bronze ingest log's `capture_coverage_status`
+    for the bronze_max date; UNKNOWN (permissive -- does not block promotion)
+    if there is no log entry to check, matching the old system's deliberate
+    rule that a date with no coverage record yet must not retroactively fail
+    everything. PARTIAL is the only status that blocks."""
+    if not bmax:
+        return "UNKNOWN", "no bronze_max to look up"
+    log_path = store.bronze.parent / "_bronze_ingest_log.jsonl"
+    if not log_path.exists():
+        return "UNKNOWN", f"{log_path} not found"
+    match = None
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        e = json.loads(line)
+        if e.get("action") == "ingest" and e.get("source_date") == bmax:
+            match = e  # last matching entry wins if the log has duplicates
+    if match is None:
+        return "UNKNOWN", f"no ingest log entry for {bmax} (e.g. seeded from the frozen baseline)"
+    status = (match.get("capture_coverage_status") or "").upper()
+    if status == "COMPLETE":
+        return "COMPLETE", f"capture {match.get('capture_file')}"
+    if status == "INCOMPLETE":
+        return "PARTIAL", f"capture {match.get('capture_file')} reported INCOMPLETE"
+    return "UNKNOWN", f"capture_coverage_status={status!r} on {match.get('capture_file')}"
+
+
+def _hook_coverage_status(screeners_requested: list[str] | None, active: dict,
+                           built: dict) -> tuple[str, str]:
+    """COMPLETE iff this was a full-registry build (screeners=None) and every
+    registered screener actually produced a result. A scoped `--only` build
+    can never be COMPLETE -- the publication contract covers the whole
+    declared universe, not a subset (Q1)."""
+    if screeners_requested is not None:
+        return "PARTIAL", f"scoped build (--only {','.join(screeners_requested)}), not the full registry"
+    missing = sorted(set(SCREENERS) - set(built))
+    if missing:
+        return "PARTIAL", f"missing: {', '.join(missing)}"
+    return "COMPLETE", f"all {len(SCREENERS)} screeners built"
+
+
+def _coherence_status(staging_path: Path, bmax: str | None,
+                       active: dict, tables: tuple[str, ...] = COHERENCE_GOLD_TABLES
+                       ) -> tuple[str, str]:
+    """COHERENT iff every EVERY_SESSION Gold table present in this build
+    carries data through bronze_max. UNKNOWN (fail-closed, still blocks
+    promotion -- unlike completeness) if none of the checkable tables were
+    built or one can't be read; INCOHERENT if any disagrees."""
+    if not bmax:
+        return "UNKNOWN", "no bronze_max to compare against"
+    checkable = [t for t in tables if t in active]
+    if not checkable:
+        return "UNKNOWN", "none of the EVERY_SESSION tables were in this build"
+    con = duckdb.connect(str(staging_path), read_only=True)
+    try:
+        have = {r[0] for r in con.execute("SELECT table_name FROM information_schema.tables").fetchall()}
+        mismatched, unreadable = [], []
+        for t in checkable:
+            if t not in have:
+                unreadable.append(t)
+                continue
+            tmax = con.execute(f"SELECT max(date) FROM {t}").fetchone()[0]
+            if tmax != bmax:
+                mismatched.append(f"{t}={tmax}")
+        if unreadable:
+            return "UNKNOWN", "unreadable: " + ", ".join(unreadable)
+        if mismatched:
+            return "INCOHERENT", f"expected {bmax}; mismatched: " + ", ".join(mismatched)
+        return "COHERENT", f"{', '.join(checkable)} all at {bmax}"
+    finally:
+        con.close()
+
+
+def evaluate_gates(store: GoldStore, window_from: str, bmax: str, built: dict, active: dict,
+                    screeners_requested: list[str] | None, now: dt.date | None = None) -> dict:
+    """Run the four publication gates against an already-built (pre-swap)
+    staging DB and return the promote/withhold decision plus per-gate detail
+    (the lineage row's `gate_detail`)."""
+    now = now or dt.date.today()
+
+    freshness_status, freshness_detail = _freshness_status(bmax, now)
+    completeness_status, completeness_detail = _completeness_status(store, bmax)
+    hook_coverage_status, hook_coverage_detail = _hook_coverage_status(screeners_requested, active, built)
+    coherence_status, coherence_detail = _coherence_status(store.staging, bmax, active)
+
+    reasons = []
+    if freshness_status != "VERIFIED":
+        reasons.append(f"freshness={freshness_status}")
+    if completeness_status == "PARTIAL":
+        reasons.append(f"completeness={completeness_status}")
+    if hook_coverage_status != "COMPLETE":
+        reasons.append(f"hook_coverage={hook_coverage_status}")
+    if coherence_status != "COHERENT":
+        reasons.append(f"coherence={coherence_status}")
+
+    return {
+        "promoted": not reasons,
+        "withheld_reason": "; ".join(reasons) if reasons else None,
+        "freshness": {"status": freshness_status, "detail": freshness_detail},
+        "completeness": {"status": completeness_status, "detail": completeness_detail},
+        "hook_coverage": {"status": hook_coverage_status, "detail": hook_coverage_detail},
+        "coherence": {"status": coherence_status, "detail": coherence_detail},
+    }
+
+
+# --------------------------------------------------- publication lineage (Q2)
+
+_PUBLICATION_DDL = """
+CREATE SEQUENCE IF NOT EXISTS current_publication_id_seq START 1;
+CREATE TABLE IF NOT EXISTS current_publication (
+    id                    BIGINT DEFAULT nextval('current_publication_id_seq'),
+    run_id                TEXT,
+    promoted_at           TIMESTAMP,
+    code_version          TEXT,
+    bronze_max            TEXT,
+    window_from           TEXT,
+    silver_ts             TEXT,
+    ca_provenance         TEXT,
+    freshness_status      TEXT,
+    completeness_status   TEXT,
+    hook_coverage_status  TEXT,
+    coherence_status      TEXT,
+    gate_detail           TEXT,
+    promoted              BOOLEAN,
+    withheld_reason       TEXT
+)
+"""
+
+
+def _publication_db_path(store: GoldStore) -> Path:
+    """Deliberately its OWN file, never touched by the psx_serving.duckdb
+    atomic swap -- an append-only lineage history must survive every Gold
+    rebuild, including every withheld one that never produces a promoted
+    psx_serving.duckdb at all."""
+    return store.root / "current_publication.duckdb"
+
+
+def _silver_provenance(store: GoldStore) -> dict:
+    """The last `silver_build` log entry -- its timestamp + `ca_source` stand
+    in for Q2's `silver_snapshot_sha` / `ca_provenance` (silver_build.py
+    already records its own bronze_range/ca_events per run; this just points
+    at that record rather than re-hashing the whole Parquet tree here)."""
+    log_path = store.silver.parent / "_silver_build_log.jsonl"
+    if not log_path.exists():
+        return {"ts": None, "ca_source": None}
+    last = None
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            last = json.loads(line)
+    if not last:
+        return {"ts": None, "ca_source": None}
+    return {"ts": last.get("ts"), "ca_source": last.get("ca_source")}
+
+
+def _git_code_version() -> str | None:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT,
+            stderr=subprocess.DEVNULL, timeout=5)
+        return out.decode().strip() or None
+    except Exception:
+        return None
+
+
+def _record_publication(store: GoldStore, run_id: str, promoted: bool, gates: dict | None,
+                         bmax: str | None, window_from: str | None,
+                         code_version: str | None, withheld_reason: str | None = None) -> None:
+    """Append one lineage row -- promoted AND withheld attempts both get one,
+    an honest queryable record of every decision (Q2). Never overwrites a
+    prior row; a query for the latest `promoted = true` row always returns
+    the last genuinely good state."""
+    silver = _silver_provenance(store)
+    row = dict(
+        run_id=run_id, code_version=code_version, bronze_max=bmax, window_from=window_from,
+        silver_ts=silver["ts"], ca_provenance=silver["ca_source"],
+        freshness_status=(gates or {}).get("freshness", {}).get("status"),
+        completeness_status=(gates or {}).get("completeness", {}).get("status"),
+        hook_coverage_status=(gates or {}).get("hook_coverage", {}).get("status"),
+        coherence_status=(gates or {}).get("coherence", {}).get("status"),
+        gate_detail=json.dumps(gates, default=str) if gates else None,
+        promoted=promoted,
+        withheld_reason=withheld_reason if withheld_reason is not None else (gates or {}).get("withheld_reason"),
+    )
+    store.root.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(str(_publication_db_path(store)))
+    try:
+        con.execute(_PUBLICATION_DDL)
+        cols = ", ".join(row)
+        placeholders = ", ".join(["?"] * len(row))
+        con.execute(
+            f"INSERT INTO current_publication (promoted_at, {cols}) VALUES (now(), {placeholders})",
+            list(row.values()))
+    finally:
+        con.close()
+
+
+def latest_promoted_publication(store_root: Path) -> dict | None:
+    """The most recent promoted row, or None -- the local-first analogue of
+    the old data_health.latest_promoted_publication()."""
+    db = _publication_db_path(GoldStore(store_root))
+    if not db.exists():
+        return None
+    con = duckdb.connect(str(db), read_only=True)
+    try:
+        cols = [r[1] for r in con.execute("PRAGMA table_info(current_publication)").fetchall()]
+        row = con.execute(
+            "SELECT * FROM current_publication WHERE promoted ORDER BY promoted_at DESC LIMIT 1"
+        ).fetchone()
+        return dict(zip(cols, row)) if row else None
+    finally:
+        con.close()
+
+
+def _post_ntfy(title: str, body: str) -> None:
+    import urllib.request
+    req = urllib.request.Request(
+        f"https://ntfy.sh/{NTFY_TOPIC}", data=body.encode("utf-8"),
+        headers={"Title": title, "Priority": "high", "Tags": "warning"},
+        method="POST")
+    urllib.request.urlopen(req, timeout=10)
+
+
+def _alert_withheld(run_id: str, reason: str) -> None:
+    try:
+        _post_ntfy("Kiran Gold publication withheld", f"run {run_id}: {reason}")
+    except Exception as exc:  # noqa: BLE001 -- alert failure must not mask the withhold
+        print(f"ntfy alert failed (not fatal): {exc}")
+
+
+def publish(store_root: Path, window_days: int = DEFAULT_WINDOW_DAYS, run_parity: bool = True,
+            screeners: list[str] | None = None, now: dt.date | None = None,
+            code_version: str | None = None) -> dict:
+    """The Phase 4 gated path: build into staging, evaluate the four
+    publication gates BEFORE swapping, and only promote (atomic swap + export
+    + parity, via `_finalize_promoted`) if all four pass. Every attempt --
+    promoted or withheld -- gets one append-only `current_publication` row.
+
+    A withheld run leaves the previously-promoted `psx_serving.duckdb`
+    untouched (last-good Gold keeps serving) and fires an ntfy alert naming
+    the failed gate(s) -- the signal a front-end banner will read once built
+    (front end is a separate, not-yet-started track).
+
+    A mid-build exception (a screener itself failing, before the staging DB
+    reaches a checkable state) is recorded as a withhold with no gate
+    results and re-raised, so a scheduler still observes the run as failed.
+    """
+    store = GoldStore(store_root)
+    run_id = uuid.uuid4().hex
+    code_version = code_version if code_version is not None else _git_code_version()
+
+    try:
+        active, window_from, bmax, built = _run_screeners_to_staging(store, window_days, screeners)
+    except Exception as exc:
+        reason = f"build_exception: {type(exc).__name__}: {exc}"
+        _record_publication(store, run_id, promoted=False, gates=None, bmax=None, window_from=None,
+                             code_version=code_version, withheld_reason=reason)
+        _alert_withheld(run_id, reason)
+        raise
+
+    gates = evaluate_gates(store, window_from, bmax, built, active, screeners, now=now)
+
+    if gates["promoted"]:
+        result = _finalize_promoted(store, active, window_days, window_from, bmax, built, run_parity)
+        result["outcome"] = "published"
+    else:
+        if store.staging.exists():
+            store.staging.unlink()
+        result = {"outcome": "withheld", "reason": gates["withheld_reason"],
+                   "window_from": window_from, "screeners": list(active)}
+        _alert_withheld(run_id, gates["withheld_reason"])
+
+    _record_publication(store, run_id, gates["promoted"], gates, bmax, window_from, code_version)
+    result["run_id"] = run_id
+    result["gates"] = gates
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Gold build -- rebuild the DuckDB serving store from Silver.")
     ap.add_argument("--store-root", default=str(ARCHIVE_ROOT / "psx_serving"))
@@ -2238,12 +2574,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-parity", action="store_true")
     ap.add_argument("--only", help="comma-separated screener table names to build "
                     "(default: all -- %s)" % ", ".join(SCREENERS))
+    ap.add_argument("--publish", action="store_true",
+                    help="Phase 4 gated path -- evaluate freshness/completeness/"
+                         "hook-coverage/coherence before swapping; withhold + alert "
+                         "instead of promoting if any fails. Default (omitted): the "
+                         "pre-Phase-4 unconditional build+swap, no publication row.")
     args = ap.parse_args(argv)
     if args.ss_lookback_days is not None:
         globals()["_SS_LOOKBACK_CAL_DAYS"] = args.ss_lookback_days
-    result = build(Path(args.store_root), window_days=args.window_days,
-                   run_parity=not args.no_parity,
-                   screeners=args.only.split(",") if args.only else None)
+    screeners = args.only.split(",") if args.only else None
+    if args.publish:
+        result = publish(Path(args.store_root), window_days=args.window_days,
+                          run_parity=not args.no_parity, screeners=screeners)
+    else:
+        result = build(Path(args.store_root), window_days=args.window_days,
+                       run_parity=not args.no_parity, screeners=screeners)
     print(json.dumps(result, indent=2, sort_keys=True, default=str))
     return 0
 
