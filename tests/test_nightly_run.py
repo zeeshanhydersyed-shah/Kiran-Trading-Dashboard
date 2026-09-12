@@ -1,12 +1,15 @@
-"""Phase 5, Task 5a -- nightly orchestration (archive/nightly_run.py).
+"""Phase 5, Tasks 5a + 5b wiring -- nightly orchestration (archive/nightly_run.py).
 
 Contract (docs/KIRAN_LOCAL_FIRST_MIGRATION.md Phase 5): one entry point chains
 Bronze ingest -> Silver build -> Gold publish for Task Scheduler, guarded so a
 wake-catch-up run and a later on-time trigger never both run the pipeline for
-the same calendar date (D3). The three stages themselves are tested in
-test_bronze_ingest.py / test_silver_build.py / test_gold_build.py -- these
+the same calendar date (D3), then runs shadow_diff.run_once() best-effort so
+5c's real streak accumulates automatically. The three build stages and
+shadow_diff's own comparison logic are tested in test_bronze_ingest.py /
+test_silver_build.py / test_gold_build.py / test_shadow_diff.py -- these
 tests exercise nightly_run's own logic (the guard, error handling, state/log
-writes, alerting) with the stages stubbed out.
+writes, alerting, and the shadow-diff-is-best-effort wiring) with all stages
+stubbed out.
 """
 from __future__ import annotations
 
@@ -21,12 +24,15 @@ from archive import nightly_run
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     root = tmp_path / "KIRAN_ARCHIVE"
-    calls = {"seed": 0, "ingest": 0, "silver": 0, "gold": 0, "hc": [], "ntfy": []}
+    calls = {"seed": 0, "ingest": 0, "silver": 0, "gold": 0, "shadow_diff": 0, "hc": [], "ntfy": []}
 
     monkeypatch.setattr(nightly_run.bronze_ingest, "seed", lambda store: (calls.__setitem__("seed", calls["seed"] + 1) or {"seeded": False}))
     monkeypatch.setattr(nightly_run.bronze_ingest, "ingest", lambda store, captures_dir, **kw: (calls.__setitem__("ingest", calls["ingest"] + 1) or {"appended": 0}))
     monkeypatch.setattr(nightly_run.silver_build, "build", lambda store_root: (calls.__setitem__("silver", calls["silver"] + 1) or {"rows": 0}))
     monkeypatch.setattr(nightly_run.gold_build, "publish", lambda store_root: (calls.__setitem__("gold", calls["gold"] + 1) or {"outcome": "published"}))
+    monkeypatch.setattr(nightly_run.shadow_diff, "run_once", lambda store_root, archive_root: (
+        calls.__setitem__("shadow_diff", calls["shadow_diff"] + 1)
+        or {"verdict": "CLEAN", "session_date": "2026-09-12", "clean_streak": 1}))
     monkeypatch.setattr(nightly_run, "_hc_ping", lambda suffix="": calls["hc"].append(suffix))
     monkeypatch.setattr(nightly_run, "_ntfy_alert", lambda title, body: calls["ntfy"].append((title, body)))
     return root, calls
@@ -38,6 +44,8 @@ def test_first_run_today_executes_all_three_stages_and_records_ok(env):
 
     assert result["outcome"] == "ok"
     assert calls["seed"] == 1 and calls["ingest"] == 1 and calls["silver"] == 1 and calls["gold"] == 1
+    assert calls["shadow_diff"] == 1
+    assert result["shadow_diff"]["verdict"] == "CLEAN"
     assert calls["hc"] == ["/start", ""]
     assert calls["ntfy"] == []
 
@@ -45,10 +53,76 @@ def test_first_run_today_executes_all_three_stages_and_records_ok(env):
     assert state["status"] == "ok"
     assert state["date"] == dt.date.today().isoformat()
     assert state["run_id"] == result["run_id"]
+    assert state["shadow_diff_verdict"] == "CLEAN"
 
     log_lines = nightly_run._log_path(root).read_text().splitlines()
     assert len(log_lines) == 1
-    assert json.loads(log_lines[0])["outcome"] == "ok"
+    logged = json.loads(log_lines[0])
+    assert logged["outcome"] == "ok"
+    assert logged["shadow_diff_verdict"] == "CLEAN"
+
+
+def test_shadow_diff_receives_the_gold_store_root_and_archive_root(env, monkeypatch):
+    root, calls = env
+    received = {}
+
+    def _capture(store_root, archive_root):
+        received["store_root"] = store_root
+        received["archive_root"] = archive_root
+        return {"verdict": "CLEAN"}
+    monkeypatch.setattr(nightly_run.shadow_diff, "run_once", _capture)
+
+    nightly_run.run_once(root)
+
+    assert received["store_root"] == root / "psx_serving"
+    assert received["archive_root"] == root
+
+
+def test_shadow_diff_failure_does_not_fail_the_nightly_run(env, monkeypatch):
+    root, calls = env
+    monkeypatch.setattr(nightly_run.shadow_diff, "run_once",
+                         lambda store_root, archive_root: (_ for _ in ()).throw(RuntimeError("supabase unreachable")))
+
+    result = nightly_run.run_once(root)
+
+    assert result["outcome"] == "ok"  # the core pipeline succeeded
+    assert "supabase unreachable" in result["shadow_diff_error"]
+    assert "shadow_diff" not in result  # no verdict -- the step itself blew up
+    # the local pipeline's own success ping still fires -- shadow-diff is a
+    # different reliability domain and must not mask that Gold built fine
+    assert calls["hc"] == ["/start", ""]
+    # but a distinct alert fires, so the failure isn't silent
+    assert len(calls["ntfy"]) == 1
+    assert "shadow-diff" in calls["ntfy"][0][0].lower()
+    assert "supabase unreachable" in calls["ntfy"][0][1]
+
+
+def test_shadow_diff_failure_recorded_in_state_and_log(env, monkeypatch):
+    root, calls = env
+    monkeypatch.setattr(nightly_run.shadow_diff, "run_once",
+                         lambda store_root, archive_root: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    nightly_run.run_once(root)
+
+    state = json.loads(nightly_run._state_path(root).read_text())
+    assert state["status"] == "ok"  # still an overall-ok night
+    assert "boom" in state["shadow_diff_error"]
+    assert state.get("shadow_diff_verdict") is None
+
+    logged = json.loads(nightly_run._log_path(root).read_text().splitlines()[-1])
+    assert logged["outcome"] == "ok"
+    assert "boom" in logged["shadow_diff_error"]
+
+
+def test_shadow_diff_not_called_when_a_build_stage_fails(env, monkeypatch):
+    root, calls = env
+    monkeypatch.setattr(nightly_run.silver_build, "build",
+                         lambda store_root: (_ for _ in ()).throw(RuntimeError("silver blew up")))
+
+    with pytest.raises(RuntimeError):
+        nightly_run.run_once(root)
+
+    assert calls["shadow_diff"] == 0
 
 
 def test_second_run_same_day_is_a_noop(env):

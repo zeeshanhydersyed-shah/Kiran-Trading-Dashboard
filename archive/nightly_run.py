@@ -1,11 +1,22 @@
 r"""
-Kiran Local-First Migration -- Phase 5, Task 5a: nightly orchestration.
+Kiran Local-First Migration -- Phase 5, Tasks 5a + 5b wiring: nightly orchestration.
 
 Chains the three Medallion stages Task Scheduler needs to fire once a night --
 Bronze ingest -> Silver build -> Gold publish (the Phase 4 gated path, not the
 unconditional ``build()``) -- so "the nightly local pipeline writes Gold
 alongside the live Supabase pipeline" (Phase 5 checklist item 1) is one
-schedulable entry point rather than three manual commands.
+schedulable entry point rather than three manual commands. After a successful
+build, it also runs ``archive.shadow_diff.run_once()`` (Task 5b) so the
+CLEAN/DISAGREE/INCOMPLETE verdict 5c's real streak needs actually accumulates
+automatically, one row per real night, instead of requiring a separate manual
+invocation every day. shadow-diff runs **best-effort**: it compares against
+Supabase over the network, a different reliability domain from the local
+build, so a shadow-diff failure (Supabase unreachable, a bug in the
+comparator) is recorded and alerted on its own, distinct topic-line, but does
+NOT mark the whole nightly run as failed -- the Gold build already succeeded,
+which is the thing the stage-failure alert / non-zero exit code protect. A
+genuine DISAGREE verdict is not a failure here either; ``shadow_diff`` already
+alerts on that itself.
 
     python -m archive.nightly_run [--force] [--archive-root DIR]
 
@@ -65,7 +76,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from archive import bronze_ingest, gold_build, silver_build
+from archive import bronze_ingest, gold_build, shadow_diff, silver_build
 from archive.bronze_ingest import ARCHIVE_ROOT
 
 NTFY_TOPIC = "kiran-psx-alerts-7g3k9qx2mp"  # reused from TR-18 / backup_to_b2.py / archive_checksum_check.py
@@ -199,12 +210,36 @@ def run_once(archive_root: Path = ARCHIVE_ROOT, *, force: bool = False,
         "silver": silver_result,
         "gold": gold_result,
     }
+
+    # Shadow-diff (5b) runs best-effort, outside the main try/except above --
+    # it compares the just-(maybe-)promoted Gold against live Supabase, a
+    # different reliability domain (an external DB over the network) from the
+    # local Bronze/Silver/Gold build. A shadow-diff failure (Supabase
+    # unreachable, a bug in the comparator) must NOT be reported as "the
+    # nightly pipeline failed" -- the Gold build itself already succeeded,
+    # which is the thing the state file / stage-failure alert / non-zero
+    # exit code exist to protect. A genuine DISAGREE verdict is not an
+    # exception here either -- shadow_diff.run_once() already fires its own
+    # ntfy alert for that; this is only about shadow_diff itself blowing up.
+    try:
+        shadow_result = shadow_diff.run_once(gold_store_root, archive_root)
+        result["shadow_diff"] = shadow_result
+    except (Exception, SystemExit) as exc:
+        detail = "".join(traceback.format_exception_only(type(exc), exc)).strip()
+        result["shadow_diff_error"] = detail
+        _ntfy_alert("Kiran shadow-diff step failed (Gold build itself succeeded)",
+                    f"run {run_id} ({today.isoformat()}): {detail}")
+
     _write_state(archive_root, {"date": today.isoformat(), "run_id": run_id,
                                  "status": "ok", "started_at": started_at,
                                  "finished_at": _now_utc(),
-                                 "gold_outcome": gold_result.get("outcome")})
+                                 "gold_outcome": gold_result.get("outcome"),
+                                 "shadow_diff_verdict": result.get("shadow_diff", {}).get("verdict"),
+                                 "shadow_diff_error": result.get("shadow_diff_error")})
     _log_append(archive_root, {"ts": _now_utc(), "run_id": run_id, "outcome": "ok",
-                                "date": today.isoformat(), "gold_outcome": gold_result.get("outcome")})
+                                "date": today.isoformat(), "gold_outcome": gold_result.get("outcome"),
+                                "shadow_diff_verdict": result.get("shadow_diff", {}).get("verdict"),
+                                "shadow_diff_error": result.get("shadow_diff_error")})
     _hc_ping()
     return result
 
