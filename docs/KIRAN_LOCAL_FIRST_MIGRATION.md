@@ -134,6 +134,9 @@ DR loops attach **read-only** to Bronze/Silver, exactly as today.
   liquid names, 2021+ total return) is a **named Silver-layer input** — research reads it now
   via `ca_v2_reader.load_v2_prices`; the dashboard reads it only after the Q6 gate (a separate
   sign-off — TR-19 graded, shadow comparison, coverage decision, residual disposition).
+  **UPDATE 2026-09-12 (see running log): a better substrate, `full_prices_v2.sqlite` (808
+  symbols, full history back to 2005), now exists and should be the candidate evaluated when
+  this gate is next revisited — not yet wired in, nothing here changed.**
 - **Gold** — the 2-year serving window, precomputed signals and grades. Disposable — a bad run
   rebuilds it from Silver in minutes.
 
@@ -346,6 +349,45 @@ illiquid names.
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-12 — CA v2 substrate UPGRADED (external, CA pipeline project) — a better source now exists, not yet wired in
+
+**No code in this repo/migration was touched by this entry — this is a heads-up for whichever
+session next reaches the CA-integration decision (the Q5/Q6 gate, §4 above, Silver's
+`ca_v2_reader` flag).** The Corporate-Action Pipeline Rebuild project
+(`ZH_Research_PSX/trading_edge_program/ca_pipeline_kse100_20260907/`) built and verified a
+**materially better CA substrate** on 2026-09-11→12, superseding the `expanded_prices_v2.sqlite`
+(141-liquid-name, 2021+) source this migration's `silver_build.py` currently references (§3
+above, gated off by default):
+
+- **New artifact:** `full_prices_v2.sqlite` — **808 equity symbols** (the full structurally-
+  ordinary universe, not just the 141 liquid names), **deep horizon back to 2005-01-01** (not
+  2021+) — i.e. it covers this migration's own Bronze/Silver date range in full, no partial
+  window.
+- **686 of 808 symbols (85%) fully resolved** with no flagged residual; 122 carry an
+  `UNRESOLVED_SHARE_COUNT_EVENT` flag (a real right issue with no subscription price found on the
+  source page — left flagged and unadjusted, same conservative convention `apply_price_
+  adjustments.py`/this migration's Silver build already use for unresolved events).
+- Verified independently, not just built: cross-checked a sample against the official PSX data
+  portal (`dps.psx.com.pk`), and a turnover-invariance check (`close_v2 × volume_v2` should equal
+  `close × volume` around any share-count event) caught and led to fixing two real bugs along the
+  way (a duplicate-announcement double-apply, and a rights-TERP direction check) — full detail in
+  `CA_PIPELINE_PROGRAM.md` §13.
+- **Still purely a research artifact** — `psx_data.db` was never opened for write, exactly like
+  the existing `expanded_prices_v2.sqlite` substrate. No production system depends on it.
+
+**Owner decision 2026-09-12: hold this as-is; let the local-first migration pick it up when it
+reaches this decision naturally, rather than run a separate legacy production-write process
+against the current (soon-to-be-retired) architecture.** Concretely, that means: whenever this
+migration project next revisits the Silver `ca_v2_reader` flag / the Q6 dashboard-use gate (TR-19
+graded, shadow comparison, coverage decision, residual disposition — §4/§5's own criteria), it
+should evaluate `full_prices_v2.sqlite` as the candidate source instead of (or alongside)
+`expanded_prices_v2.sqlite` — full universe + full history is a strict superset of what the old
+substrate offered, at the cost of 122 flagged-residual symbols (vs the old build's own smaller
+residual set on its narrower scope). Read `CA_PIPELINE_PROGRAM.md` §13 in full before wiring
+anything in. Full path: `C:\Users\Lenovo\ZH_Research_PSX\trading_edge_program\
+ca_pipeline_kse100_20260907\full_prices_v2.sqlite` (+ `full_ledger.csv`, `full_audit_manifest.md`,
+`full_universe.json` alongside it).
 
 ### 2026-09-10 — Task 3.3b: `stock_signals` port done + a live-data finding
 `archive/gold_build.py` `build_stock_signals` + `tests/test_gold_build.py` (10 total, +4).
