@@ -6,6 +6,12 @@
       "runtimeExecutable": "streamlit",
       "runtimeArgs": ["run", "dashboard.py", "--server.headless", "true"],
       "port": 8501
+    },
+    {
+      "name": "kiran-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "web"],
+      "port": 8765
     }
   ]
 }

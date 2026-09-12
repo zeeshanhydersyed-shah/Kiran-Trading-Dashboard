@@ -121,7 +121,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 | 6 | Cutover | ⬜ NOT STARTED | — | Front end → Gold JSON; retire `daily_scraper.yml` / Supabase / Streamlit Cloud; delete the `_pg` path, `database_pg.py`, the stale `main.py` copies; snapshot + pin for the DR program |
 | 7 | Burn-in | ⬜ NOT STARTED | — | 2 weeks of daily local operation, watchdog live, backup + restore drill running |
 | 8 | Retire the write surface | ⬜ NOT STARTED | — | Final sweep for any script that can write outside the pipeline |
-| — | Front end (2 pages) | ⬜ NOT STARTED | — | Built in parallel from Phase 2 onward — Sector Grading + Explorer; see §5 (not started this session — Phase 2 was scoped to the capture path only) |
+| — | Front end (2 pages) | ✅ DONE | 2026-09-12 | Both pages built + rendering from real Gold JSON (`web/`, `archive/export_json.py`) — see §5 for detail and the important Sector Strength v1 caveat (today's Sector Grading fields are Rotation Radar's, soon to be retired by a separate spec/build track; understood as a working prototype, not a locked design) |
 | — | *Optional:* Q6 gate — v2 in the dashboard | ⬜ DEFERRED | — | Separate sign-off, post-cutover, not coupled to the migration |
 
 Status values: `⬜ NOT STARTED` · `🔵 IN PROGRESS` · `🟠 BLOCKED` · `✅ DONE`.
@@ -344,11 +344,55 @@ recent date):**
 - [ ] `MAINTENANCE_LOG.md` + Trust Register TR-12 updated
 
 ### Front end (parallel, from Phase 2)
-- [ ] Day-1 structure: `index.html` shell, `app.css` tokens, `main.js` router, `js/lib/*` (data, table, chart, format, dom), vendored libs
-- [ ] Sector Grading page (reads `sector_grades.json`)
-- [ ] Explorer page (reads `signals.json`; per-symbol `price_basis` flag visible)
-- [ ] Freshness banner wired to `meta.json` (VERIFIED / NOT VERIFIED)
-- [ ] Both pages render from real Gold JSON
+- [x] Day-1 structure — 2026-09-12, `web/` (`index.html` shell redirecting to Sector Grading,
+  `css/app.css` tokens using the dataviz skill's validated default palette, `js/lib/*`
+  data.js/format.js/theme.js/shell.js/chart.js, vendored Tabulator 6.3.0 + uPlot 1.6.31 under
+  `web/vendor/`). No build step, served by `python -m http.server` (`.claude/launch.json`
+  `kiran-web` config, port 8765).
+- [x] `archive/export_json.py` — the missing link 3.3f deliberately deferred (JSON export from
+  Gold). Writes `meta.json`/`sector_grades.json`/`signals.json` atomically (temp file +
+  `os.replace`, same discipline as Gold's own staging swap). 10 tests
+  (`tests/test_export_json.py`). Output directory (`web/data/`) is gitignored — generated every
+  pipeline run, not source.
+- [x] Sector Grading page (reads `sector_grades.json`) — 2026-09-12, a card grid (one per sector)
+  with a stage badge (color-coded via the dataviz skill's status palette: Stage 2
+  Advancing→good/green, Stage 3 Topping→warning/amber, Stage 4 Declining→critical/red, Stage 1
+  Basing→neutral/gray), composite score / RS rank / breadth, and a 60-session composite-score
+  sparkline (inline SVG, not a uPlot instance — simpler and crisper for ~24 tiny multiples than
+  instantiating uPlot per card; uPlot stays vendored for a future bigger chart). Stat strip +
+  stage filter chips + sort control.
+- [x] Explorer page (reads `signals.json`; per-symbol `price_basis` flag visible) — 2026-09-12, a
+  Tabulator grid (full universe, ~299 symbols on the validation date) with header-filterable
+  columns, search, quick filters (breakout / Stage-2 bull), colored day-change cells, and the
+  `price_basis` column (currently always `legacy` — reads whatever `ca_source` Silver actually
+  used, so it updates automatically if/when that ever changes, no front-end code change needed).
+- [x] Freshness banner wired to `meta.json` (VERIFIED / NOT VERIFIED) — 2026-09-12, a pill in the
+  shared top bar on both pages (green "Verified as of `<date>`" / red "NOT VERIFIED — `<reason>`")
+  plus a page-level banner that only renders when unverified.
+- [x] Both pages render from real Gold JSON — 2026-09-12, verified in the browser (screenshots,
+  light + dark mode, mobile width, console-clean) against the real `psx_serving.duckdb` produced
+  by the same-day nightly-pipeline validation run (299 symbols, 24 sectors).
+
+**Important caveat, 2026-09-12 (owner FYI mid-build):** the owner is retiring the Rotation Radar
+sector composite (`composite_score`/`rs_rank`, RS 50%/Breadth 30%/Volume 20%, unchanged since
+before this migration) in favor of a new **Sector Strength v1** methodology (Persistent Median
+Sector RS across 4 timeframes + a momentum/breadth-ratio/regime/FIPI-LIPI-display axis,
+deliberately NOT blended into one score) — spec'd in a separate "cowork" session, not this one,
+and explicitly scoped as **research/spec-only for now**: "I am NOT building the dashboard page
+yet... Do not modify any live code, dashboard tabs, or the existing Rotation Radar composite —
+that retirement and the new page are separate future work, done after the [migration] completes."
+**Nothing about that touches this migration or `sector_signals`'s live computation** — not done
+here, not in scope here. What it DOES mean for the Sector Grading page above: today's build reads
+today's real fields (`composite_score`, `rs_rank`, `breadth_score`) because that's what
+`sector_signals` actually computes right now, and this is understood as a **working prototype
+proving the Gold→JSON→static-page pipe end-to-end**, not a locked-in final design. The
+architecture (`export_json.py` reading whatever columns exist, the card grid rendering whatever
+fields it's given) doesn't depend on which specific formula computes "sector strength" — when
+Sector Strength v1 eventually replaces Rotation Radar in `sector_signals` (a separate future task,
+after this migration), the Sector Grading page needs a field-level refresh (Persistent Sector RS
+value+rank, breadth ratio N/M, momentum delta, regime label, FIPI/LIPI display-only) but not a
+pipeline rebuild. Flagging here so a future session doesn't mistake the current card design for a
+final spec.
 
 ---
 
@@ -436,6 +480,79 @@ illiquid names.
 
 ## 10. Running log (newest first)
 
+### 2026-09-12 — Front end (2 pages) DONE: Sector Grading + Explorer render from real Gold JSON
+
+On the owner's go ("Let's do Front End while the background task runs") — Phase 6 cutover-gate
+item 7. Built in parallel with Phase 5's own work, per the tracker's own "parallel, from Phase 2"
+note; does not touch or depend on Phase 5c's streak.
+
+**`archive/export_json.py`** — the missing piece 3.3f deliberately deferred ("no consumer code
+exists yet to validate a schema against"). Reads the promoted `psx_serving.duckdb` (read-only) +
+`current_publication.duckdb` (read-only) and writes three files atomically (temp file +
+`os.replace`, same discipline as Gold's own staging-swap): `meta.json` (freshness/verification,
+derived from the latest publication row's four gate statuses), `sector_grades.json` (one row per
+sector on the latest date + a 60-session `composite_score` history per sector for sparklines, via
+a `recent_dates` CTE rather than date arithmetic -- `sector_signals.date` is TEXT, DuckDB has no
+`VARCHAR - INTERVAL`), `signals.json` (one row per symbol, joined to `stock_metadata` for company
+name and a self-join on `prices_adjusted` with `LAG() OVER (PARTITION BY symbol ORDER BY date)`
+for the prior close / day change %). NaN -> `null` throughout (DuckDB/pandas NaN isn't valid
+JSON). 10 tests (`tests/test_export_json.py`).
+
+**`web/`** -- a static site, no build step, served by `python -m http.server` (design tracker §3),
+registered as a `kiran-web` launch config for the Browser pane. Design tokens in `css/app.css`
+pulled from the dataviz skill's validated default palette (categorical/status/sequential ramps +
+light+dark surfaces, both modes selected via `prefers-color-scheme` + a `data-theme` toggle
+override, same contract as an Artifact's theme rules even though this isn't one). Vendored
+Tabulator 6.3.0 + uPlot 1.6.31 under `web/vendor/` (downloaded, not CDN-linked -- "vendored" per
+the design decision, and consistent with local-first not depending on an external service to
+render). `js/lib/*` -- `data.js` (cache-busted fetch, no compute), `format.js`, `theme.js`,
+`shell.js` (wires the shared top-bar freshness pill + banner), `chart.js` (a hand-rolled inline-SVG
+sparkline -- simpler and crisper than a uPlot instance per card for ~24 tiny multiples; uPlot
+stays vendored for a future bigger chart, not used in v1).
+
+**Sector Grading** (`sector-grading.html` / `js/sector-grading.js`) -- a card grid, one per
+sector: a stage badge color-coded via the dataviz skill's status palette (Stage 2
+Advancing->good/green "buy zone", Stage 3 Topping->warning/amber "distribution", Stage 4
+Declining->critical/red "avoid", Stage 1 Basing->neutral/gray "not yet" -- matches the sector
+four-stage framework's own BUY/SELL/AVOID reading), composite score / RS rank / breadth, and the
+60-session sparkline. Stat strip (counts per stage), stage filter chips, a sort control. **Explorer**
+(`explorer.html` / `js/explorer.js`) -- a Tabulator grid, full universe (299 symbols on the
+validation date), header-filterable columns, a search box, two quick filters (breakout only /
+Stage-2 bull only), colored up/down day-change cells, and the `price_basis` column (§4 Q6's
+per-symbol CA-provenance field) -- reads whatever `ca_source` Silver actually used at build time
+(`legacy` right now, from `silver_build`'s own log), so it updates automatically without a
+front-end code change whenever that source ever changes.
+
+**Two real rendering bugs found and fixed by actually looking at it in the browser** (not by
+inspection -- exactly the "test UI changes in a browser before reporting complete" discipline):
+(1) Tabulator 6.3.0's own CSS lays out rows/cells as `display:inline-block` + `white-space:nowrap`
+inherited from a table-level ancestor -- fragile against page CSS touching either property in
+between; cells were stacking vertically instead of staying in one row. Fixed by forcing
+`.tabulator-row`/`.tabulator-cell` to explicit flexbox with `!important` in `app.css`, robust
+regardless of that inheritance chain. (2) `.tabulator .tabulator-header` background lost to
+Tabulator's own `#e6e6e6` rule at equal CSS specificity, decided by source order -- `app.css` was
+linked before `tabulator.min.css` in `explorer.html`'s `<head>`, so Tabulator's rule loaded (and
+won) second. Fixed by swapping the link order (vendor CSS first, theme overrides last) instead of
+reaching for more `!important`s. Also fixed a mobile-width regression caught in the same pass: a
+now-redundant `grid-template-columns: 1fr 1fr` media override was forcing 2-up sector cards
+narrower than their own `minmax(260px, 1fr)` base rule allows, causing horizontal overflow at
+375px -- removed (the base rule already collapses to 1 column with no override needed).
+
+**Verified in the browser, real data, both themes:** screenshots of both pages, light and dark
+mode, mobile width (375px, no horizontal overflow), console-clean, against the real
+`psx_serving.duckdb` from the same-day nightly-pipeline validation run.
+
+**Owner context, mid-build (see §5's front-end section for the full note):** Rotation Radar's
+sector composite (`composite_score`/`rs_rank`, the fields Sector Grading currently displays) is
+being retired in favor of a new Sector Strength v1 methodology, spec'd in a separate session and
+explicitly not to be built or wired into any live code yet. This build is understood as a working
+prototype of the Gold->JSON->static-page pipe, not a locked design -- when Sector Strength v1
+eventually replaces Rotation Radar in `sector_signals` (separate future work, after this
+migration), the page needs a field-level refresh, not a pipeline rebuild. `sector_signals`'s live
+computation was not touched here.
+
+`psx_data.db` untouched -- this task only reads the already-promoted Gold store and writes new
+files under `web/`. RESEARCH_LOG "Kiran Production Integrity Program" row + CSV synced.
 ### 2026-09-12 — Task Scheduler + shadow-diff wiring DONE: Phase 5 automation is live
 
 On the owner's go ("Create the healthchecks.io check and register Task Scheduler", then
