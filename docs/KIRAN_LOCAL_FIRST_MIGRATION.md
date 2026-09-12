@@ -444,6 +444,9 @@ files under `D:\KIRAN_ARCHIVE\`.
 
 RESEARCH_LOG "Kiran Production Integrity Program" row + CSV synced.
 
+PR: `phase5/nightly-orchestration` branch, squash-merged as PR #100, `origin/main` = `dd08d26`.
+All 3 CI checks green (clean install, unit tests, app-boot smoke); full local suite 499 passed.
+
 ### 2026-09-12 — Phase 4 DONE: publication gate (freshness/completeness/hook coverage/coherence)
 
 `archive/gold_build.py` gains a new `publish()` entry point alongside the existing `build()`
