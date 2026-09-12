@@ -757,26 +757,29 @@ def test_consolidated_parity_report_covers_every_active_screener(env):
 # ============================================================================
 
 def _full_registry_env(tmp_path, monkeypatch):
-    """Same combined universe as test_full_pipeline_idempotent_all_screeners
-    -- every one of the 8 screeners gets real (non-empty) rows, so a
-    full-registry `publish()` run is a genuine exercise of every gate, not an
-    idempotent-because-empty pass. Also monkeypatches `_post_ntfy` to a
-    recorder (`calls`) so no test ever makes a real network call."""
-    import leaders_scan as lsc
-
+    """A full-registry (screeners=None) universe for the publication-gate
+    tests. Deliberately the PLAIN, short `_bars(n=50)` fixture, not
+    `_jump_bars()`/`_write_recovery_symbol()` -- gate tests only need every
+    one of the 8 screeners to RUN without raising (hook_coverage/coherence
+    don't care whether boring_signals/recovery_signals/leaders_scan produce
+    real vs. zero rows, unlike 3.3d/e/f's parity-focused tests). A 50-day
+    fixture keeps a full-registry `publish()` call to ~20s instead of
+    several minutes -- `stock_signals`/`sector_signals`/`setup_log`'s
+    per-trading-date loops dominate runtime and scale with date count, not
+    symbol count, so this matters a lot for CI's 20-minute job budget.
+    Also monkeypatches `_post_ntfy` to a recorder (`calls`) so no test ever
+    makes a real network call."""
     root = tmp_path / "KIRAN_ARCHIVE"
     (root / "psx_serving").mkdir(parents=True)
     monkeypatch.setattr(bronze_ingest, "ARCHIVE_ROOT", root)
     monkeypatch.setattr(gold_build, "ARCHIVE_ROOT", root)
     live = tmp_path / "psx_data.db"
     monkeypatch.setattr(gold_build, "LIVE_DB", live)
-    monkeypatch.setattr(lsc, "MIN_PICK_SCORE", 1)
 
-    bars = _jump_bars()
+    bars = _bars(n=50)
     _write_index(root, bars)
     _write_prices_anchor(root, bars)
     _write_silver(root, bars)
-    _write_recovery_symbol(root, start="2025-01-01", n=450)
 
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(gold_build, "_post_ntfy", lambda title, body: calls.append((title, body)))
