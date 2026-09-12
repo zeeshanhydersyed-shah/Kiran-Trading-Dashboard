@@ -79,7 +79,7 @@ pass, otherwise withholds (staging discarded, last-good `psx_serving.duckdb` kee
 fires an ntfy alert. Every attempt gets one append-only `current_publication` lineage row (own
 DuckDB file, outside the swapped store, survives every rebuild). `build()` itself is untouched —
 unconditional promote, no gate, still the ad hoc/manual/test entry point every earlier test uses.
-**Phase 5 (shadow run) STARTED (2026-09-12), Tasks 5a + 5b DONE** — `archive/nightly_run.py`
+**Phase 5 (shadow run) STARTED (2026-09-12), Tasks 5a + 5b + 5d DONE** — `archive/nightly_run.py`
 chains Bronze ingest → Silver build → Gold `publish()` into one Task-Scheduler-safe entry point,
 guarded by a per-calendar-day lock (`_nightly_run_state.json`) so a wake-catch-up trigger and a
 later on-time trigger can't both run the pipeline for one date (D3); a local healthchecks.io
@@ -87,9 +87,13 @@ dead-man's-switch (start/success pings, silent no-op if unset) + ntfy-on-failure
 existing cloud TR-18 pattern. `archive/shadow_diff.py` diffs Gold against live Supabase
 (read-only) on the EVERY_SESSION tables and classifies each session CLEAN/DISAGREE/INCOMPLETE,
 streak-tracked in its own `shadow_diff.duckdb`; a real read-only run against live Supabase
-confirmed verdict CLEAN for 2026-09-09 (0 halting diffs). 42 tests across the two tasks. Not yet
-wired into Task Scheduler (owner console step) and no ≥10-session streak or forced-missed-run
-watchdog test yet — see the Phase 5 row below.
+confirmed verdict CLEAN for 2026-09-09 (0 halting diffs). A real acceptance test (throwaway
+healthchecks.io check, pinged once then deliberately never again) confirmed the watchdog
+mechanism itself fires correctly on a genuinely missed run — independently verified via both the
+healthchecks.io UI (up→down after period+grace) and a real ntfy alert landing on the shared
+topic; the throwaway check was deleted immediately after. 42 tests across 5a/5b. Not yet wired
+into Task Scheduler (owner console step, still the only thing blocking 5c) and no ≥10-session
+streak yet — see the Phase 5 row below.
 **The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
 still the live system and is untouched** — nothing in Phase 1-5 wrote to `psx_data.db`,
 Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…425b` unchanged).
@@ -101,7 +105,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 | 2 | Rework the scrape (GitHub Actions) | ✅ DONE | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, merged PR #85 (`b943ddf`). Reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata: Actions run ID, `code_version`, `scraper_sha256`, self-reported counts, TR-14 per-sector completeness) + refreshes `latest.parquet`. Two side-by-side checkouts — `main` (code) + `data-captures` (commit target). **Commits to the dedicated `data-captures` orphan branch, not `main`** (`main` is branch-protected; owner decision 2026-09-10). Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests, suite 449. **Proven live 2026-09-10:** run `34453459820` scraped PSX 2026-09-09 (489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626) and committed `data/incoming/2026-09-09.parquet` + `latest.parquet` (494 rows, 18,922 b, sha256 `e6115b80…5338` = commit message) as `kiran-scrape-capture[bot]` → `data-captures` `dd269cc`; independent `--single-branch` clone hash-matched. Run `34453569404` = clean `exists` no-op, no new commit. `daily_scraper.yml` byte-unchanged (last touched `a7c0ce6`, 9 days prior), still scheduled. Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
 | 3 | Build the Medallion transforms | ✅ DONE | 2026-09-11 | **3.1 Bronze ingest DONE** — `archive/bronze_ingest.py` + 6 tests; live store `prices_archive/bronze/` seeded from frozen `bronze/`, `2026-09-09` ingested; append-only / deduped / gap-report / SHA-256 lineage; re-run byte-identical. `archive_manifest.py` excludes the live trees (`verify` PASS). DuckDB confirmed on Py3.14 (`duckdb>=1.5`). **3.2 Silver build DONE** — `archive/silver_build.py` + 7 tests; DuckDB rebuild from Bronze → `silver/prices_adjusted/` (CA-adjust port of `apply_price_adjustments.py` + circuit flags), `silver/sectors/`, `silver/stock_metadata/` (upsert port of `build_stock_metadata.py`); `ca_v2_reader` wired behind `--ca-source v2`, default `legacy`; deterministic; `_silver_parity.json` vs frozen = exact rows, residual **DLL** (unrecoverable Data Health split) + 18 flag rows / 4 illiquid names. **D8 RESOLVED (owner, 2026-09-10): rebuild-pure** — residual = DR-program to-do, no code change. Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **3.3 Gold IN PROGRESS — full DuckDB port (owner). 3.3a DONE** (`archive/gold_build.py` + 6 tests: serving store `psx_serving.duckdb`, staging + atomic swap, deterministic Parquet export, `SCREENERS` registry; `regime` port reuses `regime.py`'s pure cores by import; parity CLEAN pre-first-gap). **3.3b DONE** — `stock_signals` port (reuses `stock_signals.py`'s loaders + `_process_trading_dates` verbatim by import; full universe, `KIRAN_SS_LOOKBACK_DAYS` default 1050 cal, ~208k rows, ~4 min/run; parity `clean` — `rs_score_20` + hard columns byte-exact vs live, ranks self-consistent; EMA-flag lookback residual on thin names reported not failed; surfaced + fixed a live regression — `stock_signals` has ranked `config.EXCLUDED_SECTORS` since 2026-08-03 because `_load_universe` never filtered them; Gold now drops them → ledger §118 + owner: migration-only fix, dashboard not in use). **3.3c DONE** — `sector_signals` port + four-stage `sector_stage` grades (reuses `_compute_and_write_sector_signals_for_date_sqlite` verbatim; one tiny dialect-neutral refactor to `sector_signals.py`; conformed universe + pure point-in-time `active_stocks_on_date`). Parity is **recompute-based** (`clean`): Gold's own Silver/Bronze inputs → scratch SQLite → same function re-run on SQLite (Gold ran DuckDB) over a 45-day window → every sector-cell matches. Live's *stored* `sector_signals` derived columns are stale (§118.6) so they can't be the reference. Live-side findings → `KIRAN_CLEANUP_AUDIT.md` §118.5/§118.6: pre-2026-06-19 legacy stage backfill, §118 Defect A excluded sectors, legacy universe omissions BML/FCL/WAVESAPP/SYM/IMAGE (Gold grades APPAREL, live doesn't). **3.3d DONE** — `boring_signals` + `leaders_scan`/`leaders_top_picks` ports (reuse `scan_boring_breakouts` / `update_open_signal_statuses` / `append_leaders_scan` / `save_top_picks` / `fill_leaders_forward_returns` verbatim by import, all now take an optional `conn`; new Bronze `prices` raw-price view; `boring_signals` scans from its own 2026-07-10 go-live floor). Parity **recompute-based** for both (`clean`): `boring_signals` full-window recompute, `leaders_scan`/`leaders_top_picks` 30-day-window recompute; a `leaders_top_picks` symbol swap explained by an exact `(final_score, vol_ratio_today)` tie in `save_top_picks()`'s own `ORDER BY` (no further tiebreak) is classified `tie_break_residual`, not a port bug. **3.3e DONE** — `recovery_signals` + `portfolio_signals` (reuse `signal_engine._scan_recovery_candidates` / `portfolio.compute_portfolio_candidates` verbatim by import, via an extract-method + parameter-injection refactor since neither original function is `conn`-based) + `setup_log` (reuses `backfill_setup_log._insert_setup_log_for_date` / `compute_forward_returns.main` verbatim, the latter via a conn-injection refactor). `trade_setups`/`processor.py` deliberately NOT ported — `processor.run_analysis()` hardcodes `support_setups = []` since 2026-07-23 (Support Reversal killed, -1.88% net full-history retest); its only automated writer is dead code, nothing live to port. `recovery_signals`/`portfolio_signals` compute the LATEST date only (not a window backfill) — the reused functions have no target-date parameter and live's own tables are a sparse per-run snapshot (23 as_of_dates over 3 months), not a dense daily series. Parity **recompute-based** for all three, `status: clean` on real production data. Found + fixed one new DuckDB portability gap: `executemany` with an empty parameter list raises on DuckDB but is a silent no-op on SQLite (`backfill_setup_log._insert_setup_log_for_date`, guarded with `if rows:`). **3.3f DONE** — full end-to-end idempotency test (`screeners=None`, the whole `SCREENERS` registry built twice, every table's Parquet export SHA-256-identical) + a consolidated signal-parity report auto-written every `run_parity=True` build (`_gold_parity_report.md`, one row per screener). Front-end JSON export explicitly DEFERRED (owner decision) to when the front-end pages are actually built — no consumer code exists yet to validate a schema against. First genuine full-registry run against live production data (default 730-day window, all 8 screeners together): 7/8 `status: clean` (`market_regime`'s `residual` is the one documented, expected post-gap-divergence exception); `stock_signals` flips from `residual` to `clean` at the real (not window-shortened) lookback depth. **Task 3.3 (3.3a–3.3f) and Phase 3 are now fully complete.** |
 | 4 | Publication contract + atomic swap | ✅ DONE | 2026-09-12 | Four gates (freshness/completeness/hook coverage/coherence) ported into `archive/gold_build.py`'s new `publish()` entry point; `current_publication` lineage table (own DuckDB file, survives every rebuild); staging-DB build + atomic swap now gated (only promotes if all four gates pass, else withholds + ntfy alert, last-good Gold keeps serving); forced-failure tests for a mid-build exception and each gate individually. `build()` (unconditional promote, no gate) is untouched — still the ad hoc/manual/test entry point. Nightly wiring (Task Scheduler) is Phase 5+, not done here. |
-| 5 | Shadow run | 🔵 IN PROGRESS | 2026-09-12 | Tasks 5a + 5b DONE — `archive/nightly_run.py` orchestrates Bronze→Silver→Gold `publish()` behind a same-day lock + local healthchecks.io/ntfy alerting (14 tests); `archive/shadow_diff.py` diffs Gold vs live Supabase on the EVERY_SESSION tables, CLEAN/DISAGREE/INCOMPLETE per session, streak-tracked (28 tests) — real read-only run confirmed CLEAN for 2026-09-09. **Not yet done:** Task Scheduler registration (owner console step — create the healthchecks.io check first), the real ≥10-clean-session streak (needs 5a actually scheduled + real elapsed nights), and the forced-missed-run watchdog test. |
+| 5 | Shadow run | 🔵 IN PROGRESS | 2026-09-12 | Tasks 5a + 5b + 5d DONE — `archive/nightly_run.py` orchestrates Bronze→Silver→Gold `publish()` behind a same-day lock + local healthchecks.io/ntfy alerting (14 tests); `archive/shadow_diff.py` diffs Gold vs live Supabase on the EVERY_SESSION tables, CLEAN/DISAGREE/INCOMPLETE per session, streak-tracked (28 tests) — real read-only run confirmed CLEAN for 2026-09-09; 5d's forced-missed-run acceptance test (a real throwaway healthchecks.io check, pinged once then deliberately not again) confirmed the watchdog fires correctly, verified independently via the healthchecks.io UI and a real ntfy alert, throwaway check deleted after. **Not yet done:** Task Scheduler registration + the permanent healthchecks.io check (both owner console steps) and the real ≥10-clean-session streak (needs those + real elapsed nights). |
 | 6 | Cutover | ⬜ NOT STARTED | — | Front end → Gold JSON; retire `daily_scraper.yml` / Supabase / Streamlit Cloud; delete the `_pg` path, `database_pg.py`, the stale `main.py` copies; snapshot + pin for the DR program |
 | 7 | Burn-in | ⬜ NOT STARTED | — | 2 weeks of daily local operation, watchdog live, backup + restore drill running |
 | 8 | Retire the write surface | ⬜ NOT STARTED | — | Final sweep for any script that can write outside the pipeline |
@@ -282,10 +286,27 @@ recent date):**
 - [ ] **5c** — ≥10 consecutive clean trading sessions (diffs = 0 or fully explained) — needs 5a
   actually scheduled (Task Scheduler + healthchecks.io, still an owner step) so real nightly runs
   accumulate; can't be simulated. Not started.
-- [ ] **5d** — Watchdog fires on a forced missed run (test) — an acceptance test against the real
-  healthchecks.io check, same method as the cloud TR-18 acceptance test (audit ledger §100.5-6:
-  a throwaway short-grace check, independently polling the ntfy topic). Needs 5a's Task Scheduler
-  registration + the healthchecks.io check to exist first.
+- [x] **5d** — Watchdog fires on a forced missed run (test) — 2026-09-12, acceptance test against
+  a real healthchecks.io check, same method as the cloud TR-18 acceptance test (audit ledger
+  §100.5-6: a throwaway short-grace check, independently polling the ntfy topic). **Turns out this
+  did NOT need 5a's Task Scheduler registration or a permanent check to exist first** — the
+  throwaway-check method is self-contained, same as the original cloud acceptance test. Created a
+  throwaway check "Kiran Nightly Pipeline -- Phase 5 acceptance test (delete after)" (2-minute
+  period / 1-minute grace, `test` tag, both email+ntfy integrations auto-assigned) via the
+  browser, in the same healthchecks.io project the real cloud `Kiran Daily Scraper` check already
+  lives in. Pinged it once (17:47 PKT, new→up), deliberately never pinged again -- simulating a
+  fully missed run. **Result, independently confirmed two ways:** (1) the healthchecks.io UI
+  itself transitioned `up → down` at 17:50 PKT (exactly period+grace = 3 min later), page title
+  "DOWN"; (2) an ntfy alert landed on the shared `kiran-psx-alerts-7g3k9qx2mp` topic at the same
+  moment -- `"Kiran Nightly Pipeline -- Phase 5 acceptance test (delete after) is DOWN" / "Reason:
+  success signal did not arrive on time, grace time passed."`. Throwaway check deleted immediately
+  after (Danger Zone → Remove, confirmed gone from the checks list). **What this proves:** the
+  alerting *mechanism* (healthchecks.io's independent external clock + its ntfy integration) works
+  correctly for a genuinely missed run -- the exact failure mode nothing inside the pipeline can
+  self-detect (TR-18's whole reason for existing). **What it does NOT prove / still open:** the
+  *permanent* nightly check (pointed at by `KIRAN_NIGHTLY_HC_URL`) and the actual `schtasks
+  /Create` registration from 5a -- both still owner console steps, not done here. No code changed;
+  this was a pure infrastructure acceptance test.
 
 ### Phase 6 — Cutover
 - [ ] Cutover gate (§6) fully passed and signed off by the owner
@@ -396,6 +417,63 @@ illiquid names.
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-12 — Task 5d DONE: forced-missed-run watchdog acceptance test
+
+**Reordered ahead of 5c on the owner's go** ("Start Task 5d") — turned out not to need what the
+checklist assumed. The tracker (written a few hours earlier, same day) said 5d "needs 5a's Task
+Scheduler registration + the healthchecks.io check to exist first." That's wrong for the
+*acceptance test itself* — re-reading the original cloud TR-18 acceptance test (audit ledger
+§100.5-6) more carefully: it never touched the permanent production check either. It created its
+own **throwaway** check ("TR-18 Acceptance Test (delete after)", 2-minute period / 1-minute
+grace) specifically so the test would resolve in ~3 minutes instead of waiting on the real
+90-minute grace, exercised the mechanism against that, then deleted it. The permanent nightly
+check existing is what a *real* nightly run needs (5a) — it has nothing to do with proving the
+*alerting mechanism itself* works for a missed run. Same method applies here unchanged.
+
+**Method, via the browser** (already-authenticated session, `zeeshanhydersyed@gmail.com`, the
+same healthchecks.io project `kiran production` the real `Kiran Daily Scraper` cloud check lives
+in): created a throwaway check "Kiran Nightly Pipeline -- Phase 5 acceptance test (delete
+after)" (tag `test`, 2-minute period / 1-minute grace, both `email`+`ntfy` integrations
+auto-assigned by the project defaults). Pinged it exactly once with a plain GET
+(`curl https://hc-ping.com/f84cf596-...`) at 17:47 PKT — moves it `new → up`, i.e. "the job
+started and is now expected to keep checking in." Deliberately never pinged it again, simulating
+the one failure mode nothing *inside* a monitored pipeline can self-detect: it never runs at all.
+
+**Result, confirmed two independent ways** (mirroring the cloud test's own "cross-checked
+independently" method, not just trusting one signal):
+1. **The healthchecks.io UI itself** — the check's status transitioned `up → down` at 17:50 PKT,
+   exactly period+grace (3 min) after the last ping; page title flipped to "DOWN"; event log shows
+   the clean `new→up` then `up→down` transitions.
+2. **A real ntfy alert landed** on the shared `kiran-psx-alerts-7g3k9qx2mp` topic at the same
+   moment (polled via `curl "https://ntfy.sh/kiran-psx-alerts-7g3k9qx2mp/json?poll=1&since=..."`,
+   the exact command the cloud acceptance test used): title `"Kiran Nightly Pipeline -- Phase 5
+   acceptance test (delete after) is DOWN"`, body `"Reason: success signal did not arrive on
+   time, grace time passed."` — this is the same ntfy topic `archive/nightly_run.py` and
+   `archive/shadow_diff.py` already alert to, so it's proof the *whole downstream alerting path*
+   (healthchecks.io's external clock -> its ntfy integration -> the topic the owner's phone
+   subscribes to) works, not just that healthchecks.io's own dashboard noticed.
+
+Throwaway check deleted immediately after (Danger Zone -> Remove, confirmed gone from the checks
+list) — nothing left behind in the owner's account. No code changed; this task was a pure
+acceptance test of already-existing third-party infrastructure, following an already-established
+methodology from the cloud TR-18 precedent rather than inventing a new one.
+
+**Aside, unrelated to this task, noted for the record:** while on the checks list, the real
+`Kiran Daily Scraper` cloud check showed a "1 down" status. Investigating its event log: it cycles
+`down -> up` every single day (transitions to down ~05:00 UTC, recovers a few hours later after
+the day's delayed cron slot finally lands) — a repeating pattern across every day shown (Sep 9-12),
+consistent with the already-documented GitHub Actions cron delay (CLAUDE.md: "+2h..+8h delay,
+dropped slots observed"). Reads as the grace window (1h30m) being undersized relative to that
+delay distribution, not a new incident. Out of scope for this local-first migration — flagged for
+whoever next touches TR-18's cloud-side alerting, not acted on here.
+
+**What this proves / what's still open:** proves the alerting *mechanism* fires correctly for a
+genuinely missed run. Does **not** mean 5a's permanent nightly check or Task Scheduler
+registration are done — both remain owner console steps. 5c (the real ≥10-session streak) is
+still blocked on those, not on this.
+
+RESEARCH_LOG "Kiran Production Integrity Program" row + CSV synced.
 
 ### 2026-09-12 — Task 5b DONE: shadow-diff comparator (Gold vs live Supabase)
 
