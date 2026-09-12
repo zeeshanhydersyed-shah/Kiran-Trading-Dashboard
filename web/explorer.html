@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explorer — Kiran</title>
+<link rel="stylesheet" href="vendor/tabulator/tabulator.min.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__brand">Kiran <small>local-first</small></div>
+    <nav class="topbar__nav">
+      <a href="sector-grading.html">Sector Grading</a>
+      <a href="explorer.html" class="active">Explorer</a>
+    </nav>
+    <div class="topbar__spacer"></div>
+    <span class="freshness-pill" data-freshness-pill>Loading…</span>
+    <button class="theme-toggle" data-theme-toggle title="Toggle theme">☾</button>
+  </header>
+
+  <main>
+    <div class="withheld-banner" data-withheld-banner></div>
+
+    <div class="page-header">
+      <h1>Explorer</h1>
+      <span class="meta" data-as-of></span>
+    </div>
+
+    <div class="stat-strip" data-stat-strip></div>
+
+    <div class="controls-row">
+      <input type="search" placeholder="Search symbol or company…" data-search style="min-width:240px">
+      <label for="basis-select">Price basis</label>
+      <select id="basis-select" data-basis-select>
+        <option value="">All</option>
+      </select>
+      <div class="filter-chip-row" data-quick-filters>
+        <button class="filter-chip" data-filter="breakout">Breakout only</button>
+        <button class="filter-chip" data-filter="stage2">Stage-2 bull only</button>
+      </div>
+    </div>
+
+    <div id="explorer-table"></div>
+  </main>
+
+  <footer class="app-footer" data-footer>Kiran — local-first Gold build</footer>
+
+  <script src="vendor/tabulator/tabulator.min.js"></script>
+  <script type="module" src="js/explorer.js"></script>
+</body>
+</html>

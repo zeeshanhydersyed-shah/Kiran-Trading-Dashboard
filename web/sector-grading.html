@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sector Grading — Kiran</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__brand">Kiran <small>local-first</small></div>
+    <nav class="topbar__nav">
+      <a href="sector-grading.html" class="active">Sector Grading</a>
+      <a href="explorer.html">Explorer</a>
+    </nav>
+    <div class="topbar__spacer"></div>
+    <span class="freshness-pill" data-freshness-pill>Loading…</span>
+    <button class="theme-toggle" data-theme-toggle title="Toggle theme">☾</button>
+  </header>
+
+  <main>
+    <div class="withheld-banner" data-withheld-banner></div>
+
+    <div class="page-header">
+      <h1>Sector Grading</h1>
+      <span class="meta" data-as-of></span>
+    </div>
+
+    <div class="stat-strip" data-stat-strip></div>
+
+    <div class="legend">
+      <span class="legend__item"><span class="legend__swatch" style="background:var(--status-good)"></span>Stage 2 · Advancing (buy zone)</span>
+      <span class="legend__item"><span class="legend__swatch" style="background:var(--status-warning)"></span>Stage 3 · Topping (distribution)</span>
+      <span class="legend__item"><span class="legend__swatch" style="background:var(--status-critical)"></span>Stage 4 · Declining (avoid)</span>
+      <span class="legend__item"><span class="legend__swatch" style="background:var(--status-neutral)"></span>Stage 1 · Basing (not yet)</span>
+    </div>
+
+    <div class="controls-row">
+      <div class="filter-chip-row" data-stage-filters></div>
+      <div class="topbar__spacer"></div>
+      <label for="sort-select">Sort</label>
+      <select id="sort-select" data-sort-select>
+        <option value="composite_desc">Composite score ↓</option>
+        <option value="rs_rank_asc">RS rank ↑</option>
+        <option value="breadth_desc">Breadth ↓</option>
+        <option value="name_asc">Sector name A–Z</option>
+      </select>
+    </div>
+
+    <div class="sector-grid" data-sector-grid></div>
+  </main>
+
+  <footer class="app-footer" data-footer>Kiran — local-first Gold build</footer>
+
+  <script type="module" src="js/sector-grading.js"></script>
+</body>
+</html>
