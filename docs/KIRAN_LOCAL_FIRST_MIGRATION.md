@@ -43,8 +43,11 @@ directories **as work completes** — never leave finished work only in chat.
 ## 1. STATUS AT A GLANCE
 
 **Overall: PHASE 1 COMPLETE (2026-09-09 → 2026-09-10). PHASE 2 COMPLETE (2026-09-10). PHASE 3
-IN PROGRESS (2026-09-10) — Tasks 3.1 (Bronze ingest) + 3.2 (Silver build) DONE + merged (PRs
-#88, #89); decision D8 RESOLVED (rebuild-pure, owner); Task 3.3 (Gold) IN PROGRESS.** The
+COMPLETE (2026-09-10 → 2026-09-11) — Tasks 3.1 (Bronze ingest), 3.2 (Silver build), and 3.3
+(Gold, all sub-tasks 3.3a-f: every screener ported to DuckDB) all done + merged; decision D8
+RESOLVED (rebuild-pure, owner). PHASE 4 COMPLETE (2026-09-12) — the four publication gates
+(freshness/completeness/hook coverage/coherence) now gate the Gold build's atomic swap; see the
+Phase 4 row below for detail.** The
 immutable baseline is built,
 verified, git-manifested, copied off-site under B2 COMPLIANCE Object-Lock, and a restore drill
 proves it comes back. Phase 2's parallel capture path (`scrape_capture.yml` +
@@ -66,9 +69,19 @@ store: exact row coverage, **one known OHLC residual — symbol DLL** (a ~10:1 s
 the Data Health page with no recoverable event record; DR-program provenance gap, not a build
 bug) + 18 circuit-flag rows on 4 illiquid names. **Decision D8 RESOLVED (2026-09-10, owner):
 rebuild-pure** — the parity residual is the DR program's to-do list of events still owed an
-event record; no `silver_build.py` change. **Task 3.3 (Gold) IN PROGRESS.**
+event record; no `silver_build.py` change. **Task 3.3 (Gold) DONE (2026-09-11)** — all 8
+screeners ported to DuckDB (3.3a-f), 7/8 `status: clean` on a real full-registry production run
+(the one `residual`, `market_regime`, is a documented expected exception). **Phase 4 (publication
+gate) DONE (2026-09-12)** — `archive/gold_build.py` gained a new `publish()` entry point that
+builds into staging exactly like `build()`, then evaluates freshness / completeness / hook
+coverage / coherence *before* swapping: promotes (atomic swap, same as before) only if all four
+pass, otherwise withholds (staging discarded, last-good `psx_serving.duckdb` keeps serving) and
+fires an ntfy alert. Every attempt gets one append-only `current_publication` lineage row (own
+DuckDB file, outside the swapped store, survives every rebuild). `build()` itself is untouched —
+unconditional promote, no gate, still the ad hoc/manual/test entry point every earlier test uses.
+Not yet wired into a nightly scheduled run (Task Scheduler wiring is Phase 5+).
 **The old dual pipeline (Task Scheduler + SQLite, GitHub Actions + Supabase) is
-still the live system and is untouched** — nothing in Phase 1, 2 or 3 wrote to `psx_data.db`,
+still the live system and is untouched** — nothing in Phase 1-4 wrote to `psx_data.db`,
 Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…425b` unchanged).
 
 | # | Phase | Status | Since | Notes |
@@ -77,7 +90,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 | 1 | Stand up the archive + execute SEQ-1 | ✅ DONE | 2026-09-10 | Archive root `D:\KIRAN_ARCHIVE\` (C: space-constrained), 92 baseline payload files, local read-only. Whole-DB baseline via SQLite Online Backup API — `psx_data_baseline_KIRAN_LFM_P1_20260909_222210.db`, 882,896,896 b, **SHA-256 `9418cb1bf98c197550e02eae663f0ab870ccc93c967dfb743c221cd3d5f70d61`**, self-contained (`journal_mode=DELETE`), `integrity_check` ok, 53/53 table counts + all substrate date spans match live; Bronze/Silver Parquet store (`SUM(volume)` reconciles exactly); DR-006 baseline (`c03a393f…`) + BI 17-file set folded into `backup_set/` + hash-verified; `BASELINE_MANIFEST.{md,sha256}` (92 files, 1,898,646,386 b) git-committed, `archive_manifest verify` PASS. **Off-site:** all 92 files in B2 `kiran-psx-archive` under **COMPLIANCE Object-Lock, 3000 days** (undeletable — verified `AccessDenied` on a locked version); big SQLite files zstd'd (~33%) for the slow uplink; `offsite_push` resumable at the 16 MB part level. `offsite_push --verify` PASS; `restore_drill_archive` PASS (baseline restored + `integrity_check` ok + 1,761,371 price rows). `restore_drill_b2.py` now runs both drills. `archive_checksum_check` for Task Scheduler. PRs #81 / #82 / #83. **NOTE:** `duckdb` has no cp314 wheel (Python 3.14) — the Parquet store is engine-neutral; the DuckDB attach layer is a Phase 3 item. The over-broad B2 key is moot (COMPLIANCE can't be bypassed); a minimal key is optional later hygiene. |
 | 2 | Rework the scrape (GitHub Actions) | ✅ DONE | 2026-09-10 | `.github/workflows/scrape_capture.yml` + `archive/scrape_capture.py`, merged PR #85 (`b943ddf`). Reuses `scraper.py`'s fetch/parse; writes immutable `data/incoming/YYYY-MM-DD.parquet` (schema + file-level metadata: Actions run ID, `code_version`, `scraper_sha256`, self-reported counts, TR-14 per-sector completeness) + refreshes `latest.parquet`. Two side-by-side checkouts — `main` (code) + `data-captures` (commit target). **Commits to the dedicated `data-captures` orphan branch, not `main`** (`main` is branch-protected; owner decision 2026-09-10). Idempotent (`exists`/`nodata`/`unreachable` = no-op, exit 0). 12 unit tests, suite 449. **Proven live 2026-09-10:** run `34453459820` scraped PSX 2026-09-09 (489 stocks / 5 indices / 36 sectors, coverage COMPLETE 626/626) and committed `data/incoming/2026-09-09.parquet` + `latest.parquet` (494 rows, 18,922 b, sha256 `e6115b80…5338` = commit message) as `kiran-scrape-capture[bot]` → `data-captures` `dd269cc`; independent `--single-branch` clone hash-matched. Run `34453569404` = clean `exists` no-op, no new commit. `daily_scraper.yml` byte-unchanged (last touched `a7c0ce6`, 9 days prior), still scheduled. Format doc: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/CAPTURE_FILES.md` |
 | 3 | Build the Medallion transforms | ✅ DONE | 2026-09-11 | **3.1 Bronze ingest DONE** — `archive/bronze_ingest.py` + 6 tests; live store `prices_archive/bronze/` seeded from frozen `bronze/`, `2026-09-09` ingested; append-only / deduped / gap-report / SHA-256 lineage; re-run byte-identical. `archive_manifest.py` excludes the live trees (`verify` PASS). DuckDB confirmed on Py3.14 (`duckdb>=1.5`). **3.2 Silver build DONE** — `archive/silver_build.py` + 7 tests; DuckDB rebuild from Bronze → `silver/prices_adjusted/` (CA-adjust port of `apply_price_adjustments.py` + circuit flags), `silver/sectors/`, `silver/stock_metadata/` (upsert port of `build_stock_metadata.py`); `ca_v2_reader` wired behind `--ca-source v2`, default `legacy`; deterministic; `_silver_parity.json` vs frozen = exact rows, residual **DLL** (unrecoverable Data Health split) + 18 flag rows / 4 illiquid names. **D8 RESOLVED (owner, 2026-09-10): rebuild-pure** — residual = DR-program to-do, no code change. Design: `docs/KIRAN_LOCAL_FIRST_ARCHIVE/MEDALLION.md`. **3.3 Gold IN PROGRESS — full DuckDB port (owner). 3.3a DONE** (`archive/gold_build.py` + 6 tests: serving store `psx_serving.duckdb`, staging + atomic swap, deterministic Parquet export, `SCREENERS` registry; `regime` port reuses `regime.py`'s pure cores by import; parity CLEAN pre-first-gap). **3.3b DONE** — `stock_signals` port (reuses `stock_signals.py`'s loaders + `_process_trading_dates` verbatim by import; full universe, `KIRAN_SS_LOOKBACK_DAYS` default 1050 cal, ~208k rows, ~4 min/run; parity `clean` — `rs_score_20` + hard columns byte-exact vs live, ranks self-consistent; EMA-flag lookback residual on thin names reported not failed; surfaced + fixed a live regression — `stock_signals` has ranked `config.EXCLUDED_SECTORS` since 2026-08-03 because `_load_universe` never filtered them; Gold now drops them → ledger §118 + owner: migration-only fix, dashboard not in use). **3.3c DONE** — `sector_signals` port + four-stage `sector_stage` grades (reuses `_compute_and_write_sector_signals_for_date_sqlite` verbatim; one tiny dialect-neutral refactor to `sector_signals.py`; conformed universe + pure point-in-time `active_stocks_on_date`). Parity is **recompute-based** (`clean`): Gold's own Silver/Bronze inputs → scratch SQLite → same function re-run on SQLite (Gold ran DuckDB) over a 45-day window → every sector-cell matches. Live's *stored* `sector_signals` derived columns are stale (§118.6) so they can't be the reference. Live-side findings → `KIRAN_CLEANUP_AUDIT.md` §118.5/§118.6: pre-2026-06-19 legacy stage backfill, §118 Defect A excluded sectors, legacy universe omissions BML/FCL/WAVESAPP/SYM/IMAGE (Gold grades APPAREL, live doesn't). **3.3d DONE** — `boring_signals` + `leaders_scan`/`leaders_top_picks` ports (reuse `scan_boring_breakouts` / `update_open_signal_statuses` / `append_leaders_scan` / `save_top_picks` / `fill_leaders_forward_returns` verbatim by import, all now take an optional `conn`; new Bronze `prices` raw-price view; `boring_signals` scans from its own 2026-07-10 go-live floor). Parity **recompute-based** for both (`clean`): `boring_signals` full-window recompute, `leaders_scan`/`leaders_top_picks` 30-day-window recompute; a `leaders_top_picks` symbol swap explained by an exact `(final_score, vol_ratio_today)` tie in `save_top_picks()`'s own `ORDER BY` (no further tiebreak) is classified `tie_break_residual`, not a port bug. **3.3e DONE** — `recovery_signals` + `portfolio_signals` (reuse `signal_engine._scan_recovery_candidates` / `portfolio.compute_portfolio_candidates` verbatim by import, via an extract-method + parameter-injection refactor since neither original function is `conn`-based) + `setup_log` (reuses `backfill_setup_log._insert_setup_log_for_date` / `compute_forward_returns.main` verbatim, the latter via a conn-injection refactor). `trade_setups`/`processor.py` deliberately NOT ported — `processor.run_analysis()` hardcodes `support_setups = []` since 2026-07-23 (Support Reversal killed, -1.88% net full-history retest); its only automated writer is dead code, nothing live to port. `recovery_signals`/`portfolio_signals` compute the LATEST date only (not a window backfill) — the reused functions have no target-date parameter and live's own tables are a sparse per-run snapshot (23 as_of_dates over 3 months), not a dense daily series. Parity **recompute-based** for all three, `status: clean` on real production data. Found + fixed one new DuckDB portability gap: `executemany` with an empty parameter list raises on DuckDB but is a silent no-op on SQLite (`backfill_setup_log._insert_setup_log_for_date`, guarded with `if rows:`). **3.3f DONE** — full end-to-end idempotency test (`screeners=None`, the whole `SCREENERS` registry built twice, every table's Parquet export SHA-256-identical) + a consolidated signal-parity report auto-written every `run_parity=True` build (`_gold_parity_report.md`, one row per screener). Front-end JSON export explicitly DEFERRED (owner decision) to when the front-end pages are actually built — no consumer code exists yet to validate a schema against. First genuine full-registry run against live production data (default 730-day window, all 8 screeners together): 7/8 `status: clean` (`market_regime`'s `residual` is the one documented, expected post-gap-divergence exception); `stock_signals` flips from `residual` to `clean` at the real (not window-shortened) lookback depth. **Task 3.3 (3.3a–3.3f) and Phase 3 are now fully complete.** |
-| 4 | Publication contract + atomic swap | ⬜ NOT STARTED | — | Four gates into the Gold build; `current_publication` with the full lineage block; staging-DB build + rename |
+| 4 | Publication contract + atomic swap | ✅ DONE | 2026-09-12 | Four gates (freshness/completeness/hook coverage/coherence) ported into `archive/gold_build.py`'s new `publish()` entry point; `current_publication` lineage table (own DuckDB file, survives every rebuild); staging-DB build + atomic swap now gated (only promotes if all four gates pass, else withholds + ntfy alert, last-good Gold keeps serving); forced-failure tests for a mid-build exception and each gate individually. `build()` (unconditional promote, no gate) is untouched — still the ad hoc/manual/test entry point. Nightly wiring (Task Scheduler) is Phase 5+, not done here. |
 | 5 | Shadow run | ⬜ NOT STARTED | — | Nightly local Gold vs current Supabase output, ≥10 trading sessions, diffs investigated |
 | 6 | Cutover | ⬜ NOT STARTED | — | Front end → Gold JSON; retire `daily_scraper.yml` / Supabase / Streamlit Cloud; delete the `_pg` path, `database_pg.py`, the stale `main.py` copies; snapshot + pin for the DR program |
 | 7 | Burn-in | ⬜ NOT STARTED | — | 2 weeks of daily local operation, watchdog live, backup + restore drill running |
@@ -228,11 +241,11 @@ recent date):**
   - 2 new tests (16 total in `test_gold_build.py`); full project suite green.
 
 ### Phase 4 — Publication contract + atomic swap
-- [ ] Port the four gates (freshness / completeness / hook coverage / coherence) into the Gold build
-- [ ] `current_publication` table with the full lineage block (Q2)
-- [ ] Staging-DB build + atomic rename (`psx_serving_new` → `psx_serving`)
-- [ ] Test: force a mid-run failure → last good Gold served unchanged, withhold row written
-- [ ] Test: force each gate to fail individually → promotion withheld, banner + alert fire
+- [x] Port the four gates (freshness / completeness / hook coverage / coherence) into the Gold build — 2026-09-12, `archive/gold_build.py` `evaluate_gates()` + `_freshness_status`/`_completeness_status`/`_hook_coverage_status`/`_coherence_status`
+- [x] `current_publication` table with the full lineage block (Q2) — 2026-09-12, own DuckDB file (`current_publication.duckdb`), never touched by the `psx_serving.duckdb` swap
+- [x] Staging-DB build + atomic rename (`psx_serving_staging` → `psx_serving`) — already existed (3.3a); now gated behind the four gates in the new `publish()` entry point (`build()` keeps its old unconditional-promote behaviour, unchanged, for ad hoc/manual/test use)
+- [x] Test: force a mid-run failure → last good Gold served unchanged, withheld row written — 2026-09-12, `test_publish_withholds_and_raises_on_mid_build_exception`
+- [x] Test: force each gate to fail individually → promotion withheld, alert fires — 2026-09-12, one test per gate (`test_publish_withholds_on_stale_freshness` / `_on_incomplete_capture_coverage` / `_on_scoped_build_hook_coverage`, plus a direct unit test for coherence). **Banner** is N/A yet — no front-end page exists to render one (separate, not-started track); the withheld row's `withheld_reason` + the ntfy alert are the signal a future banner will read.
 
 ### Phase 5 — Shadow run
 - [ ] Nightly local pipeline writes Gold alongside the live Supabase pipeline
@@ -349,6 +362,71 @@ illiquid names.
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-12 — Phase 4 DONE: publication gate (freshness/completeness/hook coverage/coherence)
+
+`archive/gold_build.py` gains a new `publish()` entry point alongside the existing `build()`
+(kept exactly as-is — unconditional promote, no gate, no publication row, still every other
+test's and the CLI's default). `publish()` builds into staging the same way, then evaluates four
+gates *before* the atomic swap:
+
+- **freshness** — `VERIFIED` iff the Bronze window anchor (`bronze_max`) is within
+  `FRESHNESS_MAX_STALE_DAYS` (4, matching the old system's health-check floor) of "now";
+  fail-closed (no bmax, or bmax in the future, is `CANNOT_VERIFY`, never a pass).
+- **completeness** — reads the Bronze ingest log's (`_bronze_ingest_log.jsonl`)
+  `capture_coverage_status` for the `bronze_max` date; `PARTIAL` blocks, `UNKNOWN` (no log entry
+  yet) is permissive, matching the old system's deliberate rule that a not-yet-scraped-coverage
+  date must not retroactively fail everything.
+- **hook coverage** — `COMPLETE` iff the build was a full-registry run (`screeners=None`) and
+  every one of the 8 registered screeners actually produced a result; any scoped `--only` build
+  is `PARTIAL` by construction (the publication contract covers the whole declared universe, not
+  a subset — Q1).
+- **coherence** — do `market_regime`/`stock_signals`/`sector_signals` (the EVERY_SESSION Gold
+  tables) all carry `MAX(date) == bronze_max` inside the pre-swap staging DB. Unlike the old
+  dual-pipeline system (where coherence was recorded but never gated), it DOES gate promotion
+  here per tracker §3 — `UNKNOWN` also blocks, not just `INCOHERENT` (fail-closed).
+
+A withheld run leaves `psx_serving.duckdb` untouched (last-good Gold keeps serving), discards
+staging, and fires an ntfy alert (`archive_checksum_check.py`'s existing topic) naming the failed
+gate(s) — the signal a future front-end banner will read (front end itself is a separate,
+not-started track). A mid-build exception (a screener itself raising) is a distinct case: no gate
+could be evaluated, the withheld row records a `build_exception` reason with no gate detail, and
+the exception still propagates so a scheduler observes the run as failed, not silently withheld.
+
+**Lineage (Q2):** every attempt — promoted or withheld — gets one append-only row in a
+`current_publication` table living in its **own** DuckDB file (`current_publication.duckdb`),
+deliberately never touched by the `psx_serving.duckdb` swap so the history survives every
+rebuild, including a run that never produces a promoted store at all. Columns: `run_id`,
+`code_version` (git short SHA), `bronze_max`, `window_from`, `silver_ts`/`ca_provenance` (pointer
+into `silver_build`'s own log — its timestamp + `ca_source`, not a re-hash of the whole Silver
+Parquet tree), the four gate statuses, a JSON `gate_detail` blob, `promoted`, `withheld_reason`.
+`latest_promoted_publication()` reads the last `promoted=true` row.
+
+**7 new tests** in `tests/test_gold_build.py` (23 total): a happy-path promote asserting all four
+gate statuses + a clean lineage row; a forced mid-build exception (checklist item: "last good
+Gold served unchanged, withheld row written") verifying both the untouched `psx_serving.duckdb`
+bytes and the recorded row; one forced-failure test per gate (checklist item: "force each gate to
+fail individually → promotion withheld ... alert fire") for freshness (stale `now`), completeness
+(a synthetic `INCOMPLETE` ingest-log entry), and hook coverage (a scoped `--only` build); coherence
+is unit-tested directly against a hand-built staging DB (contriving a full pipeline run with one
+screener's output deliberately lagging isn't worth the complexity); and a guard that `build()`
+itself stays completely unaffected (no gate, no publication row) so every pre-Phase-4 test keeps
+working unchanged. Full suite: 16 pre-existing + 7 new = 23 passed.
+
+**One real bug found while writing the tests:** `PRAGMA table_info` returns `(cid, name, type,
+notnull, dflt_value, pk)` — `latest_promoted_publication()`'s column-name lookup used index `[0]`
+(the row id) instead of `[1]` (the actual name), so every key in its returned dict was an integer,
+not a column name. Caught by the test's own `latest["bronze_max"]`-style assertions failing with
+`KeyError`, not by inspection — fixed in the same commit.
+
+**Not done (deliberately, later phases):** Task Scheduler wiring of a fixed nightly `publish()`
+run (Phase 5+); the front-end banner itself (separate not-started track); anything resembling a
+shadow-mode comparison against the still-live Supabase pipeline (Phase 5). `psx_data.db` never
+opened — this phase touches only the local Gold/publication stores.
+
+PR: `phase4/publication-gate` branch, commit message "Phase 4: publication gate (freshness /
+completeness / hook coverage / coherence)". RESEARCH_LOG "Kiran Production Integrity Program" row
++ CSV synced.
 
 ### 2026-09-12 — CA v2 substrate UPGRADED (external, CA pipeline project) — a better source now exists, not yet wired in
 
