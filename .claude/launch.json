@@ -10,7 +10,7 @@
     {
       "name": "kiran-web",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "web"],
+      "runtimeArgs": ["web/_devserver.py", "8765"],
       "port": 8765
     }
   ]
