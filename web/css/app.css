@@ -6,6 +6,8 @@
   --surface:        #fcfcfb;
   --page:           #f9f9f7;
   --card:           #ffffff;
+  --card-elevated:  #ffffff;
+  --tile-shadow:    0 1px 2px rgba(11,11,11,0.04), 0 1px 8px rgba(11,11,11,0.04);
   --ink-primary:    #0b0b0b;
   --ink-secondary:  #52514e;
   --ink-muted:      #898781;
@@ -25,6 +27,7 @@
 
   --seq-100: #cde2fb; --seq-200: #9ec5f4; --seq-300: #6da7ec;
   --seq-400: #3987e5; --seq-500: #256abf; --seq-600: #184f95; --seq-700: #0d366b;
+  --accent-breadth: #8a5cc9;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -36,34 +39,40 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface:        #1a1a19;
-    --page:           #0d0d0d;
-    --card:           #201f1e;
-    --ink-primary:    #ffffff;
-    --ink-secondary:  #c3c2b7;
-    --ink-muted:      #898781;
-    --gridline:       #2c2c2a;
-    --baseline:       #383835;
-    --border:         rgba(255,255,255,0.10);
-    --border-strong:  rgba(255,255,255,0.18);
-    --delta-up:   #0ca30c;
-    --delta-down: #e66767;
+    --surface:        #131417;
+    --page:           #060607;
+    --card:           #17181c;
+    --card-elevated:  #1b1c21;
+    --ink-primary:    #f5f5f3;
+    --ink-secondary:  #b8b6ae;
+    --ink-muted:      #7c7a74;
+    --gridline:       #26272b;
+    --baseline:       #34353a;
+    --border:         rgba(255,255,255,0.08);
+    --border-strong:  rgba(255,255,255,0.16);
+    --delta-up:   #17c964;
+    --delta-down: #f56565;
+    --accent-breadth: #b498ea;
+    --tile-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface:        #1a1a19;
-  --page:           #0d0d0d;
-  --card:           #201f1e;
-  --ink-primary:    #ffffff;
-  --ink-secondary:  #c3c2b7;
-  --ink-muted:      #898781;
-  --gridline:       #2c2c2a;
-  --baseline:       #383835;
-  --border:         rgba(255,255,255,0.10);
-  --border-strong:  rgba(255,255,255,0.18);
-  --delta-up:   #0ca30c;
-  --delta-down: #e66767;
+  --surface:        #131417;
+  --page:           #060607;
+  --card:           #17181c;
+  --card-elevated:  #1b1c21;
+  --ink-primary:    #f5f5f3;
+  --ink-secondary:  #b8b6ae;
+  --ink-muted:      #7c7a74;
+  --gridline:       #26272b;
+  --baseline:       #34353a;
+  --border:         rgba(255,255,255,0.08);
+  --border-strong:  rgba(255,255,255,0.16);
+  --delta-up:   #17c964;
+  --delta-down: #f56565;
+  --accent-breadth: #b498ea;
+  --tile-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.35);
 }
 
 * { box-sizing: border-box; }
@@ -144,6 +153,110 @@ main { flex: 1; padding: 24px; max-width: 1400px; width: 100%; margin: 0 auto; }
 .stat-tile__value.tone-critical { color: var(--status-critical); }
 .stat-tile__value.tone-neutral { color: var(--ink-muted); }
 
+/* ---------- tone utility (reused across stat tiles, regime + health cards) ---------- */
+.tone-good     { color: var(--status-good); }
+.tone-warning  { color: var(--status-warning); }
+.tone-critical { color: var(--status-critical); }
+.tone-neutral  { color: var(--ink-muted); }
+
+/* ---------- overview page: bento grid ---------- */
+.main--wide { max-width: 1600px; }
+
+.bento {
+  display: grid;
+  grid-template-columns: 1.1fr 1.1fr 3.2fr 1.3fr;
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "regime  gauge   chart  heatmap"
+    "perf    perf    chart  movers"
+    "health  health  chart  movers";
+  gap: 14px;
+}
+
+.bento-tile {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--tile-shadow);
+  padding: 16px 18px;
+  display: flex; flex-direction: column;
+  min-width: 0;
+}
+.bento-tile--regime  { grid-area: regime; border-left: 3px solid var(--border-strong); justify-content: center; gap: 4px; }
+.bento-tile--regime.tone-good     { border-left-color: var(--status-good); }
+.bento-tile--regime.tone-warning  { border-left-color: var(--status-warning); }
+.bento-tile--regime.tone-critical { border-left-color: var(--status-critical); }
+.bento-tile--gauge   { grid-area: gauge; align-items: center; justify-content: center; gap: 6px; }
+.bento-tile--perf    { grid-area: perf; padding: 12px; }
+.bento-tile--chart   { grid-area: chart; background: var(--card-elevated); }
+.bento-tile--heatmap { grid-area: heatmap; }
+.bento-tile--movers  { grid-area: movers; }
+.bento-tile--health  { grid-area: health; border-left: 3px solid var(--border-strong); justify-content: center; gap: 4px; }
+.bento-tile--health.is-good     { border-left-color: var(--status-good); }
+.bento-tile--health.is-critical { border-left-color: var(--status-critical); }
+
+.tile-label {
+  font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.tile-label__sub { text-transform: none; letter-spacing: 0; opacity: 0.7; margin-left: 4px; }
+.tile-empty { color: var(--ink-muted); font-size: 12px; padding: 12px 0; }
+
+.regime-card__value { font-size: 20px; font-weight: 700; margin-top: -6px; }
+.regime-card__since, .health-card__meta { font-size: 11.5px; color: var(--ink-muted); }
+.health-card__value { font-size: 20px; font-weight: 700; margin-top: -6px; }
+.bento-tile--health.is-good .health-card__value { color: var(--status-good); }
+.bento-tile--health.is-critical .health-card__value { color: var(--status-critical); }
+
+.gauge-wrap svg { display: block; }
+
+/* perf tile: 2x2 mini stats */
+.bento-tile--perf { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px; }
+.mini-stat { display: flex; flex-direction: column; justify-content: center; padding: 6px 8px; }
+.mini-stat__label { font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.mini-stat__value { font-size: 16px; font-weight: 700; margin-top: 1px; }
+
+.chart-card__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.chart-card__head h2 { font-size: 15px; margin: 0; font-weight: 700; }
+.chart-card__sub { font-size: 11.5px; color: var(--ink-muted); font-weight: 400; margin-left: 6px; }
+.chart-card__body { width: 100%; }
+.chart-card__foot { margin-top: 8px; font-size: 12px; color: var(--ink-secondary); }
+.chart-empty { padding: 60px 0; text-align: center; color: var(--ink-muted); font-size: 13px; }
+/* uPlot's own built-in legend row -- kept alive (not legend:{show:false}) so
+   its internal series-visibility bookkeeping has DOM to sync against, but
+   hidden visually since the checkbox toggles above the chart replace it. */
+.chart-card__body .u-legend { display: none; }
+
+/* sector heatmap tile */
+.sector-heatmap { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; overflow-y: auto; max-height: 320px; }
+.heat-cell {
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 8px;
+  min-width: 0; cursor: default;
+}
+.heat-cell__label {
+  display: block; font-size: 10.5px; font-weight: 600; color: var(--ink-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3;
+}
+
+/* top movers tile */
+.movers-list { display: flex; flex-direction: column; gap: 10px; }
+.movers-group__label { font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.mover-row { display: flex; align-items: center; justify-content: space-between; padding: 3px 0; font-size: 12.5px; }
+.mover-row__symbol { font-weight: 600; }
+
+@media (max-width: 1150px) {
+  .bento {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "regime  gauge"
+      "perf    perf"
+      "chart   chart"
+      "heatmap movers"
+      "health  health";
+  }
+}
+@media (max-width: 640px) {
+  .bento { grid-template-columns: 1fr; grid-template-areas: "regime" "gauge" "perf" "chart" "heatmap" "movers" "health"; }
+}
+
 /* ---------- controls ---------- */
 .controls-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .controls-row select, .controls-row input[type="search"] {
@@ -190,6 +303,15 @@ main { flex: 1; padding: 24px; max-width: 1400px; width: 100%; margin: 0 auto; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; font-size: 12px; color: var(--ink-secondary); }
 .legend__item { display: flex; align-items: center; gap: 6px; }
 .legend__swatch { width: 9px; height: 9px; border-radius: 2px; }
+.legend--toggle { margin-bottom: 0; }
+.legend__item--toggle {
+  cursor: pointer; user-select: none; padding: 4px 8px; border-radius: 999px;
+  border: 1px solid transparent; transition: background 0.12s, opacity 0.12s;
+}
+.legend__item--toggle:hover { background: var(--border); }
+.legend__item--toggle input[type="checkbox"] { accent-color: var(--ink-primary); margin: 0; cursor: pointer; }
+.legend__item--toggle:has(input:not(:checked)) { opacity: 0.45; }
+.legend__item--toggle:has(input:not(:checked)) .legend__swatch { background: var(--ink-muted) !important; }
 
 /* ---------- tabulator theming ---------- */
 .tabulator {

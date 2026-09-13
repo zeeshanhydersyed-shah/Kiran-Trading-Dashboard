@@ -44,6 +44,52 @@ def _build_store(tmp_path):
     return root
 
 
+def _build_overview_store(tmp_path, n_days=400, n_symbols=6):
+    """A store with enough KSE-100 + per-symbol history for a real SMA50/breadth
+    computation -- a synthetic uptrend with one symbol deliberately kept flat
+    below its own SMA, so breadth is provably not 0% or 100%."""
+    import datetime as dt
+    import math
+
+    root = tmp_path / "psx_serving"
+    root.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(str(root / "psx_serving.duckdb"))
+    con.execute("CREATE TABLE index_prices (symbol TEXT, date TEXT, open DOUBLE, "
+                "high DOUBLE, low DOUBLE, close DOUBLE)")
+    con.execute("CREATE TABLE market_regime (date TEXT, regime TEXT, regime_days INTEGER, atr_pct DOUBLE)")
+    con.execute("CREATE TABLE stock_metadata (symbol TEXT, company_name TEXT, sector TEXT)")
+    con.execute("CREATE TABLE prices_adjusted (symbol TEXT, date TEXT, close DOUBLE)")
+
+    start = dt.date(2025, 1, 1)
+    dates = []
+    d = start
+    while len(dates) < n_days:
+        if d.weekday() < 5:
+            dates.append(d)
+        d += dt.timedelta(days=1)
+
+    symbols = [f"SYM{i}" for i in range(n_symbols)]
+    for sym in symbols:
+        con.execute("INSERT INTO stock_metadata VALUES (?, ?, 'TESTSECTOR')", [sym, sym])
+
+    for i, ds in enumerate(dates):
+        iso = ds.isoformat()
+        kse_close = 40000 + i * 15 + 200 * math.sin(i / 20)
+        con.execute("INSERT INTO index_prices VALUES ('KSE-100', ?, ?, ?, ?, ?)",
+                    [iso, kse_close - 30, kse_close + 40, kse_close - 40, kse_close])
+        con.execute("INSERT INTO market_regime VALUES (?, 'TRENDING_UP', ?, ?)",
+                    [iso, i + 1, 1.2])
+        for j, sym in enumerate(symbols):
+            if j == 0:
+                # deliberately flat/declining -- stays below its own rolling SMA
+                px = 100.0 - i * 0.01
+            else:
+                px = 50.0 * (j + 1) + i * 0.05 + j * math.sin(i / 15)
+            con.execute("INSERT INTO prices_adjusted VALUES (?, ?, ?)", [sym, iso, round(px, 4)])
+    con.close()
+    return root, dates
+
+
 @pytest.fixture
 def env(tmp_path):
     store_root = _build_store(tmp_path)
@@ -170,6 +216,71 @@ def test_export_all_writes_all_three_files_and_returns_counts(env):
     for name in ("meta.json", "sector_grades.json", "signals.json"):
         assert (out_dir / name).exists()
         json.loads((out_dir / name).read_text())  # valid JSON
+
+
+def test_export_overview_shape_and_regime(tmp_path):
+    root, dates = _build_overview_store(tmp_path)
+    payload = export_json.export_overview(root, tmp_path / "out")
+
+    assert payload["as_of"] == dates[-1].isoformat()
+    assert payload["regime"]["regime"] == "TRENDING_UP"
+    assert payload["regime"]["regime_days"] == len(dates)
+    assert payload["regime"]["since_date"] == dates[0].isoformat()
+
+    kse = payload["kse100"]
+    assert len(kse["dates"]) == export_json.KSE100_DISPLAY_DAYS
+    assert kse["dates"][-1] == dates[-1].isoformat()
+    # a real synthetic uptrend -> close should sit above its own 50-session SMA at the end
+    assert kse["close"][-1] > kse["sma50"][-1]
+    assert kse["pct_from_sma50"][-1] > 0
+
+    written = json.loads((tmp_path / "out" / "overview.json").read_text())
+    assert written == payload
+
+
+def test_export_overview_trailing_returns_positive_for_uptrend(tmp_path):
+    root, dates = _build_overview_store(tmp_path)
+    payload = export_json.export_overview(root, tmp_path / "out")
+    perf = payload["performance"]
+    assert perf["1m"] > 0
+    assert perf["3m"] > 0
+    # 400 trading days ~= 560 calendar days, so a full year IS covered here
+    assert perf["1y"] > 0
+
+    # a series that does NOT reach back a year should report None, not guess
+    root2, _ = _build_overview_store(tmp_path / "second", n_days=120)
+    payload2 = export_json.export_overview(root2, tmp_path / "out2")
+    assert payload2["performance"]["1y"] is None
+    assert payload2["performance"]["1m"] is not None
+
+
+def test_export_overview_breadth_is_between_0_and_100_and_not_degenerate(tmp_path):
+    root, dates = _build_overview_store(tmp_path)
+    payload = export_json.export_overview(root, tmp_path / "out")
+    breadth = payload["breadth_above_sma50"]
+    assert len(breadth["dates"]) > 0
+    assert breadth["dates"][-1] == dates[-1].isoformat()
+    for pct in breadth["pct"]:
+        assert 0.0 <= pct <= 100.0
+    # SYM0 is deliberately below its own SMA all along -> breadth must be < 100%
+    assert breadth["pct"][-1] < 100.0
+    assert all(n == 6 for n in breadth["n_symbols"][-5:])
+
+
+def test_export_overview_handles_missing_tables_gracefully(tmp_path):
+    root = tmp_path / "psx_serving"
+    root.mkdir()
+    con = duckdb.connect(str(root / "psx_serving.duckdb"))
+    con.execute("CREATE TABLE stock_metadata (symbol TEXT, company_name TEXT, sector TEXT)")
+    con.close()
+
+    payload = export_json.export_overview(root, tmp_path / "out")
+    assert payload["as_of"] is None
+    assert payload["regime"] is None
+    assert payload["kse100"]["dates"] == []
+    assert payload["breadth_above_sma50"]["dates"] == []
+    raw = (tmp_path / "out" / "overview.json").read_text()
+    json.loads(raw)  # still valid JSON
 
 
 def test_write_json_atomic_leaves_no_tmp_file_behind(tmp_path):

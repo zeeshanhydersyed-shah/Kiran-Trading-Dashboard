@@ -121,7 +121,7 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 | 6 | Cutover | ⬜ NOT STARTED | — | Front end → Gold JSON; retire `daily_scraper.yml` / Supabase / Streamlit Cloud; delete the `_pg` path, `database_pg.py`, the stale `main.py` copies; snapshot + pin for the DR program |
 | 7 | Burn-in | ⬜ NOT STARTED | — | 2 weeks of daily local operation, watchdog live, backup + restore drill running |
 | 8 | Retire the write surface | ⬜ NOT STARTED | — | Final sweep for any script that can write outside the pipeline |
-| — | Front end (2 pages) | ✅ DONE | 2026-09-12 | Both pages built + rendering from real Gold JSON (`web/`, `archive/export_json.py`) — see §5 for detail and the important Sector Strength v1 caveat (today's Sector Grading fields are Rotation Radar's, soon to be retired by a separate spec/build track; understood as a working prototype, not a locked design) |
+| — | Front end (3 pages) | ✅ DONE | 2026-09-13 | Sector Grading + Explorer (2026-09-12) + **Market Overview** (2026-09-13, now the landing page) all built + rendering from real Gold JSON (`web/`, `archive/export_json.py`) — see §5 for detail and the important Sector Strength v1 caveat (today's Sector Grading fields are Rotation Radar's, soon to be retired by a separate spec/build track; understood as a working prototype, not a locked design) |
 | — | CA v2 standalone prototype (parked) | 🔵 IN PROGRESS | 2026-09-13 | `archive/ca_v2_prototype.py` — `stock_signals`/`sector_signals` (four-stage grades) ported against the CA Pipeline's `full_prices_v2.sqlite` (808 symbols, full 2005+ history, 686/808 fully resolved), entirely decoupled from Silver/Gold — separate output store, never touches Bronze/Silver/`psx_serving.duckdb`/`psx_data.db`/Supabase. Real run against the live substrate (60-day window): 293 symbols, 966 sector-signal rows across 23 sectors, four-stage grades computed. Owner intent: wire into production Silver as the active CA source at the already-scoped Q6 gate below, once Phase 6 cutover completes — not before, since switching Silver's live CA source now would break Phase 5's shadow-diff streak (see running log). |
 | — | *Optional:* Q6 gate — v2 in the dashboard | ⬜ DEFERRED | — | Separate sign-off, post-cutover, not coupled to the migration. The CA v2 standalone prototype above is the code that would be wired in at this gate. |
 
@@ -373,6 +373,59 @@ recent date):**
 - [x] Both pages render from real Gold JSON — 2026-09-12, verified in the browser (screenshots,
   light + dark mode, mobile width, console-clean) against the real `psx_serving.duckdb` produced
   by the same-day nightly-pipeline validation run (299 symbols, 24 sectors).
+- [x] **Market Overview page (3rd page, now the landing page) — 2026-09-13, owner request.** One
+  page answering "what's happening in the market" at a glance: current market regime + how long
+  it's held, KSE-100 trailing returns (1M/3M/6M/1Y), a KSE-100 daily candlestick chart with a
+  50-session SMA overlay and % distance from it, a second overlay on the same chart for % of the
+  (conformed) universe trading above its own 50-session SMA, and a database-health card mirroring
+  the freshness gate. `archive/export_json.py` gained `export_overview()` (`web/data/overview.json`)
+  — reads the already-promoted `psx_serving.duckdb` only (the `index_prices`/`prices_adjusted`
+  views persisted there over live Bronze/Silver Parquet, same mechanism `export_signals` already
+  relies on); all SMA/breadth/trailing-return math computed server-side, per the front end's
+  "computes nothing on load" design. `web/overview.html` + `web/js/overview.js`: first real use of
+  the vendored uPlot (previously only shipped, never instantiated) — a hand-written candlestick
+  `paths` renderer (stable public `u.valToPos`/`u.bbox` API, not the internal `uPlot.orient`
+  helper, to avoid a version-fragile dependency) plus a second right-axis scale for the breadth
+  overlay. Breadth given its own accent color (`--accent-breadth`, violet) rather than reusing
+  `--status-good` green, since that green already means "bullish candle" on the same chart — two
+  data dimensions sharing one hue would work against "digestible at a glance," the explicit design
+  ask. 4 new tests (`tests/test_export_json.py`) incl. a synthetic uptrend fixture with one
+  deliberately-flat symbol, proving breadth is neither 0% nor 100% (not a degenerate constant) and
+  that a series short of a year correctly reports `null` for the 1Y return rather than guessing.
+  Verified in the browser against the real store (299 symbols): regime **RANGING** (18 sessions),
+  KSE-100 **-4.0%** below its own 50-session SMA, breadth **17.7%** (consistent with a weak/ranging
+  tape) — screenshots taken light + dark + mobile, console-clean, nav updated on all three pages.
+- [x] **Series toggles + dark bento-grid redesign — 2026-09-13, owner request.** Two follow-ups in
+  the same session: (1) checkboxes above the chart to show/hide the SMA50 and breadth overlays
+  independently (`plot.series[idx].show` + `plot.redraw()`, not the public `setSeries()` — with
+  `legend:{show:false}` uPlot's own series-visibility bookkeeping has no legend DOM row to sync
+  and throws from inside `redraw()`; fix was to keep a real legend and hide it in CSS instead,
+  `.u-legend{display:none}`, not disable it). (2) the owner found the first pass "boring" and asked
+  for a richer look, referencing an Awwwards/Dribbble-style showroom; browsed
+  dribbble.com/search/trading-dashboard live and presented three concrete directions (dark
+  glass/terminal, dense dark bento-grid, light soft-gradient) — owner picked the dark bento-grid.
+  Rebuilt the page as a CSS Grid bento (`grid-template-areas`, collapsing to 2-col then 1-col by
+  media query) and, since a bento grid reads as sparse with only 4 pre-existing tiles, added two
+  new tiles built entirely from data the front end **already exports** (no new backend work):
+  a sector-stage heatmap (`sector_grades.json`, colored per the same four-stage palette Sector
+  Grading uses) and a top-3-gainers/top-3-losers "Top movers" list (`signals.json`'s `chg_pct`),
+  plus a radial breadth gauge (`radialGaugeSVG()`, new in `web/js/lib/chart.js`) as a second,
+  faster-to-read encoding of the same breadth number already on the chart. `loadOverview()`
+  (`web/js/lib/data.js`) now also fetches `sector_grades.json`/`signals.json`. Dark-theme tokens
+  deepened (near-black page, richer card/shadow tokens, more saturated up/down greens/reds) to
+  actually read as the chosen "dark bento" direction rather than a plain dark tint of the old
+  layout; light theme kept working (new `--card-elevated`/`--tile-shadow` tokens given light-mode
+  values too, not just dark). Verified in-browser at real desktop width (1440px, where the 4-column
+  grid actually shows) with live data — regime/gauge/perf/health tiles top-left, the candlestick
+  chart dominant and center, sector heatmap + top movers on the right, both new tiles populated
+  with real current data (heatmap: 5 advancing / 19 declining sectors matching Sector Grading's own
+  count; movers: BPL/MSOT/OBOY up, BUXL/HUSI/TOWL down). One debugging note for future sessions:
+  this preview browser's cache intermittently serves a stale copy of an edited JS module keyed to
+  its bare URL, surviving new tabs and dev-server restarts (confirmed via `fetch(url,{cache:
+  "no-store"})` returning the correct current file while the real `<script type="module">` import
+  still errored on the stale cached one) — a cache-busting query string on the import proved and
+  fixed it for verification; not a code defect, and a real user's first-ever page load never hits
+  it, so nothing was left cache-busted in the shipped source.
 
 **Important caveat, 2026-09-12 (owner FYI mid-build):** the owner is retiring the Rotation Radar
 sector composite (`composite_score`/`rs_rank`, RS 50%/Breadth 30%/Volume 20%, unchanged since
@@ -544,6 +597,47 @@ illiquid names.
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-13 — Overview page: series toggle checkboxes + dark bento-grid redesign
+
+Follow-up to the Market Overview page shipped earlier the same day. Owner asked for (1) checkboxes
+to independently show/hide the SMA50 and breadth chart overlays, and (2) a less "boring" look,
+pointing at Awwwards-style design showrooms as a reference. Browsed dribbble.com's trading-dashboard
+search live, presented three real directions (dark glass/terminal, dense dark bento-grid, light
+soft-gradient); owner picked the dark bento-grid. Rebuilt the page as a CSS Grid bento layout and
+added two new tiles from data already exported elsewhere (sector-stage heatmap from
+`sector_grades.json`, top-movers list from `signals.json`) plus a radial breadth gauge, so the grid
+reads as dense rather than sparse. Dark theme tokens deepened globally (near-black page, richer
+shadows, punchier up/down colors) — light theme unaffected (given its own token values, not just a
+dark fallback). One real bug fixed along the way: `plot.setSeries()` throws when `legend:{show:
+false}` (no legend DOM row to sync); fixed by keeping a real (CSS-hidden) legend instead and
+toggling `series[idx].show` + `redraw()` directly. Verified at real desktop width with live data —
+see the Phase-6 front-end checklist entry above for full detail and the exact numbers checked.
+Also surfaced (not a code bug): this preview browser's cache can serve a stale copy of an edited JS
+module keyed to its bare URL, surviving new tabs and server restarts — confirmed via a `cache:
+"no-store"` fetch returning the correct file while the real module import still errored on a stale
+cached one; a temporary cache-busting query string proved the fix, then was removed before commit
+since shipped source stays clean and a real user's browser never accumulates that stale history.
+
+### 2026-09-13 — Market Overview page (3rd front-end page, now the landing page)
+
+Owner request: a first/landing page answering "what's happening in the market" in one glance —
+regime, KSE-100 trailing returns, a candlestick chart with 50-session SMA + a universe-breadth
+overlay, and database health. New `export_overview()` in `archive/export_json.py` computes
+everything server-side (SMA50, trailing 1M/3M/6M/1Y returns, breadth = % of the conformed universe
+above its own 50-session SMA) from the already-promoted `psx_serving.duckdb`, writing
+`web/data/overview.json`. `web/overview.html` + `web/js/overview.js` are the first real use of the
+vendored uPlot library (shipped since Phase 6 but never instantiated until now) — a hand-rolled
+candlestick `paths` renderer built on uPlot's stable public API (`valToPos`/`bbox`), deliberately
+not the internal `orient` helper, to avoid depending on undocumented behavior of a minified vendor
+file. Breadth got its own accent color (violet, `--accent-breadth`) instead of reusing the
+green/red already meaning "bullish/bearish candle" on the same chart, after a first pass showed
+the two greens fighting for attention — a direct response to "clean design, digestible at a
+glance." 4 new tests, verified in-browser against real data (light/dark/mobile, console-clean):
+regime RANGING (18 sessions), KSE-100 -4.0% off its own SMA50, breadth 17.7% — a materially weak
+reading the regime call agrees with, not a chart that looks fine in isolation but contradicts the
+rest of the page. `index.html`'s redirect and all three pages' nav updated so Overview is now the
+landing page. Front-end status-table row updated 2→3 pages.
 
 ### 2026-09-13 — CA v2 standalone prototype built + validated (parallel, parked — Phase 5 untouched)
 
