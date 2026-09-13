@@ -448,6 +448,22 @@ value+rank, breadth ratio N/M, momentum delta, regime label, FIPI/LIPI display-o
 pipeline rebuild. Flagging here so a future session doesn't mistake the current card design for a
 final spec.
 
+**► NEXT UP, flagged 2026-09-13 (not started): this is now an active work item, renamed "Sector
+Overview."** The owner is about to start a **new session** to work on exactly the Rotation
+Radar → Sector Strength v1 replacement described above, and wants the page/feature renamed from
+"Sector Grading" to **"Sector Overview"** as part of it. Explicit owner sequencing: **discuss and
+settle the computation approach first — Persistent Median Sector RS across 4 timeframes, the
+momentum/breadth-ratio/regime/FIPI-LIPI axis, deliberately not blended into one score — before any
+UI work.** Nothing here has been built yet; this note exists so a session opened cold (per this
+tracker's own protocol) finds the right starting point instead of re-deriving context. Likely
+touches: `sector_signals.py` (the new computation, replacing/supplementing the current RS 50%/
+Breadth 30%/Volume 20% composite), `archive/gold_build.py`'s `build_sector_signals` port (same
+reuse-by-import convention as every other screener here), `archive/export_json.py`'s
+`export_sector_grades()`, and `web/sector-grading.html`/`web/js/sector-grading.js` (rename +
+field-level refresh) — but confirm scope in that session rather than assuming this list is
+complete. Same "research/spec-only, not live-code-touching, done after cutover" scoping as the
+2026-09-12 caveat still applies unless the owner says otherwise.
+
 ### CA v2 standalone prototype (parallel, read-only, parked — not wired into production)
 
 **Owner request, 2026-09-13:** while Phase 5 accumulates its clean-session streak, build and
@@ -597,6 +613,16 @@ illiquid names.
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-13 — "Sector Overview" (Rotation Radar → Sector Strength v1) flagged as next up
+
+Owner is opening a new session to start this work — see the "NEXT UP" note under the front-end
+§5 Sector Grading caveat above for the full pointer. Nothing built yet; recorded here purely so a
+cold-started session finds it without re-deriving context. Also this session: dev server hardening
+— `web/_devserver.py` (adds `Cache-Control: no-store` to every response; `.claude/launch.json`'s
+`kiran-web` config now runs it) after hitting real same-origin script-caching staleness while
+iterating on the Overview page (a fresh port loaded correctly immediately, confirming it was a
+caching issue tied to the origin, not a code defect) — PR #107.
 
 ### 2026-09-13 — Overview page: series toggle checkboxes + dark bento-grid redesign
 
