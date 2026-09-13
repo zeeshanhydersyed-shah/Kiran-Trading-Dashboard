@@ -122,7 +122,8 @@ Supabase, or `daily_scraper.yml` (D7: preservation only; live hash `6a3b974d…4
 | 7 | Burn-in | ⬜ NOT STARTED | — | 2 weeks of daily local operation, watchdog live, backup + restore drill running |
 | 8 | Retire the write surface | ⬜ NOT STARTED | — | Final sweep for any script that can write outside the pipeline |
 | — | Front end (2 pages) | ✅ DONE | 2026-09-12 | Both pages built + rendering from real Gold JSON (`web/`, `archive/export_json.py`) — see §5 for detail and the important Sector Strength v1 caveat (today's Sector Grading fields are Rotation Radar's, soon to be retired by a separate spec/build track; understood as a working prototype, not a locked design) |
-| — | *Optional:* Q6 gate — v2 in the dashboard | ⬜ DEFERRED | — | Separate sign-off, post-cutover, not coupled to the migration |
+| — | CA v2 standalone prototype (parked) | 🔵 IN PROGRESS | 2026-09-13 | `archive/ca_v2_prototype.py` — `stock_signals`/`sector_signals` (four-stage grades) ported against the CA Pipeline's `full_prices_v2.sqlite` (808 symbols, full 2005+ history, 686/808 fully resolved), entirely decoupled from Silver/Gold — separate output store, never touches Bronze/Silver/`psx_serving.duckdb`/`psx_data.db`/Supabase. Real run against the live substrate (60-day window): 293 symbols, 966 sector-signal rows across 23 sectors, four-stage grades computed. Owner intent: wire into production Silver as the active CA source at the already-scoped Q6 gate below, once Phase 6 cutover completes — not before, since switching Silver's live CA source now would break Phase 5's shadow-diff streak (see running log). |
+| — | *Optional:* Q6 gate — v2 in the dashboard | ⬜ DEFERRED | — | Separate sign-off, post-cutover, not coupled to the migration. The CA v2 standalone prototype above is the code that would be wired in at this gate. |
 
 Status values: `⬜ NOT STARTED` · `🔵 IN PROGRESS` · `🟠 BLOCKED` · `✅ DONE`.
 
@@ -394,6 +395,70 @@ value+rank, breadth ratio N/M, momentum delta, regime label, FIPI/LIPI display-o
 pipeline rebuild. Flagging here so a future session doesn't mistake the current card design for a
 final spec.
 
+### CA v2 standalone prototype (parallel, read-only, parked — not wired into production)
+
+**Owner request, 2026-09-13:** while Phase 5 accumulates its clean-session streak, build and
+validate the CA-Pipeline's better-adjusted `full_prices_v2.sqlite` substrate (808 symbols, full
+2005+ history, 686/808 fully resolved — see [[project_ca_pipeline_rebuild]]) against the
+`stock_signals`/`sector_signals` screeners, so grading/charting logic is ready to go the moment
+this migration reaches the point of wiring it in. Explicitly scoped as **charting/grading tooling**
+(the "TradingView substitute" use the owner carved out of the 2026-09-11 broad-pattern-discovery
+pause — [[feedback_pause_broad_pattern_discovery]]), not new strategy/pattern backtesting, which
+stays paused.
+
+**Why a separate module, not a branch in `silver_build.py`/`gold_build.py`:** switching Silver's
+live `prices_adjusted` to CA v2 today would break Phase 5's shadow-diff clean-session streak —
+`shadow_diff` compares Gold against live Supabase, which still runs the legacy (largely
+unadjusted per DR-002) CA logic, so every night would show DISAGREE purely from using better
+prices, not a bug, indefinitely resetting the streak. This is exactly why the tracker's own §9 Q6
+gate already scoped that swap for **after** Phase 6 cutover (Trust Register OI-16) — not an
+arbitrary sequencing choice here, a structural one.
+
+- [x] **`archive/ca_v2_prototype.py`** — reuses `regime.py` / `stock_signals.py` / `sector_signals.py`'s
+  pure compute cores **verbatim by import**, the same convention Task 3.3 established in
+  `archive/gold_build.py`, pointed at a `prices_adjusted` view built from
+  `full_prices_v2.sqlite`'s `prices_v2` table instead of Silver Parquet. `index_prices` /
+  `stock_metadata` (conformed) / `sectors` still come read-only from the existing Bronze/Silver
+  archive — CA v2 doesn't cover the index or sector reference data, only per-stock price
+  adjustment. Output is a fully separate store (`D:\KIRAN_ARCHIVE\ca_v2_prototype\
+  ca_v2_serving.duckdb` + its own Parquet export + build log) — never opens `psx_serving.duckdb`,
+  Bronze, Silver, `psx_data.db`, or Supabase.
+- **Adjustment methodology, verified not assumed:** `close_v2 == close * cum_price_factor` exactly
+  (checked directly against the artifact — 0.0 max abs diff over a full symbol history). The v2
+  artifact has no adjusted open/high/low of its own, so this module derives them the same way
+  `apply_price_adjustments.py` already does for the legacy path — multiply by the same per-row
+  `cum_price_factor`. Volume uses `volume_v2` (share-count-adjusted) — an explicit improvement
+  over legacy `prices_adjusted.volume`, which DR-002 found is never adjusted at all.
+- **Price field default is `close_v2` (structural adjustment only), not `close_tr` (total return).**
+  Pivots / support-resistance / RS scores are computed off price levels a real chart would show; a
+  total-return series synthetically inflates historical levels for cumulative dividends and would
+  distort every pivot and resistance level — wrong for charting/grading even though it would be the
+  right choice for a future total-return backtest. `--price-field close_tr` stays available for
+  that later use. **Owner confirmed `close_v2` as the default, 2026-09-13** — current intended use
+  is charts/grading/regime only, not backtests; deferred to Claude's recommendation given no
+  independent technical basis to judge the tradeoff.
+- **Tests:** `tests/test_ca_v2_prototype.py` (4 tests) — builds against a synthetic v2-shaped SQLite
+  with a deliberate 2:1 split on one symbol partway through the series, and asserts the adjusted
+  close does NOT show the ~50% raw-price discontinuity at the split date (the actual proof the
+  adjustment mechanism works, not just that the code runs) — plus a build-and-populate smoke test,
+  a decoupling test (`psx_serving`/Bronze/Silver never touched), and a clear-error test for a
+  missing v2 database.
+- **Real validation run against the live substrate** (`python -m archive.ca_v2_prototype
+  --window-days 60`, 2026-09-13): 808 v2 symbols (2005-01-03 → 2026-09-10) conformed down to 293
+  tradeable symbols (same `EXCLUDED_SECTORS`/non-equity filter Gold uses); `market_regime` 43 rows;
+  `stock_signals` 12,167 rows across 42 dates / 293 symbols; `sector_signals` 966 rows, 23 sectors,
+  four-stage grades computed with a non-degenerate spread (Stage 1: 58, Stage 2: 478, Stage 3: 35,
+  Stage 4: 395). Confidence mix in the substrate itself: 621,675 `(ADJUSTED, CONFIRMED)` rows,
+  551,769 `(ADJUSTED, PROBABLE)`, 515,824 `(RAW_NO_EVENTS, NONE)`.
+- **Not done / deliberately out of scope for this first slice:** `boring_signals` / `leaders_scan` /
+  `recovery_signals` / `portfolio_signals` / `setup_log` ports against v2 (would follow the same
+  reuse-by-import pattern if/when wanted); charts (front-end wiring); a parity report against
+  legacy (there is no legitimate "live" reference to diff against here — the whole point is legacy
+  is the thing being replaced, so validation is plausibility + the split-adjustment proof above,
+  not a parity match). **Production wiring itself — pointing live Silver's `ca_source` at this
+  substrate — is NOT done here and stays gated at the Q6 decision point, post-cutover, per the
+  owner's own direction.**
+
 ---
 
 ## 6. Cutover gate (Phase 6 — hard AND)
@@ -479,6 +544,36 @@ illiquid names.
 ---
 
 ## 10. Running log (newest first)
+
+### 2026-09-13 — CA v2 standalone prototype built + validated (parallel, parked — Phase 5 untouched)
+
+Owner asked (mid-Phase-5-wait) to build and validate CA-Pipeline `full_prices_v2.sqlite`-based
+`stock_signals`/`sector_signals` screeners as a standalone prototype, to park for wiring into
+production once its turn comes — explicitly scoped as charting/grading tooling (the "TradingView
+substitute" carve-out from the 2026-09-11 broad-pattern-discovery pause), not new strategy
+backtesting. New `archive/ca_v2_prototype.py` reuses `regime`/`stock_signals`/`sector_signals`'s
+pure cores verbatim by import (Task 3.3's own convention), pointed at a `prices_adjusted` view
+built from the v2 SQLite instead of Silver Parquet; everything else (index, stock_metadata,
+sectors) stays read-only off the existing Bronze/Silver archive. Fully decoupled: separate output
+store (`D:\KIRAN_ARCHIVE\ca_v2_prototype\`), never opens `psx_serving.duckdb`, Bronze, Silver,
+`psx_data.db`, or Supabase — deliberately so, since switching Silver's *live* CA source to v2 now
+would make every night's `shadow_diff` show DISAGREE against legacy-adjusted Supabase and reset
+Phase 5's clean-session streak indefinitely (exactly why the tracker's own Q6 gate already scoped
+that swap for post-cutover). Adjustment method verified empirically (`close_v2 == close *
+cum_price_factor` exactly, 0.0 max diff), not assumed; OHLC derived via the same
+`cum_price_factor` multiply `apply_price_adjustments.py` already uses; volume uses `volume_v2`
+(share-count-adjusted — legacy `prices_adjusted.volume` is never adjusted at all, a known DR-002
+defect). Price field defaults to `close_v2` (structural-only), not `close_tr` (total return) —
+right for charting/pivots, `--price-field close_tr` kept available for a future total-return
+backtest. 4 new tests (`tests/test_ca_v2_prototype.py`), including a synthetic 2:1-split fixture
+proving the adjustment actually removes the raw-price discontinuity, not just that the code runs.
+Real run against the live substrate (`--window-days 60`): 293 tradeable symbols (of 808 in the v2
+artifact), `stock_signals` 12,167 rows / 42 dates, `sector_signals` 966 rows / 23 sectors with a
+non-degenerate four-stage spread (58/478/35/395). Not yet ported: `boring_signals`/`leaders_scan`/
+recovery/portfolio/`setup_log` against v2, and front-end wiring — same reuse-by-import pattern
+available if/when wanted. **Production wiring (pointing live Silver at this substrate) stays
+gated at Q6, post-cutover, per the owner's own direction — not started.** Phase 5 itself untouched
+by any of this (no file under Bronze/Silver/Gold/`psx_data.db` was written).
 
 ### 2026-09-12 — Front end (2 pages) DONE: Sector Grading + Explorer render from real Gold JSON
 
