@@ -15,3 +15,13 @@ export async function loadAll() {
   ]);
   return { meta, sectors, signals };
 }
+
+export async function loadOverview() {
+  const [meta, overview, sectors, signals] = await Promise.all([
+    fetchJSON("data/meta.json"),
+    fetchJSON("data/overview.json"),
+    fetchJSON("data/sector_grades.json"),
+    fetchJSON("data/signals.json"),
+  ]);
+  return { meta, overview, sectors, signals };
+}

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Market Overview — Kiran</title>
+<link rel="stylesheet" href="vendor/uplot/uPlot.min.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__brand">Kiran <small>local-first</small></div>
+    <nav class="topbar__nav">
+      <a href="overview.html" class="active">Overview</a>
+      <a href="sector-grading.html">Sector Grading</a>
+      <a href="explorer.html">Explorer</a>
+    </nav>
+    <div class="topbar__spacer"></div>
+    <span class="freshness-pill" data-freshness-pill>Loading…</span>
+    <button class="theme-toggle" data-theme-toggle title="Toggle theme">☾</button>
+  </header>
+
+  <main class="main--wide">
+    <div class="withheld-banner" data-withheld-banner></div>
+
+    <div class="page-header">
+      <h1>Market Overview</h1>
+      <span class="meta" data-as-of></span>
+    </div>
+
+    <div class="bento">
+      <div class="bento-tile bento-tile--regime" data-regime-card>
+        <div class="tile-label">Market regime</div>
+        <div class="regime-card__value" data-regime-value>—</div>
+        <div class="regime-card__since" data-regime-since></div>
+      </div>
+
+      <div class="bento-tile bento-tile--gauge">
+        <div class="tile-label">Breadth &gt; SMA50</div>
+        <div class="gauge-wrap" data-breadth-gauge></div>
+      </div>
+
+      <div class="bento-tile bento-tile--perf" data-perf-strip></div>
+
+      <div class="bento-tile bento-tile--chart">
+        <div class="chart-card__head">
+          <h2>KSE-100 <span class="chart-card__sub">daily, candlestick</span></h2>
+          <div class="legend legend--toggle" data-series-toggles>
+            <label class="legend__item legend__item--toggle">
+              <input type="checkbox" data-series-toggle="sma50" checked>
+              <span class="legend__swatch" style="background:var(--seq-500)"></span>50-session SMA
+            </label>
+            <label class="legend__item legend__item--toggle">
+              <input type="checkbox" data-series-toggle="breadth" checked>
+              <span class="legend__swatch" style="background:var(--accent-breadth)"></span>% of universe above its own 50-session SMA
+            </label>
+          </div>
+        </div>
+        <div class="chart-card__body" data-kse-chart></div>
+        <div class="chart-card__foot" data-sma-diff></div>
+      </div>
+
+      <div class="bento-tile bento-tile--heatmap">
+        <div class="tile-label">Sector stages <span class="tile-label__sub">today</span></div>
+        <div class="sector-heatmap" data-sector-heatmap></div>
+      </div>
+
+      <div class="bento-tile bento-tile--movers">
+        <div class="tile-label">Top movers <span class="tile-label__sub">today</span></div>
+        <div class="movers-list" data-top-movers></div>
+      </div>
+
+      <div class="bento-tile bento-tile--health" data-health-card>
+        <div class="tile-label">Database health</div>
+        <div class="health-card__value" data-health-value>—</div>
+        <div class="health-card__meta" data-health-meta></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer" data-footer>Kiran — local-first Gold build</footer>
+
+  <script src="vendor/uplot/uPlot.iife.min.js"></script>
+  <script type="module" src="js/overview.js"></script>
+</body>
+</html>
