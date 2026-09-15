@@ -32,7 +32,15 @@ local calendar date runs the pipeline and records the outcome; a second
 invocation the same date is a no-op (``--force`` overrides, for manual re-runs
 after fixing a real failure). A lock left ``in_progress`` for over
 ``STALE_LOCK_HOURS`` is treated as a crashed prior run, not a live one, and is
-retried rather than permanently wedging the schedule.
+retried rather than permanently wedging the schedule. Whenever a run is about
+to step over an abandoned ``in_progress`` lock like this (a prior calendar
+day's, a stale same-day one, or one overridden by ``--force``) it first
+records an ``"interrupted"`` entry in the log and fires an ntfy alert -- see
+``_report_interrupted_run`` -- so a run that gets hard-killed (machine sleep/
+power loss/forced restart -- none of which raise a catchable Python
+exception) still leaves a trace instead of silently vanishing under the next
+run's state file, which is exactly what happened 2026-09-14 (root cause:
+Task Scheduler's ``StopIfGoingOnBatteries``, since fixed on the task itself).
 
 Catch-up-on-wake needs no special multi-day loop here: Bronze ingest already
 walks every un-ingested capture file, Silver always rebuilds fully from
@@ -142,10 +150,12 @@ def _ntfy_alert(title: str, body: str) -> None:
 def already_ran_today(archive_root: Path, today: dt.date, *, force: bool = False) -> tuple[bool, dict | None]:
     """Returns (should_skip, prior_state). A same-day lock still ``in_progress``
     younger than STALE_LOCK_HOURS blocks a concurrent run; an older one is
-    treated as crashed and does not block a retry."""
-    if force:
-        return False, None
+    treated as crashed and does not block a retry. ``prior_state`` is still
+    returned under ``force`` (not discarded) so the caller can tell whether a
+    forced run is stepping over an abandoned ``in_progress`` lock."""
     state = _read_state(archive_root)
+    if force:
+        return False, state
     if not state or state.get("date") != today.isoformat():
         return False, state
     if state.get("status") == "in_progress":
@@ -159,6 +169,33 @@ def already_ran_today(archive_root: Path, today: dt.date, *, force: bool = False
             return True, state
         return False, state  # stale -- a crashed prior run, safe to retry
     return True, state  # already completed (ok or error) today -- no-op unless --force
+
+
+def _report_interrupted_run(archive_root: Path, prior: dict, today: dt.date, new_run_id: str) -> None:
+    """``prior`` is a lock left ``in_progress`` by a run this invocation is
+    about to step over (a prior calendar day, a stale same-day lock, or a
+    ``--force`` override) -- it never reached its own except/finally block,
+    so without this call nothing would ever record that it happened; the
+    next day's state file would simply overwrite it and the death would be
+    invisible except by reading raw logs after the fact (exactly what
+    happened 2026-09-14: the process was hard-killed -- most likely a sleep/
+    power-source event Task Scheduler's own ``StopIfGoingOnBatteries``
+    setting reacts to -- with zero trace in either log file). A hard kill
+    can't be caught by the try/except in ``run_once()`` below (that only
+    catches normal Python exceptions), so this check, made before that
+    try/except ever runs, is the only place left to surface it."""
+    dead_run_id, dead_date, dead_started = prior.get("run_id"), prior.get("date"), prior.get("started_at")
+    _log_append(archive_root, {
+        "ts": _now_utc(), "run_id": new_run_id, "outcome": "interrupted", "date": today.isoformat(),
+        "dead_run_id": dead_run_id, "dead_run_date": dead_date, "dead_run_started_at": dead_started,
+    })
+    _ntfy_alert(
+        "Kiran nightly pipeline: previous run never finished",
+        f"Run {dead_run_id} (date {dead_date}, started {dead_started}) was still 'in_progress' "
+        f"when today's run ({new_run_id}, {today.isoformat()}) started -- it was killed or crashed "
+        "without logging a normal error, most likely the machine slept/lost power/was restarted "
+        "mid-run. Proceeding with today's run now; check nightly_pipeline.log around the started_at "
+        "time above if you want to know exactly where it stopped.")
 
 
 def run_once(archive_root: Path = ARCHIVE_ROOT, *, force: bool = False,
@@ -176,6 +213,12 @@ def run_once(archive_root: Path = ARCHIVE_ROOT, *, force: bool = False,
                    "prior_run_id": (prior or {}).get("run_id"), "prior_status": (prior or {}).get("status")}
         _log_append(archive_root, {"ts": _now_utc(), "run_id": run_id, **result})
         return result
+
+    if prior and prior.get("status") == "in_progress":
+        # We're about to overwrite a lock some earlier invocation left
+        # in_progress and never resolved -- record that fact before it's
+        # gone, instead of letting it vanish silently under this run's state.
+        _report_interrupted_run(archive_root, prior, today, run_id)
 
     prices_archive_root = prices_archive_root or (archive_root / "prices_archive")
     gold_store_root = gold_store_root or (archive_root / "psx_serving")
