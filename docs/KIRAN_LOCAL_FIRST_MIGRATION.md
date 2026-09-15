@@ -614,6 +614,57 @@ illiquid names.
 
 ## 10. Running log (newest first)
 
+### 2026-09-15 — Phase 5c: root-caused the missing 2026-09-14 session (silent power-kill), hardened `nightly_run.py`, fixed the Task Scheduler task
+
+While checking Phase 5c streak progress (owner request), found the shadow-diff streak was still
+0 and that the 2026-09-14 nightly run had produced **no completion record at all** — not "ok",
+not "error", nothing. Dug into it directly (owner: "Yes — Dig it"):
+
+**Root cause, confirmed via Windows System event log, not guessed:** `nightly_pipeline.log`
+shows the 09-14 run (a 09:38 wake-catch-up trigger) working cleanly through a `boring_signals`
+catch-up scan and then stopping mid-stream at 09:56:09 — no traceback, despite the `.bat`
+wrapper redirecting stderr into the same log (`2>&1`), and no entry in `nightly_run.py`'s own
+`_nightly_run_log.jsonl` either (neither outcome branch ever ran). `Get-WinEvent` against the
+System log shows a Kernel-Power **"power source change" event (ID 105) at 09:57:57** — ~108
+seconds later. The task's own exported XML had **`DisallowStartIfOnBatteries=true` and
+`StopIfGoingOnBatteries=true`** — Task Scheduler hard-kills the process tree the instant it
+detects a battery-power transition, a termination that bypasses Python's exception handling
+entirely (nothing to catch, nothing to log). That combination of timing + an explicit
+kill-on-battery setting is the most likely explanation; the raw event property values (74%→~100%
+capacity) are ambiguous about the exact AC/battery direction, so this is stated as the
+well-evidenced leading cause, not a certainty.
+
+**Fix 1 (config, no code) — the direct cause:** `Set-ScheduledTask` on `KIRAN_Nightly_Pipeline`
+with both `DisallowStartIfOnBatteries` and `StopIfGoingOnBatteries` set `false`; verified via the
+task's re-exported XML. Logged in `docs/MAINTENANCE_LOG.md` (2026-09-15 entry) as an operational
+change, not a code change.
+
+**Fix 2 (code, `archive/nightly_run.py`) — defense in depth for *any* future hard-kill, not just
+this one:** a run that gets hard-killed (sleep, power loss, forced restart, an OOM kill — nothing
+that raises a catchable Python exception) leaves its lock file's `status` stuck at `"in_progress"`
+forever, and the *next* run (same-day stale retry, next calendar day, or a `--force` override)
+previously just silently overwrote it with zero record that anything had gone wrong. New
+`_report_interrupted_run()`, called in `run_once()` whenever the current invocation is about to
+step over an abandoned `in_progress` lock (any of those three cases): writes an `"interrupted"`
+entry to `_nightly_run_log.jsonl` (carrying the dead run's own `run_id`/`date`/`started_at`) and
+fires an ntfy alert, **before** proceeding with today's run — so a future silent kill is visible
+in the pipeline's own log trail immediately, not only discoverable via manual Windows Event
+Viewer archaeology the way this one was. `already_ran_today()` now also returns the prior state
+under `--force` (previously discarded) so the forced-override case can be reported too. 5 new
+tests in `tests/test_nightly_run.py` (26 total, all green) covering: same-day stale retry,
+next-calendar-day, and forced-override, each asserting the interrupted entry + alert fire, plus a
+negative test confirming a normal (non-interrupted) new-day rollover does NOT fire one.
+
+**Data-completeness note:** the missing 09-14 session itself was not lost — the very next real
+run (2026-09-15) picked it up as part of its normal catch-up scope and produced a real shadow-diff
+verdict for it (DISAGREE, the already-documented `setup_log` legacy-universe-omission finding,
+not new). So the gap was a missing *record*, not missing *data*.
+
+**Not done here:** no change to the old dual pipeline; no Gold/Silver/Bronze production code
+touched beyond `archive/nightly_run.py` (itself the new Phase 5 orchestration entry point, not
+the frozen legacy pipeline). Code change not yet committed/pushed — pending owner go-ahead on
+whether to open the usual one-PR-per-task.
+
 ### 2026-09-13 — "Sector Overview" (Rotation Radar → Sector Strength v1) flagged as next up
 
 Owner is opening a new session to start this work — see the "NEXT UP" note under the front-end

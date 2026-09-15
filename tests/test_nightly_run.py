@@ -177,6 +177,31 @@ def test_stale_in_progress_lock_is_retried(env):
     assert calls["seed"] == 1 and calls["silver"] == 1 and calls["gold"] == 1
 
 
+def test_stale_same_day_in_progress_lock_is_reported_as_interrupted(env):
+    # A hard kill (machine sleep/power loss/forced restart) never reaches
+    # nightly_run's own except block, so this is the only place a dead
+    # same-day run's lock gets recorded before the retry overwrites it.
+    root, calls = env
+    today = dt.date.today()
+    stale_start = (dt.datetime.now(dt.timezone.utc)
+                   - dt.timedelta(hours=nightly_run.STALE_LOCK_HOURS + 1)).isoformat()
+    nightly_run._write_state(root, {
+        "date": today.isoformat(), "run_id": "crashed-run",
+        "status": "in_progress", "started_at": stale_start,
+    })
+
+    nightly_run.run_once(root)
+
+    logged = [json.loads(line) for line in nightly_run._log_path(root).read_text().splitlines()]
+    interrupted = [e for e in logged if e["outcome"] == "interrupted"]
+    assert len(interrupted) == 1
+    assert interrupted[0]["dead_run_id"] == "crashed-run"
+    assert interrupted[0]["dead_run_date"] == today.isoformat()
+    assert len(calls["ntfy"]) == 1
+    assert "never finished" in calls["ntfy"][0][0]
+    assert "crashed-run" in calls["ntfy"][0][1]
+
+
 def test_new_calendar_day_runs_again_without_force(env):
     root, calls = env
     nightly_run.run_once(root)
@@ -188,6 +213,48 @@ def test_new_calendar_day_runs_again_without_force(env):
 
     assert result["outcome"] == "ok"
     assert calls["seed"] == 2 and calls["silver"] == 2 and calls["gold"] == 2
+    # yesterday's run completed cleanly (status "ok"), so this is a normal
+    # new day, not an interruption -- no alert should fire for it
+    logged = [json.loads(line) for line in nightly_run._log_path(root).read_text().splitlines()]
+    assert not any(e["outcome"] == "interrupted" for e in logged)
+
+
+def test_prior_day_in_progress_lock_is_reported_as_interrupted(env):
+    # Exactly the 2026-09-14 scenario: a run started, was hard-killed
+    # mid-flight (no exception, no completion entry), and the next
+    # calendar day's run is the first thing to ever see that dead lock.
+    root, calls = env
+    yesterday = dt.date.today() - dt.timedelta(days=1)
+    nightly_run._write_state(root, {
+        "date": yesterday.isoformat(), "run_id": "killed-by-sleep",
+        "status": "in_progress", "started_at": nightly_run._now_utc(),
+    })
+
+    result = nightly_run.run_once(root)
+
+    assert result["outcome"] == "ok"  # today's run still proceeds and completes
+    logged = [json.loads(line) for line in nightly_run._log_path(root).read_text().splitlines()]
+    interrupted = [e for e in logged if e["outcome"] == "interrupted"]
+    assert len(interrupted) == 1
+    assert interrupted[0]["dead_run_id"] == "killed-by-sleep"
+    assert interrupted[0]["dead_run_date"] == yesterday.isoformat()
+    assert any("never finished" in title for title, _ in calls["ntfy"])
+
+
+def test_forced_rerun_over_in_progress_lock_is_reported_as_interrupted(env):
+    root, calls = env
+    today = dt.date.today()
+    nightly_run._write_state(root, {
+        "date": today.isoformat(), "run_id": "stuck-run",
+        "status": "in_progress", "started_at": nightly_run._now_utc(),
+    })
+
+    nightly_run.run_once(root, force=True)
+
+    logged = [json.loads(line) for line in nightly_run._log_path(root).read_text().splitlines()]
+    interrupted = [e for e in logged if e["outcome"] == "interrupted"]
+    assert len(interrupted) == 1
+    assert interrupted[0]["dead_run_id"] == "stuck-run"
 
 
 def test_stage_failure_propagates_records_error_and_alerts(env, monkeypatch):

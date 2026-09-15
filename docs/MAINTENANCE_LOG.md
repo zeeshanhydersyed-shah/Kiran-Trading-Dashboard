@@ -29,6 +29,34 @@ happens, say so explicitly and why.
 
 ## Entries
 
+### 2026-09-15 — Root-caused a silently-killed nightly run; disabled `StopIfGoingOnBatteries` / `DisallowStartIfOnBatteries` on `KIRAN_Nightly_Pipeline`
+- **What:** The 2026-09-14 run of the new local-first `KIRAN_Nightly_Pipeline`
+  Task Scheduler job (Phase 5) started (09:38, a wake-catch-up trigger) and
+  simply stopped mid-`boring_signals` scan at 09:56:09 with no error, no
+  traceback, and no completion entry in either log file — Gold was never
+  published for that date and no shadow-diff verdict was ever recorded for it
+  (confirmed absent from `shadow_diff.duckdb`). Root-caused via Windows System
+  event log: a Kernel-Power "power source change" event (ID 105) fired at
+  09:57:57, ~108 seconds after the log went silent — and the task's own XML
+  definition had **both `DisallowStartIfOnBatteries` and
+  `StopIfGoingOnBatteries` set to `true`**, meaning Task Scheduler hard-kills
+  the process tree the instant it detects battery power, a termination Python
+  can't catch or log. Set both to `false` via `Set-ScheduledTask` (config
+  only, no script/file involved) and verified via the task's re-exported XML.
+  Separately hardened `archive/nightly_run.py` itself (code change, own PR) so
+  any *future* hard-kill (any cause, not just this one) leaves a trace instead
+  of silently vanishing — see the PR.
+- **Why:** Owner asked to root-cause the missing 2026-09-14 shadow-diff session
+  found while checking Phase 5c progress, then fix it so it can't recur.
+- **DB writes:** none.
+- **Verification:** re-exported the task's XML post-change and confirmed both
+  flags read `false`; the missing 09-14 session was separately picked up and
+  diffed (verdict DISAGREE, already-explained `setup_log` finding — not a data
+  loss) by the very next real run, 2026-09-15.
+- **By:** Claude Code, under explicit owner go-ahead ("Fix it in way that it
+  won't happen again"). Full detail: `docs/KIRAN_LOCAL_FIRST_MIGRATION.md`
+  Phase 5 running log, 2026-09-15 entry.
+
 ### 2026-09-10 — New Backblaze B2 bucket + app key for the local-first immutable baseline
 - **What:** Owner created a second B2 bucket **`kiran-psx-archive`** (S3 endpoint
   `s3.us-east-005.backblazeb2.com`) with **Object Lock enabled** and a bucket
