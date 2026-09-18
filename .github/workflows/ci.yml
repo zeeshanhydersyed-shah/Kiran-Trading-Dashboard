@@ -95,10 +95,17 @@ jobs:
   # ── B1: the unit suite. Currently the backfill/gap-detection regression
   # tests added alongside the 2026-08-12 data-loss fix -- the failure mode
   # that had already happened twice because the first fix shipped without one.
+  #
+  # timeout-minutes raised 20->30 (2026-09-18): the suite had already grown past
+  # the old 20-minute budget by 2026-09-16 (confirmed: PR #108's own merge-to-main
+  # run -- run 35057783319 -- was cancelled at exactly 20m15s, two days before
+  # this change, unrelated to any specific PR's content) -- this was a real,
+  # already-live CI reliability gap, not a new one. 30 matches app-boot's own
+  # existing budget below.
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
