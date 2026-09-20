@@ -1,0 +1,13 @@
+# Optional local guard: `pip install pre-commit && pre-commit install`
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: no-personal-journal-workbook
+        name: block personal journal workbook
+        entry: personal finance workbook must not be committed
+        language: fail
+        files: '(?i)asset.?allocation.*\.xls'

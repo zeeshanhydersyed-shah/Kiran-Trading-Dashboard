@@ -870,7 +870,8 @@ Saves to `agent_reference_breakouts` table. Agent uses these as calibration exam
 ## Excel Journal Sync — CRITICAL
 
 ### Source
-`D:\PERSONAL\Personal Sheets\ASSET ALLOCATION\ASSET ALLOCATION.XLSX` — sheet: `JOURNAL-2`
+The owner's personal asset-allocation Excel workbook (local file, never committed) — sheet: `JOURNAL-2`.
+Its path is read from `KIRAN_JOURNAL_XLSX` (environment variable or the gitignored `.env`) via `journal_path.get_journal_path()`; do not hardcode it.
 
 ### Column mapping
 | Excel col | DB field |

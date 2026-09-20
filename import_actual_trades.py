@@ -564,9 +564,17 @@ def main():
     parser = argparse.ArgumentParser(
         description="Import Journal-2 trades from ASSET ALLOCATION.xlsx into psx_data.db (+ Supabase if configured)"
     )
-    parser.add_argument("--file", required=True, help="Full path to ASSET ALLOCATION.xlsx")
+    parser.add_argument("--file", default=None,
+                        help="Full path to ASSET ALLOCATION.xlsx (default: KIRAN_JOURNAL_XLSX env / .env)")
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing to DB")
     args = parser.parse_args()
+
+    if not args.file:
+        from journal_path import get_journal_path
+        args.file = get_journal_path()
+    if not args.file:
+        logger.error("No journal path: pass --file or set KIRAN_JOURNAL_XLSX (env or .env)")
+        sys.exit(1)
 
     if not os.path.exists(args.file):
         logger.error("File not found: %s", args.file)
