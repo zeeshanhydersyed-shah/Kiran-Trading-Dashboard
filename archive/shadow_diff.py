@@ -10,14 +10,30 @@ every signal that changes" (migration tracker Phase 5 checklist item 2).
                                    [--pg-url URL] [--date YYYY-MM-DD]
     python -m archive.shadow_diff --status
 
-Scope, deliberately narrow (matches the pre-2026-09-09 shadow-mode arc's own
-MANDATORY-table scope, TR-06/audit Sec.39.2 -- `shadow_compare.py`,
-superseded as a *component* to wire in, not as a *pattern* to reuse): the
-five EVERY_SESSION tables -- `market_regime`, `stock_signals`,
-`sector_signals`, `boring_signals`, `setup_log`. `leaders_scan` /
-`recovery_signals` / `portfolio_signals` were NON-MANDATORY under that same
-classification (sparse/latest-date-only outputs, §39.1/§39.2) and stay out of
-this diff for the same reason.
+Scope (rescoped 2026-09-22, owner-approved): the three EVERY_SESSION tables
+the incoming simplified dashboard (Sector Grading, Explorer -- two pages,
+no setup/screener workflow) actually reads -- `market_regime`,
+`stock_signals`, `sector_signals`. `boring_signals` and `setup_log` are
+being retired in their current form as part of the same migration and were
+dropped from the gate the same day: gating a local-first cutover on parity
+for a feature that will not exist in the new dashboard was producing
+false-halts unrelated to the data that actually matters post-migration
+(case in point -- the 2026-09-21 session DISAGREEd solely on a
+`setup_log`/`CHBL/RS_LEADER_SECTOR` membership diff, itself downstream of a
+2-symbol sector misclassification in `stock_metadata`, not a computation
+bug). `digest_boring`/`digest_setup_log`/`_cmp_boring`/`_cmp_setup_log` are
+left in the module, unused by the gate, as a starting point if a future
+rebuild of that functionality needs the same comparison shape -- any such
+rebuild depends on the new dashboard's own requirements, not this file.
+
+Original scope (pre-2026-09-22, kept for history -- matched the
+pre-2026-09-09 shadow-mode arc's own MANDATORY-table scope, TR-06/audit
+Sec.39.2, `shadow_compare.py`, superseded as a *component* to wire in, not
+as a *pattern* to reuse): five EVERY_SESSION tables, the three above plus
+`boring_signals`/`setup_log`. `leaders_scan` / `recovery_signals` /
+`portfolio_signals` were NON-MANDATORY under that same classification
+(sparse/latest-date-only outputs, §39.1/§39.2) and stayed out of the diff
+for the same reason -- unaffected by the 2026-09-22 rescope.
 
 Gold intentionally has a NARROWER universe than the live pipelines by design
 (3.3b/3.3c: `EXCLUDED_SECTORS` + non-equity dropped, audit §118 Defect A) --
@@ -223,6 +239,9 @@ def digest_sector_signals(src: _Source, session: str):
 
 
 def digest_boring(src: _Source, session: str):
+    """Kept for a possible future rebuild -- not called by `digest_all` as
+    of the 2026-09-22 rescope (`boring_signals` is being retired). See the
+    module docstring."""
     try:
         rows = src.q(
             "SELECT symbol, strategy_confirmed, status "
@@ -235,6 +254,9 @@ def digest_boring(src: _Source, session: str):
 
 
 def digest_setup_log(src: _Source, session: str):
+    """Kept for a possible future rebuild -- not called by `digest_all` as
+    of the 2026-09-22 rescope (`setup_log` is being retired). See the
+    module docstring."""
     try:
         rows = src.q("SELECT symbol, setup_type FROM setup_log WHERE setup_date = {p}", (session,))
     except Exception as exc:
@@ -245,12 +267,12 @@ def digest_setup_log(src: _Source, session: str):
 
 
 def digest_all(src: _Source, session: str) -> dict:
+    """The gate's three tables as of the 2026-09-22 rescope. `boring_signals`
+    and `setup_log` are deliberately not included -- see module docstring."""
     return {
         "market_regime": digest_regime(src, session),
         "stock_signals": digest_stock_signals(src, session),
         "sector_signals": digest_sector_signals(src, session),
-        "boring_signals": digest_boring(src, session),
-        "setup_log": digest_setup_log(src, session),
     }
 
 
@@ -355,7 +377,14 @@ def _skip_if_unavailable(table: str, gold_val, pg_val, noted: list) -> bool:
 
 def compare_digests(gold: dict, pg: dict, excl: set[str] | None = None,
                      sector_of: dict[str, str] | None = None) -> tuple[list, list]:
-    """Returns (halting, noted). halting == real trading-decision disagreements."""
+    """Returns (halting, noted). halting == real trading-decision disagreements.
+
+    `excl`/`sector_of` are accepted but unused by the three comparators below
+    (none of them are sector-scoped) -- kept in the signature so callers
+    don't need to change, and because `_cmp_boring`/`_cmp_setup_log` (not
+    called here as of the 2026-09-22 rescope, see module docstring) still
+    take the same two arguments if reactivated.
+    """
     excl = excl or set()
     sector_of = sector_of or {}
     halting: list = []
@@ -366,10 +395,6 @@ def compare_digests(gold: dict, pg: dict, excl: set[str] | None = None,
         _cmp_stock_signals(gold["stock_signals"], pg["stock_signals"], halting, noted)
     if not _skip_if_unavailable("sector_signals", gold["sector_signals"], pg["sector_signals"], noted):
         _cmp_sector_signals(gold["sector_signals"], pg["sector_signals"], noted)
-    if not _skip_if_unavailable("boring_signals", gold["boring_signals"], pg["boring_signals"], noted):
-        _cmp_boring(gold["boring_signals"], pg["boring_signals"], excl, sector_of, halting, noted)
-    if not _skip_if_unavailable("setup_log", gold["setup_log"], pg["setup_log"], noted):
-        _cmp_setup_log(gold["setup_log"], pg["setup_log"], excl, sector_of, halting, noted)
     return halting, noted
 
 
@@ -380,9 +405,11 @@ def _empty_or_unavailable(v) -> bool:
 def _session_is_empty(digest: dict) -> bool:
     """Neither side has genuinely reached this date -- distinguish from a
     real disagreement (matches the old shadow_compare.py's `_local_is_behind`).
-    Judged only on the three EVERY_SESSION core tables -- `boring_signals` /
-    `setup_log` being unavailable alone does not make a session INCOMPLETE,
-    it is handled per-table by `_skip_if_unavailable` instead."""
+    Judged on all three gate tables (`digest_all`'s only keys as of the
+    2026-09-22 rescope) -- any one of them being unavailable alone does not
+    make a session INCOMPLETE by itself, it is handled per-table by
+    `_skip_if_unavailable` instead; this only fires when none of the three
+    has real data."""
     return (_empty_or_unavailable(digest["market_regime"])
             and _empty_or_unavailable(digest["stock_signals"])
             and _empty_or_unavailable(digest["sector_signals"]))
