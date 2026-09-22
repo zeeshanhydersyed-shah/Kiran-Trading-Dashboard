@@ -102,8 +102,10 @@ MAX_TOKENS = 2048
 GROQ_CHAT_MODEL = "llama-3.3-70b-versatile"  # free Groq model for chat
 TODAY = date.today().isoformat()
 
-# Path to the user's Excel trading journal (read-only — never written by agent)
-EXCEL_JOURNAL_PATH = r"D:\PERSONAL\Personal Sheets\ASSET ALLOCATION\ASSET ALLOCATION.XLSX"
+# Path to the user's Excel trading journal (read-only — never written by agent).
+# Set KIRAN_JOURNAL_XLSX in the environment or the gitignored .env; "" if unset.
+from journal_path import get_journal_path
+EXCEL_JOURNAL_PATH = get_journal_path()
 EXCEL_JOURNAL_SHEET = "JOURNAL-2"
 
 

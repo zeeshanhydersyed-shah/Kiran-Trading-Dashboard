@@ -27,8 +27,10 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+from journal_path import get_journal_path
+
 # ── Constants ─────────────────────────────────────────────────────────────────
-EXCEL_PATH   = r"D:\PERSONAL\Personal Sheets\ASSET ALLOCATION\ASSET ALLOCATION.XLSX"
+EXCEL_PATH   = get_journal_path()   # KIRAN_JOURNAL_XLSX env / gitignored .env; "" if unset
 EXCEL_SHEET  = "JOURNAL-2"
 CAPITAL_CELL = "B3"          # single cell holding current portfolio value in PKR
 

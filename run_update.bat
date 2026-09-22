@@ -33,8 +33,8 @@ echo Generating Twitter content drafts... >> psx_scheduler.log
 python content_generator.py >> psx_scheduler.log 2>&1
 
 :: ── Sync actual trades from Excel ────────────────────────────────────────────
-echo Syncing actual trades from ASSET ALLOCATION.XLSX... >> psx_scheduler.log
-python import_actual_trades.py --file "D:\PERSONAL\Personal Sheets\ASSET ALLOCATION\ASSET ALLOCATION.XLSX" >> psx_scheduler.log 2>&1
+echo Syncing actual trades from the Excel journal (KIRAN_JOURNAL_XLSX)... >> psx_scheduler.log
+python import_actual_trades.py >> psx_scheduler.log 2>&1
 
 :: ── Weekly: agent self-learning loop (Sundays only) ─────────────────────────
 if "%DOW%"=="0" (
