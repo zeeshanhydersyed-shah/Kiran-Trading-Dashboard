@@ -1,8 +1,15 @@
 """Phase 5, Task 5b -- shadow-diff comparator (archive/shadow_diff.py).
 
-Contract (docs/KIRAN_LOCAL_FIRST_MIGRATION.md Phase 5): per-session diff of
-the decision-driving EVERY_SESSION signals (market_regime, stock_signals,
-sector_signals, boring_signals, setup_log) between Gold and live Supabase.
+Contract (docs/KIRAN_LOCAL_FIRST_MIGRATION.md Phase 5), rescoped 2026-09-22
+(owner-approved): per-session diff of the three EVERY_SESSION tables the
+incoming simplified dashboard actually reads -- `market_regime`,
+`stock_signals`, `sector_signals` -- between Gold and live Supabase.
+`boring_signals`/`setup_log` are being retired in their current form and are
+no longer part of `digest_all`/`compare_digests`; `digest_boring`/
+`digest_setup_log`/`_cmp_boring`/`_cmp_setup_log` still exist and are still
+tested directly below (kept as a starting point for a future rebuild), just
+not exercised through the gate's own pipeline anymore.
+
 A one-sided symbol/pair in an EXCLUDED_SECTORS sector is Gold correctly
 narrowing the universe (3.3b/3.3c), not a disagreement -- `noted`, not
 `halting`. verdict: CLEAN (no halting diffs) / DISAGREE (>=1 halting diff) /
@@ -58,6 +65,13 @@ def test_compare_digests_clean_when_identical():
     assert halting == [] and noted == []
 
 
+def test_digest_all_only_has_the_three_rescoped_tables():
+    """2026-09-22 rescope: boring_signals/setup_log are no longer part of the
+    gate's digest at all -- see module + file docstrings."""
+    digest = sd.digest_all(_source(regime="TRENDING_UP"), "2026-09-10")
+    assert set(digest.keys()) == {"market_regime", "stock_signals", "sector_signals"}
+
+
 def test_bos_flag_diff_is_halting():
     gold_row = ("HBL", 1, 1.0, 5.0, 1, 300_000, 2)
     pg_row = ("HBL", 0, 1.0, 5.0, 1, 300_000, 2)
@@ -97,85 +111,110 @@ def test_regime_mismatch_is_noted_not_halting():
     assert noted == [{"table": "market_regime", "field": "regime", "gold": "TRENDING_UP", "pg": "RANGING"}]
 
 
-def test_boring_signals_genuine_only_side_is_halting():
-    gold = sd.digest_all(_source(boring=[("HBL", 1, "Pending")]), "2026-09-10")
-    pg = sd.digest_all(_source(boring=[]), "2026-09-10")
+# ---------------------------------------- retired tables (not gate-wired)
+#
+# boring_signals/setup_log are no longer part of digest_all/compare_digests
+# (2026-09-22 rescope), but digest_boring/digest_setup_log/_cmp_boring/
+# _cmp_setup_log still exist for a possible future rebuild -- tested here
+# directly, calling the functions rather than going through the gate.
+
+def test_digest_boring_and_cmp_boring_still_work_standalone():
+    gold_digest = sd.digest_boring(_source(boring=[("HBL", 1, "Pending")]), "2026-09-10")
+    pg_digest = sd.digest_boring(_source(boring=[]), "2026-09-10")
     excl = {"TEXTILE SPINNING"}
     sector_of = {"HBL": "COMMERCIAL BANKS"}
-    halting, noted = sd.compare_digests(gold, pg, excl, sector_of)
+    halting, noted = [], []
+    sd._cmp_boring(gold_digest, pg_digest, excl, sector_of, halting, noted)
     assert any(h["table"] == "boring_signals" and h["kind"] == "existence" and h["only_gold"] == ["HBL"]
                for h in halting)
 
 
-def test_boring_signals_excluded_sector_only_side_is_noted_not_halting():
-    gold = sd.digest_all(_source(boring=[]), "2026-09-10")
-    pg = sd.digest_all(_source(boring=[("GATM", 1, "Pending")]), "2026-09-10")
+def test_cmp_boring_excluded_sector_only_side_is_noted_not_halting():
+    gold_digest = sd.digest_boring(_source(boring=[]), "2026-09-10")
+    pg_digest = sd.digest_boring(_source(boring=[("GATM", 1, "Pending")]), "2026-09-10")
     excl = {"TEXTILE SPINNING"}
     sector_of = {"GATM": "TEXTILE SPINNING"}
-    halting, noted = sd.compare_digests(gold, pg, excl, sector_of)
+    halting, noted = [], []
+    sd._cmp_boring(gold_digest, pg_digest, excl, sector_of, halting, noted)
     assert halting == []
     assert any(n["table"] == "boring_signals" and n["kind"] == "existence_excluded_sector_expected"
                and n["only_pg"] == ["GATM"] for n in noted)
 
 
-def test_boring_signals_confirmed_diff_is_halting_status_is_noted():
-    gold = sd.digest_all(_source(boring=[("HBL", 1, "Pending")]), "2026-09-10")
-    pg = sd.digest_all(_source(boring=[("HBL", 0, "Stopped")]), "2026-09-10")
-    halting, noted = sd.compare_digests(gold, pg)
+def test_cmp_boring_confirmed_diff_is_halting_status_is_noted():
+    gold_digest = sd.digest_boring(_source(boring=[("HBL", 1, "Pending")]), "2026-09-10")
+    pg_digest = sd.digest_boring(_source(boring=[("HBL", 0, "Stopped")]), "2026-09-10")
+    halting, noted = [], []
+    sd._cmp_boring(gold_digest, pg_digest, set(), {}, halting, noted)
     assert any(h["kind"] == "strategy_confirmed" and h["symbols"] == ["HBL"] for h in halting)
     assert any(n["table"] == "boring_signals" and n["field"] == "status" for n in noted)
 
 
-def test_setup_log_genuine_membership_diff_is_halting():
-    gold = sd.digest_all(_source(setup_log=[("HBL", "BREAKOUT")]), "2026-09-10")
-    pg = sd.digest_all(_source(setup_log=[]), "2026-09-10")
+def test_digest_setup_log_and_cmp_setup_log_still_work_standalone():
+    gold_digest = sd.digest_setup_log(_source(setup_log=[("HBL", "BREAKOUT")]), "2026-09-10")
+    pg_digest = sd.digest_setup_log(_source(setup_log=[]), "2026-09-10")
     sector_of = {"HBL": "COMMERCIAL BANKS"}
-    halting, noted = sd.compare_digests(gold, pg, set(), sector_of)
+    halting, noted = [], []
+    sd._cmp_setup_log(gold_digest, pg_digest, set(), sector_of, halting, noted)
     assert any(h["table"] == "setup_log" and h["kind"] == "membership"
                and h["only_gold"] == ["HBL/BREAKOUT"] for h in halting)
 
 
-def test_setup_log_excluded_sector_membership_diff_is_noted():
-    gold = sd.digest_all(_source(setup_log=[]), "2026-09-10")
-    pg = sd.digest_all(_source(setup_log=[("GATM", "RS_LEADER_MARKET")]), "2026-09-10")
+def test_cmp_setup_log_excluded_sector_membership_diff_is_noted():
+    gold_digest = sd.digest_setup_log(_source(setup_log=[]), "2026-09-10")
+    pg_digest = sd.digest_setup_log(_source(setup_log=[("GATM", "RS_LEADER_MARKET")]), "2026-09-10")
     excl = {"TEXTILE SPINNING"}
     sector_of = {"GATM": "TEXTILE SPINNING"}
-    halting, noted = sd.compare_digests(gold, pg, excl, sector_of)
+    halting, noted = [], []
+    sd._cmp_setup_log(gold_digest, pg_digest, excl, sector_of, halting, noted)
     assert halting == []
     assert any(n["table"] == "setup_log" and n["kind"] == "membership_excluded_sector_expected"
                and n["only_pg"] == ["GATM/RS_LEADER_MARKET"] for n in noted)
 
 
+def test_boring_and_setup_log_diffs_no_longer_affect_the_gate():
+    """The 2026-09-21 real-world case that triggered the rescope: a
+    setup_log-only diff must not surface at all through the gate's own
+    digest_all/compare_digests pipeline anymore, even though the underlying
+    tables still disagree."""
+    gold = sd.digest_all(
+        _source(regime="TRENDING_UP", boring=[("HBL", 1, "Pending")],
+                setup_log=[("HBL", "RS_LEADER_SECTOR")]),
+        "2026-09-10")
+    pg = sd.digest_all(_source(regime="TRENDING_UP"), "2026-09-10")
+    halting, noted = sd.compare_digests(gold, pg)
+    assert halting == [] and noted == []
+
+
 # ---------------------------------------------------------- missing table
 
-def _source_missing_setup_log(**kw):
-    """A Gold-shaped source that never got a setup_log table built -- a
-    scoped `--only` build, or a store predating that screener."""
+def _source_missing_sector_signals(**kw):
+    """A Gold-shaped source that never got a sector_signals table built."""
     src = _source(**kw)
-    src.conn.execute("DROP TABLE setup_log")
+    src.conn.execute("DROP TABLE sector_signals")
     return src
 
 
 def test_missing_table_is_unavailable_not_a_crash():
     row = ("HBL", 1, 1.0, 5.0, 1, 300_000, 2)
-    gold = sd.digest_all(_source_missing_setup_log(regime="TRENDING_UP", stock_signals=[row]), "2026-09-10")
-    assert gold["setup_log"] is sd.UNAVAILABLE
+    gold = sd.digest_all(_source_missing_sector_signals(regime="TRENDING_UP", stock_signals=[row]), "2026-09-10")
+    assert gold["sector_signals"] is sd.UNAVAILABLE
     assert gold["market_regime"] == "TRENDING_UP"  # other tables unaffected
 
 
 def test_missing_table_is_skipped_as_noted_not_halting():
     row = ("HBL", 1, 1.0, 5.0, 1, 300_000, 2)
-    gold = sd.digest_all(_source_missing_setup_log(regime="TRENDING_UP", stock_signals=[row]), "2026-09-10")
+    gold = sd.digest_all(_source_missing_sector_signals(regime="TRENDING_UP", stock_signals=[row]), "2026-09-10")
     pg = sd.digest_all(_source(regime="TRENDING_UP", stock_signals=[row],
-                                setup_log=[("HBL", "BREAKOUT")]), "2026-09-10")
+                                sector_signals=[("CEMENT", 1, 5.0, 10.0)]), "2026-09-10")
     halting, noted = sd.compare_digests(gold, pg)
-    assert halting == []  # NOT a giant one-sided setup_log diff
-    assert any(n["table"] == "setup_log" and n["kind"] == "unavailable" for n in noted)
+    assert halting == []  # NOT a giant one-sided sector_signals diff
+    assert any(n["table"] == "sector_signals" and n["kind"] == "unavailable" for n in noted)
 
 
-def test_missing_setup_log_alone_does_not_make_the_session_incomplete():
+def test_missing_sector_signals_alone_does_not_make_the_session_incomplete():
     row = ("HBL", 1, 1.0, 5.0, 1, 300_000, 2)
-    gold = _source_missing_setup_log(regime="TRENDING_UP", stock_signals=[row])
+    gold = _source_missing_sector_signals(regime="TRENDING_UP", stock_signals=[row])
     pg = _source(regime="TRENDING_UP", stock_signals=[row])
     result = sd.compare_session(gold, pg, "2026-09-10")
     assert result["verdict"] == sd.VERDICT_CLEAN
